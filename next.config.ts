@@ -18,6 +18,18 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        // Rendered item and fluid art carries a content hash in the basename
+        // (the pipeline renames on any byte change), so these are immutable
+        // too - and they are most of what a returning browser re-downloads.
+        source: "/datasets/gtnh/:version/textures/rendered/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
     ];
   },
   async rewrites() {
