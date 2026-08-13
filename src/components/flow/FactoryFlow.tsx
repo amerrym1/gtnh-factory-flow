@@ -1169,7 +1169,7 @@ function getMissingRecipePlaceholder(recipeId: string) {
 }
 
 // Identity caches for node `data`. These are memoisation caches in the same
-// spirit as useMemo â€” the value returned is always derived purely from the
+// spirit as useMemo — the value returned is always derived purely from the
 // inputs, so a render that is discarded or replayed cannot produce a wrong
 // result, only a different (equivalent) object identity. They live at module
 // scope rather than in a ref because reading a ref during render is not allowed.
@@ -1357,7 +1357,7 @@ let viewportTransformClearScheduled = false;
 
 /**
  * Drops every flow-space measurement. Call this when node positions or node
- * inner layout change â€” never on pan or zoom, which cannot affect flow-space
+ * inner layout change — never on pan or zoom, which cannot affect flow-space
  * geometry.
  */
 function invalidateMeasuredLayout() {
@@ -1564,8 +1564,8 @@ export function FactoryFlow() {
                   ? 1500
                   : CARD_Z_INDEX,
           // Reusing the previous `data` object when nothing in it moved is what
-          // lets RecipeNode's memo actually hold. Rebuilding it â€” which this memo
-          // does whenever a resource is hovered or the solver re-runs â€” otherwise
+          // lets RecipeNode's memo actually hold. Rebuilding it — which this memo
+          // does whenever a resource is hovered or the solver re-runs — otherwise
           // re-renders every node on the board for a change affecting one.
           data: reuseObjectIdentity(recipeNodeDataCache, node.id, {
             projectNode: node,
@@ -7867,7 +7867,7 @@ function getPolylineSegments(points: Array<{ x: number; y: number }>) {
  * Measures every node on the board once per layout epoch.
  *
  * Each edge needs the same obstacle set minus its own two endpoints, so this
- * used to walk and measure the entire board once per edge â€” O(edges x nodes)
+ * used to walk and measure the entire board once per edge — O(edges x nodes)
  * forced layouts every frame. The sweep is now shared and each edge only filters
  * it.
  *
@@ -8525,7 +8525,7 @@ function screenToFlowPoint(point: { x: number; y: number }, element: HTMLElement
  * Reads the live viewport transform at most once per frame.
  *
  * `getComputedStyle(...).transform` forces a style recalculation, and this used
- * to run twice per node per edge â€” so a board with 40 nodes and 80 edges paid
+ * to run twice per node per edge — so a board with 40 nodes and 80 edges paid
  * over six thousand forced recalcs in a single frame.
  */
 function getViewportTransform(element: HTMLElement) {
