@@ -759,17 +759,14 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           // margin that puts the first port centre on a grid line.
           className="grid h-[40px] min-w-0 items-center gap-1"
           // The columns are an inline style, not a class: with the delete/clone
-          // pair, the circuit slot and the tier chip each free to be absent,
-          // the class form would be eight hand-written arbitrary-value strings
-          // that Tailwind can only emit if all eight are spelled out in full.
+          // pair and the tier chip each free to be absent, the class form is
+          // one hand-written arbitrary-value string per combination, and
+          // Tailwind can only emit the ones spelled out in full.
           style={{
             gridTemplateColumns: [
               // Calm mode drops the delete/clone chrome; the title takes the row.
               ...(calmMode ? [] : ["24px", "24px"]),
               "minmax(0,1fr)",
-              // Between the name and the tier: both say what this machine is
-              // set to, so they read as one pair at the end of the row.
-              ...(programmedCircuit ? ["24px"] : []),
               ...(tierControl ? ["50px"] : []),
             ].join(" "),
           }}
@@ -887,7 +884,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               />
             ) : null}
           </div>
-          {programmedCircuit ? <CircuitChip circuit={programmedCircuit} /> : null}
           {tierControl && tierColor ? (
             <button
               type="button"
@@ -1019,18 +1015,27 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   <div
                     className={[
                       "grid min-w-0 items-center gap-1",
-                      // Every cell sizes to its content except MACHINES, which
-                      // takes the slack: a four-digit machine count is the one
-                      // number here that legitimately gets wide. Parallel
-                      // stretched to fill and then truncated its own label
-                      // ("Parall…").
-                      isCustomRateNode
-                        ? "grid-cols-[auto]"
-                        : machineParallelMultiplier > 1
-                          ? "grid-cols-[auto_auto_minmax(84px,1fr)]"
-                          : "grid-cols-[auto_minmax(84px,1fr)]",
                       isCropProductionNode ? CROP_CONFIG_PANEL_WIDTH_CLASS : "",
                     ].join(" ")}
+                    // Every cell sizes to its content except MACHINES, which
+                    // takes the slack: a four-digit machine count is the one
+                    // number here that legitimately gets wide. Parallel
+                    // stretched to fill and then truncated its own label
+                    // ("Parall…"). Inline, like the head row's: with parallel
+                    // and the circuit each free to be absent, the class form is
+                    // one spelled-out arbitrary value per combination.
+                    style={{
+                      gridTemplateColumns: isCustomRateNode
+                        ? "auto"
+                        : [
+                            "auto",
+                            ...(machineParallelMultiplier > 1 ? ["auto"] : []),
+                            "minmax(84px,1fr)",
+                            // The circuit ends the row, square, in the corner
+                            // the machine count leaves free.
+                            ...(programmedCircuit ? ["auto"] : []),
+                          ].join(" "),
+                    }}
                   >
                     <UsageStat
                       nodeId={projectNode.id}
@@ -1050,6 +1055,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                           machineCount={projectNode.machineCount}
                           onChange={(machineCount) => updateNode(projectNode.id, { machineCount })}
                         />
+                        {programmedCircuit ? (
+                          <CircuitChip circuit={programmedCircuit} />
+                        ) : null}
                       </>
                     ) : null}
                   </div>
@@ -1082,7 +1090,7 @@ export const RecipeNode = memo(
 );
 
 /**
- * The machine's circuit slot, on the card.
+ * The machine's circuit slot, in the footer beside the machine count.
  *
  * A dialed circuit is part of the recipe and nothing else on the board said
  * so: it is a non-consumed input, so it never earns a port row, and two cards
@@ -1095,31 +1103,27 @@ function CircuitChip({ circuit }: { circuit: RecipeProgrammedCircuit }) {
   const { setting, resource } = circuit;
   return (
     <MinecraftTooltip
-      label={
-        setting
-          ? `Circuit slot: set the machine's programmed circuit to ${setting}. It will not run on any other setting.`
-          : "Circuit slot: empty. This recipe runs whatever the circuit is set to."
-      }
+      label={setting ? `Circuit set to ${setting}` : "No circuit setting for this recipe"}
     >
       <div
         aria-label={setting ? `Programmed circuit ${setting}` : "No circuit setting"}
-        // 24px square, the height of every other thing on this row. The art
-        // grows inside it instead: the box is chrome, the circuit is the part
-        // worth reading.
+        // Square, and as tall as the stat tiles beside it — self-stretch takes
+        // the row's height and w-9 answers it, so the slot stays a slot however
+        // the footer's type is measured.
         className={[
-          "relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden border-2 border-[var(--mc-33)]",
+          "relative flex w-9 shrink-0 self-stretch items-center justify-center overflow-hidden border",
           resource
-            ? "bg-[var(--mc-71)] shadow-[inset_2px_2px_0_var(--mc-93),inset_-2px_-2px_0_var(--mc-47)]"
+            ? "border-[var(--mc-47)] bg-[var(--mc-71)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
             : // Empty reads as a hole in the card, the way an unfilled slot
               // does in the machine's own GUI.
-              "bg-[var(--mc-47)] shadow-[inset_2px_2px_0_var(--mc-33),inset_-2px_-2px_0_var(--mc-56)]",
+              "border-[var(--mc-47)] bg-[var(--mc-47)] shadow-[inset_1px_1px_0_var(--mc-33),inset_-1px_-1px_0_var(--mc-56)]",
         ].join(" ")}
       >
         {/* The item alone, zoomed past the box and clipped by it — the same
             trick the port rows use. Item sprites ship with transparent padding
             baked in, so drawn at its true size the chip floats in the middle of
             a square instead of filling it. The number is one hover away;
-            printed here it only fought the art for the same 24 pixels. */}
+            printed here it only fought the art for the same pixels. */}
         {resource ? (
           <ResourceIcon
             resource={{ ...resource, amount: 1, chance: undefined }}
@@ -1127,14 +1131,14 @@ function CircuitChip({ circuit }: { circuit: RecipeProgrammedCircuit }) {
             tooltip={false}
             showAmount={false}
             showConsumedState={false}
-            className="!h-6 !w-6 origin-center scale-150"
+            className="!h-9 !w-9 origin-center scale-150"
           />
         ) : (
           // Not an item, a silhouette: the same drawn circuit the recipe book
           // card wears, at a fraction of the ink. An empty slot with nothing
           // in it at all reads as art that failed to load rather than as a
           // machine that does not care what its circuit says.
-          <Cpu aria-hidden className="h-3.5 w-3.5 text-[var(--mc-ink-muted)] opacity-50" />
+          <Cpu aria-hidden className="h-5 w-5 text-[var(--mc-ink-muted)] opacity-50" />
         )}
       </div>
     </MinecraftTooltip>
