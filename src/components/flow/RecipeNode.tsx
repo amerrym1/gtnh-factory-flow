@@ -10,7 +10,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { ChevronDown, Copy, Minus, Plus, Sprout } from "lucide-react";
+import { ChevronDown, Copy, Cpu, Minus, Plus, Sprout } from "lucide-react";
 import type {
   FactoryNode,
   MachineConfigTierOption,
@@ -1129,7 +1129,13 @@ function CircuitChip({ circuit }: { circuit: RecipeProgrammedCircuit }) {
             showConsumedState={false}
             className="!h-6 !w-6 origin-center scale-150"
           />
-        ) : null}
+        ) : (
+          // Not an item, a silhouette: the same drawn circuit the recipe book
+          // card wears, at a fraction of the ink. An empty slot with nothing
+          // in it at all reads as art that failed to load rather than as a
+          // machine that does not care what its circuit says.
+          <Cpu aria-hidden className="h-3.5 w-3.5 text-[var(--mc-ink-muted)] opacity-50" />
+        )}
       </div>
     </MinecraftTooltip>
   );
