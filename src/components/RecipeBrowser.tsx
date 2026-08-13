@@ -33,6 +33,7 @@ import {
   resourceMatchesInput,
 } from "@/lib/model";
 import { applyRecipeInputOverrides } from "@/lib/model/recipe-input-overrides";
+import { getRecipeProgrammedCircuit } from "@/lib/model/programmed-circuit";
 import {
   buildSearchVocabulary,
   matchSearchEntry,
@@ -3047,15 +3048,12 @@ const RecipeResultCard = memo(function RecipeResultCard({
  * it off entirely is what made the two cases impossible to tell apart.
  */
 function CircuitSetting({ recipe }: { recipe: Recipe }) {
-  if (recipe.kind !== "gregtech_machine") {
+  const circuit = getRecipeProgrammedCircuit(recipe);
+  if (!circuit) {
     return null;
   }
 
-  // A circuit setting is a small number. Older datasets put a whole item name
-  // in this field, and a card drawn from one would stretch itself around
-  // "Circuit Board (configuration 32100)" rather than say nothing.
-  const raw = recipe.programmedCircuit;
-  const setting = raw && /^\d{1,2}$/.test(raw) ? raw : undefined;
+  const setting = circuit.setting;
 
   return (
     <span

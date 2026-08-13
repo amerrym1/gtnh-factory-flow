@@ -61,6 +61,10 @@ import {
   type CustomRateMode,
 } from "@/lib/model/custom-rate";
 import { rateUnitMultiplier, rateUnitPrecisionScale, rateUnitSuffix } from "@/lib/model/rate-unit";
+import {
+  getRecipeProgrammedCircuit,
+  type RecipeProgrammedCircuit,
+} from "@/lib/model/programmed-circuit";
 import { BOARD_GRID, CONFIG_PANEL_ROW_HEIGHT, RECIPE_NODE_WIDTH } from "@/lib/board-grid";
 import { CropPickerMenu } from "./CropPickerMenu";
 import {
@@ -336,6 +340,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           !isBeeProductionConfigControl(control.id),
       ),
       machineParallelMultiplier: getMachineParallelMultiplier(effectiveRecipe, projectNode),
+      // The circuit slot, read off the recipe the card actually runs: swapping
+      // machine handler swaps the recipe, and a different handler can want a
+      // different setting.
+      programmedCircuit: getRecipeProgrammedCircuit(effectiveRecipe),
       overclockedRecipe,
       tierColor: tierControl ? GT_TIER_COLORS[tierControl.current] : undefined,
     };
@@ -362,6 +370,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     tgsToolControls,
     statsMachineConfigControls,
     machineParallelMultiplier,
+    programmedCircuit,
     overclockedRecipe,
     tierColor,
   } = derived;
@@ -745,20 +754,25 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             no matter how long a machine name or tab strip gets. */}
         <div className="w-0 min-w-full">
         <div
-          className={[
-            // One head row, exactly two cells tall. The title bar inside it
-            // stays 24px and centres in the row — the extra space is the
-            // margin that puts the first port centre on a grid line.
-            "grid h-[40px] min-w-0 items-center gap-1",
-            // Calm mode drops the delete/clone chrome; the title takes the row.
-            calmMode
-              ? tierControl
-                ? "grid-cols-[minmax(0,1fr)_50px]"
-                : "grid-cols-[minmax(0,1fr)]"
-              : tierControl
-                ? "grid-cols-[24px_24px_minmax(0,1fr)_50px]"
-                : "grid-cols-[24px_24px_minmax(0,1fr)]",
-          ].join(" ")}
+          // One head row, exactly two cells tall. The title bar inside it
+          // stays 24px and centres in the row — the extra space is the
+          // margin that puts the first port centre on a grid line.
+          className="grid h-[40px] min-w-0 items-center gap-1"
+          // The columns are an inline style, not a class: with the delete/clone
+          // pair, the circuit slot and the tier chip each free to be absent,
+          // the class form would be eight hand-written arbitrary-value strings
+          // that Tailwind can only emit if all eight are spelled out in full.
+          style={{
+            gridTemplateColumns: [
+              // Calm mode drops the delete/clone chrome; the title takes the row.
+              ...(calmMode ? [] : ["24px", "24px"]),
+              "minmax(0,1fr)",
+              ...(tierControl ? ["50px"] : []),
+              // Last, on the card's right edge: the slot is a fact about the
+              // recipe, so it belongs with the tier and not with the buttons.
+              ...(programmedCircuit ? ["40px"] : []),
+            ].join(" "),
+          }}
         >
           {!calmMode ? (
             <>
@@ -898,6 +912,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               {tierControl.current}
             </button>
           ) : null}
+          {programmedCircuit ? <CircuitChip circuit={programmedCircuit} /> : null}
         </div>
         </div>
         {/* The card body. No paint of its own: the window behind it is
@@ -1065,6 +1080,58 @@ export const RecipeNode = memo(
   RecipeNodeComponent,
   (previous, next) => previous.data === next.data && previous.selected === next.selected,
 );
+
+/**
+ * The machine's circuit slot, on the card.
+ *
+ * A dialed circuit is part of the recipe and nothing else on the board said
+ * so: it is a non-consumed input, so it never earns a port row, and two cards
+ * for the same machine differing only in their setting looked identical. The
+ * slot is drawn whether or not it holds anything, because "runs on circuit 11"
+ * and "runs on whatever the circuit is set to" are different builds and an
+ * absent slot cannot tell them apart.
+ */
+function CircuitChip({ circuit }: { circuit: RecipeProgrammedCircuit }) {
+  const { setting, resource } = circuit;
+  return (
+    <MinecraftTooltip
+      label={
+        setting
+          ? `Circuit slot: set the machine's programmed circuit to ${setting}. It will not run on any other setting.`
+          : "Circuit slot: empty. This recipe runs whatever the circuit is set to."
+      }
+    >
+      <div
+        aria-label={setting ? `Programmed circuit ${setting}` : "No circuit setting"}
+        // A whole head row tall (two grid cells): the circuit's art is a chip
+        // drawn edge to edge on a 16px canvas, and at button size it read as a
+        // smudge. The slot is the one thing here worth seeing at a glance.
+        className={[
+          "relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden border-2 border-[var(--mc-33)]",
+          resource
+            ? "bg-[var(--mc-71)] shadow-[inset_2px_2px_0_var(--mc-93),inset_-2px_-2px_0_var(--mc-47)]"
+            : // Empty reads as a hole in the card, the way an unfilled slot
+              // does in the machine's own GUI.
+              "bg-[var(--mc-47)] shadow-[inset_2px_2px_0_var(--mc-33),inset_-2px_-2px_0_var(--mc-56)]",
+        ].join(" ")}
+      >
+        {/* The item alone. Its art already differs per configuration, and the
+            number is one hover away — printed on the slot it only fought the
+            art for the same 36 pixels. */}
+        {resource ? (
+          <ResourceIcon
+            resource={{ ...resource, amount: 1, chance: undefined }}
+            bare
+            tooltip={false}
+            showAmount={false}
+            showConsumedState={false}
+            className="!h-9 !w-9"
+          />
+        ) : null}
+      </div>
+    </MinecraftTooltip>
+  );
+}
 
 /**
  * The identity glance: zoomed out the card is ONE BIG ICON on its own
