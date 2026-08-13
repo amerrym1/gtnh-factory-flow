@@ -86,6 +86,7 @@ normalizeThaumcraft(findDomain("thaumcraft"));
 normalizeForestryBees(findDomain("forestryBees"));
 normalizeIc2Crops(findDomain("ic2Crops"));
 normalizeCropsNhCrops(findDomain("cropsNhCrops"));
+normalizeMining(findDomain("mining"));
 overrideFurnaceRecipeMapIcon();
 
 const dataset = {
@@ -1015,6 +1016,265 @@ function cropsNhSeedInput(crop) {
 
 function roundAmount(value) {
   return Math.round(value * 1e6) / 1e6;
+}
+
+// Worldgen is not a machine, but a vein IS a source: something a player mines
+// by hand (or with a miner) that a plan can otherwise never explain. Each vein,
+// small ore, and underground fluid becomes an instant zero-EU source recipe in
+// the bee/crop mould, with where-to-find-it (dimensions, rocket tier, height,
+// chance) riding in metadata for the UI and future access planning.
+function normalizeMining(domain) {
+  const dimensionsByKey = new Map();
+  for (const dim of domain?.dimensions ?? []) {
+    const tier = rocketTierFromKey(dim.tier);
+    const entry = removeUndefined({
+      id: text(dim.id, undefined),
+      name: text(dim.name, undefined) ?? text(dim.id, "Unknown"),
+      abbr: text(dim.abbr, undefined),
+      tier,
+      tierLabel: tier === undefined ? text(dim.tier, undefined) : undefined,
+    });
+    // The export names a dimension three ways depending on which helper is
+    // talking (internal id, trimmed name, abbreviation); key all of them.
+    for (const key of [dim.id, dim.name, dim.fullName, dim.abbr]) {
+      const normalized = text(key, undefined);
+      if (normalized !== undefined && !dimensionsByKey.has(normalized)) {
+        dimensionsByKey.set(normalized, entry);
+      }
+    }
+  }
+  normalizeOreVeins(domain, dimensionsByKey);
+  normalizeSmallOres(domain, dimensionsByKey);
+  normalizeUndergroundFluids(domain, dimensionsByKey);
+}
+
+function normalizeOreVeins(domain, dimensionsByKey) {
+  const machineType = "Ore Vein";
+  for (const vein of domain?.veins ?? []) {
+    const outputs = [];
+    const layers = [];
+    for (const layer of vein.ores ?? []) {
+      const output = resourceAmount(layer?.ore);
+      if (!output) {
+        continue;
+      }
+      layers.push(
+        removeUndefined({
+          role: text(layer.role, undefined),
+          resourceId: output.id,
+          material: text(layer.material?.name, undefined),
+        }),
+      );
+      // A vein can carry one material in two layers; the roles stay in
+      // metadata, the recipe lists the ore once.
+      if (!outputs.some((existing) => existing.id === output.id)) {
+        outputs.push(output);
+      }
+    }
+    if (outputs.length === 0) {
+      continue;
+    }
+    recipeMaps.add(machineType);
+    setRecipeMapIcon(machineType, (vein.ores ?? [])[0]?.ore);
+    const name = veinDisplayName(vein);
+    addRecipe({
+      id: recipeId("ore-vein", text(vein.id, undefined) ?? hashRecipe(vein)),
+      name: `${machineType}: ${name}`,
+      kind: "ore_vein",
+      category: "ore-vein",
+      machineType,
+      minimumTier: "NONE",
+      durationTicks: 1,
+      eut: 0,
+      inputs: [],
+      outputs,
+      notes:
+        "Mined from a GregTech ore vein. Exported by the GTNH calculation oracle from worldgen vein definitions.",
+      source: {
+        datasetVersionId,
+        recipeMap: machineType,
+        exporter: "gtnh-oracle",
+        rawRecipeId: text(vein.id, undefined),
+      },
+      metadata: removeUndefined({
+        veinId: text(vein.id, undefined),
+        veinName: name,
+        veinWeight: finiteNumber(vein.weight),
+        veinDensity: finiteNumber(vein.density),
+        veinSize: finiteNumber(vein.size),
+        heightRange: text(vein.heightRange, undefined),
+        dimensions: miningDimensionList(vein.dims, vein.dimAbbrs, dimensionsByKey, {
+          heightRanges: vein.dimHeightRanges,
+          chances: vein.dimChances,
+        }),
+        oreLayers: layers.length > 0 ? layers : undefined,
+      }),
+    });
+  }
+}
+
+function normalizeSmallOres(domain, dimensionsByKey) {
+  const machineType = "Small Ore";
+  for (const smallOre of domain?.smallOres ?? []) {
+    const outputs = [];
+    for (const drop of smallOre.drops ?? []) {
+      const output = resourceAmount(drop);
+      if (output && !outputs.some((existing) => existing.id === output.id)) {
+        outputs.push(output);
+      }
+    }
+    if (outputs.length === 0) {
+      continue;
+    }
+    recipeMaps.add(machineType);
+    setRecipeMapIcon(machineType, (smallOre.drops ?? [])[0]);
+    const name =
+      text(smallOre.material?.name, undefined) ?? veinDisplayName({ id: smallOre.id });
+    addRecipe({
+      id: recipeId("small-ore", text(smallOre.id, undefined) ?? hashRecipe(smallOre)),
+      name: `${machineType}: ${name}`,
+      kind: "small_ore",
+      category: "small-ore",
+      machineType,
+      minimumTier: "NONE",
+      durationTicks: 1,
+      eut: 0,
+      inputs: [],
+      outputs,
+      notes:
+        "Mined from scattered GregTech small ores. Exported by the GTNH calculation oracle from worldgen definitions.",
+      source: {
+        datasetVersionId,
+        recipeMap: machineType,
+        exporter: "gtnh-oracle",
+        rawRecipeId: text(smallOre.id, undefined),
+      },
+      metadata: removeUndefined({
+        smallOreId: text(smallOre.id, undefined),
+        material: text(smallOre.material?.name, undefined),
+        amountPerChunk: finiteNumber(smallOre.amountPerChunk),
+        heightRange: text(smallOre.heightRange, undefined),
+        dimensions: miningDimensionList(smallOre.dims, smallOre.enabledDims, dimensionsByKey),
+      }),
+    });
+  }
+}
+
+function normalizeUndergroundFluids(domain, dimensionsByKey) {
+  const machineType = "Underground Fluid";
+  for (const entry of domain?.undergroundFluids ?? []) {
+    // No registered fluid means nothing a plan could link to; skip rather than
+    // shipping a bare id that renders as `fluid.*`.
+    const output = resourceAmount(entry.fluid);
+    if (!output) {
+      continue;
+    }
+    const deposits = [];
+    for (const deposit of entry.deposits ?? []) {
+      const key = text(deposit?.dim, undefined);
+      if (key === undefined) {
+        continue;
+      }
+      const known = dimensionsByKey.get(key);
+      deposits.push(
+        removeUndefined({
+          dimension: known?.name ?? key,
+          abbr: known?.abbr,
+          tier: known?.tier,
+          tierLabel: known?.tierLabel,
+          chance: finiteNumber(deposit.chance),
+          minAmount: finiteNumber(deposit.minAmount),
+          maxAmount: finiteNumber(deposit.maxAmount),
+        }),
+      );
+    }
+    recipeMaps.add(machineType);
+    setRecipeMapIcon(machineType, entry.fluid);
+    addRecipe({
+      id: recipeId("underground-fluid", text(entry.fluidId, undefined) ?? hashRecipe(entry)),
+      name: `${machineType}: ${resourceLabel(output)}`,
+      kind: "underground_fluid",
+      category: "underground-fluid",
+      machineType,
+      minimumTier: "NONE",
+      durationTicks: 1,
+      eut: 0,
+      inputs: [],
+      outputs: [output],
+      notes:
+        "Pumped from per-chunk underground fluid deposits. Exported by the GTNH calculation oracle from GregTech worldgen definitions.",
+      source: {
+        datasetVersionId,
+        recipeMap: machineType,
+        exporter: "gtnh-oracle",
+        rawRecipeId: text(entry.fluidId, undefined),
+      },
+      metadata: removeUndefined({
+        fluidId: text(entry.fluidId, undefined),
+        deposits: deposits.length > 0 ? deposits : undefined,
+      }),
+    });
+  }
+}
+
+function miningDimensionList(names, fallbackNames, dimensionsByKey, extras = {}) {
+  const primary = Array.isArray(names) && names.length > 0 ? names : fallbackNames;
+  const list = [];
+  for (const rawKey of primary ?? []) {
+    const key = text(rawKey, undefined);
+    if (key === undefined) {
+      continue;
+    }
+    const known = dimensionsByKey.get(key);
+    const chance = dimensionExtra(extras.chances, key, known);
+    const heightRange = dimensionExtra(extras.heightRanges, key, known);
+    list.push(
+      removeUndefined({
+        name: known?.name ?? key,
+        abbr: known?.abbr,
+        tier: known?.tier,
+        tierLabel: known?.tierLabel,
+        chance: finiteNumber(chance),
+        heightRange: text(heightRange, undefined),
+      }),
+    );
+  }
+  return list.length > 0 ? list : undefined;
+}
+
+// Per-dimension maps in the export are keyed by whichever alias the GT helper
+// that built them used; try every alias we know for the dimension.
+function dimensionExtra(map, key, known) {
+  if (!map || typeof map !== "object") {
+    return undefined;
+  }
+  for (const candidate of [key, known?.abbr, known?.name, known?.id]) {
+    if (candidate !== undefined && map[candidate] !== undefined) {
+      return map[candidate];
+    }
+  }
+  return undefined;
+}
+
+// Dimension tiers arrive as keys like "T3"; a plain number means the rocket
+// tier needed to reach the dimension.
+function rocketTierFromKey(value) {
+  const match = /(\d+)\s*$/.exec(text(value, "") ?? "");
+  return match ? Number.parseInt(match[1], 10) : undefined;
+}
+
+function veinDisplayName(vein) {
+  const name = text(vein.name, undefined);
+  const id = text(vein.id, undefined);
+  if (name !== undefined && name !== id) {
+    return name;
+  }
+  const tail = (id ?? "vein").split(".").pop().replace(/[_-]+/g, " ");
+  return tail.replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+}
+
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function beeSpeciesInput(species) {

@@ -4,6 +4,9 @@ export type NeiRecipeKind =
   | "gregtech_machine"
   | "bee_produce"
   | "crop_produce"
+  | "ore_vein"
+  | "small_ore"
+  | "underground_fluid"
   | "essentia_smelting"
   | "custom"
   | "unknown";

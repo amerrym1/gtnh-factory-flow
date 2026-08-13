@@ -203,3 +203,181 @@ describe("what a recipe slot accepts", () => {
     }
   });
 });
+
+/**
+ * A slice of the mining domain the oracle exports from GregTech worldgen: one
+ * vein spanning two planets (with a repeated material across layers), one
+ * small ore, one underground fluid, and one underground fluid whose Forge
+ * fluid never registered.
+ */
+const MINING_EXPORT = {
+  schemaVersion: 1,
+  exporter: "gtnh-oracle",
+  format: "dev.gtnhplanner.oracle.v1",
+  generatedAt: "2026-08-13T05:00:00.000Z",
+  minecraftVersion: "1.7.10",
+  loadedMods: [],
+  adapters: [],
+  recipeCount: 0,
+  domains: [
+    {
+      id: "mining",
+      dimensions: [
+        { id: "Overworld", name: "Overworld", fullName: "Overworld", abbr: "Ow", tier: "T0" },
+        {
+          id: "GalacticraftCore_Moon",
+          name: "Moon",
+          fullName: "GalacticraftCore_Moon",
+          abbr: "Mo",
+          tier: "T1",
+        },
+      ],
+      veins: [
+        {
+          id: "ore.mix.copper",
+          name: "Copper",
+          weight: 80,
+          density: 4,
+          size: 24,
+          heightRange: "10-50",
+          dims: ["Overworld", "GalacticraftCore_Moon"],
+          dimAbbrs: ["Ow", "Mo"],
+          dimHeightRanges: { Mo: "20-60" },
+          dimChances: { Ow: 0.12, Mo: 0.3 },
+          ores: [
+            {
+              role: "primary",
+              material: { id: 855, internalName: "Chalcopyrite", name: "Chalcopyrite" },
+              ore: item("gregtech:gt.blockores@855", 1, "Chalcopyrite Ore"),
+            },
+            {
+              role: "secondary",
+              material: { id: 35, internalName: "Copper", name: "Copper" },
+              ore: item("gregtech:gt.blockores@35", 1, "Copper Ore"),
+            },
+            {
+              role: "between",
+              material: { id: 32, internalName: "Iron", name: "Iron" },
+              ore: item("gregtech:gt.blockores@32", 1, "Iron Ore"),
+            },
+            {
+              role: "sporadic",
+              material: { id: 35, internalName: "Copper", name: "Copper" },
+              ore: item("gregtech:gt.blockores@35", 1, "Copper Ore"),
+            },
+          ],
+        },
+      ],
+      smallOres: [
+        {
+          id: "ore.small.copper",
+          material: { id: 35, internalName: "Copper", name: "Copper" },
+          heightRange: "40-100",
+          amountPerChunk: 12,
+          dims: ["Overworld"],
+          enabledDims: ["Ow"],
+          drops: [item("gregtech:gt.metaitem.01@5035", 1, "Raw Copper Ore")],
+        },
+      ],
+      undergroundFluids: [
+        {
+          fluidId: "oil",
+          fluid: fluid("oil", 1, "Oil"),
+          deposits: [
+            { dim: "Overworld", chance: 40, minAmount: 100, maxAmount: 625 },
+            { dim: "Moon", chance: 20, minAmount: 0, maxAmount: 300 },
+          ],
+        },
+        {
+          fluidId: "never_registered",
+          deposits: [{ dim: "Overworld", chance: 5, minAmount: 1, maxAmount: 2 }],
+        },
+      ],
+    },
+  ],
+};
+
+describe("mining worldgen becomes source recipes", () => {
+  let dataset;
+
+  beforeAll(() => {
+    dataset = normalize(MINING_EXPORT);
+  });
+
+  afterAll(() => {
+    dataset = undefined;
+  });
+
+  it("turns a vein into an instant zero-power source with no inputs", () => {
+    const vein = dataset.recipes.find((recipe) => recipe.kind === "ore_vein");
+
+    expect(vein).toBeDefined();
+    expect(vein.name).toBe("Ore Vein: Copper");
+    expect(vein.machineType).toBe("Ore Vein");
+    expect(vein.inputs).toEqual([]);
+    expect(vein.durationTicks).toBe(1);
+    expect(vein.eut).toBe(0);
+  });
+
+  it("lists a twice-layered material once and keeps every layer's role", () => {
+    const vein = dataset.recipes.find((recipe) => recipe.kind === "ore_vein");
+
+    expect(vein.outputs.map((output) => output.id)).toEqual([
+      "gregtech:gt.blockores@855",
+      "gregtech:gt.blockores@35",
+      "gregtech:gt.blockores@32",
+    ]);
+    expect(vein.metadata.oreLayers.map((layer) => layer.role)).toEqual([
+      "primary",
+      "secondary",
+      "between",
+      "sporadic",
+    ]);
+  });
+
+  it("resolves planets to names, rocket tiers, and per-planet odds", () => {
+    const vein = dataset.recipes.find((recipe) => recipe.kind === "ore_vein");
+
+    expect(vein.metadata.dimensions).toEqual([
+      { name: "Overworld", abbr: "Ow", tier: 0, chance: 0.12 },
+      { name: "Moon", abbr: "Mo", tier: 1, chance: 0.3, heightRange: "20-60" },
+    ]);
+  });
+
+  it("turns a small ore's drop list into its outputs", () => {
+    const smallOre = dataset.recipes.find((recipe) => recipe.kind === "small_ore");
+
+    expect(smallOre).toBeDefined();
+    expect(smallOre.name).toBe("Small Ore: Copper");
+    expect(smallOre.outputs.map((output) => output.id)).toEqual([
+      "gregtech:gt.metaitem.01@5035",
+    ]);
+    expect(smallOre.metadata.amountPerChunk).toBe(12);
+    expect(smallOre.metadata.dimensions).toEqual([{ name: "Overworld", abbr: "Ow", tier: 0 }]);
+  });
+
+  it("keeps underground fluid deposits per planet", () => {
+    const undergroundFluid = dataset.recipes.find(
+      (recipe) => recipe.kind === "underground_fluid",
+    );
+
+    expect(undergroundFluid).toBeDefined();
+    expect(undergroundFluid.outputs.map((output) => output.id)).toEqual(["oil"]);
+    expect(undergroundFluid.metadata.deposits).toEqual([
+      { dimension: "Overworld", abbr: "Ow", tier: 0, chance: 40, minAmount: 100, maxAmount: 625 },
+      { dimension: "Moon", abbr: "Mo", tier: 1, chance: 20, minAmount: 0, maxAmount: 300 },
+    ]);
+  });
+
+  it("drops an underground fluid whose fluid never registered", () => {
+    const ids = dataset.recipes.map((recipe) => recipe.id);
+
+    expect(ids.some((id) => id.includes("never_registered"))).toBe(false);
+  });
+
+  it("registers the three source recipe maps", () => {
+    expect(dataset.recipeMaps).toEqual(
+      expect.arrayContaining(["Ore Vein", "Small Ore", "Underground Fluid"]),
+    );
+  });
+});
