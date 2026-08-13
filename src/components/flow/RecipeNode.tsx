@@ -767,10 +767,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               // Calm mode drops the delete/clone chrome; the title takes the row.
               ...(calmMode ? [] : ["24px", "24px"]),
               "minmax(0,1fr)",
+              // Between the name and the tier: both say what this machine is
+              // set to, so they read as one pair at the end of the row.
+              ...(programmedCircuit ? ["24px"] : []),
               ...(tierControl ? ["50px"] : []),
-              // Last, on the card's right edge: the slot is a fact about the
-              // recipe, so it belongs with the tier and not with the buttons.
-              ...(programmedCircuit ? ["40px"] : []),
             ].join(" "),
           }}
         >
@@ -887,6 +887,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               />
             ) : null}
           </div>
+          {programmedCircuit ? <CircuitChip circuit={programmedCircuit} /> : null}
           {tierControl && tierColor ? (
             <button
               type="button"
@@ -912,7 +913,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               {tierControl.current}
             </button>
           ) : null}
-          {programmedCircuit ? <CircuitChip circuit={programmedCircuit} /> : null}
         </div>
         </div>
         {/* The card body. No paint of its own: the window behind it is
@@ -1103,11 +1103,11 @@ function CircuitChip({ circuit }: { circuit: RecipeProgrammedCircuit }) {
     >
       <div
         aria-label={setting ? `Programmed circuit ${setting}` : "No circuit setting"}
-        // A whole head row tall (two grid cells): the circuit's art is a chip
-        // drawn edge to edge on a 16px canvas, and at button size it read as a
-        // smudge. The slot is the one thing here worth seeing at a glance.
+        // 24px square, the height of every other thing on this row. The art
+        // grows inside it instead: the box is chrome, the circuit is the part
+        // worth reading.
         className={[
-          "relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden border-2 border-[var(--mc-33)]",
+          "relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden border-2 border-[var(--mc-33)]",
           resource
             ? "bg-[var(--mc-71)] shadow-[inset_2px_2px_0_var(--mc-93),inset_-2px_-2px_0_var(--mc-47)]"
             : // Empty reads as a hole in the card, the way an unfilled slot
@@ -1115,9 +1115,11 @@ function CircuitChip({ circuit }: { circuit: RecipeProgrammedCircuit }) {
               "bg-[var(--mc-47)] shadow-[inset_2px_2px_0_var(--mc-33),inset_-2px_-2px_0_var(--mc-56)]",
         ].join(" ")}
       >
-        {/* The item alone. Its art already differs per configuration, and the
-            number is one hover away — printed on the slot it only fought the
-            art for the same 36 pixels. */}
+        {/* The item alone, zoomed past the box and clipped by it — the same
+            trick the port rows use. Item sprites ship with transparent padding
+            baked in, so drawn at its true size the chip floats in the middle of
+            a square instead of filling it. The number is one hover away;
+            printed here it only fought the art for the same 24 pixels. */}
         {resource ? (
           <ResourceIcon
             resource={{ ...resource, amount: 1, chance: undefined }}
@@ -1125,7 +1127,7 @@ function CircuitChip({ circuit }: { circuit: RecipeProgrammedCircuit }) {
             tooltip={false}
             showAmount={false}
             showConsumedState={false}
-            className="!h-9 !w-9"
+            className="!h-6 !w-6 origin-center scale-150"
           />
         ) : null}
       </div>
