@@ -82,7 +82,7 @@ export function MinecraftTooltip({
 
     // Clamp to the measured panel so wide or tall tooltips stay fully on
     // screen; before the first paint we fall back to a generous estimate.
-    const panelWidth = panelRef.current?.offsetWidth ?? (hasContent ? 340 : 260);
+    const panelWidth = panelRef.current?.offsetWidth ?? (hasContent ? 340 : 320);
     const panelHeight = panelRef.current?.offsetHeight ?? (hasContent ? 240 : 80);
     pendingPositionRef.current = {
       x: Math.max(4, Math.min(event.clientX + 12, window.innerWidth - panelWidth - 8)),
@@ -184,7 +184,14 @@ export function MinecraftTooltip({
               <div
                 ref={panelRef}
                 data-minecraft-tooltip="true"
-                className="pointer-events-none fixed z-[9999] max-w-[340px] border-2 border-[#2a005f] bg-[#100010] px-2 py-1 font-mono text-[16px] leading-[19px] text-white shadow-[inset_1px_1px_0_rgba(255,255,255,0.18),inset_-1px_-1px_0_rgba(0,0,0,0.8)] [text-shadow:2px_2px_0_#3f3f3f]"
+                // w-max, and 420 rather than 340: a fixed panel with no width
+                // of its own is squeezed by whatever room is left to the
+                // viewport's edge, so a one-line label near the right side of
+                // the screen shrink-wrapped and broke its last word onto a line
+                // of its own. Asking for max-content makes the panel state its
+                // real width; the pointer clamp above reads that width back and
+                // walks it inside the edge.
+                className="pointer-events-none fixed z-[9999] w-max max-w-[420px] border-2 border-[#2a005f] bg-[#100010] px-2 py-1 font-mono text-[16px] leading-[19px] text-white shadow-[inset_1px_1px_0_rgba(255,255,255,0.18),inset_-1px_-1px_0_rgba(0,0,0,0.8)] [text-shadow:2px_2px_0_#3f3f3f]"
                 style={{ left: position.x, top: position.y }}
               >
                 {lines.map((line, index) => (

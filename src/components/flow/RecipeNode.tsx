@@ -998,8 +998,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 {calmMode ? (
                   /* Pure presentation: the count as one large line, centred,
                      on the same bordered tile every other element sits on —
-                     bare text floated alone on the card face. */
-                  <div className="flex min-w-0 items-center justify-center">
+                     bare text floated alone on the card face. The circuit
+                     rides beside it, because a presented card is the one
+                     somebody builds from and the setting is part of the
+                     build. The pair centres together. */
+                  <div className="flex min-w-0 items-stretch justify-center gap-1.5">
                     <span className="truncate border border-[var(--mc-47)] bg-[var(--mc-71)] px-3 py-0.5 text-[20px] font-bold leading-6 tabular-nums text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
                       {projectNode.machineCount}×{" "}
                       {isCropProductionNode
@@ -1010,6 +1013,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                           ? "Machine"
                           : "Machines"}
                     </span>
+                    {programmedCircuit ? <CircuitChip circuit={programmedCircuit} /> : null}
                   </div>
                 ) : (
                   <div
