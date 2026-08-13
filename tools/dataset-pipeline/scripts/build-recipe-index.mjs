@@ -11,7 +11,10 @@ if (!datasetPath || !datasetOutDir) {
   throw new Error("Usage: build-recipe-index.mjs <recipes.json> <dataset-out-dir>");
 }
 
-const shardSize = positiveIntEnv("GTNH_RECIPE_SHARD_SIZE", 5000);
+// 250 keeps a shard cache miss at ~10ms of JSON.parse on the server; 5000
+// made each miss a 55MB parse that blocked every other request for seconds.
+// Compression barely cares (recipes share vocabulary within 250 fine).
+const shardSize = positiveIntEnv("GTNH_RECIPE_SHARD_SIZE", 250);
 const dataset = await readDataset(datasetPath);
 const versionId = dataset.datasetVersionId;
 const shardDir = path.join(datasetOutDir, "recipes-shards");
