@@ -263,6 +263,17 @@ function waterFillShares(total: number, caps: number[]): number[] {
 const RING_ANCHOR_TOLERANCE = 1e-3;
 const RING_ANCHOR_FLOOR = 1e-6;
 
+/**
+ * Below this a node has converged to a hard stop, not merely to "slow".
+ * Shared by the dead-loop badge (death-spiral.ts) and the balanced-ring
+ * rescue's detection, deliberately: a descent can converge at a microscopic
+ * dust level (2e-5 of full speed) instead of ratcheting all the way to the
+ * snap threshold, and a ring the badge calls dead while the rescue calls
+ * alive gets a DEAD LOOP verdict with no appeal - the one-electrolyzer
+ * strict-buffer board fell exactly in that gap.
+ */
+export const DEAD_RING_EPSILON = 1e-4;
+
 interface MachineNodeInfo {
   id: string;
   /** Consumed inputs that have at least one incoming wire. */
@@ -1614,13 +1625,14 @@ export function solveEquilibrium(
   }
 
   const findDeadRings = (): DeadRing[] => {
-    // Vertices: machines that converged to zero capability, plus every
-    // drawer (a ring may pass through a buffer). Live machines are pruned
-    // FIRST, so any cycle that survives is dead wall to wall - the exact
-    // signature the dead-loop badge fires on.
+    // Vertices: machines that converged to (at most dust above) zero
+    // capability, plus every drawer (a ring may pass through a buffer). Live
+    // machines are pruned FIRST, so any cycle that survives is dead wall to
+    // wall - the exact signature the dead-loop badge fires on, at the same
+    // threshold the badge uses.
     const vertices = new Set<string>();
     for (const info of machineNodes) {
-      if ((cap.get(info.id) ?? 1) <= ZERO_SNAP) {
+      if ((cap.get(info.id) ?? 1) <= DEAD_RING_EPSILON) {
         vertices.add(info.id);
       }
     }

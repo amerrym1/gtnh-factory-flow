@@ -293,6 +293,36 @@ describe("phosphoric acid cell loop", () => {
     expect(result.storages[buffer.id]!.netPerSecond).toBeCloseTo(0, 3);
   });
 
+  it("one electrolyzer and a strict buffer: the rescue fires on dust, not only on zero", () => {
+    // The board that survived every earlier fix: with ONE electrolyzer the
+    // descent converges at a microscopic dust level (~2e-5 of full speed)
+    // instead of ratcheting to the snap threshold, and the rescue's
+    // detection - gated on ZERO_SNAP - never fired while the badge - gated
+    // on 1e-4 - called the ring dead. Detection now shares the badge's
+    // threshold (DEAD_RING_EPSILON), so a ring the badge condemns always
+    // gets its appeal.
+    const plan = JSON.parse(
+      readFileSync(
+        new URL("./__fixtures__/pa-cell-loop-plan-1x-strict.json", import.meta.url),
+        "utf8",
+      ),
+    ) as FactoryProject;
+    const result = calculateThroughput(plan);
+    const byRecipe = new Map(
+      plan.nodes.map((node) => {
+        const recipe = plan.recipes.find((entry) => entry.id === node.recipeId);
+        return [recipe!.id.split(":").pop()!, node.id] as const;
+      }),
+    );
+    const util = (hash: string) => result.nodes[byRecipe.get(hash)!]!.utilization;
+    expect(util("372d15dcd0a6cae3")).toBeCloseTo(1, 3); // the one electrolyzer
+    expect(util("a8e66697a5cc1d7e")).toBeCloseTo(0.1778, 3); // H canner
+    expect(util("03ddcf43b6c6e15c")).toBeCloseTo(0.237, 3); // O canner
+    expect(util("e09953ecba003d8b")).toBeCloseTo(0.0593, 3); // acid canner
+    const buffer = plan.storages!.find((s) => s.resourceId === "ic2:itemcellempty")!;
+    expect(result.storages[buffer.id]!.netPerSecond).toBeCloseTo(0, 3);
+  });
+
   it("runs when the player's exported plan is loaded verbatim", () => {
     const plan = JSON.parse(
       readFileSync(new URL("./__fixtures__/pa-cell-loop-plan.json", import.meta.url), "utf8"),

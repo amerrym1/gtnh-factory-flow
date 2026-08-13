@@ -73,6 +73,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.6",
+    date: "2026-08-12",
+    headline: "Every stalled loop gets its restart",
+    notes: [
+      "A loop that had wound down to a crawl now climbs back to full speed instead of reading DEAD LOOP.",
+    ],
+  },
+  {
     version: "2.11.5",
     date: "2026-08-12",
     headline: "A filling tank counts as an output",

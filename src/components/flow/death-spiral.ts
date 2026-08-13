@@ -1,6 +1,6 @@
 import type { FactoryProject, ThroughputResult } from "@/lib/model/types";
 import { makeResourceKey } from "@/lib/model";
-import { stronglyConnectedComponents } from "@/lib/solver/equilibrium";
+import { DEAD_RING_EPSILON, stronglyConnectedComponents } from "@/lib/solver/equilibrium";
 
 /**
  * Death spirals: rings of machines that feed each other and cannot start.
@@ -27,8 +27,10 @@ import { stronglyConnectedComponents } from "@/lib/solver/equilibrium";
  * and it is the planner finally telling the truth.
  */
 
-/** Below this a node has converged to a hard stop, not merely to "slow". */
-const DEAD_EPSILON = 1e-4;
+/** Below this a node has converged to a hard stop, not merely to "slow".
+ * Shared with the solver's balanced-ring rescue so the badge never calls a
+ * ring dead that the rescue was not offered. */
+const DEAD_EPSILON = DEAD_RING_EPSILON;
 const RATE_EPSILON = 1e-6;
 
 export interface DeathSpiral {
