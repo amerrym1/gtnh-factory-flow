@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { datasetCacheHeaders } from "@/lib/server/dataset-cache-headers";
 import { queryDatasetResources } from "@/lib/server/dataset-query";
 
 export const runtime = "nodejs";
@@ -27,7 +28,7 @@ export async function GET(
       source: sourceParam === "plants" || sourceParam === "bees" ? sourceParam : undefined,
     });
     return NextResponse.json(result, {
-      headers: datasetCacheHeaders(),
+      headers: datasetCacheHeaders(request),
     });
   } catch (error) {
     return NextResponse.json(
@@ -47,8 +48,3 @@ function parseLimit(value: string | null): number {
   return Number.isInteger(parsed) ? Math.max(1, Math.min(120, parsed)) : 24;
 }
 
-function datasetCacheHeaders() {
-  return {
-    "Cache-Control": "no-store",
-  };
-}

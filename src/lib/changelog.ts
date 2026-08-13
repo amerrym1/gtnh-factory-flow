@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.7",
+    date: "2026-08-13",
+    headline: "The recipe book stops keeping you waiting",
+    notes: [
+      "Opening what makes or uses an item answers in moments, not minutes.",
+      "Recipe pages you have seen before come back instantly, even after a reload.",
+    ],
+  },
+  {
     version: "2.11.6",
     date: "2026-08-12",
     headline: "Every stalled loop gets its restart",

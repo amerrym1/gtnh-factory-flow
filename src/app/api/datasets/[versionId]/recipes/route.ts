@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { datasetCacheHeaders } from "@/lib/server/dataset-cache-headers";
 import { queryDatasetRecipes } from "@/lib/server/dataset-query";
 import type { MachineTier, ResourceKind } from "@/lib/model/types";
 
@@ -30,7 +31,7 @@ export async function GET(
       limit: parseLimit(url.searchParams.get("limit")),
     });
     return NextResponse.json(result, {
-      headers: datasetCacheHeaders(),
+      headers: datasetCacheHeaders(request),
     });
   } catch (error) {
     return NextResponse.json(
@@ -58,8 +59,3 @@ function parseTierFilter(value: string | null): TierFilter {
   return (value || "all") as TierFilter;
 }
 
-function datasetCacheHeaders() {
-  return {
-    "Cache-Control": "no-store",
-  };
-}

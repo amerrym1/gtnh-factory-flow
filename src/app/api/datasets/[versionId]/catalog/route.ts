@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
+import { datasetCacheHeaders } from "@/lib/server/dataset-cache-headers";
 import { getDatasetCatalog, prewarmDatasetVersion } from "@/lib/server/dataset-query";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ versionId: string }> },
 ) {
   try {
@@ -15,7 +16,7 @@ export async function GET(
     });
     const catalog = await getDatasetCatalog(versionId);
     return NextResponse.json(catalog, {
-      headers: datasetCacheHeaders(),
+      headers: datasetCacheHeaders(request),
     });
   } catch (error) {
     return NextResponse.json(
@@ -25,8 +26,3 @@ export async function GET(
   }
 }
 
-function datasetCacheHeaders() {
-  return {
-    "Cache-Control": "no-store",
-  };
-}

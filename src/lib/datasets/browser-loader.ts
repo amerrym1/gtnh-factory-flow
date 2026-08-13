@@ -89,10 +89,10 @@ export async function initRecipeDatasetVersion(
 
 /**
  * Full recipes already fetched this session, keyed by their request URL (which
- * carries the dataset hash, so a republished dataset misses cleanly). The API
- * answers `no-store`, so without this the plus button pays a fresh round trip
- * for a recipe it fetched a moment ago. Holds the promise rather than the
- * recipe so a hover prefetch and the click that follows it share one request.
+ * carries the dataset hash, so a republished dataset misses cleanly). Even
+ * with HTTP caching in play this saves the parse and the cache lookup, and it
+ * holds the promise rather than the recipe so a hover prefetch and the click
+ * that follows it share one request.
  */
 const recipeFetchCache = new Map<string, Promise<Recipe>>();
 const RECIPE_FETCH_CACHE_LIMIT = 256;
@@ -236,8 +236,10 @@ export async function queryRecipeDatasetResources(
 export const loadRecipeDatasetVersion = initRecipeDatasetVersion;
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  // No cache mode: every GET here carries the dataset checksum in its URL, so
+  // the browser's HTTP cache can legally reuse responses across reloads and
+  // sessions. The server marks fingerprinted responses immutable to match.
   const response = await fetch(url, {
-    cache: "no-store",
     headers: {
       Accept: "application/json",
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
