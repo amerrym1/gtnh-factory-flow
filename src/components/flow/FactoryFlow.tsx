@@ -3332,6 +3332,14 @@ export function FactoryFlow() {
         linePulseMode: true,
         calmMode: request.presentation === true,
       });
+      // Motion pauses for the photograph. Values tween for a second and
+      // routes morph for a quarter of one, so a capture taken two frames
+      // after a settings flip (calm on, detail changed, the remount storm
+      // itself) caught wires mid-glide and numbers mid-count - and two
+      // captures of the same board disagreed. With the switches off, every
+      // motion hook reports its final value at once.
+      const savedMotion = readBoardMotionSnapshot();
+      writeBoardMotion({ moveMotion: false, valueMotion: false });
       // Two paints: one for React to commit the unculled board, one for the
       // newly mounted cards' own effects (pulse publication among them).
       await nextPaint();
@@ -3452,6 +3460,7 @@ export function FactoryFlow() {
         failure = error instanceof Error ? error.message : "Plan image export failed.";
         console.error(failure);
       } finally {
+        writeBoardMotion(savedMotion);
         writeBoardView({
           linePulseMode: savedBoardView.linePulseMode,
           calmMode: savedBoardView.calmMode,
