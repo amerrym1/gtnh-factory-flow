@@ -118,14 +118,17 @@ const STRICT_BUFFER_LINE = "Passes on what is pulled. Extra backs up the machine
 
 /**
  * Each job's colour, borrowed from the side panel's sections so board and
- * books say the same thing in the same ink: NEED red for a source (it is the
- * plan's import), PRODUCTS blue, BYPRODUCTS green, quiet steel for the
- * internal plumbing that buffers are. Idle is dimmer still - a drawer
- * mid-drag has nothing to announce.
+ * books say the same thing in the same ink: red IN, green OUT. A source
+ * wears the Inputs red, and products and byproducts both wear the Outputs
+ * green - they are one section in the panel and one direction on the board,
+ * and the blue products used to wear made a third colour for a distinction
+ * the header word already carries. Quiet steel for the internal plumbing
+ * that buffers are; idle is dimmer still - a drawer mid-drag has nothing to
+ * announce.
  */
 const ROLE_TINTS: Record<StorageRole, string> = {
   source: "#ef4444",
-  product: "#3b82f6",
+  product: "#10b981",
   byproduct: "#10b981",
   buffer: "#8a93a6",
   idle: "#5d6877",

@@ -69,6 +69,8 @@ interface FooterPalette {
 }
 
 const PALETTES: Record<ExportTone, FooterPalette> = {
+  // Inputs red, outputs green - the same ink the side panel's sections and
+  // the boundary drawers wear, so the bar speaks the board's own language.
   dark: {
     plate: "#131417",
     edge: "#2a2d33",
@@ -76,9 +78,9 @@ const PALETTES: Record<ExportTone, FooterPalette> = {
     subtle: "#9aa1ab",
     muted: "#686f7a",
     brand: "#22d3ee",
-    needs: "#fbbf24",
-    needsPanel: "rgba(251,191,36,0.07)",
-    needsEdge: "rgba(251,191,36,0.28)",
+    needs: "#f87171",
+    needsPanel: "rgba(239,68,68,0.07)",
+    needsEdge: "rgba(239,68,68,0.28)",
     makes: "#34d399",
     makesPanel: "rgba(52,211,153,0.07)",
     makesEdge: "rgba(52,211,153,0.28)",
@@ -90,9 +92,9 @@ const PALETTES: Record<ExportTone, FooterPalette> = {
     subtle: "#5f5947",
     muted: "#8a8370",
     brand: "#0e7490",
-    needs: "#92400e",
-    needsPanel: "rgba(146,64,14,0.08)",
-    needsEdge: "rgba(146,64,14,0.3)",
+    needs: "#991b1b",
+    needsPanel: "rgba(153,27,27,0.08)",
+    needsEdge: "rgba(153,27,27,0.3)",
     makes: "#065f46",
     makesPanel: "rgba(6,95,70,0.08)",
     makesEdge: "rgba(6,95,70,0.3)",
