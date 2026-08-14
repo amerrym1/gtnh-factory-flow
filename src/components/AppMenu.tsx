@@ -11,6 +11,8 @@ interface AppMenuProps {
   onLoadDatasetVersion: (versionId: string) => void;
   /** Opens the share dialog, which the header owns; see AppHeader. */
   onShare: () => void;
+  /** Opens the export-image dialog, also owned by the header. */
+  onExportImage: () => void;
 }
 
 /**
@@ -25,7 +27,7 @@ interface AppMenuProps {
  * A sheet under the header rather than a full-screen overlay: it is a handful of
  * rows, the board stays visible behind it, and a tap anywhere else puts it away.
  */
-export function AppMenu({ onLoadDatasetVersion, onShare }: AppMenuProps) {
+export function AppMenu({ onLoadDatasetVersion, onShare, onExportImage }: AppMenuProps) {
   const [isOpen, setOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -80,7 +82,12 @@ export function AppMenu({ onLoadDatasetVersion, onShare }: AppMenuProps) {
             </div>
           </MenuSection>
           <MenuSection label="This plan">
-            <BoardActions variant="list" onAction={() => setOpen(false)} onShare={onShare} />
+            <BoardActions
+              variant="list"
+              onAction={() => setOpen(false)}
+              onShare={onShare}
+              onExportImage={onExportImage}
+            />
           </MenuSection>
           <MenuSection label="Planner">
             <MenuLinks onAction={() => setOpen(false)} />

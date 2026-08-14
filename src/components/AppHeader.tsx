@@ -9,6 +9,7 @@ import { SharePlanDialog } from "./community/SharePlanDialog";
 import { AppIdentity } from "./AppIdentity";
 import { AppMenu } from "./AppMenu";
 import { BoardActions } from "./BoardActions";
+import { ExportImageDialog } from "./export/ExportImageDialog";
 import { ChangelogDialog } from "./ChangelogDialog";
 import { HeaderLinks, ReportBugButton, WhatsNewButton } from "./HeaderLinks";
 import { WhatsNewPreview } from "./WhatsNewPreview";
@@ -30,8 +31,10 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
   // Shift-click either what's-new control. See WhatsNewPreview.
   const [isPreviewOpen, setPreviewOpen] = useState(false);
   // The share dialog lives up here rather than in BoardActions so the compact
-  // menu can close behind it without unmounting it.
+  // menu can close behind it without unmounting it. The export dialog for the
+  // same reason.
   const [isShareOpen, setShareOpen] = useState(false);
+  const [isExportOpen, setExportOpen] = useState(false);
   // Narrow windows keep the name and the version chip and fold the rest into
   // one menu — see AppMenu for why a bar that overflows costs a phone more than
   // the buttons that fall off the end of it.
@@ -82,16 +85,21 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
       ) : null}
       {isPreviewOpen ? <WhatsNewPreview onClose={() => setPreviewOpen(false)} /> : null}
       {isShareOpen ? <SharePlanDialog onClose={() => setShareOpen(false)} /> : null}
+      {isExportOpen ? <ExportImageDialog onClose={() => setExportOpen(false)} /> : null}
       {isCompact ? (
         <AppMenu
           onLoadDatasetVersion={onLoadDatasetVersion}
           onShare={() => setShareOpen(true)}
+          onExportImage={() => setExportOpen(true)}
         />
       ) : (
         <div className="flex items-center gap-2">
           <HeaderLinks />
           <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
-          <BoardActions onShare={() => setShareOpen(true)} />
+          <BoardActions
+            onShare={() => setShareOpen(true)}
+            onExportImage={() => setExportOpen(true)}
+          />
           <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
           <WhatsNewButton
             onClick={(unseen) => {

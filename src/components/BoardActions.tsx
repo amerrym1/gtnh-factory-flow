@@ -5,7 +5,6 @@ import {
   ChevronDown,
   ClipboardList,
   Download,
-  FileImage,
   ImageDown,
   LoaderCircle,
   Redo2,
@@ -40,8 +39,6 @@ import { formatBoardDump } from "./flow/board-dump";
 import { makeResourceHandleId, parseResourceHandleId } from "./flow/resource-handles";
 import { isEditableKeyboardTarget } from "./flow/keyboard";
 import {
-  FLOW_IMAGE_EXPORT_COMPLETE_EVENT,
-  FLOW_IMAGE_EXPORT_EVENT,
   extractProjectJsonFromPng,
   extractProjectJsonFromSvg,
 } from "@/lib/import-export/plan-image";
@@ -65,6 +62,8 @@ interface BoardActionsProps {
    * which closes (and unmounts) the moment a row fires.
    */
   onShare?: () => void;
+  /** Opens the export-image dialog; owned by the header for the same reason. */
+  onExportImage?: () => void;
 }
 
 /**
@@ -73,12 +72,17 @@ interface BoardActionsProps {
  * Lives on the right of the design tab strip: everything here acts on the plan
  * that strip is switching between, so the two belong on the same bar.
  */
-export function BoardActions({ variant = "bar", onAction, onShare }: BoardActionsProps = {}) {
+export function BoardActions({
+  variant = "bar",
+  onAction,
+  onShare,
+  onExportImage,
+}: BoardActionsProps = {}) {
   const projectInputRef = useRef<HTMLInputElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const [isExportMenuOpen, setExportMenuOpen] = useState(false);
   const [pendingExport, setPendingExport] = useState<
-    { format: "json" | "svg" | "png"; requestId: string } | undefined
+    { format: "json"; requestId: string } | undefined
   >();
   const project = useFactoryStore((state) => state.project);
   const manifest = useFactoryStore((state) => state.datasetManifest);
@@ -153,24 +157,6 @@ export function BoardActions({ variant = "bar", onAction, onShare }: BoardAction
     }, 450);
   };
 
-  const exportImage = async (format: "svg" | "png") => {
-    const requestId = randomUUID();
-    setExportMenuOpen(false);
-    setPendingExport({ format, requestId });
-    await nextPaint();
-
-    window.dispatchEvent(
-      new CustomEvent(FLOW_IMAGE_EXPORT_EVENT, {
-        detail: {
-          format,
-          requestId,
-          fileName: project.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "factory",
-          projectJson: serializeFactoryProject(project),
-        },
-      }),
-    );
-  };
-
   const importProjectJson = async (file: File) => {
     setProjectImporting(true);
 
@@ -230,23 +216,6 @@ export function BoardActions({ variant = "bar", onAction, onShare }: BoardAction
     // it reaches a bubble-phase listener, which left this menu open over it.
     window.addEventListener("pointerdown", closeMenus, true);
     return () => window.removeEventListener("pointerdown", closeMenus, true);
-  }, []);
-
-  useEffect(() => {
-    const handleImageExportComplete = (event: Event) => {
-      const detail = (event as CustomEvent).detail as { requestId?: unknown } | undefined;
-      if (typeof detail?.requestId !== "string") {
-        return;
-      }
-
-      setPendingExport((current) =>
-        current?.requestId === detail.requestId ? undefined : current,
-      );
-    };
-
-    window.addEventListener(FLOW_IMAGE_EXPORT_COMPLETE_EVENT, handleImageExportComplete);
-    return () =>
-      window.removeEventListener(FLOW_IMAGE_EXPORT_COMPLETE_EVENT, handleImageExportComplete);
   }, []);
 
   useEffect(() => {
@@ -356,24 +325,16 @@ export function BoardActions({ variant = "bar", onAction, onShare }: BoardAction
             onAction?.();
           }}
         />
-        <MenuAction
-          icon={FileImage}
-          label="Export as SVG"
-          disabled={Boolean(pendingExport)}
-          onClick={() => {
-            void exportImage("svg");
-            onAction?.();
-          }}
-        />
-        <MenuAction
-          icon={ImageDown}
-          label="Export as PNG"
-          disabled={Boolean(pendingExport)}
-          onClick={() => {
-            void exportImage("png");
-            onAction?.();
-          }}
-        />
+        {onExportImage ? (
+          <MenuAction
+            icon={ImageDown}
+            label="Export an image"
+            onClick={() => {
+              onExportImage();
+              onAction?.();
+            }}
+          />
+        ) : null}
         {planFileInput}
       </div>
     );
@@ -443,20 +404,16 @@ export function BoardActions({ variant = "bar", onAction, onShare }: BoardAction
                   void exportJson();
                 }}
               />
-              <ExportMenuItem
-                icon={FileImage}
-                label="Export plan SVG"
-                onClick={() => {
-                  void exportImage("svg");
-                }}
-              />
-              <ExportMenuItem
-                icon={ImageDown}
-                label="Export plan PNG"
-                onClick={() => {
-                  void exportImage("png");
-                }}
-              />
+              {onExportImage ? (
+                <ExportMenuItem
+                  icon={ImageDown}
+                  label="Export an image..."
+                  onClick={() => {
+                    setExportMenuOpen(false);
+                    onExportImage();
+                  }}
+                />
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -526,14 +483,6 @@ async function copyToClipboard(text: string): Promise<boolean> {
 
 function nextAnimationFrame(): Promise<void> {
   return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
-}
-
-function nextPaint(): Promise<void> {
-  return new Promise((resolve) => {
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => resolve());
-    });
-  });
 }
 
 async function readProjectFile(file: File): Promise<string> {

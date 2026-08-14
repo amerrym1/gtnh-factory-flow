@@ -3,6 +3,77 @@
 const PLAN_METADATA_KEY = "gtnh-factory-flow-project";
 export const FLOW_IMAGE_EXPORT_EVENT = "gtnh-flow-export-image";
 export const FLOW_IMAGE_EXPORT_COMPLETE_EVENT = "gtnh-flow-export-image-complete";
+
+/**
+ * What the board is asked for over FLOW_IMAGE_EXPORT_EVENT.
+ *
+ * The classic shape downloads a finished file: `fileName` plus `projectJson`
+ * to embed. `capture: true` instead hands the raw render back through the
+ * complete event, so the export dialog can composite a summary bar, swap the
+ * background, or animate it — the board only knows how to photograph itself.
+ */
+export interface FlowExportRequest {
+  format: "svg" | "png";
+  requestId: string;
+  /** Download name, without extension. Required unless capturing. */
+  fileName?: string;
+  /** The plan to embed in the file. Required unless capturing. */
+  projectJson?: string;
+  /** Return the render instead of downloading it. */
+  capture?: boolean;
+  /** Override the board theme's paper: a CSS colour, or "transparent". */
+  background?: string;
+  /**
+   * How much each card draws for the photograph, independent of how far the
+   * screen happens to be zoomed: "full" is the whole card, "glance" the big
+   * machine icon and count that stay readable when a large factory shrinks
+   * to fit a chat window.
+   */
+  cardDetail?: "full" | "glance";
+}
+
+/** One line's marching dashes, as replayable data for the GIF export. */
+export interface EdgePulseFrameSpec {
+  path: string;
+  width: number;
+  dash: number;
+  gap: number;
+  velocity: number;
+  phase: number;
+}
+
+export interface ExportOcclusionDot {
+  x: number;
+  y: number;
+  r: number;
+}
+
+/** A raw board render, in the complete event's `capture` field. */
+export interface FlowExportCapture {
+  kind: "svg" | "png";
+  /** PNG captures: the rendered image. */
+  blob?: Blob;
+  /** SVG captures: the full <svg> document text, no plan metadata yet. */
+  svgText?: string;
+  /** CSS size of the render; the PNG's pixel size is this times pixelRatio. */
+  width: number;
+  height: number;
+  pixelRatio: number;
+  /** The export framing: screen = flow × zoom + (x, y), in CSS px. */
+  viewport: { x: number; y: number; zoom: number };
+  /** The colour behind the board, or undefined for transparent. */
+  background?: string;
+  /**
+   * Everything a dash overlay must be punched out of, photographed WITH the
+   * board (the live registries only describe edges that are mounted, and the
+   * capture renders the whole plan): card rectangles when wires dive under
+   * cards, rate-chip boxes, waypoint dots. Flow coordinates.
+   */
+  occlusionRects: Array<{ left: number; top: number; right: number; bottom: number }>;
+  occlusionDots: ExportOcclusionDot[];
+  /** Every line's dashes at the moment of capture, for the GIF. */
+  pulses: EdgePulseFrameSpec[];
+}
 const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
 const PIXEL_PAYLOAD_MAGIC = "GTNHPLAN";
 const PIXEL_PAYLOAD_HEADER_BYTES = PIXEL_PAYLOAD_MAGIC.length + 9;
@@ -23,8 +94,16 @@ export function extractProjectJsonFromSvg(svgText: string): string | undefined {
   return encodedProject ? decodeText(encodedProject) : undefined;
 }
 
-export async function embedProjectJsonInPng(pngBlob: Blob, projectJson: string): Promise<Blob> {
-  const pngWithPixelPayload = await embedProjectJsonInPngPixels(pngBlob, projectJson);
+export async function embedProjectJsonInPng(
+  pngBlob: Blob,
+  projectJson: string,
+  backgroundColor?: string,
+): Promise<Blob> {
+  const pngWithPixelPayload = await embedProjectJsonInPngPixels(
+    pngBlob,
+    projectJson,
+    backgroundColor,
+  );
   const bytes = new Uint8Array(await pngWithPixelPayload.arrayBuffer());
   validatePng(bytes);
 
@@ -116,7 +195,11 @@ function decodeText(value: string): string {
   return TEXT_DECODER.decode(bytes);
 }
 
-async function embedProjectJsonInPngPixels(pngBlob: Blob, projectJson: string): Promise<Blob> {
+async function embedProjectJsonInPngPixels(
+  pngBlob: Blob,
+  projectJson: string,
+  backgroundColor?: string,
+): Promise<Blob> {
   const image = await createImageBitmap(pngBlob);
   const payload = await createPixelPayload(projectJson);
   const stripHeight = Math.ceil(payload.length / (image.width * 3));
@@ -141,8 +224,13 @@ async function embedProjectJsonInPngPixels(pngBlob: Blob, projectJson: string): 
     return pngBlob;
   }
 
-  context.fillStyle = "#f5f5f5";
-  context.fillRect(0, 0, canvas.width, canvas.height);
+  // The exported image's own paper colour, so the data strip and any
+  // letterboxing blend in instead of stamping a light-mode band onto a dark
+  // board. No colour means a transparent export: leave the letterbox clear.
+  if (backgroundColor) {
+    context.fillStyle = backgroundColor;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+  }
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
   context.drawImage(image, imageX, 0, imageWidth, imageHeight);

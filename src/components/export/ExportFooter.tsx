@@ -1,0 +1,283 @@
+"use client";
+
+import type { CommunityPlanStats, EntryIcon, PlanResourceStat } from "@/lib/community/types";
+import { formatSlotRate } from "@/components/flow/flow-explainers";
+import { TierBadge } from "@/components/shelf-cards";
+import { fluidArtPixels, isSwatchFluid, ResourceIcon } from "@/components/nei/ResourceIcon";
+
+/**
+ * The trim under an exported board image: the plan's face (icon, name,
+ * headline numbers) and its boundary in resources - what goes in, what comes
+ * out - so a screenshot dropped in a chat answers the questions a plan link
+ * would. Rendered as ordinary DOM at a design width, photographed with the
+ * same pipeline as the board, then scaled to the board's width; on a huge
+ * zoomed-out factory the bar therefore grows with the image instead of
+ * shrinking into an unreadable strip.
+ */
+
+/**
+ * Below this the bar's columns collide; above it, rows spread too thin. The
+ * ceiling is deliberately low: the bar is scaled UP to the board's width, so
+ * a small design width is what makes the lettering a large fraction of the
+ * final image - the difference between readable and a hairline once Discord
+ * fits a 3000px export into a chat column.
+ */
+export const EXPORT_FOOTER_MIN_WIDTH = 640;
+export const EXPORT_FOOTER_MAX_WIDTH = 960;
+
+export function resolveExportFooterWidth(boardWidth: number): number {
+  if (!Number.isFinite(boardWidth) || boardWidth <= 0) {
+    return EXPORT_FOOTER_MIN_WIDTH;
+  }
+  return Math.round(
+    Math.min(EXPORT_FOOTER_MAX_WIDTH, Math.max(EXPORT_FOOTER_MIN_WIDTH, boardWidth)),
+  );
+}
+
+export type ExportTone = "dark" | "light";
+
+/**
+ * Which face the bar wears, decided by the paper behind the board: a light
+ * theme (Parchment, Paper) gets ink on cream, everything else - including a
+ * transparent export, which lands who-knows-where but usually on Discord's
+ * dark chat - gets the dark plate.
+ */
+export function resolveExportTone(background?: string): ExportTone {
+  const hex = background?.trim().match(/^#([0-9a-f]{6})$/i)?.[1];
+  if (!hex) {
+    return "dark";
+  }
+  const red = parseInt(hex.slice(0, 2), 16);
+  const green = parseInt(hex.slice(2, 4), 16);
+  const blue = parseInt(hex.slice(4, 6), 16);
+  return (0.299 * red + 0.587 * green + 0.114 * blue) / 255 > 0.55 ? "light" : "dark";
+}
+
+interface FooterPalette {
+  plate: string;
+  edge: string;
+  text: string;
+  subtle: string;
+  muted: string;
+  brand: string;
+  needs: string;
+  needsPanel: string;
+  needsEdge: string;
+  makes: string;
+  makesPanel: string;
+  makesEdge: string;
+}
+
+const PALETTES: Record<ExportTone, FooterPalette> = {
+  dark: {
+    plate: "#131417",
+    edge: "#2a2d33",
+    text: "#e8e9ec",
+    subtle: "#9aa1ab",
+    muted: "#686f7a",
+    brand: "#22d3ee",
+    needs: "#fbbf24",
+    needsPanel: "rgba(251,191,36,0.07)",
+    needsEdge: "rgba(251,191,36,0.28)",
+    makes: "#34d399",
+    makesPanel: "rgba(52,211,153,0.07)",
+    makesEdge: "rgba(52,211,153,0.28)",
+  },
+  light: {
+    plate: "#e9e2cd",
+    edge: "#c4b995",
+    text: "#2c2a24",
+    subtle: "#5f5947",
+    muted: "#8a8370",
+    brand: "#0e7490",
+    needs: "#92400e",
+    needsPanel: "rgba(146,64,14,0.08)",
+    needsEdge: "rgba(146,64,14,0.3)",
+    makes: "#065f46",
+    makesPanel: "rgba(6,95,70,0.08)",
+    makesEdge: "rgba(6,95,70,0.3)",
+  },
+};
+
+export interface ExportFooterProps {
+  planName: string;
+  icon?: EntryIcon;
+  stats: CommunityPlanStats;
+  gameVersion?: string;
+  tone: ExportTone;
+  width: number;
+  showTitle: boolean;
+  /** Already curated: the dialog drops rows the player unchecked. */
+  needs: PlanResourceStat[];
+  outputs: PlanResourceStat[];
+}
+
+export function ExportFooter({
+  planName,
+  icon,
+  stats,
+  gameVersion,
+  tone,
+  width,
+  showTitle,
+  needs,
+  outputs,
+}: ExportFooterProps) {
+  const palette = PALETTES[tone];
+
+  return (
+    <div
+      style={{
+        width,
+        backgroundColor: palette.plate,
+        borderTop: `2px solid ${palette.edge}`,
+        color: palette.text,
+      }}
+      className="flex items-start gap-6 px-6 py-5"
+    >
+      {showTitle ? (
+        <div className="w-60 min-w-0 shrink-0">
+          <div className="flex items-center gap-3">
+            {icon ? (
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden">
+                <ResourceIcon
+                  resource={{
+                    id: icon.resourceId,
+                    kind: icon.kind,
+                    amount: 1,
+                    displayName: icon.displayName,
+                    iconPath: icon.iconPath,
+                    iconAtlas: icon.iconAtlas,
+                    dominantColor: icon.dominantColor,
+                  }}
+                  bare
+                  tooltip={false}
+                  showAmount={false}
+                  className="!h-full !w-full"
+                />
+              </span>
+            ) : null}
+            <div className="min-w-0 text-[21px] font-bold leading-7">
+              <div className="truncate">{planName}</div>
+            </div>
+          </div>
+          <div
+            style={{ color: palette.subtle }}
+            className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] tabular-nums"
+          >
+            <span>{stats.machineCount} machines</span>
+            <span aria-hidden>·</span>
+            <span>{stats.nodeCount} cards</span>
+            {stats.highestTier ? (
+              <>
+                <span aria-hidden>·</span>
+                <TierBadge tier={stats.highestTier} />
+              </>
+            ) : null}
+          </div>
+          <div className="mt-2 text-[13px]">
+            <span style={{ color: palette.brand }} className="font-semibold">
+              gtnhplanner.com
+            </span>
+            {gameVersion ? <span style={{ color: palette.muted }}> · GTNH {gameVersion}</span> : null}
+          </div>
+        </div>
+      ) : null}
+      <IoColumn
+        label="Needs"
+        accent={palette.needs}
+        panel={palette.needsPanel}
+        panelEdge={palette.needsEdge}
+        palette={palette}
+        stats={needs}
+      />
+      <IoColumn
+        label="Makes"
+        accent={palette.makes}
+        panel={palette.makesPanel}
+        panelEdge={palette.makesEdge}
+        palette={palette}
+        stats={outputs}
+      />
+    </div>
+  );
+}
+
+/**
+ * One side of the boundary as its own tinted panel: the wash of the
+ * section's colour behind its rows is what lets a reader split needs from
+ * makes at arm's length, before any label is legible.
+ */
+function IoColumn({
+  label,
+  accent,
+  panel,
+  panelEdge,
+  palette,
+  stats,
+}: {
+  label: string;
+  accent: string;
+  panel: string;
+  panelEdge: string;
+  palette: FooterPalette;
+  stats: PlanResourceStat[];
+}) {
+  return (
+    <div
+      className="min-w-0 flex-1 rounded-md px-3.5 py-3"
+      style={{ backgroundColor: panel, border: `1px solid ${panelEdge}` }}
+    >
+      <div style={{ color: accent }} className="text-[12px] font-bold uppercase tracking-[0.14em]">
+        {label}
+      </div>
+      {stats.length === 0 ? (
+        <div style={{ color: palette.muted }} className="mt-1.5 text-[13px]">
+          Nothing
+        </div>
+      ) : (
+        <div
+          className="mt-1.5 grid gap-x-5"
+          // Long lists split into as many columns as the panel affords
+          // instead of growing a tail below the title block.
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}
+        >
+          {stats.map((stat) => (
+            <div
+              key={`${stat.kind}:${stat.resourceId}`}
+              className="flex items-center gap-2 py-[3px]"
+            >
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden">
+                <ResourceIcon
+                  resource={{ ...stat, id: stat.resourceId, amount: 1 }}
+                  bare
+                  tooltip={false}
+                  showAmount={false}
+                  iconPixelSize={
+                    stat.kind === "fluid"
+                      ? isSwatchFluid(stat)
+                        ? 40
+                        : fluidArtPixels(24)
+                      : undefined
+                  }
+                  className={
+                    stat.kind === "fluid" ? "!h-6 !w-6" : "!h-6 !w-6 origin-center scale-150"
+                  }
+                />
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[14px]">
+                {stat.displayName ?? stat.resourceId}
+              </span>
+              <span
+                style={{ color: palette.subtle }}
+                className="shrink-0 tabular-nums text-[14px]"
+              >
+                {formatSlotRate(stat.ratePerSecond, stat.kind)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -19,6 +19,11 @@
  * discipline the routing caches follow: nothing depends on zoom or pan.
  */
 
+import type {
+  EdgePulseFrameSpec,
+  ExportOcclusionDot,
+} from "@/lib/import-export/plan-image";
+
 export interface EdgePulseSpec {
   /** The edge's route, exactly as the SVG draws it (hops included). */
   path: string;
@@ -143,6 +148,44 @@ export function edgePulseCount() {
 }
 
 /**
+ * The marching dashes as data, for rendering outside the live canvas — the
+ * export dialog replays these into GIF frames. Geometry and speeds are copied
+ * out so the export can quantise velocities for a seamless loop without
+ * touching the live march. Taken while the export render is up, because a
+ * culled edge has no pulse to copy.
+ */
+export function snapshotEdgePulses(): EdgePulseFrameSpec[] {
+  return [...pulses.values()].map((pulse) => ({
+    path: pulse.path,
+    width: pulse.width,
+    dash: pulse.dash,
+    gap: pulse.gap,
+    velocity: pulse.velocity,
+    phase: pulse.phase,
+  }));
+}
+
+/** The rate-chip boxes, as plain rects for the export's own eraser. */
+export function snapshotEdgeLabelBoxes(): Array<{
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}> {
+  return [...labelBoxes.values()].map((box) => ({
+    left: box.left,
+    top: box.top,
+    right: box.left + box.width,
+    bottom: box.top + box.height,
+  }));
+}
+
+/** Every pinned waypoint dot the dashes must not march over. */
+export function snapshotEdgeWaypointDots(): ExportOcclusionDot[] {
+  return [...waypointDots.values()].flat().map((dot) => ({ x: dot.x, y: dot.y, r: dot.r }));
+}
+
+/**
  * Where each edge's rate chip sits, in flow units.
  *
  * The canvas has to sit at the very TOP of the paint order — anything drawn
@@ -256,7 +299,7 @@ export function retractEdgeWaypointDots(edgeId: string) {
 }
 
 /** Colour and cap match the SVG overlay this replaces, exactly. */
-const PULSE_STROKE = "rgba(255,255,255,0.92)";
+export const PULSE_STROKE = "rgba(255,255,255,0.92)";
 
 /**
  * How fast the marching speed itself changes, as an exponential time

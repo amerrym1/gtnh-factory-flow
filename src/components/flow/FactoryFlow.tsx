@@ -83,7 +83,10 @@ import {
   dataUrlToText,
   embedProjectJsonInPng,
   embedProjectJsonInSvg,
+  type FlowExportCapture,
+  type FlowExportRequest,
 } from "@/lib/import-export/plan-image";
+import { resolveExportFontCss } from "@/lib/import-export/export-fonts";
 import {
   isRecipeInputConsumed,
   makeResourceKey,
@@ -236,6 +239,7 @@ import {
 import {
   NODE_DETAIL_ATTRIBUTE,
   NODE_DETAIL_FULL,
+  NODE_DETAIL_GLANCE,
   getNodeDetailLevel,
   getPublishedNodeDetailLevel,
   getServerNodeDetailLevel,
@@ -255,6 +259,9 @@ import {
   retractEdgeLabelBox,
   retractEdgePulse,
   retractEdgeWaypointDots,
+  snapshotEdgeLabelBoxes,
+  snapshotEdgePulses,
+  snapshotEdgeWaypointDots,
 } from "./edge-pulse";
 import { StorageNode, type StorageFlowNode } from "./StorageNode";
 import { TrashNode, type TrashFlowNode } from "./TrashNode";
@@ -1687,7 +1694,15 @@ export function FactoryFlow() {
   const lastConnectionPointerRef = useRef<{ x: number; y: number } | undefined>(undefined);
   const connectCompletedRef = useRef(false);
   const dropFitFrameRef = useRef<number | undefined>(undefined);
-  const exportInProgressRef = useRef(false);
+  // Export requests run one after another rather than bouncing: the dialog
+  // fires its preview capture the moment it opens, and a second request
+  // arriving mid-capture (a background swap, strict mode's double mount)
+  // must wait its turn, not error.
+  const exportQueueRef = useRef<Promise<void>>(Promise.resolve());
+  // While a photograph is being taken the board renders EVERYTHING: culling
+  // trims the DOM to the visible rect, and an export framed around the whole
+  // plan would come back with only the cards that happened to be on screen.
+  const [isExportRendering, setExportRendering] = useState(false);
   const boardRef = useRef<HTMLDivElement>(null);
   // Every breathing mark under this element - dead rings and their wires,
   // unwired cards and the notice about them, the hovered-resource wash - shares
@@ -3274,19 +3289,9 @@ export function FactoryFlow() {
     [restoreBoardCamera, updateFlowViewportCenter],
   );
 
-  const exportFlowImage = useCallback(
-    async (
-      format: "svg" | "png",
-      requestId: string,
-      fileName: string,
-      projectJson: string,
-      capture = false,
-    ) => {
-      if (exportInProgressRef.current) {
-        dispatchImageExportComplete(requestId);
-        return;
-      }
-
+  const performFlowImageExport = useCallback(
+    async (request: FlowExportRequest) => {
+      const { format, requestId, fileName, projectJson } = request;
       const viewportElement = boardRef.current?.querySelector<HTMLElement>(".react-flow__viewport");
 
       if (!viewportElement) {
@@ -3294,25 +3299,66 @@ export function FactoryFlow() {
         return;
       }
 
-      exportInProgressRef.current = true;
-      await nextAnimationFrame();
+      // The photograph's render: culling off so every card exists, and the
+      // card detail FORCED rather than inherited from wherever the screen's
+      // zoom left it - an export framed at 0.2x must not come out as
+      // unreadable full-detail specks just because the user was zoomed in.
+      const restoreDetailLevel = getPublishedNodeDetailLevel();
+      const forcedDetailLevel =
+        request.cardDetail === "glance" ? NODE_DETAIL_GLANCE : NODE_DETAIL_FULL;
+      const applyDetailLevel = (level: NodeDetailLevel) => {
+        setNodeDetailLevel(level);
+        const board = boardRef.current;
+        if (!board) {
+          return;
+        }
+        const value = nodeDetailAttributeValue(level);
+        if (value) {
+          board.setAttribute(NODE_DETAIL_ATTRIBUTE, value);
+        } else {
+          board.removeAttribute(NODE_DETAIL_ATTRIBUTE);
+        }
+      };
+      setExportRendering(true);
+      applyDetailLevel(forcedDetailLevel);
+      // Two paints: one for React to commit the unculled board, one for the
+      // newly mounted cards' own effects (pulse publication among them).
+      await nextPaint();
+      await nextPaint();
 
       const nodesBounds = getNodesBounds(flowNodes);
-      const imageWidth = getExportImageSize(nodesBounds.width);
-      const imageHeight = getExportImageSize(nodesBounds.height);
+      const graphWidth = getExportImageSize(nodesBounds.width);
+      const graphHeight = getExportImageSize(nodesBounds.height);
+      // A sprawling factory must not ask for a 30,000px render surface: the
+      // foreignObject image html-to-image rasterises silently comes back
+      // blank past the browser's limits, which read as "could not be
+      // captured" with no cause. Past the cap the whole frame scales down
+      // instead - the physical pixel count is the same either way, because
+      // pixelRatio was already bounded by the same constant.
+      const sizeScale = Math.min(
+        1,
+        EXPORT_PNG_MAX_PIXEL_SIDE / Math.max(graphWidth, graphHeight),
+      );
+      const imageWidth = Math.round(graphWidth * sizeScale);
+      const imageHeight = Math.round(graphHeight * sizeScale);
       const viewport = getViewportForBounds(
         nodesBounds,
         imageWidth,
         imageHeight,
-        0.15,
+        0.05,
         1.8,
         EXPORT_IMAGE_PADDING / Math.max(imageWidth, imageHeight),
       );
+      // The active theme's paper by default, so an export looks like the
+      // board did; the dialog may swap in another theme's colour or ask for
+      // transparency. The screen-space texture is on the container, not the
+      // viewport, so exports get the flat colour - a deliberate
+      // simplification.
+      const background =
+        request.background === "transparent" ? undefined : (request.background ?? canvasTheme.base);
+      const pixelRatio = getExportPngPixelRatio(imageWidth, imageHeight);
       const options = {
-        // The active theme's paper, so an export looks like the board did.
-        // The screen-space texture is on the container, not the viewport, so
-        // exports get the flat colour - a deliberate simplification.
-        backgroundColor: canvasTheme.base,
+        backgroundColor: background,
         width: imageWidth,
         height: imageHeight,
         style: {
@@ -3320,52 +3366,94 @@ export function FactoryFlow() {
           height: `${imageHeight}px`,
           transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
         },
+        filter: exportNodeFilter,
+        // With fontEmbedCSS present the skip is inert; without it (the scan
+        // failed) the export degrades to the old fallback font rather than
+        // paying for a per-capture stylesheet walk. See export-fonts.ts.
+        skipFonts: true,
+        fontEmbedCSS: await resolveExportFontCss(viewportElement),
       };
+      const captureFrame = (kind: FlowExportCapture["kind"]): FlowExportCapture => ({
+        kind,
+        width: imageWidth,
+        height: imageHeight,
+        pixelRatio,
+        viewport,
+        background,
+        // What the live pulse canvas punches out of the dash layer, copied
+        // while the whole plan is mounted: card rectangles when thickness
+        // mode runs the wires under the cards, the rate chips, the waypoint
+        // dots. The GIF replays against these instead of the live
+        // registries, which will have forgotten the offscreen edges by then.
+        occlusionRects: [
+          ...(lineThicknessMode
+            ? (publishedBoardBounds ?? []).map(({ id, bounds }) => {
+                const dockInset = getDockTopInset(id);
+                return dockInset > 0 ? { ...bounds, top: bounds.top + dockInset } : bounds;
+              })
+            : []),
+          ...snapshotEdgeLabelBoxes(),
+        ],
+        occlusionDots: snapshotEdgeWaypointDots(),
+        pulses: snapshotEdgePulses(),
+      });
 
-      let capturedDataUrl: string | undefined;
+      let capture: FlowExportCapture | undefined;
+      let failure: string | undefined;
       try {
         if (format === "svg") {
-          const svgText = embedProjectJsonInSvg(
-            dataUrlToText(
-              await toSvg(viewportElement, {
-                ...options,
-                filter: exportNodeFilter,
-                skipFonts: true,
-              }),
-            ),
-            projectJson,
+          const svgText = dataUrlToText(await toSvg(viewportElement, options));
+          if (request.capture) {
+            capture = { ...captureFrame("svg"), svgText };
+            return;
+          }
+          if (typeof fileName !== "string" || typeof projectJson !== "string") {
+            return;
+          }
+          downloadBlob(
+            new Blob([embedProjectJsonInSvg(svgText, projectJson)], { type: "image/svg+xml" }),
+            `${fileName}.svg`,
           );
-          downloadBlob(new Blob([svgText], { type: "image/svg+xml" }), `${fileName}.svg`);
           return;
         }
 
-        const imageBlob = await toBlob(viewportElement, {
-          ...options,
-          filter: exportNodeFilter,
-          pixelRatio: capture ? 1 : getExportPngPixelRatio(imageWidth, imageHeight),
-          skipFonts: true,
-        });
+        const imageBlob = await toBlob(viewportElement, { ...options, pixelRatio });
         if (!imageBlob) {
+          failure = "The render came back empty.";
           return;
         }
 
-        if (capture) {
-          // Capture mode hands a thumbnail back to the caller (community
-          // share dialog) instead of saving a file.
-          capturedDataUrl = await makeThumbnailDataUrl(imageBlob);
+        if (request.capture) {
+          capture = { ...captureFrame("png"), blob: imageBlob };
           return;
         }
 
-        const pngBlob = await embedProjectJsonInPng(imageBlob, projectJson);
+        if (typeof fileName !== "string" || typeof projectJson !== "string") {
+          return;
+        }
+        const pngBlob = await embedProjectJsonInPng(imageBlob, projectJson, background);
         downloadBlob(pngBlob, `${fileName}.png`);
       } catch (error) {
-        console.error(error instanceof Error ? error.message : "Plan image export failed.");
+        failure = error instanceof Error ? error.message : "Plan image export failed.";
+        console.error(failure);
       } finally {
-        exportInProgressRef.current = false;
-        dispatchImageExportComplete(requestId, capturedDataUrl);
+        applyDetailLevel(restoreDetailLevel);
+        setExportRendering(false);
+        dispatchImageExportComplete(requestId, capture, failure);
       }
     },
-    [flowNodes, canvasTheme.base],
+    [flowNodes, canvasTheme.base, lineThicknessMode],
+  );
+
+  const exportFlowImage = useCallback(
+    (request: FlowExportRequest) => {
+      const queued = exportQueueRef.current.then(() => performFlowImageExport(request));
+      // The chain must survive a failed export or every later request waits
+      // on a rejected promise forever.
+      exportQueueRef.current = queued.catch(() => undefined);
+      return queued;
+    },
+    [performFlowImageExport],
   );
 
   useEffect(() => {
@@ -3377,25 +3465,27 @@ export function FactoryFlow() {
             fileName?: unknown;
             projectJson?: unknown;
             capture?: unknown;
+            background?: unknown;
+            cardDetail?: unknown;
           }
         | undefined;
 
       if (
         (detail?.format !== "svg" && detail?.format !== "png") ||
-        typeof detail.requestId !== "string" ||
-        typeof detail.fileName !== "string" ||
-        typeof detail.projectJson !== "string"
+        typeof detail.requestId !== "string"
       ) {
         return;
       }
 
-      void exportFlowImage(
-        detail.format,
-        detail.requestId,
-        detail.fileName,
-        detail.projectJson,
-        detail.capture === true,
-      );
+      void exportFlowImage({
+        format: detail.format,
+        requestId: detail.requestId,
+        fileName: typeof detail.fileName === "string" ? detail.fileName : undefined,
+        projectJson: typeof detail.projectJson === "string" ? detail.projectJson : undefined,
+        capture: detail.capture === true,
+        background: typeof detail.background === "string" ? detail.background : undefined,
+        cardDetail: detail.cardDetail === "glance" ? "glance" : "full",
+      });
     };
 
     window.addEventListener(FLOW_IMAGE_EXPORT_EVENT, handleExportImage);
@@ -4397,7 +4487,8 @@ export function FactoryFlow() {
         // stamped over with a fit of the whole plan. The app frames for itself
         // on every path that puts cards on the board (the design store, plan
         // import, blueprint paste, the tours), so nothing was relying on it.
-        onlyRenderVisibleElements
+        // Culling pauses while an export photographs the whole plan.
+        onlyRenderVisibleElements={!isExportRendering}
         // Double-click PINS AND UNPINS waypoint dots now, so the gesture can
         // no longer also mean "zoom in". d3's dblclick.zoom listener sits on
         // the pane, upstream of React's synthetic events — stopPropagation
@@ -9615,55 +9706,16 @@ function downloadBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
-function dispatchImageExportComplete(requestId: string, dataUrl?: string) {
+function dispatchImageExportComplete(
+  requestId: string,
+  capture?: FlowExportCapture,
+  error?: string,
+) {
   window.dispatchEvent(
     new CustomEvent(FLOW_IMAGE_EXPORT_COMPLETE_EVENT, {
-      detail: { requestId, dataUrl },
+      detail: { requestId, capture, error },
     }),
   );
-}
-
-/**
- * Downscales a full board capture into a share-card thumbnail, shrinking
- * until it fits the upload limit so big factories don't silently lose their
- * preview image.
- */
-async function makeThumbnailDataUrl(blob: Blob, maxBytes = 380_000): Promise<string> {
-  const bitmap = await createImageBitmap(blob);
-  try {
-    const attempts: Array<{ maxSide: number; quality: number }> = [
-      { maxSide: 720, quality: 0.82 },
-      { maxSide: 560, quality: 0.72 },
-      { maxSide: 420, quality: 0.62 },
-      { maxSide: 320, quality: 0.5 },
-    ];
-
-    let smallest: string | undefined;
-    for (const { maxSide, quality } of attempts) {
-      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-      const context = canvas.getContext("2d");
-      if (!context) {
-        throw new Error("Canvas 2D context unavailable");
-      }
-
-      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL("image/jpeg", quality);
-      if (dataUrl.length <= maxBytes) {
-        return dataUrl;
-      }
-      smallest = dataUrl;
-    }
-
-    if (!smallest) {
-      throw new Error("Thumbnail encode produced no image");
-    }
-    return smallest;
-  } finally {
-    bitmap.close();
-  }
 }
 
 function getEdgeResource(
@@ -9739,4 +9791,13 @@ function exportNodeFilter(domNode: HTMLElement) {
 
 function nextAnimationFrame(): Promise<void> {
   return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+}
+
+/** Resolves after the NEXT frame's paint, not merely before this one's. */
+function nextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  });
 }
