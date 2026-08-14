@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.12.0",
+    date: "2026-08-14",
+    headline: "Exports get a preview, a nameplate, and a GIF",
+    notes: [
+      "The export button opens a dialog: live preview, any theme's paper, and a summary bar naming the plan and what it needs and makes.",
+      "GIF export replays the flowing dashes as a seamless loop.",
+      "A plan link pasted in chat now unfurls as that plan: its name, its words, and a card of its own.",
+      "Exports render in the right font and paper again, and offscreen cards no longer go missing.",
+    ],
+  },
+  {
     version: "2.11.7",
     date: "2026-08-13",
     headline: "The recipe book stops keeping you waiting",
