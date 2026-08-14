@@ -73,6 +73,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.14.1",
+    date: "2026-08-14",
+    headline: "The site introduces itself to AI assistants",
+    notes: [
+      "Asking an AI assistant about GTNH planning has a better chance of pointing here.",
+    ],
+  },
+  {
     version: "2.14.0",
     date: "2026-08-14",
     headline: "The planner gets its own icon",
