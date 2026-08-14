@@ -109,6 +109,8 @@ export interface ExportFooterProps {
   tone: ExportTone;
   width: number;
   showTitle: boolean;
+  /** The Inputs/Outputs panels; off leaves a nameplate-only bar. */
+  showIo: boolean;
   /** Already curated: the dialog drops rows the player unchecked. */
   needs: PlanResourceStat[];
   outputs: PlanResourceStat[];
@@ -122,6 +124,7 @@ export function ExportFooter({
   tone,
   width,
   showTitle,
+  showIo,
   needs,
   outputs,
 }: ExportFooterProps) {
@@ -142,7 +145,12 @@ export function ExportFooter({
         // like "Platline v4 (LV glass, no cleanroom)" and a side column
         // truncated them. It wraps rather than clips; the numbers keep to
         // the right.
-        <div className="mb-4 flex items-start justify-between gap-8">
+        <div
+          className={[
+            "flex items-start justify-between gap-8",
+            showIo ? "mb-4" : "",
+          ].join(" ")}
+        >
           <div className="flex min-w-0 flex-1 items-center gap-3">
             {icon ? (
               <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden">
@@ -188,7 +196,8 @@ export function ExportFooter({
       ) : null}
       {/* "Inputs" and "Outputs", the same words the panel on the right of
           the app uses for the same numbers. */}
-      <div className="flex items-start gap-5">
+      {showIo ? (
+        <div className="flex items-start gap-5">
         <IoColumn
           label="Inputs"
           accent={palette.needs}
@@ -205,7 +214,8 @@ export function ExportFooter({
           palette={palette}
           stats={outputs}
         />
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -95,6 +95,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
   const [presentation, setPresentation] = useState(true);
   const [includeFooter, setIncludeFooter] = useState(true);
   const [includeTitle, setIncludeTitle] = useState(true);
+  const [includeIo, setIncludeIo] = useState(true);
   const [includeAnnotations, setIncludeAnnotations] = useState(false);
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
   const [capture, setCapture] = useState<FlowExportCapture>();
@@ -266,7 +267,8 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
   }, [footerElement]);
 
   const footerVisible =
-    includeFooter && (includeTitle || needs.length > 0 || outputs.length > 0);
+    includeFooter &&
+    (includeTitle || (includeIo && (needs.length > 0 || outputs.length > 0)));
   const footerWidth = capture ? resolveExportFooterWidth(capture.width) : 0;
   const layout = useMemo(
     () =>
@@ -444,6 +446,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
                           tone={tone}
                           width={layout.footerWidth}
                           showTitle={includeTitle}
+                          showIo={includeIo}
                           needs={needs}
                           outputs={outputs}
                         />
@@ -597,6 +600,16 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
               />
               Title and stats
             </label>
+            <label
+              className={includeFooter ? "flex items-center gap-1.5" : "hidden"}
+            >
+              <input
+                type="checkbox"
+                checked={includeIo}
+                onChange={(event) => setIncludeIo(event.target.checked)}
+              />
+              Inputs and outputs
+            </label>
             <label className="flex items-center gap-1.5">
               <input
                 type="checkbox"
@@ -615,7 +628,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
             </label>
           </div>
 
-          {includeFooter ? (
+          {includeFooter && includeIo ? (
             <div className="space-y-2">
               <ResourceChipRow
                 label="Inputs"
