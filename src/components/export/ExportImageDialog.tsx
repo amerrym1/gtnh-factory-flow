@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ImageDown, LoaderCircle, X } from "lucide-react";
+import { Check, Eye, EyeOff, ImageDown, LoaderCircle, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toBlob, toSvg } from "html-to-image";
 import { computeCommunityPlanStats } from "@/lib/community/plan-stats";
@@ -19,6 +19,8 @@ import {
   composeExportSvg,
   compositeExportPng,
   computeCompositeLayout,
+  resolveExportBorderWidth,
+  type ExportBorder,
 } from "@/lib/import-export/export-composite";
 import { randomUUID } from "@/lib/random-id";
 import {
@@ -45,6 +47,19 @@ const FORMATS: Array<{ id: ExportFormat; label: string }> = [
   { id: "png", label: "PNG" },
   { id: "svg", label: "SVG" },
   { id: "gif", label: "GIF" },
+];
+
+/** "auto" resolves against the bar's tone; anything else is the colour. */
+type ExportBorderChoice = "none" | "auto" | string;
+
+const BORDER_SWATCHES: Array<{ id: ExportBorderChoice; title: string; swatch: string }> = [
+  { id: "auto", title: "Frame: steel", swatch: "#454a52" },
+  { id: "#22d3ee", title: "Frame: cyan", swatch: "#22d3ee" },
+  { id: "#34d399", title: "Frame: emerald", swatch: "#34d399" },
+  { id: "#fbbf24", title: "Frame: amber", swatch: "#fbbf24" },
+  { id: "#f87171", title: "Frame: red", swatch: "#f87171" },
+  { id: "#e8e9ec", title: "Frame: white", swatch: "#e8e9ec" },
+  { id: "#000000", title: "Frame: black", swatch: "#000000" },
 ];
 
 /** The checkerboard every image editor uses for "nothing here". */
@@ -75,6 +90,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
     () => readBoardViewSnapshot().canvasTheme,
   );
   const [cardDetail, setCardDetail] = useState<ExportCardDetail>("full");
+  const [border, setBorder] = useState<ExportBorderChoice>("auto");
   const [includeFooter, setIncludeFooter] = useState(true);
   const [includeTitle, setIncludeTitle] = useState(true);
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
@@ -84,10 +100,17 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string>();
 
-  const stats = useMemo(() => computeCommunityPlanStats(project, result), [project, result]);
+  // Uncapped: a base with two hundred boundary resources prints them all
+  // unless its owner unchecks some.
+  const stats = useMemo(
+    () => computeCommunityPlanStats(project, result, Number.POSITIVE_INFINITY),
+    [project, result],
+  );
   const backgroundColor =
     background === "transparent" ? undefined : getCanvasTheme(background).base;
   const tone = resolveExportTone(backgroundColor);
+  const borderColor =
+    border === "none" ? undefined : border === "auto" ? (tone === "light" ? "#b3a884" : "#454a52") : border;
   const gameVersion = manifest?.versions.find(
     (version) => version.id === selectedDatasetVersionId,
   )?.gtnhVersion;
@@ -247,6 +270,10 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
     [capture, footerVisible, footerWidth, footerHeight],
   );
   const previewScale = capture && previewWidth > 0 ? previewWidth / capture.width : 0;
+  const exportBorder: ExportBorder | undefined =
+    borderColor && capture
+      ? { color: borderColor, width: resolveExportBorderWidth(capture.width) }
+      : undefined;
 
   // ---- The export itself ------------------------------------------------
 
@@ -286,6 +313,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
           footerSvg,
           layout,
           background: backgroundColor,
+          border: exportBorder,
         });
         downloadBlob(
           new Blob([embedProjectJsonInSvg(composed, projectJson)], { type: "image/svg+xml" }),
@@ -314,6 +342,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
             layout,
             pixelRatio: capture.pixelRatio,
             background: backgroundColor,
+            border: exportBorder,
           });
           setBusy("Embedding the plan");
           const withPlan = await embedProjectJsonInPng(composed, projectJson, backgroundColor);
@@ -325,6 +354,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
             layout,
             capture,
             background: backgroundColor,
+            border: exportBorder,
             onProgress: (frame, total) => setBusy(`Drawing frame ${frame} of ${total}`),
           });
           downloadBlob(gifBlob, `${fileName}.gif`);
@@ -374,7 +404,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
             style={background === "transparent" ? CHECKER_STYLE : undefined}
           >
             {previewUrl ? (
-              <div className="pointer-events-none select-none">
+              <div className="pointer-events-none relative select-none">
                 <img src={previewUrl} alt="Board export preview" className="block w-full" />
                 {footerVisible && layout && previewScale > 0 ? (
                   <div
@@ -405,6 +435,17 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
                       </div>
                     </div>
                   </div>
+                ) : null}
+                {exportBorder && previewScale > 0 ? (
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      boxShadow: `inset 0 0 0 ${Math.max(
+                        1,
+                        exportBorder.width * previewScale,
+                      )}px ${exportBorder.color}`,
+                    }}
+                  />
                 ) : null}
               </div>
             ) : (
@@ -505,6 +546,40 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
             />
           </div>
 
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs font-medium text-fg-subtle">Frame</span>
+            <button
+              type="button"
+              onClick={() => setBorder("none")}
+              aria-pressed={border === "none"}
+              className={[
+                "rounded border px-2 py-0.5 text-xs",
+                border === "none"
+                  ? "border-cyan-500 text-fg ring-1 ring-cyan-500"
+                  : "border-line-strong text-fg-subtle hover:border-fg-muted",
+              ].join(" ")}
+            >
+              Off
+            </button>
+            {BORDER_SWATCHES.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                title={entry.title}
+                aria-label={entry.title}
+                aria-pressed={border === entry.id}
+                onClick={() => setBorder(entry.id)}
+                className={[
+                  "h-6 w-6 rounded border",
+                  border === entry.id
+                    ? "border-cyan-500 ring-1 ring-cyan-500"
+                    : "border-line-strong hover:border-fg-muted",
+                ].join(" ")}
+                style={{ backgroundColor: entry.swatch }}
+              />
+            ))}
+          </div>
+
           <div className="flex flex-wrap items-center gap-4">
             <label className="flex items-center gap-1.5">
               <input
@@ -594,7 +669,10 @@ function toggleKey(current: ReadonlySet<string>, key: string): ReadonlySet<strin
 
 /**
  * The curation row: every boundary resource as a chip, lit when it will be
- * on the bar. Unchecking noise (that one stray dust) is the whole feature.
+ * on the bar. Unchecking noise (that one stray dust) is the whole feature,
+ * so each chip wears an eye - the universal "this is a visibility toggle" -
+ * rather than relying on anyone guessing that a chip is clickable. Plans
+ * with hundreds of boundary resources scroll inside the row.
  */
 function ResourceChipRow({
   label,
@@ -611,29 +689,38 @@ function ResourceChipRow({
     return null;
   }
   return (
-    <div className="flex flex-wrap items-center gap-1">
-      <span className="mr-1 text-xs font-medium text-fg-subtle">{label}</span>
-      {stats.map((stat) => {
-        const key = statKey(stat);
-        const isExcluded = excluded.has(key);
-        return (
-          <button
-            key={key}
-            type="button"
-            onClick={() => onToggle(key)}
-            aria-pressed={!isExcluded}
-            title={isExcluded ? "Show on the summary bar" : "Hide from the summary bar"}
-            className={[
-              "max-w-48 truncate rounded border px-1.5 py-0.5 text-xs",
-              isExcluded
-                ? "border-line bg-surface-sunken text-fg-muted line-through"
-                : "border-line-strong bg-surface text-fg-subtle hover:border-cyan-600",
-            ].join(" ")}
-          >
-            {stat.displayName ?? stat.resourceId}
-          </button>
-        );
-      })}
+    <div className="flex items-start gap-2">
+      <span className="w-10 shrink-0 pt-1 text-xs font-medium text-fg-subtle">{label}</span>
+      <div className="flex max-h-24 min-w-0 flex-1 flex-wrap content-start gap-1 overflow-y-auto">
+        {stats.map((stat) => {
+          const key = statKey(stat);
+          const isExcluded = excluded.has(key);
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onToggle(key)}
+              aria-pressed={!isExcluded}
+              title={isExcluded ? "Show on the summary bar" : "Hide from the summary bar"}
+              className={[
+                "inline-flex max-w-48 items-center gap-1 rounded border px-1.5 py-0.5 text-xs",
+                isExcluded
+                  ? "border-line bg-surface-sunken text-fg-muted"
+                  : "border-line-strong bg-surface text-fg-subtle hover:border-cyan-600",
+              ].join(" ")}
+            >
+              {isExcluded ? (
+                <EyeOff className="h-3 w-3 shrink-0" />
+              ) : (
+                <Eye className="h-3 w-3 shrink-0 text-cyan-500" />
+              )}
+              <span className={isExcluded ? "truncate line-through" : "truncate"}>
+                {stat.displayName ?? stat.resourceId}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

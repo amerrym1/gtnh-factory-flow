@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { composeExportSvg, computeCompositeLayout } from "./export-composite";
+import {
+  composeExportSvg,
+  computeCompositeLayout,
+  resolveExportBorderWidth,
+} from "./export-composite";
 
 describe("computeCompositeLayout", () => {
   it("scales the bar to the board's width", () => {
@@ -46,6 +50,37 @@ describe("composeExportSvg", () => {
   it("keeps a transparent composite free of any background rect", () => {
     const composed = composeExportSvg({ boardSvg, footerSvg, layout });
     expect(composed).not.toContain(`<rect width="100%"`);
+  });
+
+  it("draws the frame as an inset stroke over everything", () => {
+    const composed = composeExportSvg({
+      boardSvg,
+      footerSvg,
+      layout,
+      border: { color: "#454a52", width: 8 },
+    });
+    expect(composed).toContain(
+      `<rect x="4" y="4" width="992" height="617" fill="none" stroke="#454a52" stroke-width="8"/>`,
+    );
+    // Last child, so it frames the bar too.
+    expect(composed.indexOf("stroke-width")).toBeGreaterThan(composed.indexOf(footerSvg));
+  });
+
+  it("frames a bare board without needing a bar", () => {
+    const bare = computeCompositeLayout(1000, 500, 0, 0);
+    const composed = composeExportSvg({
+      boardSvg,
+      layout: bare,
+      border: { color: "#000000", width: 4 },
+    });
+    expect(composed).toContain(`viewBox="0 0 1000 500"`);
+    expect(composed).toContain(`stroke="#000000"`);
+  });
+
+  it("scales the frame weight with the board and clamps both ends", () => {
+    expect(resolveExportBorderWidth(500)).toBe(4);
+    expect(resolveExportBorderWidth(2960)).toBe(12);
+    expect(resolveExportBorderWidth(50_000)).toBe(32);
   });
 
   it("strips an XML prolog so the nested documents stay valid", () => {

@@ -5,7 +5,7 @@ import type {
   EdgePulseFrameSpec,
   FlowExportCapture,
 } from "@/lib/import-export/plan-image";
-import type { CompositeLayout } from "@/lib/import-export/export-composite";
+import { drawBorder, type CompositeLayout, type ExportBorder } from "@/lib/import-export/export-composite";
 import { PULSE_STROKE } from "../flow/edge-pulse";
 
 /**
@@ -37,9 +37,10 @@ export async function renderPlanGif(options: {
   layout: CompositeLayout;
   capture: Pick<FlowExportCapture, "viewport" | "occlusionRects" | "occlusionDots" | "pulses">;
   background?: string;
+  border?: ExportBorder;
   onProgress?: (frame: number, total: number) => void;
 }): Promise<Blob> {
-  const { boardBlob, footerBlob, layout, capture, background, onProgress } = options;
+  const { boardBlob, footerBlob, layout, capture, background, border, onProgress } = options;
   const scale = Math.min(1, GIF_MAX_WIDTH / layout.boardWidth);
   const width = Math.max(1, Math.round(layout.boardWidth * scale));
   const height = Math.max(1, Math.round(layout.totalHeight * scale));
@@ -59,6 +60,10 @@ export async function renderPlanGif(options: {
     base.context.drawImage(board, 0, 0, width, boardHeight);
     if (footer) {
       base.context.drawImage(footer, 0, boardHeight, width, height - boardHeight);
+    }
+    if (border) {
+      // The frame sits UNDER the dash overlay, like everything else static.
+      drawBorder(base.context, width, height, border, scale);
     }
 
     const pulses = capture.pulses;

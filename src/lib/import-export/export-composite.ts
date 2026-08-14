@@ -25,6 +25,25 @@ export interface CompositeLayout {
   totalHeight: number;
 }
 
+/** A frame around the finished image. Width is in board-CSS px. */
+export interface ExportBorder {
+  color: string;
+  width: number;
+}
+
+/**
+ * Frame thickness that reads the same at any factory size: roughly the
+ * weight the summary bar's own rules have after scaling, clamped so a tiny
+ * plan is not all frame and a mega board's frame stays a hairline of the
+ * whole.
+ */
+export function resolveExportBorderWidth(boardWidth: number): number {
+  if (!Number.isFinite(boardWidth) || boardWidth <= 0) {
+    return 4;
+  }
+  return Math.min(32, Math.max(4, Math.round(boardWidth / 240)));
+}
+
 export function computeCompositeLayout(
   boardWidth: number,
   boardHeight: number,
@@ -54,15 +73,16 @@ export async function compositeExportPng(options: {
   layout: CompositeLayout;
   pixelRatio: number;
   background?: string;
+  border?: ExportBorder;
 }): Promise<Blob> {
-  const { boardBlob, footerBlob, layout, pixelRatio, background } = options;
-  if (!footerBlob) {
+  const { boardBlob, footerBlob, layout, pixelRatio, background, border } = options;
+  if (!footerBlob && !border) {
     return boardBlob;
   }
 
   const [board, footer] = await Promise.all([
     createImageBitmap(boardBlob),
-    createImageBitmap(footerBlob),
+    footerBlob ? createImageBitmap(footerBlob) : Promise.resolve(undefined),
   ]);
   try {
     const canvas = document.createElement("canvas");
@@ -80,16 +100,35 @@ export async function compositeExportPng(options: {
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
     context.drawImage(board, 0, 0);
-    const footerTop = Math.round(layout.boardHeight * pixelRatio);
-    context.drawImage(footer, 0, footerTop, canvas.width, canvas.height - footerTop);
+    if (footer) {
+      const footerTop = Math.round(layout.boardHeight * pixelRatio);
+      context.drawImage(footer, 0, footerTop, canvas.width, canvas.height - footerTop);
+    }
+    if (border) {
+      drawBorder(context, canvas.width, canvas.height, border, pixelRatio);
+    }
 
     return await new Promise<Blob>((resolve) => {
       canvas.toBlob((blob) => resolve(blob ?? boardBlob), "image/png");
     });
   } finally {
     board.close();
-    footer.close();
+    footer?.close();
   }
+}
+
+/** An inset stroke: half the width would otherwise fall outside the canvas. */
+export function drawBorder(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  border: ExportBorder,
+  scale: number,
+) {
+  const strokeWidth = Math.max(1, border.width * scale);
+  context.strokeStyle = border.color;
+  context.lineWidth = strokeWidth;
+  context.strokeRect(strokeWidth / 2, strokeWidth / 2, width - strokeWidth, height - strokeWidth);
 }
 
 /**
@@ -104,19 +143,30 @@ export function composeExportSvg(options: {
   footerSvg?: string;
   layout: CompositeLayout;
   background?: string;
+  border?: ExportBorder;
 }): string {
-  const { boardSvg, footerSvg, layout, background } = options;
+  const { boardSvg, footerSvg, layout, background, border } = options;
   const board = stripXmlProlog(boardSvg);
-  if (!footerSvg) {
+  if (!footerSvg && !border) {
     return board;
   }
 
-  const footer = stripXmlProlog(footerSvg);
   const width = layout.boardWidth;
   const height = layout.totalHeight;
   const footerScaledHeight = layout.footerHeight * layout.footerScale;
   const backgroundRect = background
     ? `<rect width="100%" height="100%" fill="${background}"/>`
+    : "";
+  const footerSvgElement = footerSvg
+    ? `<svg x="0" y="${layout.boardHeight}" width="${width}" height="${footerScaledHeight}" ` +
+      `viewBox="0 0 ${layout.footerWidth} ${layout.footerHeight}">` +
+      stripXmlProlog(footerSvg) +
+      `</svg>`
+    : "";
+  const borderRect = border
+    ? `<rect x="${border.width / 2}" y="${border.width / 2}" ` +
+      `width="${width - border.width}" height="${height - border.width}" ` +
+      `fill="none" stroke="${border.color}" stroke-width="${border.width}"/>`
     : "";
 
   return (
@@ -124,10 +174,8 @@ export function composeExportSvg(options: {
     `viewBox="0 0 ${width} ${height}">` +
     backgroundRect +
     board +
-    `<svg x="0" y="${layout.boardHeight}" width="${width}" height="${footerScaledHeight}" ` +
-    `viewBox="0 0 ${layout.footerWidth} ${layout.footerHeight}">` +
-    footer +
-    `</svg>` +
+    footerSvgElement +
+    borderRect +
     `</svg>`
   );
 }

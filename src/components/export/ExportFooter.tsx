@@ -133,11 +133,15 @@ export function ExportFooter({
         borderTop: `2px solid ${palette.edge}`,
         color: palette.text,
       }}
-      className="flex items-start gap-6 px-6 py-5"
+      className="px-6 py-5"
     >
       {showTitle ? (
-        <div className="w-60 min-w-0 shrink-0">
-          <div className="flex items-center gap-3">
+        // The name owns the whole top line: setups are christened things
+        // like "Platline v4 (LV glass, no cleanroom)" and a side column
+        // truncated them. It wraps rather than clips; the numbers keep to
+        // the right.
+        <div className="mb-4 flex items-start justify-between gap-8">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             {icon ? (
               <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden">
                 <ResourceIcon
@@ -157,48 +161,47 @@ export function ExportFooter({
                 />
               </span>
             ) : null}
-            <div className="min-w-0 text-[21px] font-bold leading-7">
-              <div className="truncate">{planName}</div>
+            <div className="min-w-0 break-words text-[22px] font-bold leading-7">{planName}</div>
+          </div>
+          <div className="shrink-0 pt-0.5 text-right">
+            <div
+              style={{ color: palette.subtle }}
+              className="flex items-center justify-end gap-2 text-[13px] tabular-nums"
+            >
+              <span>{stats.machineCount} machines</span>
+              <span aria-hidden>·</span>
+              <span>{stats.nodeCount} cards</span>
+              {stats.highestTier ? <TierBadge tier={stats.highestTier} /> : null}
             </div>
-          </div>
-          <div
-            style={{ color: palette.subtle }}
-            className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] tabular-nums"
-          >
-            <span>{stats.machineCount} machines</span>
-            <span aria-hidden>·</span>
-            <span>{stats.nodeCount} cards</span>
-            {stats.highestTier ? (
-              <>
-                <span aria-hidden>·</span>
-                <TierBadge tier={stats.highestTier} />
-              </>
-            ) : null}
-          </div>
-          <div className="mt-2 text-[13px]">
-            <span style={{ color: palette.brand }} className="font-semibold">
-              gtnhplanner.com
-            </span>
-            {gameVersion ? <span style={{ color: palette.muted }}> · GTNH {gameVersion}</span> : null}
+            <div className="mt-1.5 text-[13px]">
+              <span style={{ color: palette.brand }} className="font-semibold">
+                gtnhplanner.com
+              </span>
+              {gameVersion ? (
+                <span style={{ color: palette.muted }}> · GTNH {gameVersion}</span>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}
-      <IoColumn
-        label="Needs"
-        accent={palette.needs}
-        panel={palette.needsPanel}
-        panelEdge={palette.needsEdge}
-        palette={palette}
-        stats={needs}
-      />
-      <IoColumn
-        label="Makes"
-        accent={palette.makes}
-        panel={palette.makesPanel}
-        panelEdge={palette.makesEdge}
-        palette={palette}
-        stats={outputs}
-      />
+      <div className="flex items-start gap-5">
+        <IoColumn
+          label="Needs"
+          accent={palette.needs}
+          panel={palette.needsPanel}
+          panelEdge={palette.needsEdge}
+          palette={palette}
+          stats={needs}
+        />
+        <IoColumn
+          label="Makes"
+          accent={palette.makes}
+          panel={palette.makesPanel}
+          panelEdge={palette.makesEdge}
+          palette={palette}
+          stats={outputs}
+        />
+      </div>
     </div>
   );
 }
@@ -238,9 +241,10 @@ function IoColumn({
       ) : (
         <div
           className="mt-1.5 grid gap-x-5"
-          // Long lists split into as many columns as the panel affords
-          // instead of growing a tail below the title block.
-          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}
+          // A plan can have hundreds of boundary resources; the grid packs
+          // them into as many columns as the panel affords and the bar
+          // simply grows downward.
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}
         >
           {stats.map((stat) => (
             <div

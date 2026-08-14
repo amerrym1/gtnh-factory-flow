@@ -16,10 +16,16 @@ function isVoltageTier(value: unknown): value is Exclude<MachineTier, "DEMO"> {
  * Derives the community stat card for a plan. Pure in (project, result), so
  * the server can recompute it from the uploaded JSON instead of trusting
  * client-supplied numbers.
+ *
+ * `resourceLimit` caps the needs/makes lists; the community shelves keep the
+ * default, while the image export asks for everything - a plan with two
+ * hundred boundary resources prints two hundred rows if its owner leaves
+ * them all checked.
  */
 export function computeCommunityPlanStats(
   project: FactoryProject,
   result: ThroughputResult,
+  resourceLimit: number = COMMUNITY_RESOURCE_STAT_LIMIT,
 ): CommunityPlanStats {
   let highestTierIndex = -1;
   let highestTier: Exclude<MachineTier, "DEMO"> | undefined;
@@ -49,8 +55,8 @@ export function computeCommunityPlanStats(
     totalEuT: Number.isFinite(result.totalEuT) ? result.totalEuT : 0,
     highestTier,
     highestTierIndex,
-    needs: toResourceStats(result.externalInputs, "consumed", icons),
-    outputs: toResourceStats(result.unconsumedOutputs, "produced", icons),
+    needs: toResourceStats(result.externalInputs, "consumed", icons, resourceLimit),
+    outputs: toResourceStats(result.unconsumedOutputs, "produced", icons, resourceLimit),
   };
 }
 
@@ -106,6 +112,7 @@ function toResourceStats(
   balances: ThroughputResult["externalInputs"],
   direction: "consumed" | "produced",
   icons: Map<string, ResourceIconInfo>,
+  limit: number = COMMUNITY_RESOURCE_STAT_LIMIT,
 ): PlanResourceStat[] {
   return balances
     .map((balance) => {
@@ -125,5 +132,5 @@ function toResourceStats(
     })
     .filter((stat) => stat.ratePerSecond > 0)
     .sort((a, b) => b.ratePerSecond - a.ratePerSecond)
-    .slice(0, COMMUNITY_RESOURCE_STAT_LIMIT);
+    .slice(0, Number.isFinite(limit) ? limit : balances.length);
 }
