@@ -2,24 +2,24 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { ImageResponse } from "next/og";
 import { NextResponse } from "next/server";
+import { PNG } from "pngjs";
 import { GT_TIER_COLORS } from "@/components/flow/tier-colors";
-import type { PlanResourceStat } from "@/lib/community/types";
-import { formatCompact } from "@/lib/model/resources";
 import { getPublicPlanRow } from "@/lib/server/plan-preview";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * The card a shared plan link unfurls into: the summary bar's design at
- * Discord's 1200x630, drawn server-side from the plan's summary row. Same
- * palette, same words, same Monocraft - a link preview and an exported
- * image should be recognisably the same object.
+ * The card a shared plan link unfurls into: the plan's name, its numbers,
+ * and its chosen icon LARGE on the icon's own dominant colour - drawn
+ * server-side from the summary row at Discord's 1200x630. The inputs and
+ * outputs stay in the embed's text (describePlanRow), not the picture.
  *
  * Rendered with next/og (satori), which lays out with flexbox only and no
  * cascade: every box says display:flex out loud, and text truncates by
- * clipping. Icons stay out - the atlas sprites the app uses are canvas
- * crops satori cannot make, and names with rates carry the meaning.
+ * clipping. The icon is a rendered standalone PNG read straight from
+ * public/datasets and upscaled with image-rendering: pixelated, so 32px of
+ * pixel art stays sharp at 256.
  */
 
 const PLATE = "#131417";
@@ -28,14 +28,7 @@ const TEXT = "#e8e9ec";
 const SUBTLE = "#9aa1ab";
 const MUTED = "#686f7a";
 const BRAND = "#22d3ee";
-const INPUT_ACCENT = "#f87171";
-const INPUT_PANEL = "rgba(239,68,68,0.07)";
-const INPUT_EDGE = "rgba(239,68,68,0.28)";
-const OUTPUT_ACCENT = "#34d399";
-const OUTPUT_PANEL = "rgba(52,211,153,0.07)";
-const OUTPUT_EDGE = "rgba(52,211,153,0.28)";
-
-const PANEL_ROW_LIMIT = 6;
+const ICON_PANEL_FALLBACK = "#1b1e24";
 
 /** Font files read once per server; satori wants raw ArrayBuffers. */
 let fontsPromise: Promise<{ regular: ArrayBuffer; bold: ArrayBuffer }> | undefined;
@@ -58,74 +51,72 @@ async function loadFonts() {
   return fontsPromise;
 }
 
-function formatRate(stat: PlanResourceStat): string {
-  return `${formatCompact(stat.ratePerSecond)}${stat.kind === "fluid" ? " L/s" : "/s"}`;
+/**
+ * The rendered dataset PNGs pad their art with wide transparent margins
+ * (an oil berry occupies 112px of a 256px canvas), so drawn as-is a "large"
+ * icon reads as a small one. Crop to the opaque pixels, squared and with a
+ * little breathing room, and the art fills the space it is given.
+ */
+function cropToArt(data: Buffer): Buffer {
+  const png = PNG.sync.read(data);
+  let minX = png.width;
+  let minY = png.height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < png.height; y++) {
+    for (let x = 0; x < png.width; x++) {
+      if (png.data[(y * png.width + x) * 4 + 3]! > 8) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) {
+    return data;
+  }
+  const width = maxX - minX + 1;
+  const height = maxY - minY + 1;
+  const margin = Math.max(2, Math.round(Math.max(width, height) * 0.08));
+  const side = Math.max(width, height) + margin * 2;
+  const out = new PNG({ width: side, height: side });
+  PNG.bitblt(
+    png,
+    out,
+    minX,
+    minY,
+    width,
+    height,
+    Math.floor((side - width) / 2),
+    Math.floor((side - height) / 2),
+  );
+  return PNG.sync.write(out);
 }
 
-function IoPanel({
-  label,
-  accent,
-  panel,
-  edge,
-  stats,
-}: {
-  label: string;
-  accent: string;
-  panel: string;
-  edge: string;
-  stats: PlanResourceStat[];
-}) {
-  const shown = stats.slice(0, PANEL_ROW_LIMIT);
-  const rest = stats.length - shown.length;
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        flexGrow: 1,
-        flexBasis: 0,
-        backgroundColor: panel,
-        border: `2px solid ${edge}`,
-        borderRadius: 12,
-        padding: "20px 24px",
-        gap: 10,
-      }}
-    >
-      <div style={{ display: "flex", color: accent, fontSize: 22, fontWeight: 700 }}>{label}</div>
-      {shown.length === 0 ? (
-        <div style={{ display: "flex", color: MUTED, fontSize: 24 }}>Nothing</div>
-      ) : (
-        shown.map((stat, index) => (
-          <div
-            key={`${stat.kind}:${stat.resourceId}:${index}`}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 16,
-              fontSize: 25,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                color: TEXT,
-                maxWidth: 380,
-                overflow: "hidden",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {stat.displayName ?? stat.resourceId}
-            </div>
-            <div style={{ display: "flex", color: SUBTLE }}>{formatRate(stat)}</div>
-          </div>
-        ))
-      )}
-      {rest > 0 ? (
-        <div style={{ display: "flex", color: MUTED, fontSize: 21 }}>+{rest} more</div>
-      ) : null}
-    </div>
+/**
+ * A dataset icon path (`/datasets/gtnh/<version>/textures/rendered/x.png`)
+ * as a data URI, read from disk the same way the texture route serves it.
+ * Anything that fails to validate, read or decode becomes undefined, never
+ * a throw: a card with no icon must still render.
+ */
+async function loadIconDataUri(iconPath: string | undefined): Promise<string | undefined> {
+  if (!iconPath?.startsWith("/datasets/gtnh/")) {
+    return undefined;
+  }
+  const segments = iconPath.slice(1).split("/");
+  const safe = segments.every(
+    (segment) => /^[a-zA-Z0-9._-]+$/.test(segment) && segment !== "." && segment !== "..",
   );
+  if (!safe || !iconPath.endsWith(".png")) {
+    return undefined;
+  }
+  try {
+    const data = await readFile(path.join(process.cwd(), "public", ...segments));
+    return `data:image/png;base64,${cropToArt(data).toString("base64")}`;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function GET(
@@ -144,6 +135,17 @@ export async function GET(
   const tier = row.highest_tier
     ? GT_TIER_COLORS[row.highest_tier as keyof typeof GT_TIER_COLORS]
     : undefined;
+
+  // The plan's chosen face, or an output's icon when it never chose one:
+  // items first, because their sprites are real art while a fluid's is
+  // often a flat colour chip.
+  const face = row.icon?.iconPath ? row.icon : undefined;
+  const fallback =
+    row.outputs?.find((stat) => stat.kind === "item" && stat.iconPath) ??
+    row.outputs?.find((stat) => stat.iconPath);
+  const iconDataUri =
+    (await loadIconDataUri(face?.iconPath)) ?? (await loadIconDataUri(fallback?.iconPath));
+  const iconBackdrop = (face ?? fallback)?.dominantColor ?? ICON_PANEL_FALLBACK;
 
   return new ImageResponse(
     (
@@ -234,21 +236,37 @@ export async function GET(
           ) : null}
         </div>
 
-        <div style={{ display: "flex", gap: 22, marginTop: 26, flexGrow: 1 }}>
-          <IoPanel
-            label="INPUTS"
-            accent={INPUT_ACCENT}
-            panel={INPUT_PANEL}
-            edge={INPUT_EDGE}
-            stats={row.needs ?? []}
-          />
-          <IoPanel
-            label="OUTPUTS"
-            accent={OUTPUT_ACCENT}
-            panel={OUTPUT_PANEL}
-            edge={OUTPUT_EDGE}
-            stats={row.outputs ?? []}
-          />
+        <div
+          style={{
+            display: "flex",
+            flexGrow: 1,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {iconDataUri ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 320,
+                height: 320,
+                borderRadius: 24,
+                backgroundColor: iconBackdrop,
+                border: `3px solid ${FRAME}`,
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={iconDataUri}
+                width={256}
+                height={256}
+                alt=""
+                style={{ imageRendering: "pixelated" }}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div style={{ display: "flex", marginTop: 24, fontSize: 21, color: MUTED }}>

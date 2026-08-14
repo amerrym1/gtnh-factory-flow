@@ -29,7 +29,7 @@ export async function generateMetadata({
     url: `/api/community/plans/${encodeURIComponent(row.id)}/card`,
     width: 1200,
     height: 630,
-    alt: `${row.name}: what it needs and makes`,
+    alt: `${row.name} on GTNH Planner`,
   };
 
   return {

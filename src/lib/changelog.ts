@@ -73,6 +73,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.12.1",
+    date: "2026-08-14",
+    headline: "The link card leads with the plan's icon",
+    notes: [
+      "A shared link's preview now shows the plan's icon large instead of listing inputs and outputs.",
+    ],
+  },
+  {
     version: "2.12.0",
     date: "2026-08-14",
     headline: "Exports get a preview, a nameplate, and a GIF",
