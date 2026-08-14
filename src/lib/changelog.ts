@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.14.0",
+    date: "2026-08-14",
+    headline: "The planner gets its own icon",
+    notes: [
+      "A new icon in the browser tab, in bookmarks, and on home screens.",
+      "The site introduces itself properly to search engines and link previews.",
+    ],
+  },
+  {
     version: "2.13.0",
     date: "2026-08-14",
     headline: "Cards show their circuit setting",

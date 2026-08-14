@@ -1,1 +1,1 @@
-﻿GTNH Planner: an interactive GregTech New Horizons factory plan with machine cards, flow rates, and usage breakdown
+A GregTech: New Horizons factory drawn as a flowchart on GTNH Planner
