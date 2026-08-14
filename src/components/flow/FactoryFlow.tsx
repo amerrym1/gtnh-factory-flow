@@ -3326,7 +3326,11 @@ export function FactoryFlow() {
       await nextPaint();
       await nextPaint();
 
-      const nodesBounds = getNodesBounds(flowNodes);
+      const hideAnnotations = request.hideAnnotations === true;
+      const framedNodes = hideAnnotations
+        ? flowNodes.filter((node) => node.type !== "annotationNode")
+        : flowNodes;
+      const nodesBounds = getNodesBounds(framedNodes);
       const graphWidth = getExportImageSize(nodesBounds.width);
       const graphHeight = getExportImageSize(nodesBounds.height);
       // A sprawling factory must not ask for a 30,000px render surface: the
@@ -3366,7 +3370,7 @@ export function FactoryFlow() {
           height: `${imageHeight}px`,
           transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
         },
-        filter: exportNodeFilter,
+        filter: makeExportNodeFilter(hideAnnotations),
         // With fontEmbedCSS present the skip is inert; without it (the scan
         // failed) the export degrades to the old fallback font rather than
         // paying for a per-capture stylesheet walk. See export-fonts.ts.
@@ -3467,6 +3471,7 @@ export function FactoryFlow() {
             capture?: unknown;
             background?: unknown;
             cardDetail?: unknown;
+            hideAnnotations?: unknown;
           }
         | undefined;
 
@@ -3485,6 +3490,7 @@ export function FactoryFlow() {
         capture: detail.capture === true,
         background: typeof detail.background === "string" ? detail.background : undefined,
         cardDetail: detail.cardDetail === "glance" ? "glance" : "full",
+        hideAnnotations: detail.hideAnnotations === true,
       });
     };
 
@@ -9778,15 +9784,21 @@ function recipeContainsResourceKey(recipe: Recipe | undefined, resourceKey: stri
   );
 }
 
-function exportNodeFilter(domNode: HTMLElement) {
-  const element = domNode instanceof Element ? domNode : undefined;
+function makeExportNodeFilter(hideAnnotations: boolean) {
+  return (domNode: HTMLElement) => {
+    const element = domNode instanceof Element ? domNode : undefined;
 
-  return !(
-    element?.classList.contains("react-flow__edgeupdater") ||
-    element?.classList.contains("react-flow__selection") ||
-    element?.classList.contains("react-flow__nodesselection") ||
-    element?.classList.contains("react-flow__handle")
-  );
+    if (hideAnnotations && element?.classList.contains("react-flow__node-annotationNode")) {
+      return false;
+    }
+
+    return !(
+      element?.classList.contains("react-flow__edgeupdater") ||
+      element?.classList.contains("react-flow__selection") ||
+      element?.classList.contains("react-flow__nodesselection") ||
+      element?.classList.contains("react-flow__handle")
+    );
+  };
 }
 
 function nextAnimationFrame(): Promise<void> {

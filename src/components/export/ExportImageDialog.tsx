@@ -28,7 +28,8 @@ import {
   getCanvasTheme,
   type CanvasThemeId,
 } from "@/components/flow/canvas-themes";
-import { readBoardViewSnapshot } from "@/components/flow/board-view";
+import { readBoardViewSnapshot, useBoardView, writeBoardView } from "@/components/flow/board-view";
+import type { RateUnit } from "@/lib/model/rate-unit";
 import { useFactoryStore } from "@/store/factory-store";
 import { useDesignStore } from "@/store/design-store";
 import { ExportFooter, resolveExportFooterWidth, resolveExportTone } from "./ExportFooter";
@@ -51,6 +52,13 @@ const FORMATS: Array<{ id: ExportFormat; label: string }> = [
 
 /** "auto" resolves against the bar's tone; anything else is the colour. */
 type ExportBorderChoice = "none" | "auto" | string;
+
+const RATE_UNITS: Array<{ id: RateUnit; label: string }> = [
+  { id: "tick", label: "/t" },
+  { id: "second", label: "/s" },
+  { id: "minute", label: "/min" },
+  { id: "hour", label: "/hr" },
+];
 
 const BORDER_SWATCHES: Array<{ id: ExportBorderChoice; title: string; swatch: string }> = [
   { id: "auto", title: "Frame: steel", swatch: "#454a52" },
@@ -84,6 +92,13 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
     (state) =>
       state.designs.find((design) => design.id === state.activeDesignId)?.name ?? "Untitled",
   );
+  // Shared with the board, not copies of it: the rate unit is the app-wide
+  // one (the /t /s /m /h buttons), and presentation mode is the board's own
+  // calm switch - flipping either here changes the live board behind the
+  // dialog, and the preview photographs it again.
+  const rateUnit = useFactoryStore((state) => state.rateUnit);
+  const setRateUnit = useFactoryStore((state) => state.setRateUnit);
+  const isPresentation = useBoardView().calmMode;
 
   const [format, setFormat] = useState<ExportFormat>("png");
   const [background, setBackground] = useState<ExportBackground>(
@@ -93,6 +108,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
   const [border, setBorder] = useState<ExportBorderChoice>("auto");
   const [includeFooter, setIncludeFooter] = useState(true);
   const [includeTitle, setIncludeTitle] = useState(true);
+  const [includeAnnotations, setIncludeAnnotations] = useState(true);
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
   const [capture, setCapture] = useState<FlowExportCapture>();
   const [isCapturing, setCapturing] = useState(true);
@@ -163,6 +179,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
               capture: true,
               background: background === "transparent" ? "transparent" : backgroundColor,
               cardDetail,
+              hideAnnotations: !includeAnnotations,
             },
           }),
         );
@@ -174,7 +191,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
           }
         }, 120_000);
       }),
-    [background, backgroundColor, cardDetail],
+    [background, backgroundColor, cardDetail, includeAnnotations],
   );
 
   // The preview is one capture per background: everything else the dialog
@@ -212,7 +229,9 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
     return () => {
       cancelled = true;
     };
-  }, [requestBoardCapture]);
+    // rateUnit and isPresentation repaint the BOARD, not the request: the
+    // photograph must be retaken to show the new numbers or the calm colours.
+  }, [requestBoardCapture, rateUnit, isPresentation]);
 
   const previewUrl = useMemo(
     () => (capture?.blob ? URL.createObjectURL(capture.blob) : undefined),
@@ -228,16 +247,17 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
 
   // ---- Measuring the pieces the composite needs -------------------------
 
-  const [previewWidth, setPreviewWidth] = useState(0);
+  const [previewBox, setPreviewBox] = useState({ width: 0, height: 0 });
   const previewShellRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const shell = previewShellRef.current;
     if (!shell || typeof ResizeObserver === "undefined") {
       return;
     }
-    const observer = new ResizeObserver(() => setPreviewWidth(shell.clientWidth));
+    const measure = () => setPreviewBox({ width: shell.clientWidth, height: shell.clientHeight });
+    const observer = new ResizeObserver(measure);
     observer.observe(shell);
-    setPreviewWidth(shell.clientWidth);
+    measure();
     return () => observer.disconnect();
   }, []);
 
@@ -269,7 +289,13 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
         : undefined,
     [capture, footerVisible, footerWidth, footerHeight],
   );
-  const previewScale = capture && previewWidth > 0 ? previewWidth / capture.width : 0;
+  // Contain-fit: the WHOLE image - board, bar, frame - inside the preview
+  // box, letterboxed as needed. A tall narrow plan shrinks to fit rather
+  // than asking anyone to scroll to find out what their export looks like.
+  const previewScale =
+    capture && layout && previewBox.width > 0 && previewBox.height > 0
+      ? Math.min(previewBox.width / capture.width, previewBox.height / layout.totalHeight)
+      : 0;
   const exportBorder: ExportBorder | undefined =
     borderColor && capture
       ? { color: borderColor, width: resolveExportBorderWidth(capture.width) }
@@ -379,7 +405,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[100] grid place-items-center bg-neutral-950/50 p-4">
-      <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-y-auto rounded border border-line-strong bg-surface p-4 shadow-xl">
+      <div className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-y-auto rounded border border-line-strong bg-surface p-4 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <ImageDown className="h-4 w-4" /> Export an image
@@ -394,17 +420,22 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {/* Preview: the real capture over the real bar, scaled to fit. */}
+        {/* Preview: the real capture over the real bar, the WHOLE image
+            contain-fit in a fixed window - never a scrollbar between a
+            player and what their export looks like. */}
         <div
           ref={previewShellRef}
-          className="relative overflow-hidden rounded border border-line bg-surface-sunken"
+          className="relative grid h-[52vh] place-items-center overflow-hidden rounded border border-line bg-surface-sunken"
         >
-          <div
-            className="max-h-[44vh] overflow-y-auto"
-            style={background === "transparent" ? CHECKER_STYLE : undefined}
-          >
-            {previewUrl ? (
-              <div className="pointer-events-none relative select-none">
+          <div>
+            {previewUrl && capture && previewScale > 0 ? (
+              <div
+                className="pointer-events-none relative select-none"
+                style={{
+                  width: capture.width * previewScale,
+                  ...(background === "transparent" ? CHECKER_STYLE : {}),
+                }}
+              >
                 <img src={previewUrl} alt="Board export preview" className="block w-full" />
                 {footerVisible && layout && previewScale > 0 ? (
                   <div
@@ -436,7 +467,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
                     </div>
                   </div>
                 ) : null}
-                {exportBorder && previewScale > 0 ? (
+                {exportBorder ? (
                   <div
                     className="absolute inset-0"
                     style={{
@@ -448,9 +479,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
                   />
                 ) : null}
               </div>
-            ) : (
-              <div className="h-44" />
-            )}
+            ) : null}
           </div>
           {isCapturing ? (
             <div className="absolute inset-0 grid place-items-center bg-neutral-950/40">
@@ -501,6 +530,26 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
                       cardDetail === entry.id
                         ? "bg-cyan-600 px-3 py-1 text-xs font-medium text-white"
                         : "bg-surface px-3 py-1 text-xs text-fg-subtle hover:bg-surface-raised"
+                    }
+                  >
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-fg-subtle">Rates</span>
+              <div className="flex overflow-hidden rounded border border-line-strong">
+                {RATE_UNITS.map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => setRateUnit(entry.id)}
+                    aria-pressed={rateUnit === entry.id}
+                    className={
+                      rateUnit === entry.id
+                        ? "bg-cyan-600 px-2.5 py-1 text-xs font-medium text-white"
+                        : "bg-surface px-2.5 py-1 text-xs text-fg-subtle hover:bg-surface-raised"
                     }
                   >
                     {entry.label}
@@ -599,18 +648,34 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
               />
               Title and stats
             </label>
+            <label className="flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                checked={includeAnnotations}
+                onChange={(event) => setIncludeAnnotations(event.target.checked)}
+              />
+              Annotations
+            </label>
+            <label className="flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                checked={isPresentation}
+                onChange={(event) => writeBoardView({ calmMode: event.target.checked })}
+              />
+              Presentation mode
+            </label>
           </div>
 
           {includeFooter ? (
             <div className="space-y-2">
               <ResourceChipRow
-                label="Needs"
+                label="Inputs"
                 stats={stats.needs}
                 excluded={excluded}
                 onToggle={(key) => setExcluded((current) => toggleKey(current, key))}
               />
               <ResourceChipRow
-                label="Makes"
+                label="Outputs"
                 stats={stats.outputs}
                 excluded={excluded}
                 onToggle={(key) => setExcluded((current) => toggleKey(current, key))}
@@ -690,7 +755,7 @@ function ResourceChipRow({
   }
   return (
     <div className="flex items-start gap-2">
-      <span className="w-10 shrink-0 pt-1 text-xs font-medium text-fg-subtle">{label}</span>
+      <span className="w-14 shrink-0 pt-1 text-xs font-medium text-fg-subtle">{label}</span>
       <div className="flex max-h-24 min-w-0 flex-1 flex-wrap content-start gap-1 overflow-y-auto">
         {stats.map((stat) => {
           const key = statKey(stat);

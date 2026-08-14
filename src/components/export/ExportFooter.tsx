@@ -184,9 +184,11 @@ export function ExportFooter({
           </div>
         </div>
       ) : null}
+      {/* "Inputs" and "Outputs", the same words the panel on the right of
+          the app uses for the same numbers. */}
       <div className="flex items-start gap-5">
         <IoColumn
-          label="Needs"
+          label="Inputs"
           accent={palette.needs}
           panel={palette.needsPanel}
           panelEdge={palette.needsEdge}
@@ -194,7 +196,7 @@ export function ExportFooter({
           stats={needs}
         />
         <IoColumn
-          label="Makes"
+          label="Outputs"
           accent={palette.makes}
           panel={palette.makesPanel}
           panelEdge={palette.makesEdge}

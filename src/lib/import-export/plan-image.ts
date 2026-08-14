@@ -30,6 +30,12 @@ export interface FlowExportRequest {
    * to fit a chat window.
    */
   cardDetail?: "full" | "glance";
+  /**
+   * Leave the notes, arrows and backdrops out of the photograph - only the
+   * working board. The frame tightens to the remaining cards too, so a
+   * hidden backdrop does not leave its empty acreage behind.
+   */
+  hideAnnotations?: boolean;
 }
 
 /** One line's marching dashes, as replayable data for the GIF export. */
