@@ -1,4 +1,5 @@
 import type { Recipe, ResourceAmount } from "@/lib/model/types";
+import { isProgrammedCircuitResource } from "@/lib/model/programmed-circuit";
 import type {
   NeiRecipeKind,
   NeiRecipeRenderModel,
@@ -121,12 +122,8 @@ function findProgrammedCircuitResource(recipe: Recipe): NeiRenderResourceAmount 
     return null;
   }
 
-  return (
-    recipe.inputs.find(
-      (input) =>
-        input.kind === "item" &&
-        (input.id.includes("circuit") ||
-          input.displayName?.toLowerCase().includes("programmed circuit")),
-    ) ?? null
-  );
+  // Strictly the circuit item. Matching anything with "circuit" in its id
+  // claimed ordinary ingredients: a recipe taking a Circuit Board would hand
+  // back the board as its setting.
+  return recipe.inputs.find((input) => isProgrammedCircuitResource(input)) ?? null;
 }

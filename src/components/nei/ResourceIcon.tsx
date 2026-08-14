@@ -9,6 +9,7 @@ import {
   stripOreDictionaryPrefix,
   trimTrailingDecimalZeros,
 } from "@/lib/model/resources";
+import { isProgrammedCircuitResource } from "@/lib/model/programmed-circuit";
 import { MinecraftTooltip } from "./MinecraftTooltip";
 
 type DisplayResourceAmount = Pick<
@@ -77,7 +78,7 @@ function ResourceIconComponent({
         // The circuit's art is a near-black chip, drawn on a light grey panel
         // at the size of a fingernail. Left as it is, the setting a recipe
         // will not run without is the hardest thing on the card to see.
-        resource && isProgrammedCircuit(resource)
+        resource && isProgrammedCircuitResource(resource)
           ? "[&_.minecraft-pixel-art]:brightness-[1.9] [&_.minecraft-pixel-art]:contrast-[1.15] [&_.minecraft-pixel-art]:saturate-[1.2]"
           : "",
         className,
@@ -88,7 +89,10 @@ function ResourceIconComponent({
       {resource && showAmount ? <AmountLabel resource={resource} /> : null}
       {resource?.chance !== undefined ? <ChanceLabel chance={resource.chance} /> : null}
 
-      {showConsumedState && resource?.consumed === false && !isProgrammedCircuit(resource) ? (
+      {/* A circuit is the setting the recipe runs on, not an ingredient. It is
+          never consumed, so "NC" says nothing a player does not already know
+          and only crowds a slot that is small to begin with. */}
+      {showConsumedState && resource?.consumed === false && !isProgrammedCircuitResource(resource) ? (
         <span
           title="Not consumed"
           className="absolute left-0 top-0 font-mono text-[8px] font-black leading-none text-[#ffff55] drop-shadow-[1px_1px_0_#000]"
@@ -136,19 +140,6 @@ function ResourceIconComponent({
  * joins and inline style objects.
  */
 export const ResourceIcon = memo(ResourceIconComponent);
-
-/**
- * A machine's circuit slot: the setting the recipe runs on, not an ingredient.
- *
- * It is never consumed, so the "NC" flag says nothing a player does not
- * already know and only crowds a slot that is small to begin with.
- */
-function isProgrammedCircuit(resource: Pick<ResourceAmount, "kind" | "id">): boolean {
-  return (
-    resource.kind === "item" &&
-    resource.id.replace(/@\d+$/, "") === "gregtech:gt.integrated_circuit"
-  );
-}
 
 /**
  * A slot never accepts the other form, so a fluid listed on a cell (or the
