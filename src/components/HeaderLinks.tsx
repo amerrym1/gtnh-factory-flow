@@ -1,6 +1,6 @@
 "use client";
 
-import { Bug, Compass, Sparkles } from "lucide-react";
+import { Bug, Compass, Heart, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { openWelcomeTab } from "@/lib/tour/welcome-tab";
 import {
@@ -18,6 +18,13 @@ const GITHUB_URL = "https://github.com/jackwrichards/gtnh-factory-flow";
  * for people who are already in there.
  */
 const DISCORD_THREAD_URL = "https://discord.com/channels/181078474394566657/1531402304530682036";
+
+/**
+ * The tip jar. Clicks are counted through Umami's `data-umami-event`
+ * auto-tracking (they land in the dashboard's Events panel, split by the
+ * `source` field); the attribute is inert when the analytics script is off.
+ */
+const KOFI_URL = "https://ko-fi.com/gtnhplanner";
 
 /**
  * Straight into the bug report form rather than a blank issue box, with the
@@ -105,10 +112,11 @@ export function WhatsNewButton({
         onClick(unseenNow);
       }}
       title="What's new in the planner"
-      className="relative inline-flex h-7 shrink-0 items-center gap-1.5 rounded border border-cyan-700 bg-cyan-950 px-2 text-xs font-semibold text-cyan-300 hover:border-cyan-500 hover:bg-cyan-900 hover:text-cyan-200"
+      aria-label="What's new in the planner"
+      className="relative inline-flex h-7 shrink-0 items-center gap-1.5 rounded border border-cyan-700 bg-cyan-950 px-2 text-xs font-semibold text-cyan-300 hover:border-cyan-500 hover:bg-cyan-900 hover:text-cyan-200 snug:w-7 snug:justify-center snug:px-0"
     >
       <Sparkles className="h-3.5 w-3.5" aria-hidden />
-      What&apos;s new
+      <span className="snug:hidden">What&apos;s new</span>
       {/* The quiet half of the system: a release that does not warrant a
           dialog still gets noticed, without anything being put in the way. */}
       {unread ? (
@@ -132,10 +140,35 @@ export function ReportBugButton() {
       target="_blank"
       rel="noreferrer noopener"
       title="Report a bug"
-      className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded border border-red-800 bg-red-950 px-2 text-xs font-semibold text-red-300 hover:border-red-600 hover:bg-red-900 hover:text-red-200"
+      aria-label="Report a bug"
+      className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded border border-red-800 bg-red-950 px-2 text-xs font-semibold text-red-300 hover:border-red-600 hover:bg-red-900 hover:text-red-200 snug:w-7 snug:justify-center snug:px-0"
     >
       <Bug className="h-3.5 w-3.5" aria-hidden />
-      Report Bug
+      <span className="snug:hidden">Report Bug</span>
+    </a>
+  );
+}
+
+/**
+ * The donation link, dressed like its two labelled neighbours but in its own
+ * colour. The word on the bar is just "Support": the app's name is already the
+ * first thing on the same line, and this is the button that has to survive the
+ * snug squeeze down to its heart.
+ */
+export function SupportButton() {
+  return (
+    <a
+      href={KOFI_URL}
+      target="_blank"
+      rel="noreferrer noopener"
+      title="Support GTNH Planner on Ko-fi"
+      aria-label="Support GTNH Planner on Ko-fi"
+      data-umami-event="support-kofi"
+      data-umami-event-source="header"
+      className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded border border-pink-800 bg-pink-950 px-2 text-xs font-semibold text-pink-300 hover:border-pink-600 hover:bg-pink-900 hover:text-pink-200 snug:w-7 snug:justify-center snug:px-0"
+    >
+      <Heart className="h-3.5 w-3.5 fill-current" aria-hidden />
+      <span className="snug:hidden">Support</span>
     </a>
   );
 }
@@ -167,6 +200,14 @@ export function MenuLinks({ onAction }: { onAction?: () => void }) {
       <MenuLink href={DISCORD_THREAD_URL} label="Discord thread">
         <DiscordMark />
       </MenuLink>
+      <MenuLink
+        href={KOFI_URL}
+        label="Support GTNH Planner"
+        tone="support"
+        umamiEvent="support-kofi"
+      >
+        <Heart className="h-3.5 w-3.5 fill-current" aria-hidden />
+      </MenuLink>
       <MenuLink href={BUG_REPORT_URL} label="Report a bug" tone="danger">
         <Bug className="h-3.5 w-3.5" aria-hidden />
       </MenuLink>
@@ -178,11 +219,14 @@ function MenuLink({
   href,
   label,
   tone,
+  umamiEvent,
   children,
 }: {
   href: string;
   label: string;
-  tone?: "danger";
+  tone?: "danger" | "support";
+  /** Umami auto-tracks clicks on elements carrying this event name. */
+  umamiEvent?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -190,9 +234,11 @@ function MenuLink({
       href={href}
       target="_blank"
       rel="noreferrer noopener"
+      data-umami-event={umamiEvent}
+      data-umami-event-source={umamiEvent ? "menu" : undefined}
       className={[
         "flex h-10 items-center gap-2.5 rounded px-2 text-sm hover:bg-surface-sunken",
-        tone === "danger" ? "text-red-300" : "text-fg-subtle",
+        tone === "danger" ? "text-red-300" : tone === "support" ? "text-pink-300" : "text-fg-subtle",
       ].join(" ")}
     >
       <span className="flex h-4 w-4 shrink-0 items-center justify-center">{children}</span>

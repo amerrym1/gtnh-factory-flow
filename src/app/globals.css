@@ -28,6 +28,21 @@
   }
 }
 
+/*
+ * `snug:` — wide enough for the full top bar, not wide enough for every button
+ * to keep its word. Between the compact cutoff and ~1280px the bar's labelled
+ * buttons (Support, What's new, Report Bug) drop to their icons; the bar used
+ * to overflow here, and an overflowing bar is what makes a phone browser widen
+ * its layout viewport and shrink the whole page to fit (see AppMenu).
+ */
+@custom-variant snug {
+  @media (max-width: 1279.98px) {
+    & {
+      @slot;
+    }
+  }
+}
+
 
 /*
  * Theme tokens. The app renders dark, and only dark.

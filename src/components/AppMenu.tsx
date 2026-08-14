@@ -74,7 +74,10 @@ export function AppMenu({ onLoadDatasetVersion, onShare, onExportImage }: AppMen
           ref={sheetRef}
           // Anchored to the header, which is the app's one `relative` bar, so
           // the sheet hangs off the button that opened it at any width.
-          className="absolute right-2 top-full z-[90] mt-1 flex w-[min(320px,calc(100vw-16px))] flex-col gap-1 rounded border border-line-strong bg-surface p-2 shadow-[0_12px_28px_rgba(0,0,0,0.5)]"
+          // `text-sm` up here because buttons inherit their font (the global
+          // reset outranks text-* on the control): without it the sheet's
+          // button rows render a size up from its link rows.
+          className="absolute right-2 top-full z-[90] mt-1 flex w-[min(320px,calc(100vw-16px))] flex-col gap-1 rounded border border-line-strong bg-surface p-2 text-sm shadow-[0_12px_28px_rgba(0,0,0,0.5)]"
         >
           <MenuSection label="Pack">
             <div className="px-2 py-1">

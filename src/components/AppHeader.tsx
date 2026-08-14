@@ -11,7 +11,7 @@ import { AppMenu } from "./AppMenu";
 import { BoardActions } from "./BoardActions";
 import { ExportImageDialog } from "./export/ExportImageDialog";
 import { ChangelogDialog } from "./ChangelogDialog";
-import { HeaderLinks, ReportBugButton, WhatsNewButton } from "./HeaderLinks";
+import { HeaderLinks, ReportBugButton, SupportButton, WhatsNewButton } from "./HeaderLinks";
 import { WhatsNewPreview } from "./WhatsNewPreview";
 
 interface AppHeaderProps {
@@ -93,7 +93,9 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
           onExportImage={() => setExportOpen(true)}
         />
       ) : (
-        <div className="flex items-center gap-2">
+        // The global `font: inherit` reset outranks any text-* on a button, so
+        // the cluster sets the one size every control in it renders at.
+        <div className="flex items-center gap-2 text-xs">
           <HeaderLinks />
           <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
           <BoardActions
@@ -101,6 +103,7 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
             onExportImage={() => setExportOpen(true)}
           />
           <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
+          <SupportButton />
           <WhatsNewButton
             onClick={(unseen) => {
               setUnseenVersions(unseen);
