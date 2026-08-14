@@ -28,7 +28,7 @@ import {
   getCanvasTheme,
   type CanvasThemeId,
 } from "@/components/flow/canvas-themes";
-import { readBoardViewSnapshot, useBoardView, writeBoardView } from "@/components/flow/board-view";
+import { readBoardViewSnapshot } from "@/components/flow/board-view";
 import type { RateUnit } from "@/lib/model/rate-unit";
 import { useFactoryStore } from "@/store/factory-store";
 import { useDesignStore } from "@/store/design-store";
@@ -50,24 +50,11 @@ const FORMATS: Array<{ id: ExportFormat; label: string }> = [
   { id: "gif", label: "GIF" },
 ];
 
-/** "auto" resolves against the bar's tone; anything else is the colour. */
-type ExportBorderChoice = "none" | "auto" | string;
-
 const RATE_UNITS: Array<{ id: RateUnit; label: string }> = [
   { id: "tick", label: "/t" },
   { id: "second", label: "/s" },
   { id: "minute", label: "/min" },
   { id: "hour", label: "/hr" },
-];
-
-const BORDER_SWATCHES: Array<{ id: ExportBorderChoice; title: string; swatch: string }> = [
-  { id: "auto", title: "Frame: steel", swatch: "#454a52" },
-  { id: "#22d3ee", title: "Frame: cyan", swatch: "#22d3ee" },
-  { id: "#34d399", title: "Frame: emerald", swatch: "#34d399" },
-  { id: "#fbbf24", title: "Frame: amber", swatch: "#fbbf24" },
-  { id: "#f87171", title: "Frame: red", swatch: "#f87171" },
-  { id: "#e8e9ec", title: "Frame: white", swatch: "#e8e9ec" },
-  { id: "#000000", title: "Frame: black", swatch: "#000000" },
 ];
 
 /** The checkerboard every image editor uses for "nothing here". */
@@ -92,23 +79,23 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
     (state) =>
       state.designs.find((design) => design.id === state.activeDesignId)?.name ?? "Untitled",
   );
-  // Shared with the board, not copies of it: the rate unit is the app-wide
-  // one (the /t /s /m /h buttons), and presentation mode is the board's own
-  // calm switch - flipping either here changes the live board behind the
-  // dialog, and the preview photographs it again.
+  // The rate unit is shared with the board (the /t /s /m /h buttons):
+  // flipping it here changes the live numbers everywhere, and the preview
+  // photographs them again.
   const rateUnit = useFactoryStore((state) => state.rateUnit);
   const setRateUnit = useFactoryStore((state) => state.setRateUnit);
-  const isPresentation = useBoardView().calmMode;
 
   const [format, setFormat] = useState<ExportFormat>("png");
   const [background, setBackground] = useState<ExportBackground>(
     () => readBoardViewSnapshot().canvasTheme,
   );
-  const [cardDetail, setCardDetail] = useState<ExportCardDetail>("full");
-  const [border, setBorder] = useState<ExportBorderChoice>("auto");
+  // The defaults are the shareable face: big icons that survive a chat
+  // window, calm colours, the working board without its margin notes.
+  const [cardDetail, setCardDetail] = useState<ExportCardDetail>("glance");
+  const [presentation, setPresentation] = useState(true);
   const [includeFooter, setIncludeFooter] = useState(true);
   const [includeTitle, setIncludeTitle] = useState(true);
-  const [includeAnnotations, setIncludeAnnotations] = useState(true);
+  const [includeAnnotations, setIncludeAnnotations] = useState(false);
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
   const [capture, setCapture] = useState<FlowExportCapture>();
   const [isCapturing, setCapturing] = useState(true);
@@ -125,8 +112,11 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
   const backgroundColor =
     background === "transparent" ? undefined : getCanvasTheme(background).base;
   const tone = resolveExportTone(backgroundColor);
+  // The frame is always on and always the paper's own accent: the ink the
+  // theme draws its dots in. Not a knob - one less decision, and it cannot
+  // clash.
   const borderColor =
-    border === "none" ? undefined : border === "auto" ? (tone === "light" ? "#b3a884" : "#454a52") : border;
+    background === "transparent" ? "#454a52" : getCanvasTheme(background).patternColor;
   const gameVersion = manifest?.versions.find(
     (version) => version.id === selectedDatasetVersionId,
   )?.gtnhVersion;
@@ -180,6 +170,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
               background: background === "transparent" ? "transparent" : backgroundColor,
               cardDetail,
               hideAnnotations: !includeAnnotations,
+              presentation,
             },
           }),
         );
@@ -191,7 +182,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
           }
         }, 120_000);
       }),
-    [background, backgroundColor, cardDetail, includeAnnotations],
+    [background, backgroundColor, cardDetail, includeAnnotations, presentation],
   );
 
   // The preview is one capture per background: everything else the dialog
@@ -229,9 +220,9 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
     return () => {
       cancelled = true;
     };
-    // rateUnit and isPresentation repaint the BOARD, not the request: the
-    // photograph must be retaken to show the new numbers or the calm colours.
-  }, [requestBoardCapture, rateUnit, isPresentation]);
+    // rateUnit repaints the BOARD, not the request: the photograph must be
+    // retaken to show the new numbers.
+  }, [requestBoardCapture, rateUnit]);
 
   const previewUrl = useMemo(
     () => (capture?.blob ? URL.createObjectURL(capture.blob) : undefined),
@@ -396,13 +387,6 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
     }
   };
 
-  // The one line of guidance the options keep: a GIF of a board with no
-  // dashes to march would save silently as a still image.
-  const stillGifWarning =
-    format === "gif" && capture && capture.pulses.length === 0
-      ? "No flow dashes on the board right now, so this GIF will not move."
-      : undefined;
-
   return (
     <div className="fixed inset-0 z-[100] grid place-items-center bg-neutral-950/50 p-4">
       <div className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-y-auto rounded border border-line-strong bg-surface p-4 shadow-xl">
@@ -558,7 +542,6 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
               </div>
             </div>
           </div>
-          {stillGifWarning ? <p className="text-xs text-amber-500">{stillGifWarning}</p> : null}
 
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="mr-1 text-xs font-medium text-fg-subtle">Paper</span>
@@ -595,40 +578,6 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 text-xs font-medium text-fg-subtle">Frame</span>
-            <button
-              type="button"
-              onClick={() => setBorder("none")}
-              aria-pressed={border === "none"}
-              className={[
-                "rounded border px-2 py-0.5 text-xs",
-                border === "none"
-                  ? "border-cyan-500 text-fg ring-1 ring-cyan-500"
-                  : "border-line-strong text-fg-subtle hover:border-fg-muted",
-              ].join(" ")}
-            >
-              Off
-            </button>
-            {BORDER_SWATCHES.map((entry) => (
-              <button
-                key={entry.id}
-                type="button"
-                title={entry.title}
-                aria-label={entry.title}
-                aria-pressed={border === entry.id}
-                onClick={() => setBorder(entry.id)}
-                className={[
-                  "h-6 w-6 rounded border",
-                  border === entry.id
-                    ? "border-cyan-500 ring-1 ring-cyan-500"
-                    : "border-line-strong hover:border-fg-muted",
-                ].join(" ")}
-                style={{ backgroundColor: entry.swatch }}
-              />
-            ))}
-          </div>
-
           <div className="flex flex-wrap items-center gap-4">
             <label className="flex items-center gap-1.5">
               <input
@@ -659,8 +608,8 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
             <label className="flex items-center gap-1.5">
               <input
                 type="checkbox"
-                checked={isPresentation}
-                onChange={(event) => writeBoardView({ calmMode: event.target.checked })}
+                checked={presentation}
+                onChange={(event) => setPresentation(event.target.checked)}
               />
               Presentation mode
             </label>

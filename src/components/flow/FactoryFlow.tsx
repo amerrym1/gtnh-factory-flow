@@ -153,6 +153,7 @@ import { RecipeNode, type RecipeFlowNode } from "./RecipeNode";
 import { GT_NODE_COLORS, GT_NODE_COLOR_PALETTE, flowRampColor } from "./node-colors";
 import {
   CANVAS_PATTERNS,
+  readBoardViewSnapshot,
   useBoardView,
   writeBoardView,
   type BoardView,
@@ -3303,11 +3304,13 @@ export function FactoryFlow() {
       // card detail FORCED rather than inherited from wherever the screen's
       // zoom left it - an export framed at 0.2x must not come out as
       // unreadable full-detail specks just because the user was zoomed in.
+      // The card look is the ATTRIBUTE alone (pure CSS, see node-detail.ts);
+      // the published LEVEL is pinned to full so the edges keep their
+      // arrowheads and publish their dashes either way - glance's per-edge
+      // economies are per-frame costs, and a photograph is one frame.
       const restoreDetailLevel = getPublishedNodeDetailLevel();
-      const forcedDetailLevel =
-        request.cardDetail === "glance" ? NODE_DETAIL_GLANCE : NODE_DETAIL_FULL;
-      const applyDetailLevel = (level: NodeDetailLevel) => {
-        setNodeDetailLevel(level);
+      const savedBoardView = readBoardViewSnapshot();
+      const applyCardDetail = (level: NodeDetailLevel) => {
         const board = boardRef.current;
         if (!board) {
           return;
@@ -3320,7 +3323,15 @@ export function FactoryFlow() {
         }
       };
       setExportRendering(true);
-      applyDetailLevel(forcedDetailLevel);
+      setNodeDetailLevel(NODE_DETAIL_FULL);
+      applyCardDetail(request.cardDetail === "glance" ? NODE_DETAIL_GLANCE : NODE_DETAIL_FULL);
+      // The dashes exist for the GIF whether or not the live board shows
+      // them, and the calm (presentation) colours follow the dialog's choice
+      // rather than the board's switch. Both restored after.
+      writeBoardView({
+        linePulseMode: true,
+        calmMode: request.presentation === true,
+      });
       // Two paints: one for React to commit the unculled board, one for the
       // newly mounted cards' own effects (pulse publication among them).
       await nextPaint();
@@ -3441,7 +3452,12 @@ export function FactoryFlow() {
         failure = error instanceof Error ? error.message : "Plan image export failed.";
         console.error(failure);
       } finally {
-        applyDetailLevel(restoreDetailLevel);
+        writeBoardView({
+          linePulseMode: savedBoardView.linePulseMode,
+          calmMode: savedBoardView.calmMode,
+        });
+        setNodeDetailLevel(restoreDetailLevel);
+        applyCardDetail(restoreDetailLevel);
         setExportRendering(false);
         dispatchImageExportComplete(requestId, capture, failure);
       }
@@ -3472,6 +3488,7 @@ export function FactoryFlow() {
             background?: unknown;
             cardDetail?: unknown;
             hideAnnotations?: unknown;
+            presentation?: unknown;
           }
         | undefined;
 
@@ -3491,6 +3508,7 @@ export function FactoryFlow() {
         background: typeof detail.background === "string" ? detail.background : undefined,
         cardDetail: detail.cardDetail === "glance" ? "glance" : "full",
         hideAnnotations: detail.hideAnnotations === true,
+        presentation: detail.presentation === true,
       });
     };
 
