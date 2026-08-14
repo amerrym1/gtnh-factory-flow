@@ -73,6 +73,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.13.0",
+    date: "2026-08-14",
+    headline: "Cards show their circuit setting",
+    notes: [
+      "Every machine card carries its circuit slot in the bottom corner, next to the machine count.",
+      "A recipe that needs a circuit shows it; an empty slot means any setting works.",
+      "Presentation view shows the slot too.",
+    ],
+  },
+  {
     version: "2.12.1",
     date: "2026-08-14",
     headline: "The link card leads with the plan's icon",
