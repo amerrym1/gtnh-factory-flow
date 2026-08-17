@@ -3841,24 +3841,6 @@ function StoryTierChip({ tier }: { tier: NodePowerReport["tier"] }) {
   );
 }
 
-/**
- * A power-story section header, with room for an ASIDE: the few plain words
- * that say what the section does to the budget ("paid for first", "spare
- * supply buys speed"). The whole explanation of how supply, parallels and
- * overclocks interlock rides in these asides, so the fact lines below them
- * never have to lecture.
- */
-function StorySectionLabel({ title, aside }: { title: string; aside?: string }) {
-  return (
-    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
-      {title}
-      {aside ? (
-        <span className="font-normal normal-case tracking-normal text-slate-400"> · {aside}</span>
-      ) : null}
-    </div>
-  );
-}
-
 /** Slots the spend bar can lerp between; comfortably past GT's tier count. */
 const SPEND_BAR_SLOTS = 17;
 /** The bar's content width in px, for judging whether a label fits. */
@@ -3996,16 +3978,14 @@ function trimFactor(value: number): string {
  * the hatch chip, the tier chip, and the footer's POWER cell all say this,
  * so wherever the hover lands the language is the same.
  *
- * It reads top to bottom in the order the game spends the supply: the pool
- * the build offers (the BUDGET, and every later line spends it), the
- * parallels it pays for FIRST, then the overclocks bought with whatever is
- * left. The teaching lives in the section asides, a few words each; the
- * headers sit flush left over indented bodies so the three beats are
- * scannable; every other line is a bare fact. The spend itself is a BAR to
- * scale (StoryOverclockBar), and one muted line under it prices the step
- * that did not fit. Everything here is EU/t — never seconds, which no other
- * surface on the card speaks — and usage and the whole-node total stay off
- * it too: the footer cells under the cursor already say both. The bar is
+ * It reads top to bottom in the order the game spends the supply, with no
+ * section furniture at all — just the fact lines: the pool the build offers
+ * ("to spend" makes it a budget), the parallels it pays for first, the spend
+ * drawn as a BAR to scale (StoryOverclockBar), the resulting draw, and — the
+ * tooltip's last word — the price of the next overclock, right-aligned under
+ * the bar's unspent tail. Everything here is EU/t — never seconds, which no
+ * other surface on the card speaks — and usage and the whole-node total stay
+ * off it too: the footer cells under the cursor already say both. The bar is
  * drawn only when the arithmetic reproduces the real draw — runtime-ladder
  * machines, whose step kinds the game never exported, get the honest count
  * alone.
@@ -4035,114 +4015,105 @@ function PowerStoryContent({ report }: { report: NodePowerReport }) {
   );
 
   return (
-    <div className="w-80 space-y-2 text-[12px] leading-4 text-slate-200">
+    <div className="w-80 space-y-1 text-[12px] leading-4 text-slate-200">
+      {/* ": 256 EU/t" is one fact: the nowrap keeps a line break from
+          stranding the unit — or the whole figure — on its own line. */}
       <div>
-        <StorySectionLabel title="Supply" aside="the budget" />
-        <div className="pl-3">
-          {/* ": 256 EU/t" is one fact: the nowrap keeps a line break from
-              stranding the unit — or the whole figure — on its own line. */}
-          {report.isMultiblock ? (
-            <>
-              {report.hatches}× <StoryTierChip tier={report.tier} /> energy{" "}
-              {report.hatches === 1 ? "hatch" : "hatches"} at {report.amps} A:{" "}
-              <span className="whitespace-nowrap">
-                <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span>
-              </span>{" "}
-              to spend
-            </>
-          ) : (
-            <>
-              <StoryTierChip tier={report.tier} /> machine
-              {report.amps > 1 ? ` at ${report.amps} A` : ""}:{" "}
-              <span className="whitespace-nowrap">
-                <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span>
-              </span>{" "}
-              to spend
-            </>
-          )}
-        </div>
+        {report.isMultiblock ? (
+          <>
+            {report.hatches}× <StoryTierChip tier={report.tier} /> energy{" "}
+            {report.hatches === 1 ? "hatch" : "hatches"} at {report.amps} A:{" "}
+            <span className="whitespace-nowrap">
+              <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span>
+            </span>{" "}
+            to spend
+          </>
+        ) : (
+          <>
+            <StoryTierChip tier={report.tier} /> machine
+            {report.amps > 1 ? ` at ${report.amps} A` : ""}:{" "}
+            <span className="whitespace-nowrap">
+              <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span>
+            </span>{" "}
+            to spend
+          </>
+        )}
       </div>
 
       {report.parallels > 1 ? (
         <div>
-          <StorySectionLabel title="Parallels" aside="paid for first" />
-          <div className="pl-3">
-            ×{report.parallels} recipes at once,{" "}
-            <span className="whitespace-nowrap">
-              {formatCompact(report.singleDrawEuT)} EU/t each
-            </span>
-            :{" "}
-            <span className="whitespace-nowrap">
-              <span className="font-bold">{formatCompact(batchEuT)} EU/t</span>
-            </span>
-          </div>
+          ×{report.parallels} recipes at once,{" "}
+          <span className="whitespace-nowrap">
+            {formatCompact(report.singleDrawEuT)} EU/t each
+          </span>
+          :{" "}
+          <span className="whitespace-nowrap">
+            <span className="font-bold">{formatCompact(batchEuT)} EU/t</span>
+          </span>
         </div>
       ) : null}
 
-      <div>
-        <StorySectionLabel title="Overclocks" aside="how the budget gets spent" />
-        {ladderHonest ? (
-          <div className="space-y-0.5 pl-3">
-            {/* With parallels the batch line above IS the bar's first slice;
-                alone, the recipe's own draw opens it here. */}
-            {report.parallels === 1 ? (
-              <div>
-                <StoryTierChip tier={report.minimumTier} /> recipe:{" "}
-                <span className="whitespace-nowrap">
-                  <span className="font-bold">{formatCompact(report.singleDrawEuT)} EU/t</span>
-                </span>
-              </div>
-            ) : null}
-            <StoryOverclockBar
-              perfectSteps={report.perfectOverclockSteps}
-              normalSteps={normalSteps}
-              perfectSpeedFactor={report.perfectSpeedFactor}
-              perfectEuFactor={report.perfectEuFactor}
-              batchEuT={batchEuT}
-              poolEuT={report.poolEuT}
-            />
-            {/* Which steps are the special kind, whenever cyan is on the bar. */}
-            {report.perfectOverclockSteps > 0 ? (
-              <div className="text-[11px] text-cyan-300">
-                cyan: {perfectLabel}
-                {report.perfectOverclockSteps === 1 ? "" : "s"},{" "}
-                <span className="whitespace-nowrap">
-                  ×{trimFactor(report.perfectSpeedFactor)} speed for ×
-                  {trimFactor(report.perfectEuFactor)} power
-                </span>
-              </div>
-            ) : null}
-            {report.overclockSteps > 0 ? (
-              <div>
-                <StoryTierChip tier={report.tier} /> runs at{" "}
-                <span className="whitespace-nowrap">
-                  <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
-                </span>
-              </div>
-            ) : null}
-            {/* Right-aligned under the hatched tail: the leftover up there is
-                exactly what this line says it cannot buy. */}
-            <div className="text-right text-[11px] text-slate-400">
-              {nextStepEuT > report.poolEuT ? (
-                <>
-                  next overclock (×{nextSpeedLabel} speed):{" "}
-                  <span className="whitespace-nowrap">{formatCompact(nextStepEuT)} EU/t</span>
-                </>
-              ) : (
-                <>more power won&apos;t buy another overclock here</>
-              )}
+      {ladderHonest ? (
+        <>
+          {/* With parallels the batch line above IS the bar's first slice;
+              alone, the recipe's own draw opens it here. */}
+          {report.parallels === 1 ? (
+            <div>
+              <StoryTierChip tier={report.minimumTier} /> recipe:{" "}
+              <span className="whitespace-nowrap">
+                <span className="font-bold">{formatCompact(report.singleDrawEuT)} EU/t</span>
+              </span>
             </div>
+          ) : null}
+          <StoryOverclockBar
+            perfectSteps={report.perfectOverclockSteps}
+            normalSteps={normalSteps}
+            perfectSpeedFactor={report.perfectSpeedFactor}
+            perfectEuFactor={report.perfectEuFactor}
+            batchEuT={batchEuT}
+            poolEuT={report.poolEuT}
+          />
+          {/* Which steps are the special kind, whenever cyan is on the bar. */}
+          {report.perfectOverclockSteps > 0 ? (
+            <div className="text-[11px] text-cyan-300">
+              cyan: {perfectLabel}
+              {report.perfectOverclockSteps === 1 ? "" : "s"},{" "}
+              <span className="whitespace-nowrap">
+                ×{trimFactor(report.perfectSpeedFactor)} speed for ×
+                {trimFactor(report.perfectEuFactor)} power
+              </span>
+            </div>
+          ) : null}
+          {report.overclockSteps > 0 ? (
+            <div>
+              <StoryTierChip tier={report.tier} /> runs at{" "}
+              <span className="whitespace-nowrap">
+                <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
+              </span>
+            </div>
+          ) : null}
+          {/* The tooltip's last word, right-aligned under the hatched tail:
+              the leftover up there is exactly what this cannot buy. */}
+          <div className="text-right text-[11px] text-slate-400">
+            {nextStepEuT > report.poolEuT ? (
+              <>
+                next overclock (×{nextSpeedLabel} speed):{" "}
+                <span className="whitespace-nowrap">{formatCompact(nextStepEuT)} EU/t</span>
+              </>
+            ) : (
+              <>more power won&apos;t buy another overclock here</>
+            )}
           </div>
-        ) : (
-          <div className="pl-3">
-            {report.overclockSteps} overclock{report.overclockSteps === 1 ? "" : "s"} ·{" "}
-            <StoryTierChip tier={report.tier} /> runs at{" "}
-            <span className="whitespace-nowrap">
-              <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
-            </span>
-          </div>
-        )}
-      </div>
+        </>
+      ) : (
+        <div>
+          {report.overclockSteps} overclock{report.overclockSteps === 1 ? "" : "s"} ·{" "}
+          <StoryTierChip tier={report.tier} /> runs at{" "}
+          <span className="whitespace-nowrap">
+            <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
+          </span>
+        </div>
+      )}
 
       {stall ? <div className="font-bold text-red-400">{stall}</div> : null}
     </div>
