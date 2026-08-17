@@ -78,8 +78,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     headline: "Power explains itself",
     notes: [
       "Hover the tier chip, the hatch counter or the power cell for the whole power story.",
-      "The tooltip diagrams each overclock: 4x the power for 2x or 4x the speed.",
-      "It also spells out hatches, amps, parallels and what to fix when a build stalls.",
+      "The tooltip diagrams each overclock and stays up while you click the chips.",
+      "Crowded cards lift the parallel chip onto its own footer row.",
       "Sharing a setup now photographs your board, so pasted links show the plan itself.",
     ],
   },

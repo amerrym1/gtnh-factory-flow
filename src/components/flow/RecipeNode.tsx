@@ -406,6 +406,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     powerReport,
     showHatchControl,
   } = derived;
+  // The full footer — usage, power, parallel, machines, circuit — does not
+  // fit the fixed card width on one line. When power and the parallel chip
+  // would share the row, the parallel chip steps up onto a slim row of its
+  // own, right-aligned over the machine count it multiplies.
+  const parallelChipLifts =
+    !isCustomRateNode && powerReport !== undefined && machineParallelMultiplier > 1;
   // Verdict + rail ports read the board lazily (no extra subscription): the
   // node re-renders on every solver tick, which is exactly when any of these
   // numbers can change.
@@ -1025,11 +1031,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     machineCount={projectNode.machineCount}
                     nodeParallel={projectNode.parallel}
                     durationTicks={overclockedRecipe.durationTicks}
-                    hint={
-                      showHatchControl
-                        ? "Left click raises, right click lowers. Left chip: hatches. Right chip: tier."
-                        : "Left click raises the tier, right click lowers it."
-                    }
                   />
                 ) : undefined
               }
@@ -1079,9 +1080,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   color: tierColor.text,
                   textShadow: `1px 1px 0 ${tierColor.shadow}`,
                 }}
-                title={
-                  powerReport ? undefined : `Tier ${tierControl.current}. Left click up, right click down.`
-                }
+                title={powerReport ? undefined : `Tier ${tierControl.current}`}
                 aria-label={`Tier ${tierControl.current}`}
               >
                 {tierControl.current}
@@ -1196,65 +1195,79 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     {programmedCircuit ? <CircuitChip circuit={programmedCircuit} /> : null}
                   </div>
                 ) : (
-                  <div
-                    className={[
-                      "grid min-w-0 items-center gap-1",
-                      isCropProductionNode ? CROP_CONFIG_PANEL_WIDTH_CLASS : "",
-                    ].join(" ")}
-                    // Every cell sizes to its content except MACHINES, which
-                    // takes the slack: a four-digit machine count is the one
-                    // number here that legitimately gets wide. Parallel
-                    // stretched to fill and then truncated its own label
-                    // ("Parall…"). Inline, like the head row's: with parallel
-                    // and the circuit each free to be absent, the class form is
-                    // one spelled-out arbitrary value per combination.
-                    style={{
-                      gridTemplateColumns: isCustomRateNode
-                        ? "auto"
-                        : [
-                            "auto",
-                            ...(powerReport ? ["auto"] : []),
-                            ...(machineParallelMultiplier > 1 ? ["auto"] : []),
-                            "minmax(84px,1fr)",
-                            // The circuit ends the row, square, in the corner
-                            // the machine count leaves free.
-                            ...(programmedCircuit ? ["auto"] : []),
-                          ].join(" "),
-                    }}
-                  >
-                    <UsageStat
-                      nodeId={projectNode.id}
-                      verdict={verdict}
-                      isCustomRate={isCustomRateNode}
-                      powerStall={powerReport}
-                    />
-                    {!isCustomRateNode ? (
-                      <>
-                        {powerReport ? (
-                          <PowerStat
-                            report={powerReport}
-                            machineCount={projectNode.machineCount}
-                            nodeParallel={projectNode.parallel}
-                            durationTicks={overclockedRecipe.durationTicks}
-                          />
-                        ) : null}
-                        {machineParallelMultiplier > 1 ? (
-                          <Stat
-                            label="Parallel"
-                            value={`×${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
-                          />
-                        ) : null}
-                        <MachineCountStat
-                          label={isCropProductionNode ? "Seeds" : "Machines"}
-                          machineCount={projectNode.machineCount}
-                          onChange={(machineCount) => updateNode(projectNode.id, { machineCount })}
+                  <>
+                    {parallelChipLifts ? (
+                      // The lifted parallel chip: its own slim line, packed
+                      // right, not a full row of tiles. See parallelChipLifts.
+                      <div className="mb-1 flex min-w-0 justify-end">
+                        <Stat
+                          label="Parallel"
+                          value={`×${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
                         />
-                        {programmedCircuit ? (
-                          <CircuitChip circuit={programmedCircuit} />
-                        ) : null}
-                      </>
+                      </div>
                     ) : null}
-                  </div>
+                    <div
+                      className={[
+                        "grid min-w-0 items-center gap-1",
+                        isCropProductionNode ? CROP_CONFIG_PANEL_WIDTH_CLASS : "",
+                      ].join(" ")}
+                      // Every cell sizes to its content except MACHINES, which
+                      // takes the slack: a four-digit machine count is the one
+                      // number here that legitimately gets wide. Parallel
+                      // stretched to fill and then truncated its own label
+                      // ("Parall…"). Inline, like the head row's: with parallel
+                      // and the circuit each free to be absent, the class form is
+                      // one spelled-out arbitrary value per combination.
+                      style={{
+                        gridTemplateColumns: isCustomRateNode
+                          ? "auto"
+                          : [
+                              "auto",
+                              ...(powerReport ? ["auto"] : []),
+                              ...(machineParallelMultiplier > 1 && !parallelChipLifts
+                                ? ["auto"]
+                                : []),
+                              "minmax(84px,1fr)",
+                              // The circuit ends the row, square, in the corner
+                              // the machine count leaves free.
+                              ...(programmedCircuit ? ["auto"] : []),
+                            ].join(" "),
+                      }}
+                    >
+                      <UsageStat
+                        nodeId={projectNode.id}
+                        verdict={verdict}
+                        isCustomRate={isCustomRateNode}
+                        powerStall={powerReport}
+                      />
+                      {!isCustomRateNode ? (
+                        <>
+                          {powerReport ? (
+                            <PowerStat
+                              report={powerReport}
+                              machineCount={projectNode.machineCount}
+                              nodeParallel={projectNode.parallel}
+                              durationTicks={overclockedRecipe.durationTicks}
+                            />
+                          ) : null}
+                          {machineParallelMultiplier > 1 && !parallelChipLifts ? (
+                            <Stat
+                              label="Parallel"
+                              value={`×${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
+                            />
+                          ) : null}
+                          <MachineCountStat
+                            label={isCropProductionNode ? "Seeds" : "Machines"}
+                            machineCount={projectNode.machineCount}
+                            onChange={(machineCount) => updateNode(projectNode.id, { machineCount })}
+                          />
+                          {programmedCircuit ? (
+                            <CircuitChip circuit={programmedCircuit} />
+                          ) : null}
+                        </>
+                      ) : null}
+                    </div>
+                  </>
                 )}
               </div>
             </GridBlock>
@@ -3832,26 +3845,24 @@ function storySeconds(ticks: number): string {
  * so wherever the hover lands the language is the same.
  *
  * It reads top to bottom as the game computes it: what the build SUPPLIES,
- * what the recipe asks and the overclock ladder that follows (each step
- * spends 4× power; a regular step doubles speed, a perfect one quadruples
- * it), then parallels, usage and the total. The ladder is drawn only when
- * its arithmetic reproduces the real draw — runtime-ladder machines, whose
- * step kinds the game never exported, get the honest one-line count instead.
+ * what the recipe asks, the overclock ladder, then parallels, usage and the
+ * total. Every line is a bare fact; the ladder rows themselves carry the
+ * ×power/×speed arithmetic, so nothing gets explained twice and no line
+ * teaches controls. The ladder is drawn only when its arithmetic reproduces
+ * the real draw — runtime-ladder machines, whose step kinds the game never
+ * exported, get the honest count alone.
  */
 function PowerStoryContent({
   report,
   machineCount,
   nodeParallel,
   durationTicks,
-  hint,
 }: {
   report: NodePowerReport;
   machineCount: number;
   nodeParallel: number;
   /** The overclocked recipe's final duration, for the ladder's time column. */
   durationTicks?: number;
-  /** One muted line of control help, for the chips that also click. */
-  hint?: string;
 }) {
   const stall = describePowerStall(report);
   const machines = machineCount * nodeParallel;
@@ -3886,21 +3897,16 @@ function PowerStoryContent({
             <>
               {report.hatches}× <StoryTierChip tier={report.tier} /> energy{" "}
               {report.hatches === 1 ? "hatch" : "hatches"} · {report.amps} A ={" "}
-              <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span> to spend
+              <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span>
             </>
           ) : (
             <>
               <StoryTierChip tier={report.tier} /> machine
               {report.amps > 1 ? ` · ${report.amps} A` : ""} ={" "}
-              <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span> to spend
+              <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span>
             </>
           )}
         </div>
-        {report.isMultiblock ? (
-          <div className="text-[11px] text-slate-400">
-            One hatch works at 1 A; two or more work at 2 A each.
-          </div>
-        ) : null}
       </div>
 
       <div>
@@ -3930,26 +3936,21 @@ function PowerStoryContent({
             ) : null}
             {report.overclockSteps > 0 ? (
               <div>
-                <StoryTierChip tier={report.tier} /> runs it at{" "}
+                <StoryTierChip tier={report.tier} /> runs at{" "}
                 <span className="font-bold">{formatCompact(perRunEuT)} EU/t</span>
                 {durationTicks !== undefined ? ` · ${storySeconds(durationTicks)}` : ""}
               </div>
             ) : (
               <div className="text-[11px] text-slate-400">
-                None: a step needs 4× the recipe's draw free in the supply.
+                None: a step needs 4× the recipe's draw free.
               </div>
             )}
           </div>
         ) : (
           <div>
-            {report.overclockSteps} overclock{report.overclockSteps === 1 ? "" : "s"}, from the
-            game&apos;s own runtime numbers.
+            {report.overclockSteps} overclock{report.overclockSteps === 1 ? "" : "s"}
           </div>
         )}
-        <div className="mt-0.5 text-[11px] text-slate-400">
-          An overclock spends 4× the power to finish sooner: a regular one doubles the speed, a
-          perfect one quadruples it.
-        </div>
       </div>
 
       {report.parallels > 1 ? (
@@ -3960,9 +3961,6 @@ function PowerStoryContent({
           <div>
             ×{report.parallels} recipes at once ={" "}
             <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
-          </div>
-          <div className="text-[11px] text-slate-400">
-            Parallels are paid for first; only leftover power buys overclocks.
           </div>
         </div>
       ) : null}
@@ -3981,7 +3979,6 @@ function PowerStoryContent({
         </div>
       ) : null}
       {stall ? <div className="font-bold text-red-400">{stall}</div> : null}
-      {hint ? <div className="text-[11px] italic text-slate-500">{hint}</div> : null}
     </div>
   );
 }

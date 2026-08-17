@@ -49,6 +49,19 @@ export function MinecraftTooltip({
     [],
   );
 
+  // A press on one of the hover surface's OWN controls (the tier chip, the
+  // hatch counter) is the tooltip's subject being used, not the pointer
+  // leaving: the panel stays up and re-reads itself, so clicking through
+  // tiers shows each result without re-hovering. Presses anywhere else —
+  // panning, dragging, other cards — still clear.
+  const pressKeepsTooltip = useCallback(
+    (target: EventTarget | null) =>
+      target instanceof HTMLElement &&
+      rootRef.current?.contains(target) === true &&
+      target.closest("button, input, select, textarea") !== null,
+    [],
+  );
+
   const handleMouseMove = (event: MouseEvent) => {
     if (lines.length === 0 && !hasContent) {
       return;
@@ -72,7 +85,7 @@ export function MinecraftTooltip({
       return;
     }
 
-    if (event.buttons !== 0) {
+    if (event.buttons !== 0 && !pressKeepsTooltip(event.target)) {
       pendingPositionRef.current = undefined;
       if (position !== undefined) {
         setPosition(undefined);
@@ -127,6 +140,23 @@ export function MinecraftTooltip({
     }
 
     const clearOnInteraction = () => clearTooltip();
+    const clearOnPointerDown = (event: Event) => {
+      if (pressKeepsTooltip(event.target)) {
+        return;
+      }
+      clearTooltip();
+    };
+    // Capture-phase "blur" sees every ELEMENT losing focus, and clicking the
+    // chip under the tooltip blurs whatever held focus before it — only the
+    // window itself going unfocused means the pointer story ended. Told apart
+    // by the target's kind, not identity: an element's blur names the element,
+    // the window's names the window.
+    const clearOnWindowBlur = (event: Event) => {
+      if (event.target instanceof Element) {
+        return;
+      }
+      clearTooltip();
+    };
     // A wheel normally scrolls the thing out from under the pointer, so the tip
     // has to go with it. A slot that rotates through what it accepts is the
     // exception: it EATS the wheel to step through its items and never moves, so
@@ -146,18 +176,18 @@ export function MinecraftTooltip({
     const options = { capture: true, passive: true } as const;
 
     window.addEventListener("wheel", clearOnWheel, options);
-    window.addEventListener("pointerdown", clearOnInteraction, options);
+    window.addEventListener("pointerdown", clearOnPointerDown, options);
     window.addEventListener("pointercancel", clearOnInteraction, options);
     window.addEventListener("resize", clearOnInteraction, options);
-    window.addEventListener("blur", clearOnInteraction, options);
+    window.addEventListener("blur", clearOnWindowBlur, options);
     return () => {
       window.removeEventListener("wheel", clearOnWheel, options);
-      window.removeEventListener("pointerdown", clearOnInteraction, options);
+      window.removeEventListener("pointerdown", clearOnPointerDown, options);
       window.removeEventListener("pointercancel", clearOnInteraction, options);
       window.removeEventListener("resize", clearOnInteraction, options);
-      window.removeEventListener("blur", clearOnInteraction, options);
+      window.removeEventListener("blur", clearOnWindowBlur, options);
     };
-  }, [clearTooltip, position]);
+  }, [clearTooltip, position, pressKeepsTooltip]);
 
   return (
     <span
