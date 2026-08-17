@@ -23,7 +23,13 @@ import {
   isBeeFrameSlotControlId,
   isBeeProductionRecipe,
 } from "@/lib/model/passive-production";
-import { getRunVoltageTier, getVoltageTierIndex, getVoltageTierMaxEuT } from "@/lib/model/tiers";
+import {
+  getRunVoltageTier,
+  getVoltageTierForEuT,
+  getVoltageTierIndex,
+  getVoltageTierMaxEuT,
+} from "@/lib/model/tiers";
+import { getHeatDiscountMultiplier } from "./heat";
 import {
   getMachineBehaviour,
   resolveCoefficient,
@@ -94,6 +100,7 @@ export function buildMachineContext(
       );
     },
     voltageTier: getVoltageTierIndex(getRunVoltageTier(recipe as Recipe, node.overclockTier)),
+    recipeVoltageTier: getVoltageTierIndex(getVoltageTierForEuT(Math.abs(recipe.eut ?? 0))),
   };
 }
 
@@ -321,14 +328,20 @@ export function getMachineParallelMultiplier(
  * EU/t recipe on an HV hatch (512 EU/t) can only run one of them.
  */
 function getPoweredParallelLimit(recipe: MachineEffectRecipe, node: MachineEffectNode): number {
-  const available = getVoltageTierMaxEuT(getRunVoltageTier(recipe as Recipe, node.overclockTier));
+  const runTier = getRunVoltageTier(recipe as Recipe, node.overclockTier);
+  const available = getVoltageTierMaxEuT(runTier);
   if (!Number.isFinite(available)) {
     return Number.POSITIVE_INFINITY;
   }
 
   // Energy discounts land before parallels, so a discounted recipe fits more
-  // of them into the same hatch.
-  const recipeEuT = Math.abs(recipe.eut ?? 0) * getMachineEutMultiplier(recipe, node);
+  // of them into the same hatch. The heat discount counts too:
+  // `ParallelHelper.determineParallel` folds it into `tRecipeEUt` before
+  // dividing the available EU, so a hot blast furnace runs more parallels.
+  const recipeEuT =
+    Math.abs(recipe.eut ?? 0) *
+    getMachineEutMultiplier(recipe, node) *
+    getHeatDiscountMultiplier(recipe, node, runTier);
   if (!(recipeEuT > 0)) {
     return Number.POSITIVE_INFINITY;
   }

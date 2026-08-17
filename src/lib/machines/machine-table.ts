@@ -13,10 +13,15 @@
  * for machines with no heat mechanic, which handed the chem plant, pyrolyse
  * oven, oil cracker and coke oven overclocks they never get in game.
  *
- * These numbers are transcribed from ShadowTheAge's GTNH calculator
- * (https://github.com/ShadowTheAge/gtnh, MIT), whose `src/machines.ts` was
- * checked against the mod source machine by machine. Two indexing differences
- * are worth knowing when comparing the two files:
+ * These numbers were first transcribed from ShadowTheAge's GTNH calculator
+ * (https://github.com/ShadowTheAge/gtnh, MIT), then audited entry by entry
+ * against the actual GT5-Unofficial source (cloned at
+ * C:\Users\jack\gtnh-sources\GT5-Unofficial). Where the two disagree - GTNH
+ * has rewritten several machines since the reference was written - the mod
+ * source wins, the entry says so in a comment, and
+ * `machine-table.test.ts` lists it under DIVERGES_FROM_REFERENCE. Two
+ * indexing differences are worth knowing when comparing against the
+ * reference:
  *
  *   - Their voltage tiers start at LV = 0; ours start at ULV = 0. Their
  *     `recipe.voltageTier + 1` is therefore our `ctx.voltageTier`.
@@ -51,8 +56,16 @@ import type { MachineConfigControl } from "@/lib/model/types";
 export interface OverclockRule {
   maxPerfect: number;
   maxNormal: number;
-  /** Speed and EU/t factor of a perfect step. */
+  /** Speed factor of a perfect step: what duration is divided by. */
   multiplier: number;
+  /**
+   * EU/t factor of a perfect step, when it differs from the speed factor. The
+   * game's `OverclockCalculator` always charges `eutIncreasePerOC` (4 for
+   * every non-fusion machine) regardless of what the step buys, so an arc
+   * furnace electrode with a speed factor of 2 still pays 4x per step.
+   * Defaults to `multiplier` for the classic perfect overclock.
+   */
+  euMultiplier?: number;
 }
 
 export const OVERCLOCK = {
@@ -69,6 +82,13 @@ export const OVERCLOCK = {
     maxPerfect,
     maxNormal: Infinity,
     multiplier: 4,
+  }),
+  /** Duration divided by `speedFactor`, EU/t times 4, on every step. */
+  custom: (speedFactor: number): OverclockRule => ({
+    maxPerfect: Infinity,
+    maxNormal: 0,
+    multiplier: speedFactor,
+    euMultiplier: 4,
   }),
   /** Extra voltage buys nothing. */
   none: (): OverclockRule => ({ maxPerfect: 0, maxNormal: 0, multiplier: 4 }),
@@ -102,6 +122,12 @@ export interface MachineContext {
    * and LV as 1. Equals the reference's `voltageTier + 1`.
    */
   voltageTier: number;
+  /**
+   * Voltage tier ordinal of the recipe's own EU/t draw, for the machines whose
+   * discounts compare against the recipe rather than the hatch (the Mega Alloy
+   * Blast Smelter). Optional because test harnesses predate it.
+   */
+  recipeVoltageTier?: number;
 }
 
 type Coefficient = number | ((ctx: MachineContext) => number);
@@ -114,6 +140,32 @@ export interface MachineBehaviour {
   /** Parallels the structure offers, before the voltage has to pay for them. */
   parallels?: Coefficient;
   overclock: OverclockSpec | ((ctx: MachineContext) => OverclockSpec);
+  /**
+   * Marks a singleblock family. The table is otherwise multiblocks only, and
+   * two things hang on the difference: a singleblock's overclocks are capped
+   * by voltage tier as well as by power, and it cannot bank sub-tick speed as
+   * parallels - it sits at the one-tick floor.
+   */
+  kind?: "single";
+  /**
+   * Amps the machine works with, giving it `tier voltage x amperage` EU/t to
+   * count overclocks against. The arc furnaces are registered at 3A alongside
+   * their 300% power usage, which is how a 90 EU/t draw still runs on an LV
+   * machine.
+   */
+  amperage?: number;
+  /**
+   * How a HEAT_OVERCLOCK machine computes its machine heat, transcribed from
+   * each machine's `setMachineHeat` call. See `heat.ts`.
+   */
+  heat?: {
+    /** +100 K per voltage tier above MV (the blast furnaces and the Hearth). */
+    voltageBonus?: boolean;
+    /** Coil heat is counted this many times over (Zyngen: 2). */
+    coilHeatMultiplier?: number;
+    /** The 5% EU discount per 900 K of excess; default on, Zyngen opts out. */
+    discount?: boolean;
+  };
   /**
    * Knobs this machine offers that the dataset has no control for. Emitted in
    * the dataset's own control shape so the existing config UI renders them
@@ -151,7 +203,6 @@ const SOLENOID = "solenoidCoil";
 const ITEM_PIPE = "itemPipeCasing";
 const ELECTRODE = "arcElectrode";
 const SAWBLADE = "sawblade";
-const ANVIL = "anvilTier";
 const UPGRADE_CHIP = "maceratorUpgrade";
 const CONTAINMENT = "containmentBlockTier";
 const ELECTROMAGNET = "electromagnet";
@@ -255,34 +306,34 @@ const CONTAINMENT_CONTROL = choiceControl(CONTAINMENT, "Containment Block", [
   "Universum",
 ]);
 
-const ANVIL_CONTROL = choiceControl(ANVIL, "Anvil", [
-  "Vanilla",
-  "Steel",
-  "Dark Steel / Thaumium",
-  "Void Metal",
-]);
-
 const UPGRADE_CHIP_CONTROL = choiceControl(UPGRADE_CHIP, "Upgrade Chip", [
   "No Upgrade",
   "Maceration Upgrade Chip",
 ]);
 
-/** Industrial Arc Furnace electrodes: speed, parallels, EU/t and overclock factor. */
+/**
+ * Industrial Arc Furnace electrodes, from kubatech's ArcFurnaceElectrode.java:
+ * (speedModifier, parallelLimit, OCSpeedFactor, euModifier). Speed and the
+ * overclock factor are SEPARATE there - every overclock step costs 4x EU/t but
+ * divides duration by the electrode's own factor, so a Tungsten electrode's
+ * overclocks buy no speed at all. Infinity's parallel limit is unlimited in
+ * code (it doubles per completed run); the voltage cap is what really binds.
+ */
 const ELECTRODES = [
-  { name: "Graphite", speed: 2, parallels: 4, oc: 2, power: 1 },
-  { name: "Tantalum", speed: 4, parallels: 2, oc: 4, power: 1.2 },
-  { name: "Molybdenum", speed: 3, parallels: 16, oc: 3, power: 0.8 },
-  { name: "Tungsten", speed: 1, parallels: 128, oc: 1, power: 1.1 },
-  { name: "Tungstensteel", speed: 1, parallels: 256, oc: 1, power: 1.2 },
-  { name: "Graphene", speed: 2, parallels: 16, oc: 2, power: 1 },
-  { name: "YBCO", speed: 6, parallels: 8, oc: 6, power: 0.8 },
-  { name: "Netherite", speed: 1.5, parallels: 64, oc: 1.5, power: 1.3 },
-  { name: "Tritanium", speed: 2, parallels: 48, oc: 2, power: 1.7 },
-  { name: "Infinity", speed: 1, parallels: 1, oc: 1, power: 1 },
-  { name: "Hypogen", speed: 1, parallels: 256, oc: 1, power: 1.5 },
-  { name: "Neutronium Nanite", speed: 2, parallels: 64, oc: 2, power: 2 },
-  { name: "Transcendent Nanite", speed: 4, parallels: 512, oc: 4, power: 2 },
-  { name: "Universium Nanite", speed: 8, parallels: 1024, oc: 8, power: 2 },
+  { name: "Graphite", speed: 1, parallels: 4, oc: 2, power: 1 },
+  { name: "Tantalum", speed: 1.2, parallels: 2, oc: 4, power: 1.2 },
+  { name: "Molybdenum", speed: 0.9, parallels: 16, oc: 3, power: 0.8 },
+  { name: "Tungsten", speed: 1, parallels: 128, oc: 1, power: 0.75 },
+  { name: "Tungstensteel", speed: 0.8, parallels: 256, oc: 1, power: 0.5 },
+  { name: "Graphene", speed: 2.5, parallels: 16, oc: 2, power: 1 },
+  { name: "YBCO", speed: 1.2, parallels: 8, oc: 6, power: 1 },
+  { name: "Netherite", speed: 2.2, parallels: 64, oc: 1.5, power: 1.25 },
+  { name: "Tritanium", speed: 3, parallels: 48, oc: 2, power: 1.1 },
+  { name: "Infinity", speed: 4.2, parallels: Number.POSITIVE_INFINITY, oc: 1, power: 1 },
+  { name: "Hypogen", speed: 6.5, parallels: 256, oc: 1, power: 1.3 },
+  { name: "Neutronium Nanite", speed: 5, parallels: 256, oc: 2, power: 2 },
+  { name: "Transcendent Nanite", speed: 7.5, parallels: 512, oc: 4, power: 1.5 },
+  { name: "Universium Nanite", speed: 10, parallels: 1024, oc: 8, power: 1 },
 ];
 
 const SAWBLADES = [
@@ -299,9 +350,6 @@ const ELECTROMAGNETS = [
   { name: "Samarium Electromagnet", speed: 2, power: 0.6, parallels: 96 },
   { name: "Tengam Electromagnet", speed: 2.5, power: 0.5, parallels: 256 },
 ];
-
-const PRECISION_LATHE_PARALLELS = [1, 1, 2, 4, 8, 12, 16, 32];
-const PRECISION_LATHE_SPEED = [0.75, 0.8, 0.9, 1, 1.5, 2, 3, 4];
 
 /** Reads a lookup row, clamped so an out-of-range selection cannot crash. */
 function row<T>(table: T[], index: number): T {
@@ -416,16 +464,37 @@ const NEUTRON_PIPE_CONTROL = countControl(
  * name where it differs, plus any handler name the dataset also emits.
  */
 const MACHINES: Record<string, MachineBehaviour> = {
-  // -- Heat: the only three machines that overclock on coil heat ------------
-  "Blast Furnace": { overclock: HEAT_OVERCLOCK, aliases: ["Electric Blast Furnace"] },
+  // -- Heat: the machines that overclock on coil heat -----------------------
+  // Heat formulas below are transcribed from each machine's setMachineHeat
+  // call in GT5-Unofficial, not from the reference, which models none of the
+  // per-machine differences.
+  "Blast Furnace": {
+    overclock: HEAT_OVERCLOCK,
+    heat: { voltageBonus: true },
+    aliases: ["Electric Blast Furnace"],
+  },
+  "Mega Blast Furnace": {
+    overclock: HEAT_OVERCLOCK,
+    heat: { voltageBonus: true },
+    parallels: 256,
+  },
   Volcanus: {
     overclock: HEAT_OVERCLOCK,
+    // MTEAdvEBF reads its coils raw: no voltage bonus.
     speed: 2.2,
     power: 0.9,
     parallels: 8,
     note: "Blazing pyrotheum is not counted.",
   },
-  "Exothermic Hearth": { overclock: HEAT_OVERCLOCK, parallels: 256 },
+  "Exothermic Hearth": {
+    overclock: HEAT_OVERCLOCK,
+    heat: { voltageBonus: true },
+    // The parallel modifier ramps from 256 to 512 over continuous running
+    // (faster with pyrotheum, but it gets there regardless), so steady state
+    // is the doubled figure.
+    parallels: 512,
+    note: "Assumes fully ramped up; pyrotheum only speeds the ramp.",
+  },
 
   // -- Perfect overclockers -------------------------------------------------
   "Large Chemical Reactor": { overclock: OVERCLOCK.perfect() },
@@ -456,23 +525,36 @@ const MACHINES: Record<string, MachineBehaviour> = {
   "Mega Oil Cracker": {
     overclock: OVERCLOCK.normal(),
     parallels: 256,
-    power: (c) => 1 - Math.min(0.5, (c.tier(COIL) + 1) * 0.1),
+    // Unlike the small cracker's additive, capped discount, the mega compounds
+    // 10% per coil tier with no cap: MTEMegaOilCracker.getEuModifier.
+    power: (c) => Math.pow(0.9, c.tier(COIL) + 1),
   },
   Zyngen: {
-    overclock: OVERCLOCK.normal(),
-    speed: (c) => 1 + c.tier(COIL) * 0.05,
-    parallels: (c) => c.voltageTier * c.tier(COIL),
+    // MTEIndustrialAlloySmelter: mLevel = coil tier + 1, so cupronickel is
+    // level 1 - the reference (and our old transcription of it) was one coil
+    // tier low on both formulas. Its coils also buy heat overclocks, one
+    // perfect step per 900 K, with no EU discount; the reference misses this
+    // entirely.
+    overclock: HEAT_OVERCLOCK,
+    heat: { coilHeatMultiplier: 2, discount: false },
+    speed: (c) => 1 + (c.tier(COIL) + 1) * 0.05,
+    parallels: (c) => c.voltageTier * (c.tier(COIL) + 1),
   },
   "Multi Smelter": {
+    // MTEMultiFurnace: parallels double per coil tier from 8, and every
+    // operation is a fixed 4 EU/t, 128 tick smelt.
     overclock: OVERCLOCK.normal(),
     parallels: (c) => 8 * Math.pow(2, c.tier(COIL)),
-    note: "Parallel count needs testing.",
   },
   "Mega Alloy Blast Smelter": {
     overclock: OVERCLOCK.normal(),
     parallels: 256,
-    speed: (c) => Math.max(1, 1 - 0.05 * (c.tier(COIL) - 3)),
-    power: (c) => Math.pow(0.95, c.tier(COIL) - (c.voltageTier - 1)),
+    // MTEMegaAlloyBlastSmelter: duration x (1 - 5% per coil tier above TPV),
+    // stated here as throughput; and a compounding 5% EU discount per coil
+    // tier above the RECIPE's own voltage tier, never a penalty.
+    speed: (c) => 1 / (1 - 0.05 * Math.max(0, c.tier(COIL) - 3)),
+    power: (c) =>
+      Math.pow(0.95, Math.max(0, c.tier(COIL) + 1 - (c.recipeVoltageTier ?? c.voltageTier))),
     note: "Assumes a matching glass tier.",
   },
   "Large Fluid Extractor": {
@@ -483,9 +565,12 @@ const MACHINES: Record<string, MachineBehaviour> = {
   },
   "Large Thermal Refinery": {
     overclock: OVERCLOCK.normal(),
-    speed: (c) => 2.5 * (1 + (c.tier(COIL) + 1) * 0.05),
-    power: (c) => 0.8 * Math.pow(0.95, c.tier(COIL) + 1),
-    parallels: (c) => c.voltageTier * 8 + (c.tier(SOLENOID) + 1) * 2,
+    // MTEIndustrialThermalCentrifuge: 1/(2.5 + 0.05 x coil tier) duration,
+    // 0.8 x 0.95^coilTier EU, 8 per voltage tier plus 2 per solenoid voltage
+    // tier (MV solenoid = 2).
+    speed: (c) => 2.5 + 0.05 * c.tier(COIL),
+    power: (c) => 0.8 * Math.pow(0.95, c.tier(COIL)),
+    parallels: (c) => c.voltageTier * 8 + (c.tier(SOLENOID) + 2) * 2,
   },
 
   // -- Flat multiblocks -----------------------------------------------------
@@ -503,7 +588,14 @@ const MACHINES: Record<string, MachineBehaviour> = {
   },
   "Bricked Blast Furnace": { overclock: OVERCLOCK.normal() },
   "COMET - Compact Cyclotron": { overclock: OVERCLOCK.normal() },
-  "Cryogenic Freezer": { overclock: OVERCLOCK.normal(), speed: 2.2, power: 0.9, parallels: 8 },
+  "Cryogenic Freezer": {
+    // The rewritten MTECryogenicFreezer: 3x speed, 16 flat parallels, and
+    // 10 L/s of gelid cryotheum to keep it running (not counted).
+    overclock: OVERCLOCK.normal(),
+    speed: 3,
+    power: 0.9,
+    parallels: 16,
+  },
   "Density^2": {
     overclock: OVERCLOCK.normal(),
     speed: 2,
@@ -532,7 +624,14 @@ const MACHINES: Record<string, MachineBehaviour> = {
     speed: 3,
     parallels: (c) => c.voltageTier * 2,
   },
-  "Mega Distillation Tower": { overclock: OVERCLOCK.normal(), parallels: 256 },
+  "Mega Distillation Tower": {
+    // Tower mode: 1.5x speed, 10% EU discount, 256 parallels. Distillery mode
+    // (2x, half EU, up to 1024) is a different recipe map and not covered.
+    overclock: OVERCLOCK.normal(),
+    speed: 1.5,
+    power: 0.9,
+    parallels: 256,
+  },
   "Molecular Transformer": { overclock: OVERCLOCK.normal() },
   "Nuclear Salt Processing Plant": {
     overclock: OVERCLOCK.normal(),
@@ -544,8 +643,10 @@ const MACHINES: Record<string, MachineBehaviour> = {
     speed: 5,
     parallels: (c) => c.voltageTier * 4,
   },
-  "Source Chamber": { overclock: OVERCLOCK.normal() },
-  "Target Chamber": { overclock: OVERCLOCK.normal() },
+  // The lanthanide beamline chambers bypass ProcessingLogic entirely: raw
+  // recipe duration, EU pinned to the hatch tier, no overclocking.
+  "Source Chamber": { overclock: OVERCLOCK.none(), note: "Beam energy is not modelled." },
+  "Target Chamber": { overclock: OVERCLOCK.none(), note: "Beam energy is not modelled." },
   "Thermic Heating Device": {
     overclock: OVERCLOCK.normal(),
     speed: 2.2,
@@ -561,12 +662,12 @@ const MACHINES: Record<string, MachineBehaviour> = {
 
   // -- Machines whose knobs the dataset has no control for -----------------
   "Industrial Arc Furnace": {
-    overclock: (c) => OVERCLOCK.perfect(Infinity, row(ELECTRODES, c.tier(ELECTRODE)).oc),
+    overclock: (c) => OVERCLOCK.custom(row(ELECTRODES, c.tier(ELECTRODE)).oc),
     speed: (c) => row(ELECTRODES, c.tier(ELECTRODE)).speed,
     power: (c) => row(ELECTRODES, c.tier(ELECTRODE)).power,
     parallels: (c) => row(ELECTRODES, c.tier(ELECTRODE)).parallels,
     controls: [ELECTRODE_CONTROL],
-    note: "Electrode special properties and startup are not counted.",
+    note: "Electrode durability, startup and blast mode's 16x power are not counted.",
   },
   "Industrial Cutting Factory": {
     overclock: OVERCLOCK.normal(),
@@ -602,17 +703,19 @@ const MACHINES: Record<string, MachineBehaviour> = {
     controls: [ITEM_PIPE_CONTROL],
   },
   "Industrial Sledgehammer": {
+    // Rewritten as MTEIndustrialForgeHammer: the anvils are gone, parallels
+    // are 6 x solenoid voltage tier x machine voltage tier (MV solenoid = 2).
     overclock: OVERCLOCK.normal(),
     speed: 2,
-    parallels: (c) => c.voltageTier * (c.tier(ANVIL) + 1) * 8,
-    controls: [ANVIL_CONTROL],
+    parallels: (c) => c.voltageTier * (c.tier(SOLENOID) + 2) * 6,
   },
   "Industrial Precision Lathe": {
+    // Rewritten as MTEMultiLathe: flat 4x speed and 0.8x EU, with 8 parallels
+    // per pipe casing tier (bronze = 1).
     overclock: OVERCLOCK.normal(),
-    speed: (c) => (row(PRECISION_LATHE_SPEED, c.tier(ITEM_PIPE)) + c.voltageTier) / 4,
+    speed: 4,
     power: 0.8,
-    parallels: (c) => row(PRECISION_LATHE_PARALLELS, c.tier(ITEM_PIPE)) + c.voltageTier * 2,
-    controls: [ITEM_PIPE_CONTROL],
+    parallels: (c) => (c.tier(PIPE) + 1) * 8,
   },
   "Industrial Maceration Stack": {
     overclock: OVERCLOCK.normal(),
@@ -622,7 +725,8 @@ const MACHINES: Record<string, MachineBehaviour> = {
   },
   "Industrial Mixing Machine": {
     overclock: OVERCLOCK.normal(),
-    speed: (c) => 2 + c.tier(ITEM_PIPE),
+    // MTEIndustrialMixer: 1 / (1 + itemPipeTier + 1) duration, tin pipe = 3x.
+    speed: (c) => c.tier(ITEM_PIPE) + 3,
     parallels: (c) => c.voltageTier * 8,
     controls: [ITEM_PIPE_CONTROL],
     // The recipe map is what a node carries until a handler is chosen, and the
@@ -631,19 +735,13 @@ const MACHINES: Record<string, MachineBehaviour> = {
     hidesControls: [PIPE],
   },
   /**
-   * The Utupu-Tanuri, which our dataset lists under its recipe map. Its coils
-   * set the machine's heat, and every 900 K over what the recipe asks for is a
-   * heat difference tier: two of them buy a perfect overclock, and each one is
-   * worth 5% speed on top of the machine's base 220%.
-   */
-  /**
    * The Utupu-Tanuri, which our dataset lists under its recipe map.
    *
-   * 220% speed, half the EU/t and a fixed four parallels, plus the ordinary
-   * heat efficiency bonus off its coils: a 5% EU discount for every 900 K over
-   * the recipe's requirement, and a perfect overclock for every 1800 K over.
-   * That is the same mechanic the blast furnace runs on, so it uses the same
-   * heat path rather than a bonus of its own.
+   * MTEIndustrialDehydrator: 220% speed, half the EU/t, a fixed four
+   * parallels, plus the heat bonus off its coils - a 5% EU discount for every
+   * 900 K over the recipe's requirement and a perfect overclock for every
+   * 1800 K. Unlike the blast furnaces it reads its coils raw, with no 100 K
+   * per voltage tier on top.
    *
    * The requirement is genuinely zero here. Dehydrator recipes are low
    * temperature and always start from 0 K, which is why all 88 of them report
@@ -654,8 +752,8 @@ const MACHINES: Record<string, MachineBehaviour> = {
    * This deliberately parts company with the reference, which cannot read the
    * requirement out of its own export and so asks the player for the finished
    * difference in 900 K steps, then spends it as a 5% SPEED bonus per step.
-   * The wiki is explicit that the bonus is an energy discount and perfect
-   * overclocks, so the coefficient check skips this machine.
+   * The mod source is explicit (setHeatOC + setHeatDiscount on raw coil
+   * heat), so the coefficient check skips this machine.
    */
   "Multiblock Dehydrator": {
     aliases: ["Utupu-Tanuri"],
@@ -666,15 +764,18 @@ const MACHINES: Record<string, MachineBehaviour> = {
     controls: [HEATING_COIL_CONTROL],
   },
   "Industrial Wire Factory": {
+    // MTEIndustrialWireMill: throughput is 0.5 x item pipe tier, so a tin
+    // pipe actually runs at HALF speed and only electrum breaks even.
     overclock: OVERCLOCK.normal(),
-    speed: (c) => 1 + 0.5 * (c.tier(ITEM_PIPE) + 1),
+    speed: (c) => 0.5 * (c.tier(ITEM_PIPE) + 1),
     power: 0.75,
     parallels: (c) => c.voltageTier * 4,
     controls: [ITEM_PIPE_CONTROL],
   },
   "Amazon Warehousing Depot": {
+    // MTEIndustrialPackager: throughput is item pipe tier + 1, tin included.
     overclock: OVERCLOCK.normal(),
-    speed: (c) => c.tier(ITEM_PIPE) + 1,
+    speed: (c) => c.tier(ITEM_PIPE) + 2,
     power: 0.75,
     parallels: (c) => c.voltageTier * 16,
     controls: [ITEM_PIPE_CONTROL],
@@ -701,9 +802,12 @@ const MACHINES: Record<string, MachineBehaviour> = {
   },
   "Endothermic Fridge": {
     overclock: (c) => OVERCLOCK.perfectThenNormal(c.tier("fridgeCoolant")),
+    // Its speed boost ramps from 1 to 1.5 while it runs (cryotheum only
+    // speeds the ramp), so steady state is the full 1.5.
+    speed: 1.5,
     parallels: 256,
     controls: [COOLANT_CONTROL],
-    note: "Coolant consumption is not counted.",
+    note: "Assumes fully ramped up. Coolant consumption is not counted.",
   },
 
   // -- Flat multiblocks, second batch --------------------------------------
@@ -715,7 +819,7 @@ const MACHINES: Record<string, MachineBehaviour> = {
   },
   "Hot Isostatic Pressurization Unit": {
     overclock: OVERCLOCK.normal(),
-    speed: 2.5,
+    speed: 3.5,
     power: 0.75,
     parallels: (c) => c.voltageTier * 4,
     note: "Assumes it is not overheated.",
@@ -751,9 +855,9 @@ const MACHINES: Record<string, MachineBehaviour> = {
   "Coke Oven": {
     aliases: ["Industrial Coke Oven"],
     overclock: OVERCLOCK.normal(),
-    // Coils are a 2% EU discount each, compounding, and nothing else. The
-    // dataset's own coil control is kept so the tier list and icons stay.
-    power: (c) => 0.98 ** (c.tier(COIL) - 1),
+    // Coils are a 2% EU discount each, compounding, and nothing else:
+    // MTEIndustrialCokeOven bills 0.98^(coil tier + 1), cupronickel included.
+    power: (c) => 0.98 ** (c.tier(COIL) + 1),
     parallels: (c) => {
       const heatProof = c.tier(COKE_CASING) === 1;
       const base = heatProof ? 32 : 16;
@@ -771,14 +875,44 @@ const MACHINES: Record<string, MachineBehaviour> = {
     parallels: (c) => c.voltageTier * 8,
     note: "Parallels also depend on stability, which is not modelled.",
   },
+  // -- Singleblocks the dataset's raw numbers get wrong ---------------------
+  /**
+   * The arc furnace family is the one basic-machine line registered with
+   * `setMachineAmperage(3)` and `setMachineEUtMultiplier(3)`: it runs every
+   * recipe at triple the written EU/t, working with 3 amps of its tier. The
+   * exported recipes (and the oracle's runtime ladder, which used a plain
+   * calculator) carry the raw numbers, so without this entry the planner
+   * under-reports arc furnace power threefold. The Plasma Arc Furnace shares
+   * the recipe map but is registered plain - it must NOT get this entry.
+   */
+  "Arc Furnace": {
+    kind: "single",
+    overclock: OVERCLOCK.normal(),
+    power: 3,
+    amperage: 3,
+  },
+  /** The UV+ tiers of the same family, renamed at registration. */
+  "Short Circuit Heater": {
+    kind: "single",
+    overclock: OVERCLOCK.normal(),
+    power: 3,
+    amperage: 3,
+  },
+
   "Spinmatron-2737": {
     overclock: OVERCLOCK.normal(),
-    speed: (c) => 3 * (c.tier(SPIN_MODE) === 1 ? 2 : 1),
+    // MTESpinmatron: light mode runs at 4x (and demands hatches three tiers
+    // over the recipe), standard and heavy at 3x; heavy pays 16x EU and
+    // divides parallels by 32. Parallels floor at each step like the code.
+    speed: (c) => (c.tier(SPIN_MODE) === 1 ? 4 : 3),
     power: (c) => 0.7 * (c.tier(SPIN_MODE) === 2 ? 16 : 1),
     parallels: (c) =>
-      Math.ceil(
-        (c.value(TURBINE_TIER) * 4 * (c.tier(SPIN_FUEL) === 1 ? 1.25 : 1)) /
-          (c.tier(SPIN_MODE) === 2 ? 32 : 1),
+      Math.max(
+        1,
+        Math.floor(
+          Math.floor(c.value(TURBINE_TIER) * 4 * (c.tier(SPIN_FUEL) === 1 ? 1.25 : 1)) /
+            (c.tier(SPIN_MODE) === 2 ? 32 : 1),
+        ),
       ),
     controls: [SPIN_MODE_CONTROL, TURBINE_TIER_CONTROL, SPIN_FUEL_CONTROL],
   },

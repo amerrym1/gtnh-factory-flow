@@ -1,14 +1,11 @@
 import {
   getRecipeMinimumVoltageTier,
-  getVoltageTierForEuT,
   getVoltageTierIndex,
+  getVoltageTierMaxEuT,
   resolveVoltageTier,
 } from "@/lib/model/tiers";
-import {
-  applyMachineHandlerToRecipe,
-  getRecipeCoilTierControl,
-  getRecipeSpecialValue,
-} from "@/lib/model/recipe-rules";
+import { applyMachineHandlerToRecipe } from "@/lib/model/recipe-rules";
+import { getHeatOverclockStats } from "./heat";
 import {
   buildMachineContext,
   getBeeMegaApiaryTierEutMultiplier,
@@ -25,7 +22,6 @@ import {
   type OverclockRule,
 } from "@/lib/machines/machine-table";
 
-const VOLTAGE_TIER_INDEX_MV = 2;
 import { getCropsNhStats, isIndustrialApiaryMachineType } from "@/lib/model/passive-production";
 import type { FactoryNode, MachineTier, Recipe } from "@/lib/model/types";
 import {
@@ -153,16 +149,39 @@ export function getOverclockedRecipeStats(
     eutMultiplier *
     heatOverclock.heatDiscountMultiplier *
     parallels;
-  const affordableSteps = Math.max(
-    0,
-    getVoltageTierIndex(tier) - getVoltageTierIndex(getVoltageTierForEuT(parallelEuT)),
-  );
-  const affordable = Math.min(overclockSteps, affordableSteps);
+
+  // Overclocks counted the way OverclockCalculator counts them: whole
+  // power-of-four steps of the machine's power over the recipe's draw. The
+  // machine's power is its tier voltage times its amperage (1 for nearly
+  // everything; the arc furnaces work with 3), and a recipe drawing under
+  // 32 EU/t is billed as 32 - "Treat ULV as LV for overclocking".
+  const subTickCapable = canSubTick(recipe, effectiveRecipe);
+  const machinePower =
+    getVoltageTierMaxEuT(tier) * (getMachineBehaviour(effectiveRecipe.machineType)?.amperage ?? 1);
+  const recipePower = Math.max(Math.ceil(parallelEuT), 32);
+  let affordableSteps = Number.isFinite(machinePower)
+    ? floorLog4(Math.floor(machinePower / recipePower))
+    : Number.POSITIVE_INFINITY;
+
+  // A singleblock is additionally capped by voltage tier, measured against the
+  // recipe's RAW EU/t - `OverclockCalculator` skips this limit for multiblocks
+  // because they overclock on amperage. For 1A machines the two limits agree,
+  // so this only bites machines like the arc furnace whose amps outrun their
+  // voltage tier.
+  if (!subTickCapable && Number.isFinite(machinePower)) {
+    const machineVoltageTier = Math.max(ceilLog4(machinePower / 8), 1);
+    const recipeVoltageTier = Math.max(ceilLog4(Math.abs(effectiveRecipe.eut) / 8), 1);
+    affordableSteps = Math.min(affordableSteps, machineVoltageTier - recipeVoltageTier);
+  }
+
+  const affordable = Math.max(0, Math.min(overclockSteps, affordableSteps));
   const rule = resolveOverclockRule(effectiveRecipe, node, heatOverclock.heatOverclockSteps);
 
   // Perfect steps are taken first, then normal ones. A perfect step divides
-  // duration by the rule's multiplier and raises EU/t by the same, so the
-  // total energy is unchanged; a normal step halves duration for 4x EU/t.
+  // duration by the rule's multiplier and usually raises EU/t by the same,
+  // but rules may charge a different EU factor per step (arc electrodes are
+  // billed 4x however much speed the step buys); a normal step halves
+  // duration for 4x EU/t.
   const perfectSteps = Math.min(rule.maxPerfect, affordable);
   const normalSteps = Math.min(rule.maxNormal, affordable - perfectSteps);
   const steps = perfectSteps + normalSteps;
@@ -174,15 +193,35 @@ export function getOverclockedRecipeStats(
     durationTicks: quantiseDurationToTicks(
       (effectiveRecipe.durationTicks / rule.multiplier ** perfectSteps / 2 ** normalSteps) *
         durationMultiplier,
-      canSubTick(recipe, effectiveRecipe),
+      subTickCapable,
     ),
     eut:
       effectiveRecipe.eut *
       heatOverclock.heatDiscountMultiplier *
       eutMultiplier *
-      rule.multiplier ** perfectSteps *
+      (rule.euMultiplier ?? rule.multiplier) ** perfectSteps *
       4 ** normalSteps,
   };
+}
+
+/** Whole power-of-four steps that fit in `ratio`: 0 for anything under 4. */
+function floorLog4(ratio: number): number {
+  let steps = 0;
+  for (let power = 4; power <= ratio; power *= 4) {
+    steps += 1;
+  }
+  return steps;
+}
+
+/** Smallest `n` with `4^n >= ratio`, the game's `log4ceil`. */
+function ceilLog4(ratio: number): number {
+  let steps = 0;
+  let power = 1;
+  while (power < ratio) {
+    steps += 1;
+    power *= 4;
+  }
+  return steps;
 }
 
 /**
@@ -214,14 +253,16 @@ export function quantiseDurationToTicks(durationTicks: number, subTickCapable: b
  * A handler exported with the recipe knows its own kind, so it decides. When
  * the recipe carries no handlers at all, `getRecipeMachineHandlers` invents one
  * and stamps it `single` as a placeholder; that is not evidence, so fall back
- * to the curated table, which only lists multiblocks. Anything unrecognised
- * stays at the one-tick floor rather than suddenly claiming more output.
+ * to the curated table, whose entries are multiblocks unless marked
+ * `kind: "single"` (the arc furnace family). Anything unrecognised stays at
+ * the one-tick floor rather than suddenly claiming more output.
  */
 function canSubTick(recipe: OverclockRecipeInput, effectiveRecipe: OverclockRecipeInput): boolean {
   if ((recipe.machineHandlers?.length ?? 0) > 0) {
     return effectiveRecipe.machineProfile?.kind === "multiblock";
   }
-  return getMachineBehaviour(effectiveRecipe.machineType) !== undefined;
+  const behaviour = getMachineBehaviour(effectiveRecipe.machineType);
+  return behaviour !== undefined && behaviour.kind !== "single";
 }
 
 /**
@@ -247,75 +288,6 @@ function resolveOverclockRule(
     return spec;
   }
   return recipe.machineProfile?.perfectOverclock ? OVERCLOCK.perfect() : OVERCLOCK.normal();
-}
-
-function getHeatOverclockStats(
-  recipe: OverclockRecipeInput,
-  node: Pick<FactoryNode, "coilTier">,
-  tier: VoltageTier,
-  overclockSteps: number,
-) {
-  const specialValue = getRecipeSpecialValue(recipe);
-  const coilControl = recipe.machineType
-    ? getRecipeCoilTierControl(
-        {
-          machineType: recipe.machineType,
-          source: recipe.source,
-          nei: recipe.nei,
-          machineConfigControls: recipe.machineConfigControls,
-        },
-        node,
-      )
-    : undefined;
-  // A requirement of zero is a real number, not a gap: dehydrator recipes are
-  // low temperature and start from 0 K, so every coil clears them outright.
-  // Only the machine list keeps this off machines with no heat mechanic; the
-  // value itself is trusted whenever the machine is one that reads it.
-  if (
-    specialValue === undefined ||
-    specialValue < 0 ||
-    !coilControl?.current.heat ||
-    !isHeatOverclockMachine(recipe.machineType)
-  ) {
-    return {
-      heatOverclockSteps: 0,
-      regularOverclockSteps: overclockSteps,
-      heatDiscountMultiplier: 1,
-    };
-  }
-
-  // Coil heat plus 100 K per voltage tier above MV.
-  const machineHeat =
-    coilControl.current.heat + 100 * Math.max(0, getVoltageTierIndex(tier) - VOLTAGE_TIER_INDEX_MV);
-  const heatExcess = Math.max(0, machineHeat - specialValue);
-  const heatOverclockSteps = Math.min(overclockSteps, Math.floor(heatExcess / 1800));
-
-  return {
-    heatOverclockSteps,
-    regularOverclockSteps: overclockSteps - heatOverclockSteps,
-    heatDiscountMultiplier: 0.95 ** Math.floor(heatExcess / 900),
-  };
-}
-
-/**
- * The only machines that overclock on heat.
- *
- * These three compare their coil heat against the recipe's required heat and
- * turn the excess into 4x-per-tier overclocks. Every other coil in GTNH buys
- * something else - speed on the chem plant and pyrolyse oven, an EU discount on
- * the oil cracker and coke oven - or nothing at all, as on the large chemical
- * reactor, whose lone cupronickel block is pure structure.
- *
- * The list has to be explicit because the dataset cannot tell these apart on
- * its own: every coil block carries a heat capacity whether or not the machine
- * reads it, and every recipe carries a "Special value" line whose meaning
- * depends on the recipe map. On the chem plant that number is the machine
- * casing tier, so treating it as a heat requirement handed out free overclocks.
- */
-function isHeatOverclockMachine(machineType: string | undefined): boolean {
-  // Match the machine, never the recipe map: an Industrial Arc Furnace running
-  // a blast furnace recipe overclocks on its electrodes, not on heat.
-  return getMachineBehaviour(machineType)?.overclock === "heat";
 }
 
 function isFixedTimeTierDrivenOutputRecipe(

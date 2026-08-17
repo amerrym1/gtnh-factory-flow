@@ -192,12 +192,13 @@ describe("GT overclocking", () => {
       { overclockTier: "EV", coilTier: "naquadah" },
     );
 
-    // Graphite electrodes: 2x speed, 4 parallels, and overclocks worth 2x
-    // rather than the 4x a heat overclock would have paid. Four parallels of
-    // 120 EU/t fill an HV hatch, leaving one step of EV headroom.
+    // Graphite electrodes: no machine speed, 4 parallels, and each overclock
+    // step halves duration for the full 4x EU/t - not the quartering a heat
+    // overclock would have given. Four parallels of 120 EU/t fill an HV
+    // hatch, leaving one step of EV headroom.
     expect(stats.overclockSteps).toBe(1);
-    expect(stats.durationTicks).toBe((1000 / 2) * 0.5);
-    expect(stats.eut).toBe(120 * 2);
+    expect(stats.durationTicks).toBe(1000 / 2);
+    expect(stats.eut).toBe(120 * 4);
     // No heat discount was applied: that is the blast furnace's, not this one's.
     expect(stats.eut % 1).toBe(0);
   });
@@ -284,9 +285,110 @@ describe("GT overclocking", () => {
     // the discount and the 220% speed show up.
     expect(stats.overclockSteps).toBe(0);
     expect(stats.durationTicks).toBe(Math.floor(400 / 2.2));
-    // Machine heat is the coil plus 100 K per tier over MV, so LuV nichrome
-    // clears 4001 K: floor(4001/900) = 4 discounts on top of the flat half.
+    // The Utupu-Tanuri reads its coils raw - no 100 K per voltage tier, that
+    // bonus belongs to the blast furnaces. Nichrome's 3601 K over the 0 K
+    // requirement is floor(3601/900) = 4 discounts on top of the flat half.
     expect(stats.eut).toBeCloseTo(1920 * 0.5 * 0.95 ** 4, 6);
+  });
+
+  it("clamps a sub-LV recipe to 32 EU/t when counting overclocks", () => {
+    // OverclockCalculator: max(ceil(recipePower), 32) - "Treat ULV as LV for
+    // overclocking". A 2 EU/t recipe on an MV machine gets ONE step, measured
+    // against 32 EU/t, not the two its own tier distance would suggest.
+    const stats = getOverclockedRecipeStats(
+      { minimumTier: "ULV", durationTicks: 300, eut: 2 },
+      { overclockTier: "MV" },
+    );
+
+    expect(stats.overclockSteps).toBe(1);
+    expect(stats.durationTicks).toBe(150);
+    expect(stats.eut).toBe(8);
+  });
+
+  it("bills the arc furnace family triple, on triple amps", () => {
+    // The one basic-machine line registered with setMachineEUtMultiplier(3)
+    // and setMachineAmperage(3). The written 30 EU/t really draws 90.
+    const recipe = {
+      machineType: "Arc Furnace",
+      minimumTier: "LV" as const,
+      durationTicks: 122,
+      eut: 30,
+    };
+
+    // On an LV machine: 3 amps carry the 90 EU/t draw, but 96/90 buys no step.
+    const atLv = getOverclockedRecipeStats(recipe, { overclockTier: "LV" });
+    expect(atLv.overclockSteps).toBe(0);
+    expect(atLv.durationTicks).toBe(122);
+    expect(atLv.eut).toBe(90);
+
+    // On MV: one step fits both the power ratio and the voltage-tier cap.
+    const atMv = getOverclockedRecipeStats(recipe, { overclockTier: "MV" });
+    expect(atMv.overclockSteps).toBe(1);
+    expect(atMv.durationTicks).toBe(61);
+    expect(atMv.eut).toBe(360);
+  });
+
+  it("gives Zyngen its coil heat overclocks, with no EU discount", () => {
+    // MTEIndustrialAlloySmelter counts its coils double against an 1800 K
+    // step, so every 900 K of coil is one perfect overclock - and it never
+    // calls setHeatDiscount, so the EU/t stays an exact power of four.
+    const stats = getOverclockedRecipeStats(
+      {
+        machineType: "Zyngen",
+        minimumTier: "LV",
+        durationTicks: 400,
+        eut: 16,
+        nei: { additionalInfo: ["Special value: 0"] },
+        machineConfigControls: [heatCoilControl()],
+      },
+      { overclockTier: "MV", coilTier: "cupronickel" },
+    );
+
+    // Two parallels of 16 EU/t leave one MV step, taken as a perfect one on
+    // cupronickel's 3602 K of doubled coil heat. 400/4 at 105% speed is 95.23.
+    expect(stats.overclockSteps).toBe(1);
+    expect(stats.durationTicks).toBe(95);
+    expect(stats.eut).toBe(64);
+  });
+
+  it("reads Volcanus coils raw, without the blast furnace's voltage bonus", () => {
+    // Naquadah coils on a 6400 K recipe are 801 K of excess: no discount, no
+    // heat step. The EBF at LuV would have added 400 K and crossed 900.
+    const stats = getOverclockedRecipeStats(
+      {
+        machineType: "Volcanus",
+        minimumTier: "HV",
+        durationTicks: 600,
+        eut: 480,
+        nei: { additionalInfo: ["Special value: 6400"] },
+        machineConfigControls: [heatCoilControl()],
+      },
+      { overclockTier: "LuV", coilTier: "naquadah" },
+    );
+
+    // Eight parallels at 432 EU/t leave one normal step at LuV; the EU/t
+    // carries the 0.9 power modifier and no 0.95 heat factor.
+    expect(stats.overclockSteps).toBe(1);
+    expect(stats.durationTicks).toBe(Math.floor(600 / 2 / 2.2));
+    expect(stats.eut).toBeCloseTo(480 * 0.9 * 4, 9);
+  });
+
+  it("lets the heat discount pay for extra parallels", () => {
+    // ParallelHelper folds the heat discount into tRecipeEUt before dividing
+    // the hatch: 300 EU/t at 0.9 is 270, one parallel on HV's 512 - but six
+    // 5% discounts from naquadah coils bring it to 198.5, which fits two.
+    const parallels = getMachineParallelMultiplier(
+      {
+        machineType: "Volcanus",
+        minimumTier: "HV",
+        eut: 300,
+        nei: { additionalInfo: ["Special value: 1500"] },
+        machineConfigControls: [heatCoilControl()],
+      },
+      { overclockTier: "HV", coilTier: "naquadah", machineConfigTiers: {} },
+    );
+
+    expect(parallels).toBe(2);
   });
 
   it("still grants heat overclocks to the blast furnace family", () => {

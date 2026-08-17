@@ -3031,7 +3031,9 @@ function createImplicitParallelTerminalStorageDemandProject(): FactoryProject {
       {
         id: "parallel-consumer-recipe",
         name: "Parallel Consumer",
-        machineType: "Mega Distillation Tower",
+        // A made-up machine so the dataset's own parallel control drives this
+        // test; a curated-table name would bring that machine's speed with it.
+        machineType: "Parallel Test Tower",
         minimumTier: "LV",
         durationTicks: 20,
         eut: 1,

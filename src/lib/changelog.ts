@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.14.2",
+    date: "2026-08-17",
+    headline: "Machine numbers checked against the game's own code",
+    notes: [
+      "Arc furnaces now draw triple power, exactly as in game.",
+      "Zyngen's coils now grant their free overclocks.",
+      "Speeds and parallels corrected on a dozen reworked multiblocks.",
+      "Very cheap recipes no longer overclock one step too far.",
+    ],
+  },
+  {
     version: "2.14.1",
     date: "2026-08-14",
     headline: "The site introduces itself to AI assistants",
