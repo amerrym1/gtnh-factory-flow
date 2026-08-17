@@ -24,12 +24,12 @@ import {
   isBeeProductionRecipe,
 } from "@/lib/model/passive-production";
 import {
-  getRunVoltageTier,
   getVoltageTierForEuT,
   getVoltageTierIndex,
   getVoltageTierMaxEuT,
 } from "@/lib/model/tiers";
 import { getHeatDiscountMultiplier } from "./heat";
+import { getEffectiveVoltageOrdinal, getNodeRunTier, getPowerPoolEuT } from "./power";
 import {
   getMachineBehaviour,
   resolveCoefficient,
@@ -50,7 +50,7 @@ type MachineEffectRecipe = Pick<
 
 /** What it needs off the node the user configured. */
 type MachineEffectNode = Pick<FactoryNode, "machineConfigTiers" | "coilTier"> &
-  Partial<Pick<FactoryNode, "overclockTier" | "machineHandlerId">>;
+  Partial<Pick<FactoryNode, "overclockTier" | "machineHandlerId" | "energyHatches">>;
 
 /**
  * Reads the machine config tiers a node has selected as the zero-based indices
@@ -99,7 +99,14 @@ export function buildMachineContext(
         control.tiers.findIndex((entry) => entry.key === key),
       );
     },
-    voltageTier: getVoltageTierIndex(getRunVoltageTier(recipe as Recipe, node.overclockTier)),
+    // What GTUtility.getTier(getMaxInputVoltage()) reports: the tier of the
+    // SUMMED hatch voltage, so stacked hatches raise the ordinal the
+    // "parallels per voltage tier" formulas scale on.
+    voltageTier: getEffectiveVoltageOrdinal(
+      recipe,
+      node,
+      getNodeRunTier(recipe as Recipe, node),
+    ),
     recipeVoltageTier: getVoltageTierIndex(getVoltageTierForEuT(Math.abs(recipe.eut ?? 0))),
   };
 }
@@ -294,11 +301,11 @@ export function getMachineParallelMultiplier(
   node: MachineEffectNode,
 ): number {
   // GT++ "Voltage Tier * n Parallels" scales with the tier the machine runs
-  // at; the GT tier ordinal counts ULV as 0, LV as 1, and so on.
-  const runTier = node.overclockTier ?? recipe.minimumTier ?? "LV";
+  // at; the GT tier ordinal counts ULV as 0, LV as 1, and so on. Stacked
+  // hatches raise it, because the game reads the tier of the SUMMED voltage.
   const tierOrdinal = Math.max(
     1,
-    getVoltageTierIndex(runTier as Parameters<typeof getVoltageTierIndex>[0]),
+    getEffectiveVoltageOrdinal(recipe, node, getNodeRunTier(recipe as Recipe, node)),
   );
   const behaviour = getMachineBehaviour(recipe.machineType);
   const structural = behaviour
@@ -328,8 +335,8 @@ export function getMachineParallelMultiplier(
  * EU/t recipe on an HV hatch (512 EU/t) can only run one of them.
  */
 function getPoweredParallelLimit(recipe: MachineEffectRecipe, node: MachineEffectNode): number {
-  const runTier = getRunVoltageTier(recipe as Recipe, node.overclockTier);
-  const available = getVoltageTierMaxEuT(runTier);
+  const runTier = getNodeRunTier(recipe as Recipe, node);
+  const available = getPowerPoolEuT(recipe, node, runTier);
   if (!Number.isFinite(available)) {
     return Number.POSITIVE_INFINITY;
   }
@@ -341,7 +348,12 @@ function getPoweredParallelLimit(recipe: MachineEffectRecipe, node: MachineEffec
   const recipeEuT =
     Math.abs(recipe.eut ?? 0) *
     getMachineEutMultiplier(recipe, node) *
-    getHeatDiscountMultiplier(recipe, node, runTier);
+    getHeatDiscountMultiplier(
+      recipe,
+      node,
+      runTier,
+      getEffectiveVoltageOrdinal(recipe, node, runTier),
+    );
   if (!(recipeEuT > 0)) {
     return Number.POSITIVE_INFINITY;
   }

@@ -303,6 +303,12 @@ export const factoryNodeSchema = z.object({
     .positive()
     .transform((value) => Math.max(1, Math.round(value))),
   overclockTier: z.string().min(1),
+  energyHatches: z
+    .number()
+    .int()
+    .min(1)
+    .max(64)
+    .optional(),
   machineHandlerId: z.string().min(1).optional(),
   coilTier: z.string().min(1).optional(),
   machineConfigTiers: z.record(z.string().min(1), z.string().min(1)).optional(),

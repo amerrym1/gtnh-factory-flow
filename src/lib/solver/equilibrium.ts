@@ -604,12 +604,19 @@ export function solveEquilibrium(
     infoById.set(node.id, info);
   }
 
-  // Structural and fixed for the whole solve: these machines have a slot with
-  // no wire on it, so they ship nothing no matter what anybody downstream
-  // wants. See the offer split in runRound.
-  const stoppedByBareSlot = new Set(
-    machineNodes.filter((info) => info.bareOutputKeys.length > 0).map((info) => info.id),
+  // Structural and fixed for the whole solve: these machines have a power
+  // setup the game would refuse to start, so they sit at zero - offers, asks
+  // and fills alike - while their nameplate shape stays on the card.
+  const powerStalledNodes = new Set(
+    machineNodes.filter((info) => nodes[info.id]?.powerStalled === true).map((info) => info.id),
   );
+  // Also structural and fixed: these machines have a slot with no wire on it,
+  // so they ship nothing no matter what anybody downstream wants. See the
+  // offer split in runRound.
+  const stoppedByBareSlot = new Set([
+    ...machineNodes.filter((info) => info.bareOutputKeys.length > 0).map((info) => info.id),
+    ...powerStalledNodes,
+  ]);
 
   // ---- Iteration state: everything starts at full blast. -------------------
   const cap = new Map<string, number>();
@@ -633,10 +640,14 @@ export function solveEquilibrium(
   let poolInflow = new Map<string, number>();
   const resetIterationState = () => {
     for (const info of machineNodes) {
-      cap.set(info.id, 1);
-      dem.set(info.id, 1);
-      demW.set(info.id, 1);
-      disp.set(info.id, 1);
+      // A power-stalled machine starts still and never rises: its offers are
+      // zeroed in the fill, but the sink-absorption path reads production off
+      // these fills directly, so the stillness has to live here too.
+      const stopped = powerStalledNodes.has(info.id);
+      cap.set(info.id, stopped ? 0 : 1);
+      dem.set(info.id, stopped ? 0 : 1);
+      demW.set(info.id, stopped ? 0 : 1);
+      disp.set(info.id, stopped ? 0 : 1);
     }
     unconditionalByBudget = new Map();
     poolInflow = new Map();
@@ -1529,6 +1540,11 @@ export function solveEquilibrium(
     }
 
     for (const info of machineNodes) {
+      // The power-stalled machines stay pinned at zero across rounds;
+      // everything else follows the fill.
+      if (powerStalledNodes.has(info.id)) {
+        continue;
+      }
       cap.set(info.id, output.capNext.get(info.id) ?? 1);
       dem.set(info.id, output.demNext.get(info.id) ?? 1);
       demW.set(info.id, output.demWantNext.get(info.id) ?? 1);

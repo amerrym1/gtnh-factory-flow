@@ -136,6 +136,31 @@ export function formatCompact(value: number): string {
   return `${sign}${text}${COMPACT_SUFFIXES[tier]}`;
 }
 
+/**
+ * `formatCompact` for a number in MOTION: fixed decimals per magnitude,
+ * trailing zeros kept, whole numbers below a thousand. The honest formatter
+ * trims zeros and varies its decimals, which makes an easing value flicker
+ * between widths frame to frame ("20.1", "20", "19.93"); a tween wants every
+ * frame the same shape, and the landing frame goes back through
+ * `formatCompact` for the clean resting form.
+ */
+export function formatCompactStable(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "unbounded";
+  }
+  const sign = value < 0 ? "-" : "";
+  let abs = Math.abs(value);
+  if (abs < 1000) {
+    return `${sign}${Math.round(abs)}`;
+  }
+  let tier = 0;
+  while (abs >= 1000 && tier < COMPACT_SUFFIXES.length - 1) {
+    abs /= 1000;
+    tier += 1;
+  }
+  return `${sign}${abs.toFixed(abs >= 100 ? 1 : 2)}${COMPACT_SUFFIXES[tier]}`;
+}
+
 export function formatNumberWithThousands(value: number | string): string {
   // American separators: comma thousands, dot decimal ("1,234.56").
   const text = String(value);

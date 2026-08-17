@@ -73,14 +73,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "2.14.2",
+    version: "2.15.0",
     date: "2026-08-17",
-    headline: "Machine numbers checked against the game's own code",
+    headline: "Real power: hatches, overclocks and a power readout",
     notes: [
+      "Machine speeds, overclocks and power checked against the game's own code.",
+      "Multiblock cards get an energy hatch dial next to the tier button.",
+      "Cards show their power draw, and say when a build is underpowered.",
       "Arc furnaces now draw triple power, exactly as in game.",
-      "Zyngen's coils now grant their free overclocks.",
-      "Speeds and parallels corrected on a dozen reworked multiblocks.",
-      "Very cheap recipes no longer overclock one step too far.",
     ],
   },
   {

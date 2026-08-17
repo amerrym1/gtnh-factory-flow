@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { MachineShoppingList } from "./MachineShoppingList";
 import { formatCompact } from "@/lib/model";
 import { makeResourceKey } from "@/lib/model/resources";
 import { getStorageRoles } from "@/lib/model/storage-role";
@@ -290,6 +291,9 @@ export function InspectorPanel() {
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2">
         <FlowIOPanel />
       </div>
+      {/* The build list rides the panel's floor: what to build, at which
+          tier, and what one of each draws. */}
+      <MachineShoppingList />
     </aside>
   );
 }
