@@ -73,6 +73,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.16.0",
+    date: "2026-08-17",
+    headline: "Power explains itself",
+    notes: [
+      "Hover the tier chip, the hatch counter or the power cell for the whole power story.",
+      "The tooltip diagrams each overclock: 4x the power for 2x or 4x the speed.",
+      "It also spells out hatches, amps, parallels and what to fix when a build stalls.",
+    ],
+  },
+  {
     version: "2.15.0",
     date: "2026-08-17",
     headline: "Real power: hatches, overclocks and new board views",

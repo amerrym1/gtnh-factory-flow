@@ -50,9 +50,26 @@ export interface OverclockedRecipeStats {
   tier: VoltageTier;
   minimumTier: VoltageTier;
   overclockSteps: number;
+  /**
+   * How many of the steps are perfect (machine or heat) overclocks, taken
+   * FIRST; the rest are normal steps. Runtime-ladder machines report 0: the
+   * game's export never says which kind its ladder took.
+   */
+  perfectOverclockSteps: number;
+  /** A perfect step's duration divisor. A normal step always halves. */
+  perfectSpeedFactor: number;
+  /** A perfect step's EU/t multiplier. A normal step always pays 4×. */
+  perfectEuFactor: number;
   durationTicks: number;
   eut: number;
 }
+
+/** The step shape every non-curated branch reports: plain ×4/÷2 counting. */
+const PLAIN_OVERCLOCK_STEPS = {
+  perfectOverclockSteps: 0,
+  perfectSpeedFactor: 4,
+  perfectEuFactor: 4,
+} as const;
 
 export function getOverclockedRecipeStats(
   recipe: OverclockRecipeInput,
@@ -79,6 +96,7 @@ export function getOverclockedRecipeStats(
       tier: runtimeTier,
       minimumTier,
       overclockSteps: runtimeOverclockSteps(runtimeTier, minimumTier),
+      ...PLAIN_OVERCLOCK_STEPS,
       durationTicks: runtimeVariant.durationTicks,
       eut: runtimeVariant.eut,
     };
@@ -88,6 +106,7 @@ export function getOverclockedRecipeStats(
       tier,
       minimumTier,
       overclockSteps,
+      ...PLAIN_OVERCLOCK_STEPS,
       durationTicks: effectiveRecipe.durationTicks,
       eut: effectiveRecipe.eut,
     };
@@ -101,6 +120,7 @@ export function getOverclockedRecipeStats(
       tier,
       minimumTier,
       overclockSteps: 0,
+      ...PLAIN_OVERCLOCK_STEPS,
       durationTicks: Math.max(
         1,
         effectiveRecipe.durationTicks * getMachineDurationMultiplier(effectiveRecipe as Recipe, node),
@@ -115,6 +135,7 @@ export function getOverclockedRecipeStats(
       tier: minimumTier,
       minimumTier,
       overclockSteps: 0,
+      ...PLAIN_OVERCLOCK_STEPS,
       durationTicks: Math.max(1, effectiveRecipe.durationTicks * durationMultiplier),
       eut: effectiveRecipe.eut * eutMultiplier,
     };
@@ -127,6 +148,7 @@ export function getOverclockedRecipeStats(
       tier,
       minimumTier,
       overclockSteps,
+      ...PLAIN_OVERCLOCK_STEPS,
       durationTicks: effectiveRecipe.durationTicks,
       eut: effectiveRecipe.eut * eutMultiplier,
     };
@@ -212,6 +234,9 @@ export function getOverclockedRecipeStats(
     tier,
     minimumTier,
     overclockSteps: steps,
+    perfectOverclockSteps: perfectSteps,
+    perfectSpeedFactor: rule.multiplier,
+    perfectEuFactor: rule.euMultiplier ?? rule.multiplier,
     durationTicks: quantiseDurationToTicks(
       (effectiveRecipe.durationTicks / rule.multiplier ** perfectSteps / 2 ** normalSteps) *
         durationMultiplier,

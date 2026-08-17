@@ -56,6 +56,11 @@ export interface NodePowerReport {
   /** The machine's draw while running: overclocked EU/t x parallels. */
   drawEuT: number;
   overclockSteps: number;
+  /** Of which perfect (machine/heat) steps, taken first. See overclock.ts. */
+  perfectOverclockSteps: number;
+  /** A perfect step's duration divisor and EU/t multiplier. */
+  perfectSpeedFactor: number;
+  perfectEuFactor: number;
   /** drawEuT / poolEuT, for the usage figure. 0 when the pool is unbounded. */
   usage: number;
 }
@@ -110,6 +115,9 @@ export function getNodePowerReport(recipe: Recipe, node: PowerReportNode): NodeP
     parallels,
     drawEuT,
     overclockSteps: stats.overclockSteps,
+    perfectOverclockSteps: stats.perfectOverclockSteps,
+    perfectSpeedFactor: stats.perfectSpeedFactor,
+    perfectEuFactor: stats.perfectEuFactor,
     usage: Number.isFinite(poolEuT) && poolEuT > 0 ? drawEuT / poolEuT : 0,
   };
 }

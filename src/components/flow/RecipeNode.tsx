@@ -1013,6 +1013,27 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             ) : null}
           </div>
           {tierControl && tierColor ? (
+            // The fused chip pair is ONE hover surface telling the whole
+            // power story - the same panel the footer's POWER cell shows -
+            // so tier, hatches and power all speak one language. The native
+            // titles survive only where there is no report to tell it.
+            <MinecraftTooltip
+              content={
+                powerReport ? (
+                  <PowerStoryContent
+                    report={powerReport}
+                    machineCount={projectNode.machineCount}
+                    nodeParallel={projectNode.parallel}
+                    durationTicks={overclockedRecipe.durationTicks}
+                    hint={
+                      showHatchControl
+                        ? "Left click raises, right click lowers. Left chip: hatches. Right chip: tier."
+                        : "Left click raises the tier, right click lowers it."
+                    }
+                  />
+                ) : undefined
+              }
+            >
             <div className="flex">
               {showHatchControl ? (
                 <button
@@ -1035,9 +1056,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     color: tierColor.text,
                     textShadow: `1px 1px 0 ${tierColor.shadow}`,
                   }}
-                  title={`${powerReport?.hatches ?? 1} energy ${
-                    (powerReport?.hatches ?? 1) === 1 ? "hatch" : "hatches"
-                  } (${powerReport?.amps ?? 1} A). Left click adds one, right click removes one. Two or more hatches work at 2 amps each.`}
                   aria-label={`${powerReport?.hatches ?? 1} energy hatches`}
                 >
                   {powerReport?.hatches ?? 1}×
@@ -1061,12 +1079,15 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   color: tierColor.text,
                   textShadow: `1px 1px 0 ${tierColor.shadow}`,
                 }}
-                title={`Tier ${tierControl.current}. Left click up, right click down.`}
+                title={
+                  powerReport ? undefined : `Tier ${tierControl.current}. Left click up, right click down.`
+                }
                 aria-label={`Tier ${tierControl.current}`}
               >
                 {tierControl.current}
               </button>
             </div>
+            </MinecraftTooltip>
           ) : null}
         </div>
         </div>
@@ -1214,6 +1235,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                             report={powerReport}
                             machineCount={projectNode.machineCount}
                             nodeParallel={projectNode.parallel}
+                            durationTicks={overclockedRecipe.durationTicks}
                           />
                         ) : null}
                         {machineParallelMultiplier > 1 ? (
@@ -3702,10 +3724,12 @@ function PowerStat({
   report,
   machineCount,
   nodeParallel,
+  durationTicks,
 }: {
   report: NodePowerReport;
   machineCount: number;
   nodeParallel: number;
+  durationTicks?: number;
 }) {
   const stalled = report.state !== "ok";
   // Always EU/t, whatever the board's rate unit: power is a per-tick fact in
@@ -3716,10 +3740,11 @@ function PowerStat({
   return (
     <MinecraftTooltip
       content={
-        <PowerHoverContent
+        <PowerStoryContent
           report={report}
           machineCount={machineCount}
           nodeParallel={nodeParallel}
+          durationTicks={durationTicks}
         />
       }
     >
@@ -3771,53 +3796,192 @@ function PowerStat({
   );
 }
 
-function PowerHoverContent({
+/** A tier's name in its own paint, for the power story's diagram rows. */
+function StoryTierChip({ tier }: { tier: NodePowerReport["tier"] }) {
+  const color = GT_TIER_COLORS[tier];
+  return (
+    <span
+      className="inline-block border px-1 text-[10px] font-bold leading-[14px]"
+      style={{
+        backgroundColor: color.background,
+        borderColor: color.border,
+        color: color.text,
+        textShadow: `1px 1px 0 ${color.shadow}`,
+      }}
+    >
+      {tier}
+    </span>
+  );
+}
+
+function trimFactor(value: number): string {
+  return Number.isInteger(value)
+    ? String(value)
+    : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function storySeconds(ticks: number): string {
+  const seconds = ticks / 20;
+  const text = seconds >= 10 ? seconds.toFixed(1) : seconds.toFixed(2);
+  return `${text.replace(/\.?0+$/, "")}s`;
+}
+
+/**
+ * THE power tooltip, one panel shared by every power surface on the card:
+ * the hatch chip, the tier chip, and the footer's POWER cell all say this,
+ * so wherever the hover lands the language is the same.
+ *
+ * It reads top to bottom as the game computes it: what the build SUPPLIES,
+ * what the recipe asks and the overclock ladder that follows (each step
+ * spends 4× power; a regular step doubles speed, a perfect one quadruples
+ * it), then parallels, usage and the total. The ladder is drawn only when
+ * its arithmetic reproduces the real draw — runtime-ladder machines, whose
+ * step kinds the game never exported, get the honest one-line count instead.
+ */
+function PowerStoryContent({
   report,
   machineCount,
   nodeParallel,
+  durationTicks,
+  hint,
 }: {
   report: NodePowerReport;
   machineCount: number;
   nodeParallel: number;
+  /** The overclocked recipe's final duration, for the ladder's time column. */
+  durationTicks?: number;
+  /** One muted line of control help, for the chips that also click. */
+  hint?: string;
 }) {
   const stall = describePowerStall(report);
-  const perParallel = report.parallels > 0 ? report.drawEuT / report.parallels : report.drawEuT;
   const machines = machineCount * nodeParallel;
-  const poolLine = report.isMultiblock
-    ? `${report.hatches}× ${report.tier} ${
-        report.hatches === 1 ? "hatch" : "hatches"
-      } (${report.amps} A) = ${formatCompact(report.poolEuT)} EU/t`
-    : `${report.tier} machine${report.amps > 1 ? ` × ${report.amps} A` : ""} = ${formatCompact(
-        report.poolEuT,
-      )} EU/t`;
+  const perRunEuT = report.parallels > 0 ? report.drawEuT / report.parallels : report.drawEuT;
+  const normalSteps = Math.max(0, report.overclockSteps - report.perfectOverclockSteps);
+  const expectedEuT =
+    report.singleDrawEuT *
+    report.perfectEuFactor ** report.perfectOverclockSteps *
+    4 ** normalSteps;
+  const ladderHonest =
+    report.overclockSteps === 0 ||
+    Math.abs(expectedEuT - perRunEuT) <= Math.max(2, perRunEuT * 0.02);
+  const baseTicks =
+    durationTicks !== undefined
+      ? durationTicks *
+        report.perfectSpeedFactor ** report.perfectOverclockSteps *
+        2 ** normalSteps
+      : undefined;
+  const perfectLabel =
+    report.perfectSpeedFactor === 4 && report.perfectEuFactor === 4
+      ? "perfect overclock"
+      : "machine overclock";
 
   return (
-    <div className="space-y-1">
+    <div className="w-80 space-y-2 text-[12px] leading-4 text-slate-200">
       <div>
-        <span className="text-[var(--mc-ink-muted)]">Supply </span>
-        {poolLine}
-      </div>
-      <div>
-        <span className="text-[var(--mc-ink-muted)]">Draw </span>
-        {formatCompact(report.drawEuT)} EU/t
-        {report.parallels > 1 ? ` = ${formatCompact(perParallel)} EU/t × ${report.parallels} parallels` : ""}
-        {report.overclockSteps > 0
-          ? ` after ${report.overclockSteps} overclock${report.overclockSteps === 1 ? "" : "s"}`
-          : ""}
-      </div>
-      {!stall ? (
+        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+          Supply
+        </div>
         <div>
-          <span className="text-[var(--mc-ink-muted)]">Usage </span>
-          {Math.round(report.usage * 100)}% of the supply
+          {report.isMultiblock ? (
+            <>
+              {report.hatches}× <StoryTierChip tier={report.tier} /> energy{" "}
+              {report.hatches === 1 ? "hatch" : "hatches"} · {report.amps} A ={" "}
+              <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span> to spend
+            </>
+          ) : (
+            <>
+              <StoryTierChip tier={report.tier} /> machine
+              {report.amps > 1 ? ` · ${report.amps} A` : ""} ={" "}
+              <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span> to spend
+            </>
+          )}
+        </div>
+        {report.isMultiblock ? (
+          <div className="text-[11px] text-slate-400">
+            One hatch works at 1 A; two or more work at 2 A each.
+          </div>
+        ) : null}
+      </div>
+
+      <div>
+        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+          Overclocks
+        </div>
+        {ladderHonest ? (
+          <div className="space-y-0.5">
+            <div>
+              <StoryTierChip tier={report.minimumTier} /> recipe:{" "}
+              <span className="font-bold">{formatCompact(report.singleDrawEuT)} EU/t</span>
+              {baseTicks !== undefined ? ` · ${storySeconds(baseTicks)}` : ""}
+            </div>
+            {report.perfectOverclockSteps > 0 ? (
+              <div className="pl-3 text-[11px] text-cyan-300">
+                ↓ {report.perfectOverclockSteps}× {perfectLabel}
+                {report.perfectOverclockSteps === 1 ? "" : "s"}: ×
+                {trimFactor(report.perfectEuFactor)} power, ×
+                {trimFactor(report.perfectSpeedFactor)} speed each
+              </div>
+            ) : null}
+            {normalSteps > 0 ? (
+              <div className="pl-3 text-[11px] text-amber-300">
+                ↓ {normalSteps}× regular overclock{normalSteps === 1 ? "" : "s"}: ×4 power, ×2
+                speed each
+              </div>
+            ) : null}
+            {report.overclockSteps > 0 ? (
+              <div>
+                <StoryTierChip tier={report.tier} /> runs it at{" "}
+                <span className="font-bold">{formatCompact(perRunEuT)} EU/t</span>
+                {durationTicks !== undefined ? ` · ${storySeconds(durationTicks)}` : ""}
+              </div>
+            ) : (
+              <div className="text-[11px] text-slate-400">
+                None: a step needs 4× the recipe's draw free in the supply.
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            {report.overclockSteps} overclock{report.overclockSteps === 1 ? "" : "s"}, from the
+            game&apos;s own runtime numbers.
+          </div>
+        )}
+        <div className="mt-0.5 text-[11px] text-slate-400">
+          An overclock spends 4× the power to finish sooner: a regular one doubles the speed, a
+          perfect one quadruples it.
+        </div>
+      </div>
+
+      {report.parallels > 1 ? (
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Parallels
+          </div>
+          <div>
+            ×{report.parallels} recipes at once ={" "}
+            <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
+          </div>
+          <div className="text-[11px] text-slate-400">
+            Parallels are paid for first; only leftover power buys overclocks.
+          </div>
         </div>
       ) : null}
-      {machines > 1 && !stall ? (
+
+      {!stall ? (
         <div>
-          <span className="text-[var(--mc-ink-muted)]">Total </span>×{machines} machines ={" "}
-          {formatCompact(report.drawEuT * machines)} EU/t
+          <span className="text-slate-400">Usage </span>
+          {Math.round(report.usage * 100)}% of the supply
+          {machines > 1 ? (
+            <>
+              {" "}
+              · ×{machines} machines ={" "}
+              <span className="font-bold">{formatCompact(report.drawEuT * machines)} EU/t</span>
+            </>
+          ) : null}
         </div>
       ) : null}
       {stall ? <div className="font-bold text-red-400">{stall}</div> : null}
+      {hint ? <div className="text-[11px] italic text-slate-500">{hint}</div> : null}
     </div>
   );
 }
