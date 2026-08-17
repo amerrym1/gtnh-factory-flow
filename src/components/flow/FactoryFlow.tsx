@@ -49,7 +49,6 @@ import {
   Magnet,
   MoveUpRight,
   Paintbrush,
-  Palette,
   Plus,
   Presentation,
   Redo2,
@@ -57,11 +56,13 @@ import {
   Square,
   Trash,
   Trash2,
+  TriangleAlert,
   Type,
   Undo2,
   Wallpaper,
   Wand2,
   X,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -1447,12 +1448,15 @@ export function FactoryFlow() {
   const nodeColorPaintMode = useFactoryStore((state) => state.nodeColorPaintMode);
   const setNodeColorPaintMode = useFactoryStore((state) => state.setNodeColorPaintMode);
   const boardView = useBoardView();
-  const { freeDockMode, lineHeatMode, lineLabelsMode, lineThicknessMode, linePulseMode, calmMode } =
+  const { freeDockMode, lineLabelsMode, lineThicknessMode, linePulseMode, calmMode } =
     boardView;
   // Device taste, not plan state: never captured into plan-view snapshots.
   const boardMotion = useBoardMotion();
   const canvasTheme = getCanvasTheme(boardView.canvasTheme);
-  const anyLineMode = lineHeatMode || lineThicknessMode || linePulseMode;
+  // Line colour rides the speed smart view now — no switch of its own. The
+  // edge component itself gates it to the glance step, where the view lives.
+  const speedColorMode = boardView.glanceMode === "status";
+  const anyLineMode = speedColorMode || lineThicknessMode || linePulseMode;
   const setFlowViewportCenter = useFactoryStore((state) => state.setFlowViewportCenter);
   const hoveredFlowResourceKey = useFactoryStore((state) => state.hoveredFlowResourceKey);
   const selectedFlowResourceKey = useFactoryStore((state) => state.selectedFlowResourceKey);
@@ -2599,7 +2603,7 @@ export function FactoryFlow() {
             ? {
                 heat: flowHeat,
                 kind: flowBucketFor(edge.resourceKind),
-                color: lineHeatMode,
+                color: speedColorMode,
                 thickness: lineThicknessMode,
                 pulse: linePulseMode,
               }
@@ -2607,7 +2611,9 @@ export function FactoryFlow() {
           layoutEpoch: layoutVersion,
         },
         style: {
-          stroke: lineHeatMode ? flowRampColor(flowHeat) : edgeColor,
+          // Always the resource colour: the edge component derives its own
+          // speed-view stroke at the point of use (it knows the LOD step).
+          stroke: edgeColor,
           // Volume is the whole message in thickness mode, so the starved
           // dashes stand down rather than chopping up a fat pipe.
           strokeDasharray: isStarvedEdge && !lineThicknessMode ? "4 6" : undefined,
@@ -2672,7 +2678,7 @@ export function FactoryFlow() {
     activeFlowResourceKey,
     anyLineMode,
     freeDockMode,
-    lineHeatMode,
+    speedColorMode,
     lineLabelsMode,
     linePulseMode,
     lineThicknessMode,
@@ -3971,13 +3977,9 @@ export function FactoryFlow() {
     (tag: FactoryNodeColorTag | null | undefined) => {
       setAnnotationTool(undefined);
       setDeleteMode(false);
-      // Picking up the brush drops the status view and its heatmap: painting
-      // under heat would look like nothing happened, because the heat is
-      // covering every colour. Both together — the heat rides the status
-      // view, and a split state would resurrect it on the next reload.
-      if (tag !== undefined) {
-        writeBoardView({ heatmapMode: false, glanceMode: "identity" });
-      }
+      // Picking up the brush no longer touches the smart view: the coloured
+      // views live only at the glance step now, so up close — where painting
+      // happens — the paint always shows exactly where it lands.
       setNodeColorPaintMode(tag);
     },
     [setNodeColorPaintMode],
@@ -4351,16 +4353,14 @@ export function FactoryFlow() {
     };
   }, [annotationTool]);
 
-  // The status smart view brings the heatmap with it: "show me usage" is one
-  // mode at every zoom. Turning the heat on drops the brush — painting while
-  // every node is showing heat would have you picking colours you cannot see
-  // land.
+  // Switching into a coloured view drops the brush: zoomed out under a view
+  // wash, a paint stroke would land invisibly.
   const handleGlanceModeChange = useCallback(
     (mode: GlanceMode) => {
-      if (mode === "status") {
+      if (mode !== "identity") {
         setNodeColorPaintMode(undefined);
       }
-      writeBoardView({ glanceMode: mode, heatmapMode: mode === "status" });
+      writeBoardView({ glanceMode: mode });
     },
     [setNodeColorPaintMode],
   );
@@ -5123,7 +5123,7 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
   onFitView,
 }: {
   glanceMode: BoardView["glanceMode"];
-  /** Status brings the heatmap with it and drops the paint brush. */
+  /** Picking a coloured view drops the paint brush. */
   onModeChange: (mode: GlanceMode) => void;
   /** Zoom out until the whole plan is on screen, and centre it. */
   onFitView: () => void;
@@ -5140,8 +5140,8 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
       data-help-anchor="glance"
       className="nodrag pointer-events-none absolute bottom-3 right-3 z-20 flex items-start gap-2"
     >
-      {/* On its own plate: this one moves the camera, the pair beside it
-          change what every card shows. */}
+      {/* On its own plate: this one moves the camera, the row beside it
+          changes what every card shows. */}
       <ToolTray>
         <button
           type="button"
@@ -5153,12 +5153,14 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
           <Focus className="h-4 w-4" />
         </button>
       </ToolTray>
+      {/* The smart views. Every one of them is a zoomed-out reading: up close
+          the cards always look like themselves, whichever is picked. */}
       <ToolTray>
         <button
           type="button"
           onClick={() => onModeChange("identity")}
           className={buttonClass(glanceMode === "identity")}
-          title="Cards show what they are: their own colours up close, the machine icon zoomed out. Hover a card for its rates."
+          title="Zoomed out, cards show what they are: the machine icon, count and name. Hover a card for its rates."
           aria-label="Show machines"
           aria-pressed={glanceMode === "identity"}
         >
@@ -5168,11 +5170,31 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
           type="button"
           onClick={() => onModeChange("status")}
           className={buttonClass(glanceMode === "status")}
-          title="Cards show how hard they run: heat colours up close (red = idle, green = full), percentages zoomed out, and hovering one maps the board by wire distance."
-          aria-label="Show usage"
+          title="Speed view. Zoomed out, cards and lines take colour from how hard they run: red is idle, green is full speed. Hovering a card maps the board by wire distance."
+          aria-label="Show speed"
           aria-pressed={glanceMode === "status"}
         >
           <Gauge className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => onModeChange("usage")}
+          className={buttonClass(glanceMode === "usage")}
+          title="Usage view. Zoomed out, each card is coloured by WHY it runs the way it does: bottleneck, starved, clogged, no power."
+          aria-label="Show usage reasons"
+          aria-pressed={glanceMode === "usage"}
+        >
+          <TriangleAlert className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => onModeChange("power")}
+          className={buttonClass(glanceMode === "power")}
+          title="Power view. Zoomed out, each card wears its voltage tier's colour and shows its power draw and hatches."
+          aria-label="Show power"
+          aria-pressed={glanceMode === "power"}
+        >
+          <Zap className="h-4 w-4" />
         </button>
       </ToolTray>
     </div>
@@ -6017,7 +6039,6 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
   const {
     canvasPattern,
     freeDockMode,
-    lineHeatMode,
     lineLabelsMode,
     lineThicknessMode,
     linePulseMode,
@@ -6154,25 +6175,12 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
       {/* No grid-lock button any more. The grid is not a mode: every card is
           built out of whole cells and every position is a cell corner, so
           there is nothing left for a toggle to mean. */}
-      {/* No heatmap button either: the heat rides the status smart view (the
-          gauge button, bottom right), so "show me usage" is one mode at
-          every zoom rather than two toggles to keep in sync. */}
-      {/* The three line modes, independent and mixable. Volume is always
-          ranked within a kind, items against items and fluids against fluids. */}
-      <button
-        type="button"
-        onClick={() => onChange({ lineHeatMode: !lineHeatMode })}
-        className={buttonClass(lineHeatMode)}
-        title={
-          lineHeatMode
-            ? "Line colour: by volume. Click to restore resource colours."
-            : "Colour every line by how much moves through it (red = least, green = most)"
-        }
-        aria-label={lineHeatMode ? "Turn line colour off" : "Colour lines by volume"}
-        aria-pressed={lineHeatMode}
-      >
-        <Palette className="h-4 w-4" />
-      </button>
+      {/* No heatmap button and no line-colour button either: both ride the
+          speed smart view (the gauge button, bottom right) and show only at
+          the glance step, so "colour the board by speed" is one switch. */}
+      {/* The two line modes left here, independent and mixable. Volume is
+          always ranked within a kind, items against items and fluids against
+          fluids. */}
       <button
         type="button"
         onClick={() => onChange({ lineThicknessMode: !lineThicknessMode })}
@@ -6552,9 +6560,14 @@ function ResourceEdgeComponent({
   // Flow mode repaints the line by volume. The stroke colour is derived HERE
   // from the resource, not read from `style`, so setting style.stroke upstream
   // did nothing at all — the ramp has to be applied at the point of use.
+  // The speed-view colour is a GLANCE-step reading, exactly like the card
+  // wash it rides with: zoomed in, the wire keeps its resource colour
+  // whatever smart view is picked.
   const flowRate = data?.flowRate;
   const edgeColor =
-    flowRate?.color === true ? flowRampColor(flowRate.heat) : resolvedResourceColor;
+    flowRate?.color === true && boardDetailLevel === NODE_DETAIL_GLANCE
+      ? flowRampColor(flowRate.heat)
+      : resolvedResourceColor;
   // The board's motion switches. Move motion glides this wire onto a new
   // route; value motion eases its thickness and dash speed after the solver.
   const { moveMotion, valueMotion } = useBoardMotion();

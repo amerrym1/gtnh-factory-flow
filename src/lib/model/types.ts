@@ -529,6 +529,8 @@ export interface FuelProfile {
 export interface PlanViewState {
   canvasPattern?: string;
   canvasTheme?: string;
+  /** Historical: older plans carry it, nothing reads it. Line colour rides
+   * the status glance mode now. */
   lineHeatMode?: boolean;
   lineThicknessMode?: boolean;
   freeDockMode?: boolean;

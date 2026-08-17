@@ -42,34 +42,75 @@ import type { CSSProperties, ReactNode } from "react";
 export function NodeGlanceText({
   text,
   className,
+  accent,
+  word,
 }: {
   /** A string, or a text-producing fragment (the eased usage figure). */
   text: ReactNode;
   /** Tone colour for the figure; `fill` reads it through currentColor. */
   className?: string;
+  /** Explicit ink, when the colour is computed (a glance surface's accent). */
+  accent?: string;
+  /** A second, small line under the figure — the reason word, the tier chip. */
+  word?: string;
 }) {
   return (
     <div
       data-node-detail="glance"
       aria-hidden
-      className="pointer-events-none absolute inset-0 z-10 hidden items-center justify-center p-1"
+      // `flex` from the start: whether the layer SHOWS is the stylesheet's
+      // call (`data-detail-level` plus the fade rules in globals.css), and a
+      // display switch cannot fade.
+      className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-1"
     >
       <svg
         viewBox="0 0 100 30"
         preserveAspectRatio="xMidYMid meet"
         className={["h-full w-full font-mono", className ?? ""].join(" ")}
+        style={accent ? { color: accent } : undefined}
       >
-        <text
-          x="50"
-          y="24"
-          textAnchor="middle"
-          fontSize="30"
-          fontWeight="900"
-          fill="currentColor"
-          className="tabular-nums"
-        >
-          {text}
-        </text>
+        {word ? (
+          <>
+            {/* Two lines share the 30-unit box: the figure gives up a fifth
+                of its height so the word can sit under it without the box —
+                and therefore the card — changing size. */}
+            <text
+              x="50"
+              y="19"
+              textAnchor="middle"
+              fontSize="24"
+              fontWeight="900"
+              fill="currentColor"
+              className="tabular-nums"
+            >
+              {text}
+            </text>
+            <text
+              x="50"
+              y="28.5"
+              textAnchor="middle"
+              fontSize="7"
+              fontWeight="700"
+              letterSpacing="0.6"
+              fill="currentColor"
+              opacity="0.85"
+            >
+              {word.toUpperCase()}
+            </text>
+          </>
+        ) : (
+          <text
+            x="50"
+            y="24"
+            textAnchor="middle"
+            fontSize="30"
+            fontWeight="900"
+            fill="currentColor"
+            className="tabular-nums"
+          >
+            {text}
+          </text>
+        )}
       </svg>
     </div>
   );
@@ -91,7 +132,7 @@ export function NodeGlanceIcon({ children, tileTint }: { children: ReactNode; ti
     <div
       data-node-detail="glance"
       aria-hidden
-      className="pointer-events-none absolute inset-0 z-10 hidden items-center justify-center p-1"
+      className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-1"
       style={tileTint ? glanceTileStyle(tileTint) : undefined}
     >
       {/* Just centres. Sizing is the caller's job: a sprite is a

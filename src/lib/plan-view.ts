@@ -2,10 +2,10 @@
 
 import {
   CANVAS_PATTERNS,
+  isGlanceMode,
   readBoardViewSnapshot,
   writeBoardView,
   type CanvasPattern,
-  type GlanceMode,
 } from "@/components/flow/board-view";
 import { isCanvasThemeId } from "@/components/flow/canvas-themes";
 import { isCompactViewport } from "./compact-view";
@@ -32,7 +32,8 @@ export function capturePlanView(): PlanViewState {
   return {
     canvasPattern: board.canvasPattern,
     canvasTheme: board.canvasTheme,
-    lineHeatMode: board.lineHeatMode,
+    // No `lineHeatMode` any more: line colour rides the status glance mode,
+    // which the snapshot already carries.
     lineThicknessMode: board.lineThicknessMode,
     freeDockMode: board.freeDockMode,
     lineLabelsMode: board.lineLabelsMode,
@@ -113,14 +114,13 @@ function applyViewSettings(view: PlanViewState | undefined, scope: PlanViewScope
   if (isCanvasThemeId(view.canvasTheme)) {
     boardPatch.canvasTheme = view.canvasTheme;
   }
-  if (view.glanceMode === "identity" || view.glanceMode === "status") {
-    boardPatch.glanceMode = view.glanceMode as GlanceMode;
-    // The heatmap rides the status glance view rather than having its own
-    // switch, so it is derived here exactly as board-view derives it on load.
-    boardPatch.heatmapMode = view.glanceMode === "status";
+  if (isGlanceMode(view.glanceMode)) {
+    boardPatch.glanceMode = view.glanceMode;
   }
+  // `lineHeatMode` from an older plan is deliberately NOT applied: line
+  // colour rides the status glance mode now, and the old flag would arrive
+  // with no control that turns it off.
   for (const key of [
-    "lineHeatMode",
     "lineThicknessMode",
     "freeDockMode",
     "lineLabelsMode",

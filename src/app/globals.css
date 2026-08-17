@@ -708,11 +708,18 @@ textarea {
    having to remember to wire it up. A list is exactly what leaked dropdowns
    through the first time.
 
-   `display` for the glance layer specifically: it is absolutely positioned, so
-   it has no effect on the card's size either way, and the `visibility` rule
-   only binds elements that are IN the layout. */
+   The switch is opacity + visibility on BOTH sides now, never `display`: the
+   two details cross-fade at the threshold (the rules further down), and a
+   display flip cannot fade. Everything keeps its layout box either way, which
+   is what the router measures. */
+.factory-flow-board [data-node-detail="glance"] {
+  opacity: 0;
+  visibility: hidden;
+}
+
 .factory-flow-board[data-detail-level="glance"] [data-node-glance-root] > *:not([data-node-detail="glance"]) {
   visibility: hidden;
+  opacity: 0;
 }
 
 /* The machine tab zone protrudes ABOVE the recipe card's window, outside its
@@ -720,15 +727,76 @@ textarea {
    the tabs are a few pixels of noise over the glance figure. */
 .factory-flow-board[data-detail-level="glance"] .machine-tab-zone {
   visibility: hidden;
+  opacity: 0;
 }
 
 .factory-flow-board[data-detail-level="glance"] [data-node-detail="glance"] {
-  display: flex;
+  opacity: 1;
+  visibility: visible;
   /* The LED tile (see NodeGlance.tsx): cards that publish --glance-bg get a
      deep-dimmed wash of their icon's colour behind the big icon. The hop
      map's rule below carries more specificity, so its hover flood still
      wins in status mode. */
   background-color: var(--glance-bg, transparent);
+}
+
+/* The fade across the LOD threshold: sinking into the glance is slow enough
+   to read as the board settling into its far view; coming back in is quick,
+   because that is the direction someone is trying to WORK in. `visibility`
+   rides along with a delay only on the way OUT of sight, so whichever side is
+   appearing shows its whole fade and whichever is going stays interactive-
+   invisible only after it has finished going.
+
+   Scoped to the value-motion class on purpose: the motion switch is the one
+   promise that the board holds still, and the image export flips it off
+   before capturing — a photograph taken two frames after the detail flip must
+   not come out half-faded. */
+.factory-flow-board--value-motion [data-node-detail="glance"] {
+  transition: opacity 220ms ease, visibility 0s 220ms;
+}
+
+.factory-flow-board--value-motion [data-node-glance-root] > *:not([data-node-detail="glance"]),
+.factory-flow-board--value-motion .machine-tab-zone {
+  transition: opacity 220ms ease, visibility 0s;
+}
+
+.factory-flow-board--value-motion[data-detail-level="glance"] [data-node-detail="glance"] {
+  transition: opacity 560ms ease, visibility 0s;
+}
+
+.factory-flow-board--value-motion[data-detail-level="glance"]
+  [data-node-glance-root]
+  > *:not([data-node-detail="glance"]),
+.factory-flow-board--value-motion[data-detail-level="glance"] .machine-tab-zone {
+  transition: opacity 560ms ease, visibility 0s 560ms;
+}
+
+/* The smart views' card colour (see glanceCardVars in node-colors.ts): the
+   node carries its wash as inert --glance-* variables on every render, and
+   only this rule — behind the detail attribute — reads them onto the window.
+   That is the whole LOD gate: no React ever asks the zoom. !important because
+   a painted card's ring arrives as an inline box-shadow, and at the glance
+   step the view wash outranks the paint. */
+.factory-flow-board[data-detail-level="glance"] [data-glance-paint] .recipe-node-window {
+  background-color: var(--glance-face);
+  box-shadow:
+    inset 0 0 0 2px var(--glance-border),
+    inset 4px 4px 0 var(--glance-bevel-light),
+    inset -4px -4px 0 var(--glance-bevel-dark),
+    0 0 0 2px var(--glance-ring) !important;
+}
+
+/* The wash GLIDES: crossing the threshold fades the colour in with the rest
+   of the far view, and a solver tick that moves a card's utilisation eases
+   the heat rather than snapping it. Unscoped by detail level so the fade
+   plays in both directions. */
+.factory-flow-board--value-motion .recipe-node-window {
+  transition: background-color 560ms ease, box-shadow 560ms ease;
+}
+
+/* Lines take the speed-view colour with the same fade the cards get. */
+.factory-flow-board--value-motion .react-flow__edge path {
+  transition: stroke 560ms ease;
 }
 
 /* The LED rim: every card wears its thin coloured border at constant SCREEN
@@ -753,6 +821,7 @@ textarea {
    marked at any distance; the glow variants are switched off above. */
 .factory-flow-board[data-detail-level="glance"] [data-node-glance-root] > .storage-shape {
   visibility: visible;
+  opacity: 1;
 }
 
 .factory-flow-board[data-detail-level="glance"] .storage-shape-fill {
@@ -1390,6 +1459,7 @@ img {
 
 .factory-flow-board[data-detail-level="glance"] [data-node-glance-root] > .unwired-ring {
   visibility: visible;
+  opacity: 1;
 }
 
 /* The board-level tally breathes on the same clock as the cards it counts. */
@@ -1524,6 +1594,7 @@ img {
 .factory-flow-board[data-detail-level="glance"] [data-node-glance-root] > .dead-loop-ring,
 .factory-flow-board[data-detail-level="glance"] [data-node-glance-root] > .card-outline {
   visibility: visible;
+  opacity: 1;
 }
 
 /* Zoomed out, 3px of a card is worth less than a device pixel and the ring is

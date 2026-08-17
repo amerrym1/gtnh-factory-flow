@@ -12,10 +12,8 @@ describe("applying a shared plan's view", () => {
   beforeEach(() => {
     writeBoardView({
       canvasPattern: "dots",
-      lineHeatMode: false,
       calmMode: false,
       glanceMode: "identity",
-      heatmapMode: false,
     });
     writeWorkspaceView({
       leftPanelOpen: true,
@@ -32,6 +30,8 @@ describe("applying a shared plan's view", () => {
   it("puts the author's whole arrangement on screen", () => {
     applyPlanView({
       canvasPattern: "cross",
+      // Historical flag: older plans carry it, and it must arrive as nothing
+      // at all — line colour rides the status glance mode now.
       lineHeatMode: true,
       calmMode: true,
       glanceMode: "status",
@@ -47,11 +47,9 @@ describe("applying a shared plan's view", () => {
     const workspace = readWorkspaceViewSnapshot();
 
     expect(board.canvasPattern).toBe("cross");
-    expect(board.lineHeatMode).toBe(true);
     expect(board.calmMode).toBe(true);
     expect(board.glanceMode).toBe("status");
-    // Derived rather than carried: the heatmap rides the status glance view.
-    expect(board.heatmapMode).toBe(true);
+    expect("lineHeatMode" in board).toBe(false);
     expect(workspace.leftPanelOpen).toBe(false);
     expect(workspace.showHiddenResources).toBe(true);
     expect(workspace.trendsOpen).toBe(false);
@@ -83,6 +81,14 @@ describe("applying a shared plan's view", () => {
 
     expect(readBoardViewSnapshot().canvasPattern).toBe("dots");
     expect(readBoardViewSnapshot().glanceMode).toBe("identity");
+  });
+
+  it("carries every smart view, the two new ones included", () => {
+    applyPlanView({ glanceMode: "usage" });
+    expect(readBoardViewSnapshot().glanceMode).toBe("usage");
+
+    applyPlanView({ glanceMode: "power" });
+    expect(readBoardViewSnapshot().glanceMode).toBe("power");
   });
 
   it("never lands the viewer with a resource both starred and hidden", () => {
