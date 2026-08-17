@@ -34,6 +34,7 @@ import {
 } from "@/lib/solver/machine-effects";
 import {
   formatCompact,
+  formatCompactStable,
   formatRate,
   applyMachineHandlerToRecipe,
   GT_OVERCLOCK_TIERS,
@@ -3555,11 +3556,7 @@ function PowerStat({
   // Always EU/t, whatever the board's rate unit: power is a per-tick fact in
   // GT and reads as noise in any other clock. The unit itself is rendered as
   // a small suffix below, not part of this string.
-  const value = stalled
-    ? report.state === "under-powered"
-      ? "LOW!"
-      : "TIER!"
-    : formatCompact(report.drawEuT * machineCount * nodeParallel);
+  const drawEuT = report.drawEuT * machineCount * nodeParallel;
 
   return (
     <MinecraftTooltip
@@ -3589,10 +3586,25 @@ function PowerStat({
         </div>
         <div className="truncate font-medium tabular-nums">
           {stalled ? (
-            value
+            report.state === "under-powered" ? (
+              "LOW!"
+            ) : (
+              "TIER!"
+            )
           ) : (
             <>
-              {value}
+              {/* The number glides on the board's value clock like every
+                  other figure; mid-flight frames use the stable-width form so
+                  the text does not vibrate, and the landing frame rests on
+                  the clean compact one. */}
+              <MotionNumberText
+                values={[drawEuT]}
+                render={(shown) =>
+                  shown[0] === drawEuT
+                    ? formatCompact(drawEuT)
+                    : formatCompactStable(shown[0] ?? drawEuT)
+                }
+              />
               {/* The unit rides small and grey against the number: the row
                   is fighting for width and EVERY power figure is EU/t. */}
               <span className="ml-0.5 text-[8px] text-[var(--mc-ink-muted)]">EU/t</span>

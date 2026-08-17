@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo } from "react";
+import { MotionNumberText } from "./flow/board-motion";
 import { GT_TIER_COLORS } from "./flow/tier-colors";
 import { useMachineHandlerIcons, type MachineHandlerIcon } from "./flow/machine-icons";
 import { ResourceIcon } from "./nei/ResourceIcon";
 import { getSelectedMachineHandler } from "@/lib/model/recipe-rules";
 import { isCustomRateRecipe } from "@/lib/model/custom-rate";
-import { formatCompact } from "@/lib/model/resources";
+import { formatCompact, formatCompactStable } from "@/lib/model/resources";
 import { getVoltageTierIndex } from "@/lib/model/tiers";
 import type { MachineTier } from "@/lib/model/types";
 import {
@@ -114,7 +115,14 @@ export function MachineShoppingList() {
         </span>
         {totalEuT > 0 ? (
           <span className="ml-auto text-[13px] font-bold tabular-nums">
-            {formatCompact(totalEuT)}
+            <MotionNumberText
+              values={[totalEuT]}
+              render={(shown) =>
+                shown[0] === totalEuT
+                  ? formatCompact(totalEuT)
+                  : formatCompactStable(shown[0] ?? totalEuT)
+              }
+            />
             <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
           </span>
         ) : null}
@@ -205,7 +213,10 @@ function ShoppingRowLine({ row, onFocus }: { row: ShoppingRow; onFocus: () => vo
       ) : null}
       <span
         className={[
-          "shrink-0 whitespace-nowrap text-right text-[13px] tabular-nums",
+          // Fixed width so every tier chip sits on one column, however wide a
+          // row's power figure runs. formatCompact caps the number at four
+          // characters, so the worst case fits.
+          "w-[58px] shrink-0 whitespace-nowrap text-right text-[13px] tabular-nums",
           stalled ? "font-bold text-red-400" : "",
         ].join(" ")}
       >
@@ -217,7 +228,14 @@ function ShoppingRowLine({ row, onFocus }: { row: ShoppingRow; onFocus: () => vo
           )
         ) : row.euT !== undefined ? (
           <>
-            {formatCompact(row.euT)}
+            <MotionNumberText
+              values={[row.euT]}
+              render={(shown) =>
+                shown[0] === row.euT
+                  ? formatCompact(row.euT ?? 0)
+                  : formatCompactStable(shown[0] ?? row.euT ?? 0)
+              }
+            />
             {/* Same suffix treatment as the card's power cell: small, grey,
                 hugging the number. */}
             <span className="ml-0.5 text-[8px] text-[var(--mc-ink-muted)]">EU/t</span>
