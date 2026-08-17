@@ -3595,7 +3595,7 @@ function PowerStat({
               {value}
               {/* The unit rides small and grey against the number: the row
                   is fighting for width and EVERY power figure is EU/t. */}
-              <span className="ml-0.5 text-[10px] text-[var(--mc-ink-muted)]">EU/t</span>
+              <span className="ml-0.5 text-[8px] text-[var(--mc-ink-muted)]">EU/t</span>
             </>
           )}
         </div>

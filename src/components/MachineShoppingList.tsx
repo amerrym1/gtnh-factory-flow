@@ -115,7 +115,7 @@ export function MachineShoppingList() {
         {totalEuT > 0 ? (
           <span className="ml-auto text-[13px] font-bold tabular-nums">
             {formatCompact(totalEuT)}
-            <span className="ml-0.5 text-[10px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
+            <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
           </span>
         ) : null}
       </div>
@@ -220,7 +220,7 @@ function ShoppingRowLine({ row, onFocus }: { row: ShoppingRow; onFocus: () => vo
             {formatCompact(row.euT)}
             {/* Same suffix treatment as the card's power cell: small, grey,
                 hugging the number. */}
-            <span className="ml-0.5 text-[10px] text-[var(--mc-ink-muted)]">EU/t</span>
+            <span className="ml-0.5 text-[8px] text-[var(--mc-ink-muted)]">EU/t</span>
           </>
         ) : (
           ""
