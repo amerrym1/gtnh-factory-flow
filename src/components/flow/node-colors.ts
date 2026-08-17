@@ -647,6 +647,26 @@ const HEAT_OFF: NodeSurfaceColor = {
   shadow: "#474f52",
 };
 
+/** The neutral card the glance views hand to nodes with nothing to say. */
+export const GLANCE_NEUTRAL_SURFACE: NodeSurfaceColor = HEAT_OFF;
+
+/**
+ * A whole card surface from one base hue — the heatmap's own construction,
+ * shared by every glance view that colours cards (speed by heat, usage by
+ * reason, power by tier), so a red card means the same KIND of red in each.
+ */
+export function glanceSurfaceFor(base: string): NodeSurfaceColor {
+  return {
+    swatch: base,
+    // The card body is the ramp muted toward the panel grey, so the colour
+    // reads as a wash rather than as a solid block of paint behind the text.
+    panel: mixHex(base, "#8a8a8a", 0.42),
+    header: mixHex(base, "#8a8a8a", 0.18),
+    border: mixHex(base, "#101010", 0.42),
+    shadow: base,
+  };
+}
+
 export function heatmapColorFor(
   utilization: number | undefined,
   enabled = true,
@@ -665,14 +685,35 @@ export function heatmapColorFor(
       break;
     }
   }
+  return glanceSurfaceFor(base);
+}
+
+/**
+ * The zoomed-out figure's ink on a glance-coloured card: the surface's own
+ * hue lifted well toward white, so the number reads as an accent OF the card
+ * rather than as a verdict colour laid over it.
+ */
+export function glanceAccentFor(surface: NodeSurfaceColor): string {
+  return mixHex(surface.swatch, "#f5f7fa", 0.62);
+}
+
+/**
+ * The card face a glance view paints, delivered as INERT custom properties.
+ *
+ * They are inline on the node every render but mean nothing there: only the
+ * `[data-detail-level="glance"]` rules in globals.css read them, which is what
+ * makes every view LOD-only without a single React subscription to the zoom —
+ * the same trick the hop map uses. The face and bevels reuse the heatmap
+ * ramp's mix (the neutral grey ramp pulled 34% toward the wash) so a glance
+ * card keeps exactly the relief an unpainted card has.
+ */
+export function glanceCardVars(surface: NodeSurfaceColor): Record<string, string> {
   return {
-    swatch: base,
-    // The card body is the ramp muted toward the panel grey, so the heat reads
-    // as a wash rather than as a solid block of paint behind the text.
-    panel: mixHex(base, "#8a8a8a", 0.42),
-    header: mixHex(base, "#8a8a8a", 0.18),
-    border: mixHex(base, "#101010", 0.42),
-    shadow: base,
+    "--glance-face": mixHex(GT_NODE_RAMPS.gray["--mc-78"]!, surface.panel, 0.34),
+    "--glance-bevel-light": mixHex(GT_NODE_RAMPS.gray["--mc-100"]!, surface.panel, 0.34),
+    "--glance-bevel-dark": mixHex(GT_NODE_RAMPS.gray["--mc-33"]!, surface.panel, 0.34),
+    "--glance-border": surface.border,
+    "--glance-ring": surface.shadow,
   };
 }
 

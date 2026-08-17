@@ -11,7 +11,6 @@ import {
   Grid3x3,
   Magnet,
   Paintbrush,
-  Palette,
   Play,
   Presentation,
   RotateCcw,
@@ -21,9 +20,11 @@ import {
   Tag,
   Trash,
   Trash2,
+  TriangleAlert,
   Undo2,
   Upload,
   Wand2,
+  Zap,
 } from "lucide-react";
 import { Fragment, memo, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
@@ -177,7 +178,6 @@ const CALLOUTS: Array<{
     rows: [
       { text: "View only, *never the plan*" },
       { icon: Grid3x3, text: "Background style and pattern" },
-      { icon: Palette, text: "Shade lines by volume" },
       { icon: Cable, text: "Thicken lines by volume" },
       { icon: Ellipsis, text: "Marching dashes" },
       { icon: Tag, text: "Rate labels on the lines" },
@@ -194,8 +194,11 @@ const CALLOUTS: Array<{
     title: "Framing",
     rows: [
       { icon: Focus, text: "Fit the plan on screen" },
-      { icon: Box, text: "Cards show their machine" },
-      { icon: Gauge, text: "Cards show how hard they run" },
+      { text: "Zoomed out, cards can show:" },
+      { icon: Box, text: "Their machine" },
+      { icon: Gauge, text: "How hard they run" },
+      { icon: TriangleAlert, text: "Why: bottleneck, starved..." },
+      { icon: Zap, text: "Power draw and tier" },
     ],
   },
   {

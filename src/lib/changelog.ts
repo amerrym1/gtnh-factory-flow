@@ -75,12 +75,12 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "2.15.0",
     date: "2026-08-17",
-    headline: "Real power: hatches, overclocks and a power readout",
+    headline: "Real power: hatches, overclocks and new board views",
     notes: [
       "Machine speeds, overclocks and power checked against the game's own code.",
-      "Multiblock cards get an energy hatch dial next to the tier button.",
-      "Cards show their power draw, and say when a build is underpowered.",
-      "Arc furnaces now draw triple power, exactly as in game.",
+      "Multiblock cards get an energy hatch dial, a power readout and an underpowered warning.",
+      "The right panel lists every machine to build, with its tier and power.",
+      "Zoomed out, the board can colour cards by speed, by reason or by power tier.",
     ],
   },
   {

@@ -529,12 +529,16 @@ export interface FuelProfile {
 export interface PlanViewState {
   canvasPattern?: string;
   canvasTheme?: string;
+  /** Historical: older plans carry it, nothing reads it. Line colour rides
+   * the status glance mode now. */
   lineHeatMode?: boolean;
   lineThicknessMode?: boolean;
   freeDockMode?: boolean;
   lineLabelsMode?: boolean;
   linePulseMode?: boolean;
   calmMode?: boolean;
+  /** Historical: older plans carry it, nothing applies it. The smart view is
+   * personal, and opening a setup always starts on the identity view. */
   glanceMode?: string;
   rateUnit?: "tick" | "second" | "minute" | "hour";
   leftPanelOpen?: boolean;

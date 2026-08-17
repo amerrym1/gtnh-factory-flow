@@ -13,7 +13,6 @@ import {
   Link,
   MoveUpRight,
   Paintbrush,
-  Palette,
   Presentation,
   Search,
   Share2,
@@ -22,9 +21,11 @@ import {
   Tag,
   Trash,
   Trash2,
+  TriangleAlert,
   Type,
   Undo2,
   User,
+  Zap,
 } from "lucide-react";
 import type { GlanceRow } from "@/components/tour/card-parts";
 import { openSidebarTab } from "@/lib/sidebar-tab";
@@ -202,8 +203,7 @@ const LOOK_AROUND: TourLesson = {
       rows: [
         { text: "These change *the view*, not the plan." },
         { icon: Grid3x3, text: "Background: dots, lines, crosses or none." },
-        { icon: Palette, text: "Shade the wires by *how much they carry*." },
-        { icon: Cable, text: "Thicken them the same way." },
+        { icon: Cable, text: "Thicken the wires by *how much they carry*." },
         { icon: Ellipsis, text: "Moving dashes show *which way it flows*." },
         { icon: Tag, text: "Rate labels on the lines." },
         { icon: Anchor, text: "Wires dock anywhere, or at fixed ports." },
@@ -216,8 +216,11 @@ const LOOK_AROUND: TourLesson = {
       title: "Framing",
       rows: [
         { icon: Focus, text: "*Fits the whole plan* on the screen." },
-        { icon: Box, text: "Cards show *what they are*." },
-        { icon: Gauge, text: "Cards show *how hard they run*: red is idle, green is full speed." },
+        { text: "Zoomed out, cards can show:" },
+        { icon: Box, text: "*What they are*." },
+        { icon: Gauge, text: "*How hard they run*: red is idle, green is full speed." },
+        { icon: TriangleAlert, text: "*Why*: bottleneck, starved, clogged." },
+        { icon: Zap, text: "*Power*: draw, hatches and tier." },
       ],
     },
     {

@@ -5,7 +5,6 @@ import {
   readBoardViewSnapshot,
   writeBoardView,
   type CanvasPattern,
-  type GlanceMode,
 } from "@/components/flow/board-view";
 import { isCanvasThemeId } from "@/components/flow/canvas-themes";
 import { isCompactViewport } from "./compact-view";
@@ -32,13 +31,16 @@ export function capturePlanView(): PlanViewState {
   return {
     canvasPattern: board.canvasPattern,
     canvasTheme: board.canvasTheme,
-    lineHeatMode: board.lineHeatMode,
+    // No `lineHeatMode` any more: line colour rides the status glance mode,
+    // which the snapshot already carries.
     lineThicknessMode: board.lineThicknessMode,
     freeDockMode: board.freeDockMode,
     lineLabelsMode: board.lineLabelsMode,
     linePulseMode: board.linePulseMode,
     calmMode: board.calmMode,
-    glanceMode: board.glanceMode,
+    // The smart view (bottom-right tray) is deliberately NOT captured: it is
+    // a personal reading of the board, not part of its dress, and a saved
+    // setup always opens on the default identity view.
     rateUnit: getActiveRateUnit(),
     leftPanelOpen: workspace.leftPanelOpen,
     rightPanelOpen: workspace.rightPanelOpen,
@@ -100,6 +102,13 @@ export function applyPlanView(
  * fields leave the viewer's own setting alone.
  */
 function applyViewSettings(view: PlanViewState | undefined, scope: PlanViewScope): void {
+  // The smart view is never taken from a plan — not even from an older one
+  // that recorded it. Opening a setup lands on the default identity view
+  // (the cube button) whether or not the plan carries a view at all;
+  // switching your own tabs leaves your choice alone.
+  if (scope === "all") {
+    writeBoardView({ glanceMode: "identity" });
+  }
   if (!view) {
     return;
   }
@@ -113,14 +122,11 @@ function applyViewSettings(view: PlanViewState | undefined, scope: PlanViewScope
   if (isCanvasThemeId(view.canvasTheme)) {
     boardPatch.canvasTheme = view.canvasTheme;
   }
-  if (view.glanceMode === "identity" || view.glanceMode === "status") {
-    boardPatch.glanceMode = view.glanceMode as GlanceMode;
-    // The heatmap rides the status glance view rather than having its own
-    // switch, so it is derived here exactly as board-view derives it on load.
-    boardPatch.heatmapMode = view.glanceMode === "status";
-  }
+  // `glanceMode` from an older plan is skipped for the same reason the reset
+  // above exists; `lineHeatMode` is deliberately NOT applied either: line
+  // colour rides the status glance mode now, and the old flag would arrive
+  // with no control that turns it off.
   for (const key of [
-    "lineHeatMode",
     "lineThicknessMode",
     "freeDockMode",
     "lineLabelsMode",

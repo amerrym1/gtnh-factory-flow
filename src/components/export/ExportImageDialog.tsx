@@ -37,7 +37,17 @@ import { renderPlanGif } from "./gif-export";
 
 type ExportFormat = "png" | "svg" | "gif";
 type ExportBackground = CanvasThemeId | "transparent";
-type ExportCardDetail = "full" | "glance";
+// The board's own looks, offered by name: the whole card, then the four
+// smart views at their zoomed-out step.
+type ExportCardDetail = "full" | "glance" | "status" | "usage" | "power";
+
+const CARD_DETAILS: Array<{ id: ExportCardDetail; label: string }> = [
+  { id: "full", label: "Detailed" },
+  { id: "glance", label: "Big icons" },
+  { id: "status", label: "Speed" },
+  { id: "usage", label: "Usage" },
+  { id: "power", label: "Power" },
+];
 
 interface CaptureResult {
   capture?: FlowExportCapture;
@@ -502,12 +512,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-fg-subtle">Cards</span>
               <div className="flex overflow-hidden rounded border border-line-strong">
-                {(
-                  [
-                    { id: "full", label: "Detailed" },
-                    { id: "glance", label: "Big icons" },
-                  ] as const
-                ).map((entry) => (
+                {CARD_DETAILS.map((entry) => (
                   <button
                     key={entry.id}
                     type="button"

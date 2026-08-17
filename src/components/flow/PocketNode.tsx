@@ -370,7 +370,7 @@ function PocketGlanceReveal({
     <div
       data-node-detail="glance"
       aria-hidden
-      className="pointer-events-none absolute inset-0 z-10 hidden items-center justify-center"
+      className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
     >
       <span className="glance-io absolute left-1/2 top-full z-30 w-[560px] origin-top flex-col gap-2 border-2 border-[#241b33] bg-[#3b2d52] p-3 font-mono text-white shadow-[8px_8px_0_rgba(0,0,0,0.55)]">
         <span className="minecraft-title flex h-8 min-w-0 items-center border-2 border-[#241b33] bg-[#5e4a85] px-2 text-[16px] leading-[22px] shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140]">

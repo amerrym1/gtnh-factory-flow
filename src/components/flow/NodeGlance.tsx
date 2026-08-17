@@ -42,22 +42,76 @@ import type { CSSProperties, ReactNode } from "react";
 export function NodeGlanceText({
   text,
   className,
+  accent,
+  word,
+  valueSize,
+  icon,
 }: {
   /** A string, or a text-producing fragment (the eased usage figure). */
   text: ReactNode;
   /** Tone colour for the figure; `fill` reads it through currentColor. */
   className?: string;
+  /** Explicit ink, when the colour is computed (a glance surface's accent). */
+  accent?: string;
+  /** A second, small line under the figure — the reason word, the tier chip. */
+  word?: string;
+  /**
+   * The figure's font size IN PIXELS, for the icon row only — callers whose
+   * value can run long (the power view) step it down as the draw gains
+   * digits so "9.99M EU/t" still lands inside the card.
+   */
+  valueSize?: number;
+  /**
+   * The machine's art, sat to the LEFT of the figure so a coloured card
+   * still says what machine it is. With an icon the layer switches from the
+   * fitted SVG to a plain HTML row: recipe cards are all the same fixed
+   * width, so pixel sizes hold, and — unlike an SVG viewBox, which cannot
+   * shrink to its text — the icon and the figure centre in the card as ONE
+   * group instead of hugging the left edge.
+   */
+  icon?: ReactNode;
 }) {
+  if (icon) {
+    return (
+      <div
+        data-node-detail="glance"
+        aria-hidden
+        // `flex` from the start: whether the layer SHOWS is the stylesheet's
+        // call (`data-detail-level` plus the fade rules in globals.css), and
+        // a display switch cannot fade.
+        className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 p-2 font-mono"
+      >
+        <span className="flex shrink-0 items-center justify-center">{icon}</span>
+        <span
+          className={["flex min-w-0 flex-col items-start", className ?? ""].join(" ")}
+          style={accent ? { color: accent } : undefined}
+        >
+          <span
+            className="whitespace-nowrap font-black leading-none tabular-nums"
+            style={{ fontSize: valueSize ?? (word ? 56 : 64) }}
+          >
+            {text}
+          </span>
+          {word ? (
+            <span className="mt-1.5 whitespace-nowrap text-[15px] font-bold uppercase leading-none tracking-[1px] opacity-85">
+              {word}
+            </span>
+          ) : null}
+        </span>
+      </div>
+    );
+  }
   return (
     <div
       data-node-detail="glance"
       aria-hidden
-      className="pointer-events-none absolute inset-0 z-10 hidden items-center justify-center p-1"
+      className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-1"
     >
       <svg
         viewBox="0 0 100 30"
         preserveAspectRatio="xMidYMid meet"
         className={["h-full w-full font-mono", className ?? ""].join(" ")}
+        style={accent ? { color: accent } : undefined}
       >
         <text
           x="50"
@@ -91,7 +145,7 @@ export function NodeGlanceIcon({ children, tileTint }: { children: ReactNode; ti
     <div
       data-node-detail="glance"
       aria-hidden
-      className="pointer-events-none absolute inset-0 z-10 hidden items-center justify-center p-1"
+      className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-1"
       style={tileTint ? glanceTileStyle(tileTint) : undefined}
     >
       {/* Just centres. Sizing is the caller's job: a sprite is a

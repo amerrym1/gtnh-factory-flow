@@ -24,12 +24,13 @@ export interface FlowExportRequest {
   /** Override the board theme's paper: a CSS colour, or "transparent". */
   background?: string;
   /**
-   * How much each card draws for the photograph, independent of how far the
-   * screen happens to be zoomed: "full" is the whole card, "glance" the big
-   * machine icon and count that stay readable when a large factory shrinks
-   * to fit a chat window.
+   * The look each card wears for the photograph, independent of how far the
+   * screen happens to be zoomed. "full" is the whole card; the rest are the
+   * board's own smart views at their zoomed-out step: "glance" the big
+   * machine icon, "status" speed colours, "usage" reason colours, "power"
+   * tier colours.
    */
-  cardDetail?: "full" | "glance";
+  cardDetail?: "full" | "glance" | "status" | "usage" | "power";
   /**
    * Leave the notes, arrows and backdrops out of the photograph - only the
    * working board. The frame tightens to the remaining cards too, so a

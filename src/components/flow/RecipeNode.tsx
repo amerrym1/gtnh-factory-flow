@@ -127,7 +127,16 @@ import {
   type PortStory,
 } from "./flow-explainers";
 import { useFactoryStore } from "@/store/factory-store";
-import { GT_NODE_COLORS, heatmapColorFor, heatmapRamp, rampFor } from "./node-colors";
+import {
+  GLANCE_NEUTRAL_SURFACE,
+  GT_NODE_COLORS,
+  glanceAccentFor,
+  glanceCardVars,
+  glanceSurfaceFor,
+  heatmapColorFor,
+  rampFor,
+  type NodeSurfaceColor,
+} from "./node-colors";
 import { useBoardView } from "./board-view";
 import { MotionNumberText } from "./board-motion";
 import { getPaintBrushCursor } from "./paint-cursor";
@@ -196,17 +205,15 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   );
   const isInspectorHighlighted =
     isFlowResourceHighlighted || isNodeBottleneckHighlighted || isUsageHighlighted;
-  // Heatmap wins over the paint tag while it is on, and gives it straight back
-  // when it goes off — the tag is never written to or lost.
-  const { heatmapMode, calmMode, glanceMode } = useBoardView();
+  const { calmMode, glanceMode } = useBoardView();
   // A custom rate card nobody has painted wears the app's own blue. Painting
   // one still works and still wins.
+  // Up close a card ALWAYS wears its own paint: the glance views (speed heat,
+  // reason colour, tier colour) exist only at the LOD step, delivered further
+  // down as inert --glance-* variables the stylesheet switches on.
   const paintTag = projectNode.colorTag ?? (isCustomRateRecipe(recipe) ? "blue" : undefined);
   const paintColor = paintTag ? GT_NODE_COLORS[paintTag] : undefined;
-  const heatColor = heatmapMode
-    ? heatmapColorFor(result?.utilization, projectNode.enabled !== false)
-    : undefined;
-  const nodeColor = heatColor ?? paintColor;
+  const nodeColor = paintColor;
   // The card's own --mc-* ramp, which is the WHOLE of how a card takes a
   // colour: every surface inside already reads these tokens, so redefining
   // them here paints the dropdowns, the block beside them, the machine tabs,
@@ -214,7 +221,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // having to know. See GT_NODE_RAMPS.
   // The ink is never touched: a ramp keeps an unpainted card's lightnesses,
   // so the same light text sits at the same contrast on every colour.
-  const nodeRamp = heatColor ? heatmapRamp(heatColor.panel) : rampFor(paintTag);
+  const nodeRamp = rampFor(paintTag);
   const paintCursor =
     nodeColorPaintMode !== undefined
       ? getPaintBrushCursor(
@@ -411,6 +418,22 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     overclockedRecipe,
     verdict,
   );
+  const powerStalled = powerReport !== undefined && powerReport.state !== "ok";
+  // What the LOD step paints this card, per smart view. Every non-identity
+  // view returns a surface for EVERY card — a card with nothing to say gets
+  // the neutral one rather than keeping its paint, because a red paint tag
+  // under the usage view would read as a bottleneck that isn't there.
+  const glanceSurface: NodeSurfaceColor | undefined =
+    glanceMode === "status"
+      ? heatmapColorFor(result?.utilization, projectNode.enabled !== false)
+      : glanceMode === "usage"
+        ? glanceToneSurface(verdictWord(verdict, isCustomRateNode, powerStalled).tone)
+        : glanceMode === "power"
+          ? powerReport
+            ? glanceSurfaceFor(GT_TIER_COLORS[powerReport.tier].background)
+            : GLANCE_NEUTRAL_SURFACE
+          : undefined;
+  const glanceAccent = glanceSurface ? glanceAccentFor(glanceSurface) : undefined;
   // The ports this card actually renders below, in render order. A placeholder
   // shows no rails at all: a crop farm waiting on a crop has nothing to wire,
   // and a custom rate node shows its two universal sockets instead. Handing
@@ -633,6 +656,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         // node (and the whole nodes layer) must paint above edges.
         isCompareOpen ? "recipe-node-popup-open" : "",
       ].join(" ")}
+      // The LOD colour, armed but not applied: the --glance-* variables mean
+      // nothing until the board crosses into the glance step, where the
+      // stylesheet reads them onto the window. That is what makes every smart
+      // view LOD-only with no subscription to the zoom.
+      data-glance-paint={glanceSurface ? "" : undefined}
       style={{
         // Every recipe card is the same 18 cells wide. Width used to be
         // content-driven (`w-max`), which put the card's right edge — and so
@@ -643,6 +671,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         // the card's tabs, and a grey tab on a green card was the tell that
         // the paint was a list of elements rather than a palette.
         ...(nodeRamp as CSSProperties | undefined),
+        ...(glanceSurface ? (glanceCardVars(glanceSurface) as CSSProperties) : undefined),
         ...(paintCursor ? { cursor: paintCursor } : undefined),
       }}
     >
@@ -745,10 +774,14 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           }}
         />
       ) : null}
-      {/* The smart view: what this card leads with zoomed out. Identity mode
-          (the default) is WHAT it is — machine icon, count and name, with the
-          I/O rates revealed on hover by pure CSS. Status mode is the old
-          reading: how hard it runs, with the hop map on hover. */}
+      {/* The smart view: what this card leads with zoomed out, and ONLY
+          zoomed out. Identity mode (the default) is WHAT it is — machine
+          icon, count and name, with the I/O rates revealed on hover by pure
+          CSS. Status is the speed view: the percentage over the heat wash,
+          inked in the wash's own accent so the figure reads as part of the
+          card, not as a verdict. Usage answers WHY with the reason word under
+          the number, on the reason's colour. Power shows the draw and the
+          hatch-and-tier chip on the tier's colour. */}
       {glanceMode === "identity" ? (
         <GlanceIdentityLayer
           machineIcon={machineGlanceIcon}
@@ -762,8 +795,61 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           inputs={rails.inputs}
           outputs={rails.outputs}
         />
+      ) : glanceMode === "power" ? (
+        <NodeGlanceText
+          icon={
+            <GlanceMachineArt
+              machineIcon={machineGlanceIcon}
+              fallbackResource={rails.outputs[0]?.resource ?? rails.inputs[0]?.resource}
+              small
+            />
+          }
+          accent={powerReport ? glanceAccent : undefined}
+          className={powerReport ? undefined : "text-[var(--mc-ink-muted)]"}
+          // Sized by how many glyphs the settled figure needs, so a draw in
+          // the millions shrinks to fit rather than grazing the card frame.
+          valueSize={
+            powerReport
+              ? powerGlanceValueSize(formatCompact(powerDrawEuT(powerReport, projectNode)))
+              : undefined
+          }
+          text={
+            powerReport ? (
+              <>
+                <MotionNumberText
+                  values={[powerDrawEuT(powerReport, projectNode)]}
+                  render={(shown) => {
+                    const target = powerDrawEuT(powerReport, projectNode);
+                    const value = shown[0] ?? target;
+                    // Same pact as the footer's POWER cell: stable widths
+                    // mid-tween, the clean compact form at rest.
+                    return value === target ? formatCompact(target) : formatCompactStable(value);
+                  }}
+                />
+                <span className="ml-1.5 text-[18px] font-semibold opacity-70">EU/t</span>
+              </>
+            ) : (
+              "—"
+            )
+          }
+          word={
+            powerReport
+              ? powerReport.isMultiblock
+                ? `${powerReport.hatches}× ${powerReport.tier}`
+                : powerReport.tier
+              : undefined
+          }
+        />
       ) : (
         <NodeGlanceText
+          icon={
+            <GlanceMachineArt
+              machineIcon={machineGlanceIcon}
+              fallbackResource={rails.outputs[0]?.resource ?? rails.inputs[0]?.resource}
+              small
+            />
+          }
+          accent={glanceAccent}
           text={
             verdict.kind === "off" || verdict.kind === "no-recipe" ? (
               "—"
@@ -777,11 +863,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               />
             )
           }
-          className={
-            VERDICT_WORD_CLASS[
-              verdictWord(verdict, isCustomRateNode, powerReport ? powerReport.state !== "ok" : false)
-                .tone
-            ]
+          word={
+            glanceMode === "usage"
+              ? verdictWord(verdict, isCustomRateNode, powerStalled).word
+              : undefined
           }
         />
       )}
@@ -1277,7 +1362,7 @@ function GlanceIdentityLayer({
       aria-hidden
       // glance-identity-tile: globals.css holds the rim at constant SCREEN
       // thickness in LED mode, same rule as the drawer and trash borders.
-      className="glance-identity-tile pointer-events-none absolute inset-0 z-10 hidden items-center justify-center"
+      className="glance-identity-tile pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
       style={{
         ...glanceTileStyle(tileTint),
         // The same rim the storage cards show in LED mode: their real
@@ -1287,38 +1372,7 @@ function GlanceIdentityLayer({
         border: `2px solid color-mix(in srgb, ${tileTint} 55%, #262b34)`,
       }}
     >
-      {machineIcon ? (
-        <ResourceIcon
-          resource={{ ...machineIcon, amount: 1 }}
-          size="sm"
-          bare
-          showAmount={false}
-          tooltip={false}
-          className="!h-[192px] !w-[192px]"
-          iconPixelSize={machineArtPixels(192)}
-        />
-      ) : fallbackResource ? (
-        <span className="flex h-[192px] w-[192px] items-center justify-center overflow-hidden">
-          <ResourceIcon
-            resource={{ ...fallbackResource, amount: 1, chance: undefined }}
-            size="sm"
-            bare
-            showAmount={false}
-            tooltip={false}
-            // The glance face is measured, not zoom-cropped: the 1.5x trick
-            // the rows use overflows a 192px box and read as art spilling
-            // off the card at LOD.
-            iconPixelSize={
-              isSwatchFluid(fallbackResource)
-                ? 192
-                : fallbackResource.kind === "fluid"
-                  ? fluidArtPixels(192)
-                  : spriteArtPixels(192)
-            }
-            className="!h-[192px] !w-[192px]"
-          />
-        </span>
-      ) : null}
+      <GlanceMachineArt machineIcon={machineIcon} fallbackResource={fallbackResource} />
       {/* The reveal. Fixed 560px wide and scaled to screen size by the CSS;
           left-1/2 + origin-top keep its top edge pinned to the card's centre
           at every zoom. Inputs left, arrow, outputs right — the same reading
@@ -1350,6 +1404,68 @@ function GlanceIdentityLayer({
         ) : null}
       </span>
     </div>
+  );
+}
+
+/**
+ * The zoomed-out machine art, shared by every glance view: the identity tile
+ * carries it full-size, and the stat views (speed, usage, power) sit it to
+ * the LEFT of their figure so a coloured card still says which machine it is
+ * talking about. Two literal sizes rather than a number, because Tailwind
+ * only emits arbitrary-value classes it can see written out.
+ */
+function GlanceMachineArt({
+  machineIcon,
+  fallbackResource,
+  small = false,
+}: {
+  machineIcon?: MachineHandlerIcon;
+  fallbackResource?: ResourceAmount;
+  small?: boolean;
+}) {
+  // A quiet drop shadow lifts the art off the card. In board pixels, so it
+  // has to be generous enough to survive the LOD zoom-out — at 0.4 zoom
+  // these six pixels read as two.
+  const shadow = "drop-shadow-[4px_6px_5px_rgba(0,0,0,0.45)]";
+  const box = small ? "!h-[112px] !w-[112px]" : "!h-[192px] !w-[192px]";
+  const pixels = small ? 112 : 192;
+  if (machineIcon) {
+    return (
+      <ResourceIcon
+        resource={{ ...machineIcon, amount: 1 }}
+        size="sm"
+        bare
+        showAmount={false}
+        tooltip={false}
+        className={[box, shadow].join(" ")}
+        iconPixelSize={machineArtPixels(pixels)}
+      />
+    );
+  }
+  if (!fallbackResource) {
+    return null;
+  }
+  return (
+    <span className={["flex items-center justify-center overflow-hidden", box, shadow].join(" ")}>
+      <ResourceIcon
+        resource={{ ...fallbackResource, amount: 1, chance: undefined }}
+        size="sm"
+        bare
+        showAmount={false}
+        tooltip={false}
+        // The glance face is measured, not zoom-cropped: the 1.5x trick
+        // the rows use overflows the box and reads as art spilling off the
+        // card at LOD.
+        iconPixelSize={
+          isSwatchFluid(fallbackResource)
+            ? pixels
+            : fallbackResource.kind === "fluid"
+              ? fluidArtPixels(pixels)
+              : spriteArtPixels(pixels)
+        }
+        className={box}
+      />
+    </span>
   );
 }
 
@@ -1453,6 +1569,45 @@ const VERDICT_WORD_CLASS: Record<VerdictWord["tone"], string> = {
   clogged: "font-bold text-[var(--verdict-clogged-ink)]",
   unwired: "font-bold text-[var(--verdict-unwired-ink)]",
 };
+
+/**
+ * The usage view's card colour per tone — the same hues the
+ * --verdict-*-ink variables carry in globals.css, restated here because the
+ * card wash is mixed in JS. `fine` stays neutral: a card with nothing to
+ * answer for should read calm, not painted.
+ */
+const GLANCE_TONE_BASE: Record<VerdictWord["tone"], string | undefined> = {
+  fine: undefined,
+  starved: "#b3ae76",
+  blocked: "#e0a63a",
+  bottleneck: "#e05252",
+  clogged: "#6fb2d6",
+  unwired: "#eef2f8",
+};
+
+function glanceToneSurface(tone: VerdictWord["tone"]): NodeSurfaceColor {
+  const base = GLANCE_TONE_BASE[tone];
+  return base ? glanceSurfaceFor(base) : GLANCE_NEUTRAL_SURFACE;
+}
+
+/** The card's whole draw — every machine on it, every parallel — same
+ * arithmetic as the footer's POWER cell and the shopping list row. */
+function powerDrawEuT(report: NodePowerReport, node: FactoryNode): number {
+  return report.drawEuT * node.machineCount * node.parallel;
+}
+
+/**
+ * The power glance figure's font size in pixels. The mono face at weight 900
+ * runs wide, and beside the machine art the line has roughly 220px of card
+ * to live in — so every glyph past three buys the whole line a step down,
+ * keeping "9.99M EU/t" inside the frame.
+ */
+function powerGlanceValueSize(compact: string): number {
+  if (compact.length <= 3) {
+    return 52;
+  }
+  return compact.length === 4 ? 46 : 40;
+}
 
 /**
  * USAGE: the widest cell in the footer, carrying the number and one word for

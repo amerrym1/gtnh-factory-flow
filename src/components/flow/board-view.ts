@@ -48,12 +48,25 @@ export const CANVAS_PATTERNS: CanvasPattern[] = [
 ];
 
 /**
- * What a zoomed-out card leads with. `identity` is the big machine icon with
- * the count and name, and hovering reveals the I/O rates; `status` is the
- * utilisation percentage with the hop-distance map on hover. Always exactly
- * one of these — the smart-view buttons in the board's bottom right switch.
+ * What a zoomed-out card leads with. Always exactly one of these — the
+ * smart-view buttons in the board's bottom right switch — and every one of
+ * them is a LOD-ONLY reading: zoomed in, cards look the same whichever is
+ * picked, because up close the card itself already answers these questions.
+ *
+ * `identity` is the big machine icon with the count and name, and hovering
+ * reveals the I/O rates. `status` is the speed view: cards and lines take
+ * their colour from how hard they run, with the hop-distance map on hover.
+ * `usage` colours each card by its reason word (bottleneck, starved,
+ * clogged...) under the percentage. `power` colours each card by its voltage
+ * tier and shows its power draw.
  */
-export type GlanceMode = "identity" | "status";
+export type GlanceMode = "identity" | "status" | "usage" | "power";
+
+export const GLANCE_MODES: readonly GlanceMode[] = ["identity", "status", "usage", "power"];
+
+export function isGlanceMode(value: unknown): value is GlanceMode {
+  return GLANCE_MODES.includes(value as GlanceMode);
+}
 
 export interface BoardView {
   // No `snapToGrid`. Snapping was a preference back when cards were sized by
@@ -61,15 +74,11 @@ export interface BoardView {
   canvasPattern: CanvasPattern;
   /** The paper the board is drawn on; see canvas-themes.ts. */
   canvasTheme: CanvasThemeId;
-  /**
-   * Machines take their colour from how hard they run. Not its own toggle
-   * any more: it rides the status glance view (the gauge button, bottom
-   * right), so "show me usage" is one mode at every zoom — percentages far
-   * out, heat colours up close.
-   */
-  heatmapMode: boolean;
-  /** Lines take their colour from how much moves through them. */
-  lineHeatMode: boolean;
+  // No `heatmapMode` and no `lineHeatMode` any more. Both used to be their
+  // own switches; both now ride the status (speed) glance view, and only at
+  // the glance step — zoomed in, cards and lines always wear their own
+  // colours. Old saved blobs still carrying the keys are simply ignored, so
+  // anyone who had line colour on has it off now, on purpose.
   /** Lines take their thickness from how much moves through them. */
   lineThicknessMode: boolean;
   /** Wires attach anywhere on a card (on) or at their fixed ports (off). */
@@ -93,8 +102,6 @@ const BOARD_VIEW_STORAGE_KEY = "gtnh-factory-flow-board-view";
 export const DEFAULT_BOARD_VIEW: BoardView = {
   canvasPattern: "dots",
   canvasTheme: DEFAULT_CANVAS_THEME_ID,
-  heatmapMode: false,
-  lineHeatMode: false,
   // On out of the box: between them these two say which way everything runs
   // and which lines carry the load, which is most of what a first look at a
   // plan is for. Colour modes stay off — those override what the board is
@@ -124,10 +131,9 @@ function readBoardView(): BoardView {
     // and every new default would ship switched off for existing users.
     const flag = (value: unknown, fallback: boolean) =>
       typeof value === "boolean" ? value : fallback;
-    const glanceMode =
-      parsed.glanceMode === "status" || parsed.glanceMode === "identity"
-        ? parsed.glanceMode
-        : DEFAULT_BOARD_VIEW.glanceMode;
+    const glanceMode = isGlanceMode(parsed.glanceMode)
+      ? parsed.glanceMode
+      : DEFAULT_BOARD_VIEW.glanceMode;
     return {
       canvasPattern: CANVAS_PATTERNS.includes(parsed.canvasPattern as CanvasPattern)
         ? (parsed.canvasPattern as CanvasPattern)
@@ -135,11 +141,6 @@ function readBoardView(): BoardView {
       canvasTheme: isCanvasThemeId(parsed.canvasTheme)
         ? parsed.canvasTheme
         : DEFAULT_BOARD_VIEW.canvasTheme,
-      // Derived, not read: the heatmap rides the status glance view, and a
-      // saved blob from when it had its own button must not strand a heated
-      // board with no control that turns it off.
-      heatmapMode: glanceMode === "status",
-      lineHeatMode: flag(parsed.lineHeatMode, DEFAULT_BOARD_VIEW.lineHeatMode),
       freeDockMode: flag(parsed.freeDockMode, DEFAULT_BOARD_VIEW.freeDockMode),
       lineLabelsMode: flag(parsed.lineLabelsMode, DEFAULT_BOARD_VIEW.lineLabelsMode),
       lineThicknessMode: flag(parsed.lineThicknessMode, DEFAULT_BOARD_VIEW.lineThicknessMode),
