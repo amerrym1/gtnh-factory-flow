@@ -408,8 +408,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   } = derived;
   // The full footer — usage, power, parallel, machines, circuit — does not
   // fit the fixed card width on one line. When power and the parallel chip
-  // would share the row, the parallel chip steps up onto a slim row of its
-  // own, right-aligned over the machine count it multiplies.
+  // would share the row, the parallel chip steps UP: into the config panel's
+  // own grid when the card has one, sharing a row with the coil and solenoid
+  // knobs, or onto a slim right-aligned row of its own when it does not.
   const parallelChipLifts =
     !isCustomRateNode && powerReport !== undefined && machineParallelMultiplier > 1;
   // Verdict + rail ports read the board lazily (no extra subscription): the
@@ -506,10 +507,15 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     ...beeFrameControls,
     ...statsMachineConfigControls,
   ];
+  const parallelPanelTile =
+    parallelChipLifts && visibleMachineConfigControls.length > 0 ? (
+      <ConfigParallelTile value={formatMachineParallelMultiplier(machineParallelMultiplier)} />
+    ) : undefined;
   const machineConfigPanel =
     visibleMachineConfigControls.length > 0 ? (
       <MachineConfigControlPanel
         controls={visibleMachineConfigControls}
+        trailing={parallelPanelTile}
         onPreview={(controlId, key) =>
           setPreviewConfigTier(key === undefined ? undefined : { controlId, key })
         }
@@ -1196,9 +1202,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   </div>
                 ) : (
                   <>
-                    {parallelChipLifts ? (
-                      // The lifted parallel chip: its own slim line, packed
-                      // right, not a full row of tiles. See parallelChipLifts.
+                    {parallelChipLifts && !parallelPanelTile ? (
+                      // No config panel to ride in: the lifted parallel chip
+                      // gets its own slim line, packed right, not a full row
+                      // of tiles. See parallelChipLifts.
                       <div className="mb-1 flex min-w-0 justify-end">
                         <Stat
                           label="Parallel"
@@ -3306,26 +3313,30 @@ function MachineConfigControlPanel({
   controls,
   onSelect,
   onPreview,
+  trailing,
 }: {
   controls: MachineConfigTierControl[];
   onSelect: (controlId: string, nextTier: string) => void;
   /** Hovering an option shows the node as if it were picked. */
   onPreview?: (controlId: string, tierKey: string | undefined) => void;
+  /** An extra read-only tile sharing the grid — the ×N parallel count. */
+  trailing?: ReactNode;
 }) {
   if (controls.length === 0) {
     return null;
   }
 
-  // Two controls per row (2 × 168 + 4 gap = the card's 340px inner width),
-  // three cells per row — and GridBlock adds a cell if a label wraps rather
-  // than letting the controls spill out of the panel.
-  const rows = Math.ceil(controls.length / 2);
+  // Two controls per row. The panel's border-2 and px-1 leave 328px of
+  // content width, so the column minimum must clear 2 × 160 + 4 gap = 324:
+  // at the old 168 the auto-fit grid only ever found room for ONE column and
+  // every knob quietly took a full row of its own.
+  const rows = Math.ceil((controls.length + (trailing ? 1 : 0)) / 2);
   return (
     <GridBlock
       className="nodrag border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
       minCells={(rows * CONFIG_PANEL_ROW_HEIGHT) / BOARD_GRID}
     >
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(168px,1fr))] items-center gap-x-1 gap-y-1">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] items-center gap-x-1 gap-y-1">
         {controls.map((control) => (
           <label key={control.id} className="min-w-0">
             <span className="mb-0.5 block text-[12px] font-bold uppercase leading-[14px] text-[var(--mc-ink-muted)]">
@@ -3367,8 +3378,27 @@ function MachineConfigControlPanel({
             </span>
           </label>
         ))}
+        {trailing}
       </div>
     </GridBlock>
+  );
+}
+
+/**
+ * The machine's ×N parallel count as a config-panel tile, shaped like the
+ * knobs beside it (label over a row-high box) so it shares their grid row
+ * instead of spending a line of its own under the footer.
+ */
+function ConfigParallelTile({ value }: { value: string }) {
+  return (
+    <div className="min-w-0">
+      <span className="mb-0.5 block text-[12px] font-bold uppercase leading-[14px] text-[var(--mc-ink-muted)]">
+        Parallel
+      </span>
+      <span className="flex h-7 min-w-0 items-center border border-[var(--mc-47)] bg-[var(--mc-85)] px-1.5 font-medium tabular-nums shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)]">
+        ×{value}
+      </span>
+    </div>
   );
 }
 
@@ -3893,17 +3923,23 @@ function PowerStoryContent({
           Supply
         </div>
         <div>
+          {/* "= 256 EU/t" is one fact: the nowrap keeps a line break from
+              stranding the unit — or the whole figure — on its own line. */}
           {report.isMultiblock ? (
             <>
               {report.hatches}× <StoryTierChip tier={report.tier} /> energy{" "}
-              {report.hatches === 1 ? "hatch" : "hatches"} · {report.amps} A ={" "}
-              <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span>
+              {report.hatches === 1 ? "hatch" : "hatches"} · {report.amps} A{" "}
+              <span className="whitespace-nowrap">
+                = <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span>
+              </span>
             </>
           ) : (
             <>
               <StoryTierChip tier={report.tier} /> machine
-              {report.amps > 1 ? ` · ${report.amps} A` : ""} ={" "}
-              <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span>
+              {report.amps > 1 ? ` · ${report.amps} A` : ""}{" "}
+              <span className="whitespace-nowrap">
+                = <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span>
+              </span>
             </>
           )}
         </div>
@@ -3917,8 +3953,10 @@ function PowerStoryContent({
           <div className="space-y-0.5">
             <div>
               <StoryTierChip tier={report.minimumTier} /> recipe:{" "}
-              <span className="font-bold">{formatCompact(report.singleDrawEuT)} EU/t</span>
-              {baseTicks !== undefined ? ` · ${storySeconds(baseTicks)}` : ""}
+              <span className="whitespace-nowrap">
+                <span className="font-bold">{formatCompact(report.singleDrawEuT)} EU/t</span>
+                {baseTicks !== undefined ? ` · ${storySeconds(baseTicks)}` : ""}
+              </span>
             </div>
             {report.perfectOverclockSteps > 0 ? (
               <div className="pl-3 text-[11px] text-cyan-300">
@@ -3937,8 +3975,10 @@ function PowerStoryContent({
             {report.overclockSteps > 0 ? (
               <div>
                 <StoryTierChip tier={report.tier} /> runs at{" "}
-                <span className="font-bold">{formatCompact(perRunEuT)} EU/t</span>
-                {durationTicks !== undefined ? ` · ${storySeconds(durationTicks)}` : ""}
+                <span className="whitespace-nowrap">
+                  <span className="font-bold">{formatCompact(perRunEuT)} EU/t</span>
+                  {durationTicks !== undefined ? ` · ${storySeconds(durationTicks)}` : ""}
+                </span>
               </div>
             ) : (
               <div className="text-[11px] text-slate-400">
@@ -3959,8 +3999,10 @@ function PowerStoryContent({
             Parallels
           </div>
           <div>
-            ×{report.parallels} recipes at once ={" "}
-            <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
+            ×{report.parallels} recipes at once{" "}
+            <span className="whitespace-nowrap">
+              = <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
+            </span>
           </div>
         </div>
       ) : null}
@@ -3972,8 +4014,10 @@ function PowerStoryContent({
           {machines > 1 ? (
             <>
               {" "}
-              · ×{machines} machines ={" "}
-              <span className="font-bold">{formatCompact(report.drawEuT * machines)} EU/t</span>
+              <span className="whitespace-nowrap">
+                · ×{machines} machines ={" "}
+                <span className="font-bold">{formatCompact(report.drawEuT * machines)} EU/t</span>
+              </span>
             </>
           ) : null}
         </div>
