@@ -334,23 +334,30 @@ function ListLine({
       <button
         type="button"
         onClick={onClick}
-        style={wash ? { backgroundColor: `${GT_TIER_COLORS[wash].background}14` } : undefined}
-        className="flex w-full items-center gap-1.5 py-0.5 pl-2 pr-2 text-left hover:bg-[var(--mc-71)]"
+        // The wash sits at ~12% - present enough to read as the tier's
+        // colour without competing with the chips that name it.
+        style={wash ? { backgroundColor: `${GT_TIER_COLORS[wash].background}1f` } : undefined}
+        className="relative flex w-full items-center gap-1.5 py-0.5 pl-2 pr-2 text-left hover:bg-[var(--mc-71)]"
       >
         {indent ? (
           /* The branch: a vertical line dropping from under the parent's
-             icon, elbowing out to this build's count. Consecutive sub-lines
-             butt against each other, so the verticals join into one stem;
-             the last one stops at its elbow and the stem ends in an L. */
-          <span className="relative w-[24px] shrink-0 self-stretch">
-            <span
-              className={[
-                "absolute left-[11px] top-0 w-[2px] bg-[var(--mc-47)]",
-                isLast ? "h-[calc(50%+1px)]" : "h-full",
-              ].join(" ")}
-            />
-            <span className="absolute left-[11px] right-0 top-1/2 h-[2px] -translate-y-[1px] bg-[var(--mc-47)]" />
-          </span>
+             icon, elbowing out to this build's count. Anchored to the
+             BUTTON's box (inset-y-0), not the flex row - the row's box
+             stops at the padding, and the 4px of it between rows is
+             exactly the gap that used to chop the stem into dashes. The
+             last build stops at its elbow, closing the stem in an L. */
+          <>
+            <span aria-hidden className="absolute bottom-0 left-2 top-0 w-[24px] opacity-60">
+              <span
+                className={[
+                  "absolute left-[11px] top-0 w-[2px] bg-[var(--mc-ink-muted)]",
+                  isLast ? "h-[calc(50%+1px)]" : "bottom-0",
+                ].join(" ")}
+              />
+              <span className="absolute left-[11px] right-0 top-1/2 h-[2px] -translate-y-[1px] bg-[var(--mc-ink-muted)]" />
+            </span>
+            <span className="w-[24px] shrink-0" />
+          </>
         ) : (
           <span className="flex h-[24px] w-[24px] shrink-0 items-center justify-center overflow-hidden">
             {icon ? (
