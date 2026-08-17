@@ -797,6 +797,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         />
       ) : glanceMode === "power" ? (
         <NodeGlanceText
+          icon={
+            <GlanceMachineArt
+              machineIcon={machineGlanceIcon}
+              fallbackResource={rails.outputs[0]?.resource ?? rails.inputs[0]?.resource}
+              small
+            />
+          }
           accent={powerReport ? glanceAccent : undefined}
           className={powerReport ? undefined : "text-[var(--mc-ink-muted)]"}
           // Sized by how many glyphs the settled figure needs, so a draw in
@@ -837,6 +844,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         />
       ) : (
         <NodeGlanceText
+          icon={
+            <GlanceMachineArt
+              machineIcon={machineGlanceIcon}
+              fallbackResource={rails.outputs[0]?.resource ?? rails.inputs[0]?.resource}
+              small
+            />
+          }
           accent={glanceAccent}
           text={
             verdict.kind === "off" || verdict.kind === "no-recipe" ? (
@@ -1360,38 +1374,7 @@ function GlanceIdentityLayer({
         border: `2px solid color-mix(in srgb, ${tileTint} 55%, #262b34)`,
       }}
     >
-      {machineIcon ? (
-        <ResourceIcon
-          resource={{ ...machineIcon, amount: 1 }}
-          size="sm"
-          bare
-          showAmount={false}
-          tooltip={false}
-          className="!h-[192px] !w-[192px]"
-          iconPixelSize={machineArtPixels(192)}
-        />
-      ) : fallbackResource ? (
-        <span className="flex h-[192px] w-[192px] items-center justify-center overflow-hidden">
-          <ResourceIcon
-            resource={{ ...fallbackResource, amount: 1, chance: undefined }}
-            size="sm"
-            bare
-            showAmount={false}
-            tooltip={false}
-            // The glance face is measured, not zoom-cropped: the 1.5x trick
-            // the rows use overflows a 192px box and read as art spilling
-            // off the card at LOD.
-            iconPixelSize={
-              isSwatchFluid(fallbackResource)
-                ? 192
-                : fallbackResource.kind === "fluid"
-                  ? fluidArtPixels(192)
-                  : spriteArtPixels(192)
-            }
-            className="!h-[192px] !w-[192px]"
-          />
-        </span>
-      ) : null}
+      <GlanceMachineArt machineIcon={machineIcon} fallbackResource={fallbackResource} />
       {/* The reveal. Fixed 560px wide and scaled to screen size by the CSS;
           left-1/2 + origin-top keep its top edge pinned to the card's centre
           at every zoom. Inputs left, arrow, outputs right — the same reading
@@ -1423,6 +1406,64 @@ function GlanceIdentityLayer({
         ) : null}
       </span>
     </div>
+  );
+}
+
+/**
+ * The zoomed-out machine art, shared by every glance view: the identity tile
+ * carries it full-size, and the stat views (speed, usage, power) sit it to
+ * the LEFT of their figure so a coloured card still says which machine it is
+ * talking about. Two literal sizes rather than a number, because Tailwind
+ * only emits arbitrary-value classes it can see written out.
+ */
+function GlanceMachineArt({
+  machineIcon,
+  fallbackResource,
+  small = false,
+}: {
+  machineIcon?: MachineHandlerIcon;
+  fallbackResource?: ResourceAmount;
+  small?: boolean;
+}) {
+  const box = small ? "!h-[112px] !w-[112px]" : "!h-[192px] !w-[192px]";
+  const pixels = small ? 112 : 192;
+  if (machineIcon) {
+    return (
+      <ResourceIcon
+        resource={{ ...machineIcon, amount: 1 }}
+        size="sm"
+        bare
+        showAmount={false}
+        tooltip={false}
+        className={box}
+        iconPixelSize={machineArtPixels(pixels)}
+      />
+    );
+  }
+  if (!fallbackResource) {
+    return null;
+  }
+  return (
+    <span className={["flex items-center justify-center overflow-hidden", box].join(" ")}>
+      <ResourceIcon
+        resource={{ ...fallbackResource, amount: 1, chance: undefined }}
+        size="sm"
+        bare
+        showAmount={false}
+        tooltip={false}
+        // The glance face is measured, not zoom-cropped: the 1.5x trick
+        // the rows use overflows the box and reads as art spilling off the
+        // card at LOD.
+        iconPixelSize={
+          isSwatchFluid(fallbackResource)
+            ? pixels
+            : fallbackResource.kind === "fluid"
+              ? fluidArtPixels(pixels)
+              : spriteArtPixels(pixels)
+        }
+        className={box}
+      />
+    </span>
   );
 }
 

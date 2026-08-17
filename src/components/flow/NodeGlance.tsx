@@ -45,6 +45,7 @@ export function NodeGlanceText({
   accent,
   word,
   valueSize = 24,
+  icon,
 }: {
   /** A string, or a text-producing fragment (the eased usage figure). */
   text: ReactNode;
@@ -60,7 +61,15 @@ export function NodeGlanceText({
    * still lands inside the card instead of grazing its frame.
    */
   valueSize?: number;
+  /**
+   * The machine's art, sat to the LEFT of the figure. With it the figure
+   * left-aligns into the remaining width instead of centring, so the card
+   * reads icon-then-number, the same order as a shopping list row.
+   */
+  icon?: ReactNode;
 }) {
+  const anchorX = icon ? 2 : 50;
+  const anchor = icon ? "start" : "middle";
   return (
     <div
       data-node-detail="glance"
@@ -70,10 +79,11 @@ export function NodeGlanceText({
       // display switch cannot fade.
       className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-1"
     >
+      {icon ? <span className="flex shrink-0 items-center justify-center pl-1">{icon}</span> : null}
       <svg
         viewBox="0 0 100 30"
-        preserveAspectRatio="xMidYMid meet"
-        className={["h-full w-full font-mono", className ?? ""].join(" ")}
+        preserveAspectRatio={icon ? "xMinYMid meet" : "xMidYMid meet"}
+        className={["h-full w-full min-w-0 flex-1 font-mono", className ?? ""].join(" ")}
         style={accent ? { color: accent } : undefined}
       >
         {word ? (
@@ -82,9 +92,9 @@ export function NodeGlanceText({
                 of its height so the word can sit under it without the box —
                 and therefore the card — changing size. */}
             <text
-              x="50"
+              x={anchorX}
               y="19"
-              textAnchor="middle"
+              textAnchor={anchor}
               fontSize={valueSize}
               fontWeight="900"
               fill="currentColor"
@@ -93,9 +103,9 @@ export function NodeGlanceText({
               {text}
             </text>
             <text
-              x="50"
+              x={anchorX}
               y="28.5"
-              textAnchor="middle"
+              textAnchor={anchor}
               fontSize="7"
               fontWeight="700"
               letterSpacing="0.6"
@@ -107,9 +117,9 @@ export function NodeGlanceText({
           </>
         ) : (
           <text
-            x="50"
+            x={anchorX}
             y="24"
-            textAnchor="middle"
+            textAnchor={anchor}
             fontSize="30"
             fontWeight="900"
             fill="currentColor"
