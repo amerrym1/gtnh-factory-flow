@@ -826,9 +826,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     return value === target ? formatCompact(target) : formatCompactStable(value);
                   }}
                 />
-                <tspan fontSize="7.5" fontWeight="600" opacity="0.7" dx="2">
-                  EU/t
-                </tspan>
+                <span className="ml-1.5 text-[18px] font-semibold opacity-70">EU/t</span>
               </>
             ) : (
               "—"
@@ -1425,6 +1423,10 @@ function GlanceMachineArt({
   fallbackResource?: ResourceAmount;
   small?: boolean;
 }) {
+  // A quiet drop shadow lifts the art off the card. In board pixels, so it
+  // has to be generous enough to survive the LOD zoom-out — at 0.4 zoom
+  // these six pixels read as two.
+  const shadow = "drop-shadow-[4px_6px_5px_rgba(0,0,0,0.45)]";
   const box = small ? "!h-[112px] !w-[112px]" : "!h-[192px] !w-[192px]";
   const pixels = small ? 112 : 192;
   if (machineIcon) {
@@ -1435,7 +1437,7 @@ function GlanceMachineArt({
         bare
         showAmount={false}
         tooltip={false}
-        className={box}
+        className={[box, shadow].join(" ")}
         iconPixelSize={machineArtPixels(pixels)}
       />
     );
@@ -1444,7 +1446,7 @@ function GlanceMachineArt({
     return null;
   }
   return (
-    <span className={["flex items-center justify-center overflow-hidden", box].join(" ")}>
+    <span className={["flex items-center justify-center overflow-hidden", box, shadow].join(" ")}>
       <ResourceIcon
         resource={{ ...fallbackResource, amount: 1, chance: undefined }}
         size="sm"
@@ -1595,16 +1597,16 @@ function powerDrawEuT(report: NodePowerReport, node: FactoryNode): number {
 }
 
 /**
- * The power glance figure's size for a given compact string. The mono face
- * at weight 900 runs wide in the 100-unit viewBox — "480 EU/t" already spans
- * three quarters of it — so every glyph past three buys the whole line a
- * step down, keeping "9.99M EU/t" inside the card frame.
+ * The power glance figure's font size in pixels. The mono face at weight 900
+ * runs wide, and beside the machine art the line has roughly 220px of card
+ * to live in — so every glyph past three buys the whole line a step down,
+ * keeping "9.99M EU/t" inside the frame.
  */
 function powerGlanceValueSize(compact: string): number {
   if (compact.length <= 3) {
-    return 22;
+    return 52;
   }
-  return compact.length === 4 ? 19.5 : 17;
+  return compact.length === 4 ? 46 : 40;
 }
 
 /**

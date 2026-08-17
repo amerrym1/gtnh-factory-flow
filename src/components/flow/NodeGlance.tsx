@@ -44,7 +44,7 @@ export function NodeGlanceText({
   className,
   accent,
   word,
-  valueSize = 24,
+  valueSize,
   icon,
 }: {
   /** A string, or a text-producing fragment (the eased usage figure). */
@@ -56,78 +56,74 @@ export function NodeGlanceText({
   /** A second, small line under the figure — the reason word, the tier chip. */
   word?: string;
   /**
-   * The two-line figure's size, for callers whose value can run long: the
-   * power view steps this down as the draw gains digits so "9.99M EU/t"
-   * still lands inside the card instead of grazing its frame.
+   * The figure's font size IN PIXELS, for the icon row only — callers whose
+   * value can run long (the power view) step it down as the draw gains
+   * digits so "9.99M EU/t" still lands inside the card.
    */
   valueSize?: number;
   /**
-   * The machine's art, sat to the LEFT of the figure. With it the figure
-   * left-aligns into the remaining width instead of centring, so the card
-   * reads icon-then-number, the same order as a shopping list row.
+   * The machine's art, sat to the LEFT of the figure so a coloured card
+   * still says what machine it is. With an icon the layer switches from the
+   * fitted SVG to a plain HTML row: recipe cards are all the same fixed
+   * width, so pixel sizes hold, and — unlike an SVG viewBox, which cannot
+   * shrink to its text — the icon and the figure centre in the card as ONE
+   * group instead of hugging the left edge.
    */
   icon?: ReactNode;
 }) {
-  const anchorX = icon ? 2 : 50;
-  const anchor = icon ? "start" : "middle";
+  if (icon) {
+    return (
+      <div
+        data-node-detail="glance"
+        aria-hidden
+        // `flex` from the start: whether the layer SHOWS is the stylesheet's
+        // call (`data-detail-level` plus the fade rules in globals.css), and
+        // a display switch cannot fade.
+        className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 p-2 font-mono"
+      >
+        <span className="flex shrink-0 items-center justify-center">{icon}</span>
+        <span
+          className={["flex min-w-0 flex-col items-start", className ?? ""].join(" ")}
+          style={accent ? { color: accent } : undefined}
+        >
+          <span
+            className="whitespace-nowrap font-black leading-none tabular-nums"
+            style={{ fontSize: valueSize ?? (word ? 56 : 64) }}
+          >
+            {text}
+          </span>
+          {word ? (
+            <span className="mt-1.5 whitespace-nowrap text-[15px] font-bold uppercase leading-none tracking-[1px] opacity-85">
+              {word}
+            </span>
+          ) : null}
+        </span>
+      </div>
+    );
+  }
   return (
     <div
       data-node-detail="glance"
       aria-hidden
-      // `flex` from the start: whether the layer SHOWS is the stylesheet's
-      // call (`data-detail-level` plus the fade rules in globals.css), and a
-      // display switch cannot fade.
       className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-1"
     >
-      {icon ? <span className="flex shrink-0 items-center justify-center pl-1">{icon}</span> : null}
       <svg
         viewBox="0 0 100 30"
-        preserveAspectRatio={icon ? "xMinYMid meet" : "xMidYMid meet"}
-        className={["h-full w-full min-w-0 flex-1 font-mono", className ?? ""].join(" ")}
+        preserveAspectRatio="xMidYMid meet"
+        className={["h-full w-full font-mono", className ?? ""].join(" ")}
         style={accent ? { color: accent } : undefined}
       >
-        {word ? (
-          <>
-            {/* Two lines share the 30-unit box: the figure gives up a fifth
-                of its height so the word can sit under it without the box —
-                and therefore the card — changing size. */}
-            <text
-              x={anchorX}
-              y="19"
-              textAnchor={anchor}
-              fontSize={valueSize}
-              fontWeight="900"
-              fill="currentColor"
-              className="tabular-nums"
-            >
-              {text}
-            </text>
-            <text
-              x={anchorX}
-              y="28.5"
-              textAnchor={anchor}
-              fontSize="7"
-              fontWeight="700"
-              letterSpacing="0.6"
-              fill="currentColor"
-              opacity="0.85"
-            >
-              {word.toUpperCase()}
-            </text>
-          </>
-        ) : (
-          <text
-            x={anchorX}
-            y="24"
-            textAnchor={anchor}
-            fontSize="30"
-            fontWeight="900"
-            fill="currentColor"
-            className="tabular-nums"
-          >
-            {text}
-          </text>
-        )}
+        <text
+          x="50"
+          y="24"
+          textAnchor="middle"
+          fontSize="30"
+          fontWeight="900"
+          fill="currentColor"
+          className="tabular-nums"
+        >
+          {text}
+        </text>
       </svg>
     </div>
   );
