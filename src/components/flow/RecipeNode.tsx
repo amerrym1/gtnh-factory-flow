@@ -3874,6 +3874,12 @@ function StorySectionLabel({ title, aside }: { title: string; aside?: string }) 
  * and the hollow last cell is the NEXT step, filling with how much of its
  * cost the budget already covers.
  *
+ * Every mark explains itself in place. A taken cell is inscribed with the
+ * SPEED the ladder has reached by it (×2, ×4 …), so the doubling is read,
+ * not inferred; the hollow cell is inscribed with its own price and fills
+ * with how much of it the budget covers. The one rule the inscriptions
+ * cannot carry — a cell's ×4 power cost — lives in the section aside.
+ *
  * The whole DRAWING lerps on the board's value-motion clock, like any other
  * number: a fresh hover mounts it settled (a tooltip does not count up from
  * zero), and a tier or hatch click made while the panel is held up eases it
@@ -3881,15 +3887,20 @@ function StorySectionLabel({ title, aside }: { title: string; aside?: string }) 
  * reach and the ladder's length, both in cell units — and slot edges, widths
  * and fills all derive from them, so a step gained GROWS its cell in while
  * the others make room and the pour runs forward, instead of the bar
- * re-segmenting in one frame with only the fill easing.
+ * re-segmenting in one frame with only the fill easing. Inscriptions snap to
+ * the target shape and are revealed by their growing cells.
  */
 function StoryOverclockBar({
   perfectSteps,
   normalSteps,
+  perfectSpeedFactor,
+  nextStepEuT,
   nextCoverage,
 }: {
   perfectSteps: number;
   normalSteps: number;
+  perfectSpeedFactor: number;
+  nextStepEuT: number;
   nextCoverage: number;
 }) {
   const { valueMotion } = useBoardMotion();
@@ -3899,9 +3910,12 @@ function StoryOverclockBar({
   // Mid-lerp the ladder holds a fractional number of cells; the last sliver
   // slot is the new cell arriving (or the lost one leaving).
   const slotCount = Math.max(1, Math.ceil(cells - 1e-6));
+  // Cumulative speed once `steps` cells are bought: perfect steps first.
+  const speedAfter = (steps: number) =>
+    perfectSpeedFactor ** Math.min(steps, perfectSteps) * 2 ** Math.max(0, steps - perfectSteps);
 
   return (
-    <div className="relative h-2.5" aria-hidden>
+    <div className="relative h-4" aria-hidden>
       {Array.from({ length: slotCount }, (_, index) => {
         const kind = index < perfectSteps ? "perfect" : index < taken ? "normal" : "next";
         const leftPct = (index / cells) * 100;
@@ -3909,6 +3923,17 @@ function StoryOverclockBar({
         // The fill is a fraction of the CELL UNIT; rendered inside a slot
         // still growing to full size it scales with it.
         const fillFraction = Math.min(1, Math.max(0, reach - index));
+        // A taken cell states the speed reached by it; the next cell states
+        // its price while room allows (a transient extra slot mid-shrink
+        // stays blank). Speed alone once cells run narrow.
+        const label =
+          index < taken
+            ? `×${trimFactor(speedAfter(index + 1))}`
+            : index === taken
+              ? `×${trimFactor(speedAfter(taken) * 2)}${
+                  slotCount <= 3 ? ` needs ${formatCompact(nextStepEuT)}` : ""
+                }`
+              : undefined;
         return (
           <div
             key={index}
@@ -3933,6 +3958,16 @@ function StoryOverclockBar({
               ].join(" ")}
               style={{ width: `${fillFraction * 100}%` }}
             />
+            {label ? (
+              <span
+                className={[
+                  "absolute inset-0 flex items-center justify-center whitespace-nowrap text-[10px] leading-none [text-shadow:1px_1px_0_rgba(0,0,0,0.8)]",
+                  kind === "next" ? "text-slate-300" : "text-white",
+                ].join(" ")}
+              >
+                {label}
+              </span>
+            ) : null}
           </div>
         );
       })}
@@ -3998,6 +4033,9 @@ function PowerStoryContent({
     report.perfectSpeedFactor === 4 && report.perfectEuFactor === 4
       ? "perfect overclock"
       : "machine overclock";
+  // A machine whose steps are not billed the flat ×4 (arc electrodes and
+  // kin) breaks the aside's rule, so it keeps a legend line naming its own.
+  const oddPerfectBilling = report.perfectOverclockSteps > 0 && report.perfectEuFactor !== 4;
 
   const batchEuT = report.singleDrawEuT * report.parallels;
   // What the untaken step would bill, the way the game bills it: whole
@@ -4052,7 +4090,10 @@ function PowerStoryContent({
       ) : null}
 
       <div>
-        <StorySectionLabel title="Overclocks" aside="spare budget buys speed" />
+        <StorySectionLabel
+          title="Overclocks"
+          aside={oddPerfectBilling ? "spare budget buys speed" : "each cell costs ×4 power"}
+        />
         {ladderHonest ? (
           <div className="space-y-0.5 pl-3">
             {/* With parallels the batch line above IS the ladder's start;
@@ -4069,24 +4110,19 @@ function PowerStoryContent({
             <StoryOverclockBar
               perfectSteps={report.perfectOverclockSteps}
               normalSteps={normalSteps}
+              perfectSpeedFactor={report.perfectSpeedFactor}
+              nextStepEuT={nextStepEuT}
               nextCoverage={nextCoverage}
             />
-            {/* Legend, not tally: the cells above carry the counts, so each
-                row just says what one cell of its colour buys, and the
-                arithmetic wraps as a whole phrase or not at all. */}
-            {report.perfectOverclockSteps > 0 ? (
+            {/* The cells explain themselves; only a machine whose steps are
+                not billed the flat ×4 still needs a line of its own. */}
+            {oddPerfectBilling ? (
               <div className="text-[11px] text-cyan-300">
                 {perfectLabel}:{" "}
                 <span className="whitespace-nowrap">
                   ×{trimFactor(report.perfectEuFactor)} power buys ×
                   {trimFactor(report.perfectSpeedFactor)} speed
                 </span>
-              </div>
-            ) : null}
-            {normalSteps > 0 ? (
-              <div className="text-[11px] text-amber-300">
-                regular overclock:{" "}
-                <span className="whitespace-nowrap">×4 power buys ×2 speed</span>
               </div>
             ) : null}
             {report.overclockSteps > 0 ? (
