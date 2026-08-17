@@ -1031,12 +1031,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             // titles survive only where there is no report to tell it.
             <MinecraftTooltip
               content={
-                powerReport ? (
-                  <PowerStoryContent
-                    report={powerReport}
-                    durationTicks={overclockedRecipe.durationTicks}
-                  />
-                ) : undefined
+                powerReport ? <PowerStoryContent report={powerReport} /> : undefined
               }
             >
             <div className="flex">
@@ -1252,7 +1247,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                               report={powerReport}
                               machineCount={projectNode.machineCount}
                               nodeParallel={projectNode.parallel}
-                              durationTicks={overclockedRecipe.durationTicks}
                             />
                           ) : null}
                           {machineParallelMultiplier > 1 && !parallelChipLifts ? (
@@ -3766,12 +3760,10 @@ function PowerStat({
   report,
   machineCount,
   nodeParallel,
-  durationTicks,
 }: {
   report: NodePowerReport;
   machineCount: number;
   nodeParallel: number;
-  durationTicks?: number;
 }) {
   const stalled = report.state !== "ok";
   // Always EU/t, whatever the board's rate unit: power is a per-tick fact in
@@ -3781,7 +3773,7 @@ function PowerStat({
 
   return (
     <MinecraftTooltip
-      content={<PowerStoryContent report={report} durationTicks={durationTicks} />}
+      content={<PowerStoryContent report={report} />}
     >
       <div
         className={[
@@ -3867,110 +3859,117 @@ function StorySectionLabel({ title, aside }: { title: string; aside?: string }) 
   );
 }
 
+/** Slots the spend bar can lerp between; comfortably past GT's tier count. */
+const SPEND_BAR_SLOTS = 17;
+/** The bar's content width in px, for judging whether a label fits. */
+const SPEND_BAR_WIDTH_PX = 306;
+
 /**
- * The overclock ladder as a bar: one cell per ×4 of power, so a taken step
- * and the untaken one after it are the same size — the axis is exponential
- * because the mechanic is. Cyan cells are perfect steps, amber ones regular,
- * and the hollow last cell is the NEXT step, filling with how much of its
- * cost the budget already covers.
+ * The budget as a bar, spent left to right, TO SCALE: the track's full width
+ * is the supply from the line above, the first slice is the recipe's own
+ * draw, and each overclock is the slice of budget it cost — so every later
+ * overclock is visibly ~3× wider than everything before it, which is the
+ * whole exponential mechanic drawn as widths. Whatever the slices leave
+ * unspent is the labeled SPARE tail: too little for the next step, whose
+ * price the line below the bar names.
  *
- * Every mark explains itself in place. A taken cell is inscribed with the
- * SPEED the ladder has reached by it (×2, ×4 …), so the doubling is read,
- * not inferred; the hollow cell is inscribed with its own price and fills
- * with how much of it the budget covers. The one rule the inscriptions
- * cannot carry — a cell's ×4 power cost — lives in the section aside.
+ * Slices are inscribed where room allows — "recipe" on the first, the speed
+ * reached (×2, ×4 …) on each overclock — cyan for perfect steps, amber for
+ * regular ones.
  *
- * The whole DRAWING lerps on the board's value-motion clock, like any other
- * number: a fresh hover mounts it settled (a tooltip does not count up from
- * zero), and a tier or hatch click made while the panel is held up eases it
- * to the new answer. Two lerped quantities drive every pixel — the pour's
- * reach and the ladder's length, both in cell units — and slot edges, widths
- * and fills all derive from them, so a step gained GROWS its cell in while
- * the others make room and the pour runs forward, instead of the bar
- * re-segmenting in one frame with only the fill easing. Inscriptions snap to
- * the target shape and are revealed by their growing cells.
+ * The drawing lerps on the board's value-motion clock, like any other
+ * number: a fresh hover mounts it settled, and a tier or hatch click made
+ * while the panel is held up eases every boundary to its new fraction of
+ * the new budget. The lerped vector is the cumulative spend at each slot,
+ * padded to a fixed length so gained and lost slices grow and shrink
+ * smoothly; labels snap to the target shape and are revealed by their
+ * growing slices.
  */
 function StoryOverclockBar({
   perfectSteps,
   normalSteps,
   perfectSpeedFactor,
-  nextStepEuT,
-  nextCoverage,
+  perfectEuFactor,
+  batchEuT,
+  poolEuT,
 }: {
   perfectSteps: number;
   normalSteps: number;
   perfectSpeedFactor: number;
-  nextStepEuT: number;
-  nextCoverage: number;
+  perfectEuFactor: number;
+  /** One batch's un-overclocked draw: the bar's first slice. */
+  batchEuT: number;
+  /** The supply: the track's full width. */
+  poolEuT: number;
 }) {
   const { valueMotion } = useBoardMotion();
   const taken = perfectSteps + normalSteps;
-  const coverage = Math.min(1, Math.max(0, nextCoverage));
-  const [reach, cells] = useMotionValues([taken + coverage, taken + 1], valueMotion);
-  // Mid-lerp the ladder holds a fractional number of cells; the last sliver
-  // slot is the new cell arriving (or the lost one leaving).
-  const slotCount = Math.max(1, Math.ceil(cells - 1e-6));
-  // Cumulative speed once `steps` cells are bought: perfect steps first.
+  // Draw and speed once `steps` overclocks are bought: perfect steps first.
+  const cumulativeEuT = (steps: number) =>
+    batchEuT *
+    perfectEuFactor ** Math.min(steps, perfectSteps) *
+    4 ** Math.max(0, steps - perfectSteps);
   const speedAfter = (steps: number) =>
     perfectSpeedFactor ** Math.min(steps, perfectSteps) * 2 ** Math.max(0, steps - perfectSteps);
+  const fractions = useMotionValues(
+    Array.from({ length: SPEND_BAR_SLOTS }, (_, slot) =>
+      Math.min(1, cumulativeEuT(Math.min(slot, taken)) / poolEuT),
+    ),
+    valueMotion,
+  );
+  if (!(Number.isFinite(poolEuT) && poolEuT > 0)) {
+    return null;
+  }
+  const spareEuT = Math.max(0, poolEuT - cumulativeEuT(taken));
+  const sparePx = (1 - fractions[SPEND_BAR_SLOTS - 1]) * SPEND_BAR_WIDTH_PX;
 
   return (
-    <div className="relative h-4" aria-hidden>
-      {Array.from({ length: slotCount }, (_, index) => {
-        const kind = index < perfectSteps ? "perfect" : index < taken ? "normal" : "next";
-        const leftPct = (index / cells) * 100;
-        const widthPct = (Math.min(1, cells - index) / cells) * 100;
-        // The fill is a fraction of the CELL UNIT; rendered inside a slot
-        // still growing to full size it scales with it.
-        const fillFraction = Math.min(1, Math.max(0, reach - index));
-        // A taken cell states the speed reached by it; the next cell states
-        // its price while room allows (a transient extra slot mid-shrink
-        // stays blank). Speed alone once cells run narrow.
+    <div className="relative h-4 border border-slate-600" aria-hidden>
+      {Array.from({ length: SPEND_BAR_SLOTS }, (_, slot) => {
+        const startPct = (slot === 0 ? 0 : fractions[slot - 1]) * 100;
+        const widthPct = fractions[slot] * 100 - startPct;
+        if (widthPct <= 0.15) {
+          return null;
+        }
+        const widthPx = (widthPct / 100) * SPEND_BAR_WIDTH_PX;
+        const kind = slot === 0 ? "recipe" : slot <= perfectSteps ? "perfect" : "normal";
         const label =
-          index < taken
-            ? `×${trimFactor(speedAfter(index + 1))}`
-            : index === taken
-              ? `×${trimFactor(speedAfter(taken) * 2)}${
-                  slotCount <= 3 ? ` needs ${formatCompact(nextStepEuT)}` : ""
-                }`
+          slot === 0
+            ? widthPx >= 48
+              ? "recipe"
+              : undefined
+            : slot <= taken && widthPx >= 26
+              ? `×${trimFactor(speedAfter(slot))}`
               : undefined;
         return (
           <div
-            key={index}
+            key={slot}
             className={[
-              "absolute inset-y-0 overflow-hidden border",
-              kind === "perfect"
-                ? "border-cyan-300"
-                : kind === "normal"
-                  ? "border-amber-300"
-                  : "border-slate-500",
-            ].join(" ")}
-            style={{ left: `calc(${leftPct}% + 1px)`, width: `calc(${widthPct}% - 2px)` }}
-          >
-            <div
-              className={[
-                "absolute inset-y-0 left-0",
-                kind === "perfect"
+              "absolute inset-y-0 overflow-hidden",
+              kind === "recipe"
+                ? "bg-slate-400/50"
+                : kind === "perfect"
                   ? "bg-cyan-400/60"
-                  : kind === "normal"
-                    ? "bg-amber-300/60"
-                    : "bg-slate-400/50",
-              ].join(" ")}
-              style={{ width: `${fillFraction * 100}%` }}
-            />
+                  : "bg-amber-300/60",
+            ].join(" ")}
+            style={{ left: `${startPct}%`, width: `calc(${widthPct}% - 1px)` }}
+          >
             {label ? (
-              <span
-                className={[
-                  "absolute inset-0 flex items-center justify-center whitespace-nowrap text-[10px] leading-none [text-shadow:1px_1px_0_rgba(0,0,0,0.8)]",
-                  kind === "next" ? "text-slate-300" : "text-white",
-                ].join(" ")}
-              >
+              <span className="absolute inset-0 flex items-center justify-center whitespace-nowrap text-[10px] leading-none text-white [text-shadow:1px_1px_0_rgba(0,0,0,0.8)]">
                 {label}
               </span>
             ) : null}
           </div>
         );
       })}
+      {sparePx >= 64 ? (
+        <span
+          className="absolute inset-y-0 right-0 flex items-center justify-center whitespace-nowrap text-[10px] leading-none text-slate-400"
+          style={{ left: `${fractions[SPEND_BAR_SLOTS - 1] * 100}%` }}
+        >
+          spare {formatCompact(spareEuT)}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -3979,12 +3978,6 @@ function trimFactor(value: number): string {
   return Number.isInteger(value)
     ? String(value)
     : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
-}
-
-function storySeconds(ticks: number): string {
-  const seconds = ticks / 20;
-  const text = seconds >= 10 ? seconds.toFixed(1) : seconds.toFixed(2);
-  return `${text.replace(/\.?0+$/, "")}s`;
 }
 
 /**
@@ -3997,22 +3990,16 @@ function storySeconds(ticks: number): string {
  * parallels it pays for FIRST, then the overclocks bought with whatever is
  * left. The teaching lives in the section asides, a few words each; the
  * headers sit flush left over indented bodies so the three beats are
- * scannable; every other line is a bare fact. The overclock ladder is a BAR
- * — one cell per taken step, a hollow cell for the next one filling with how
- * much of its cost the budget covers — plus legend rows carrying the
- * ×power/×speed arithmetic. Usage and the whole-node total stay off it: the
- * footer cells under the cursor already say both. Drawn only when the
- * arithmetic reproduces the real draw — runtime-ladder machines, whose step
- * kinds the game never exported, get the honest count alone.
+ * scannable; every other line is a bare fact. The spend itself is a BAR to
+ * scale (StoryOverclockBar), and one muted line under it prices the step
+ * that did not fit. Everything here is EU/t — never seconds, which no other
+ * surface on the card speaks — and usage and the whole-node total stay off
+ * it too: the footer cells under the cursor already say both. The bar is
+ * drawn only when the arithmetic reproduces the real draw — runtime-ladder
+ * machines, whose step kinds the game never exported, get the honest count
+ * alone.
  */
-function PowerStoryContent({
-  report,
-  durationTicks,
-}: {
-  report: NodePowerReport;
-  /** The overclocked recipe's final duration, for the ladder's time column. */
-  durationTicks?: number;
-}) {
+function PowerStoryContent({ report }: { report: NodePowerReport }) {
   const stall = describePowerStall(report);
   const perRunEuT = report.parallels > 0 ? report.drawEuT / report.parallels : report.drawEuT;
   const normalSteps = Math.max(0, report.overclockSteps - report.perfectOverclockSteps);
@@ -4023,25 +4010,18 @@ function PowerStoryContent({
   const ladderHonest =
     report.overclockSteps === 0 ||
     Math.abs(expectedEuT - perRunEuT) <= Math.max(2, perRunEuT * 0.02);
-  const baseTicks =
-    durationTicks !== undefined
-      ? durationTicks *
-        report.perfectSpeedFactor ** report.perfectOverclockSteps *
-        2 ** normalSteps
-      : undefined;
   const perfectLabel =
     report.perfectSpeedFactor === 4 && report.perfectEuFactor === 4
       ? "perfect overclock"
       : "machine overclock";
-  // A machine whose steps are not billed the flat ×4 (arc electrodes and
-  // kin) breaks the aside's rule, so it keeps a legend line naming its own.
-  const oddPerfectBilling = report.perfectOverclockSteps > 0 && report.perfectEuFactor !== 4;
 
   const batchEuT = report.singleDrawEuT * report.parallels;
   // What the untaken step would bill, the way the game bills it: whole
   // powers of four over the batch draw, floored at 32 ("treat ULV as LV").
   const nextStepEuT = Math.max(batchEuT, 32) * 4 ** (report.overclockSteps + 1);
-  const nextCoverage = Number.isFinite(report.poolEuT) ? report.poolEuT / nextStepEuT : 1;
+  const nextSpeedLabel = trimFactor(
+    report.perfectSpeedFactor ** report.perfectOverclockSteps * 2 ** (normalSteps + 1),
+  );
 
   return (
     <div className="w-80 space-y-2 text-[12px] leading-4 text-slate-200">
@@ -4083,27 +4063,22 @@ function PowerStoryContent({
             :{" "}
             <span className="whitespace-nowrap">
               <span className="font-bold">{formatCompact(batchEuT)} EU/t</span>
-              {ladderHonest && baseTicks !== undefined ? ` · ${storySeconds(baseTicks)}` : ""}
             </span>
           </div>
         </div>
       ) : null}
 
       <div>
-        <StorySectionLabel
-          title="Overclocks"
-          aside={oddPerfectBilling ? "spare budget buys speed" : "each cell costs ×4 power"}
-        />
+        <StorySectionLabel title="Overclocks" aside="how the budget gets spent" />
         {ladderHonest ? (
           <div className="space-y-0.5 pl-3">
-            {/* With parallels the batch line above IS the ladder's start;
-                alone, the recipe's own draw and time open it here. */}
+            {/* With parallels the batch line above IS the bar's first slice;
+                alone, the recipe's own draw opens it here. */}
             {report.parallels === 1 ? (
               <div>
                 <StoryTierChip tier={report.minimumTier} /> recipe:{" "}
                 <span className="whitespace-nowrap">
                   <span className="font-bold">{formatCompact(report.singleDrawEuT)} EU/t</span>
-                  {baseTicks !== undefined ? ` · ${storySeconds(baseTicks)}` : ""}
                 </span>
               </div>
             ) : null}
@@ -4111,17 +4086,18 @@ function PowerStoryContent({
               perfectSteps={report.perfectOverclockSteps}
               normalSteps={normalSteps}
               perfectSpeedFactor={report.perfectSpeedFactor}
-              nextStepEuT={nextStepEuT}
-              nextCoverage={nextCoverage}
+              perfectEuFactor={report.perfectEuFactor}
+              batchEuT={batchEuT}
+              poolEuT={report.poolEuT}
             />
-            {/* The cells explain themselves; only a machine whose steps are
-                not billed the flat ×4 still needs a line of its own. */}
-            {oddPerfectBilling ? (
+            {/* Which steps are the special kind, whenever cyan is on the bar. */}
+            {report.perfectOverclockSteps > 0 ? (
               <div className="text-[11px] text-cyan-300">
-                {perfectLabel}:{" "}
+                cyan: {perfectLabel}
+                {report.perfectOverclockSteps === 1 ? "" : "s"},{" "}
                 <span className="whitespace-nowrap">
-                  ×{trimFactor(report.perfectEuFactor)} power buys ×
-                  {trimFactor(report.perfectSpeedFactor)} speed
+                  ×{trimFactor(report.perfectSpeedFactor)} speed for ×
+                  {trimFactor(report.perfectEuFactor)} power
                 </span>
               </div>
             ) : null}
@@ -4130,10 +4106,19 @@ function PowerStoryContent({
                 <StoryTierChip tier={report.tier} /> runs at{" "}
                 <span className="whitespace-nowrap">
                   <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
-                  {durationTicks !== undefined ? ` · ${storySeconds(durationTicks)}` : ""}
                 </span>
               </div>
             ) : null}
+            <div className="text-[11px] text-slate-400">
+              {nextStepEuT > report.poolEuT ? (
+                <>
+                  next overclock (×{nextSpeedLabel} speed):{" "}
+                  <span className="whitespace-nowrap">{formatCompact(nextStepEuT)} EU/t</span>
+                </>
+              ) : (
+                <>more power won&apos;t buy another overclock here</>
+              )}
+            </div>
           </div>
         ) : (
           <div className="pl-3">
@@ -4141,7 +4126,6 @@ function PowerStoryContent({
             <StoryTierChip tier={report.tier} /> runs at{" "}
             <span className="whitespace-nowrap">
               <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
-              {durationTicks !== undefined ? ` · ${storySeconds(durationTicks)}` : ""}
             </span>
           </div>
         )}
