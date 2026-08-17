@@ -4,6 +4,7 @@ import { useMemo, useRef } from "react";
 import { MotionNumberText } from "./flow/board-motion";
 import { GT_TIER_COLORS } from "./flow/tier-colors";
 import { useMachineHandlerIcons, type MachineHandlerIcon } from "./flow/machine-icons";
+import { machineArtPixels } from "./flow/MachinePicker";
 import { MinecraftTooltip } from "./nei/MinecraftTooltip";
 import { ResourceIcon } from "./nei/ResourceIcon";
 import { getSelectedMachineHandler } from "@/lib/model/recipe-rules";
@@ -367,6 +368,11 @@ function ListLine({
                 showAmount={false}
                 bare
                 tooltip={false}
+                // Machine renders are 256px squares whose art fills barely
+                // half the frame; asked for raw, the row showed a 12px
+                // machine swimming in margin. machineArtPixels crops the
+                // transparent frame exactly, so the art fills the box.
+                iconPixelSize={machineArtPixels(24)}
                 className="!h-full !w-full"
               />
             ) : null}
