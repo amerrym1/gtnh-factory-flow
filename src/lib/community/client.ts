@@ -144,6 +144,21 @@ export async function patchCommunityPlan(
   return parseJsonOrThrow<{ id: string }>(response);
 }
 
+/**
+ * Puts the board photograph next to an owned post; the share link's embed
+ * serves it back. Owner-only server-side, so failures here are the owner's
+ * own session expiring — the post itself already went through.
+ */
+export async function uploadPlanPreview(planId: string, image: Blob): Promise<void> {
+  const form = new FormData();
+  form.set("image", image);
+  const response = await fetch(
+    `/api/community/plans/${encodeURIComponent(planId)}/preview`,
+    { method: "POST", body: form },
+  );
+  await parseJsonOrThrow<{ ok: boolean }>(response);
+}
+
 export async function deleteCommunityPlan(planId: string): Promise<void> {
   const response = await fetch(`/api/community/plans/${encodeURIComponent(planId)}`, {
     method: "DELETE",

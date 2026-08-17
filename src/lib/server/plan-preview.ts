@@ -14,6 +14,32 @@ import {
  * here reads the summary row alone - never the plan JSON - because unfurling
  * a link must stay cheap enough to happen on every paste.
  */
+
+/**
+ * Where the share flow puts each post's board photograph, one object per
+ * plan named `<planId>.png`. Deliberately not a table column: the object
+ * name is derived from the id the card route already holds, so an old row
+ * simply has no object and the card falls back to its icon face.
+ */
+export const PLAN_PREVIEW_BUCKET = "plan-previews";
+
+/** The plan's stored board photograph, or undefined when none was uploaded. */
+export async function getPlanPreviewPng(planId: string): Promise<Buffer | undefined> {
+  if (!isCommunityConfigured()) {
+    return undefined;
+  }
+  try {
+    const { data, error } = await getCommunityDb()
+      .storage.from(PLAN_PREVIEW_BUCKET)
+      .download(`${planId}.png`);
+    if (error || !data) {
+      return undefined;
+    }
+    return Buffer.from(await data.arrayBuffer());
+  } catch {
+    return undefined;
+  }
+}
 export async function getPublicPlanRow(planId: string): Promise<PlanRow | undefined> {
   if (!planId || !isCommunityConfigured()) {
     return undefined;

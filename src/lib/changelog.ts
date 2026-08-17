@@ -80,6 +80,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Hover the tier chip, the hatch counter or the power cell for the whole power story.",
       "The tooltip diagrams each overclock: 4x the power for 2x or 4x the speed.",
       "It also spells out hatches, amps, parallels and what to fix when a build stalls.",
+      "Sharing a setup now photographs your board, so pasted links show the plan itself.",
     ],
   },
   {

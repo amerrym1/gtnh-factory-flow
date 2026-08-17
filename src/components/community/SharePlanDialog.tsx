@@ -7,8 +7,10 @@ import {
   listCommunityPlans,
   updateCommunityPlan,
   uploadCommunityPlan,
+  uploadPlanPreview,
 } from "@/lib/community/client";
 import { computeCommunityPlanStats } from "@/lib/community/plan-stats";
+import { capturePlanPreviewPng } from "@/lib/community/plan-preview-capture";
 import { sharedPlanLink } from "@/lib/community/shared-link";
 import type { CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
 import { serializeFactoryProject } from "@/lib/import-export";
@@ -114,6 +116,10 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
     setUploading(true);
     setError(undefined);
     try {
+      // Photograph the board while the plan uploads: the picture is what the
+      // share link unfurls into in a chat. Best-effort — a failed photo must
+      // never fail the post.
+      const previewPromise = capturePlanPreviewPng();
       // Whatever is still sitting in the tag input counts as one last tag.
       const finalTags = tagInput.trim() ? addTagFromInput() : tags;
       const payload = {
@@ -133,14 +139,22 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
         icon,
       };
 
+      let sharedPlanId: string;
       if (updateTargetId) {
         await updateCommunityPlan(updateTargetId, payload);
         setShared({ kind: "updated", planId: updateTargetId });
         setProjectCommunityLink(updateTargetId);
+        sharedPlanId = updateTargetId;
       } else {
         const { id } = await uploadCommunityPlan(payload);
         setShared({ kind: "created", planId: id });
         setProjectCommunityLink(id);
+        sharedPlanId = id;
+      }
+
+      const preview = await previewPromise;
+      if (preview) {
+        await uploadPlanPreview(sharedPlanId, preview).catch(() => undefined);
       }
       // The face the post just went out wearing becomes the plan's own, so
       // the plan card and the next share both start from it. Not the name:

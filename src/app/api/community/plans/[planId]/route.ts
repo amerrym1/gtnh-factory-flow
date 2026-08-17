@@ -8,6 +8,7 @@ import {
   COMMUNITY_UPLOAD_MAX_BYTES,
 } from "@/lib/community/types";
 import { normalizeBlueprintTags } from "@/lib/blueprints/types";
+import { PLAN_PREVIEW_BUCKET } from "@/lib/server/plan-preview";
 import {
   attachMyVotes,
   communityStorageErrorMessage,
@@ -255,6 +256,13 @@ export async function DELETE(
     if (error) {
       throw new Error(error.message);
     }
+
+    // The post's board photograph goes with it. Best-effort: a missing
+    // object (pre-preview posts) is the normal case, not a failure.
+    await db.storage
+      .from(PLAN_PREVIEW_BUCKET)
+      .remove([`${planId}.png`])
+      .catch(() => undefined);
 
     return NextResponse.json({ ok: true });
   } catch (error) {

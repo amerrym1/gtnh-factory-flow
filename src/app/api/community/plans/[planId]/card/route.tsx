@@ -4,16 +4,20 @@ import { ImageResponse } from "next/og";
 import { NextResponse } from "next/server";
 import { PNG } from "pngjs";
 import { GT_TIER_COLORS } from "@/components/flow/tier-colors";
-import { getPublicPlanRow } from "@/lib/server/plan-preview";
+import { getPlanPreviewPng, getPublicPlanRow } from "@/lib/server/plan-preview";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * The card a shared plan link unfurls into: the plan's name, its numbers,
- * and its chosen icon LARGE on the icon's own dominant colour - drawn
- * server-side from the summary row at Discord's 1200x630. The inputs and
- * outputs stay in the embed's text (describePlanRow), not the picture.
+ * The card a shared plan link unfurls into: the plan's name and numbers over
+ * the plan's own face, drawn server-side from the summary row at Discord's
+ * 1200x630. The face is the board photograph the share flow uploaded
+ * (plan-previews bucket); posts from before that feature — or shares whose
+ * browser could not photograph the board — fall back to the plan's chosen
+ * icon LARGE on the icon's own dominant colour, then to any resource the
+ * plan makes or needs, so the middle of the card is never empty. The inputs
+ * and outputs stay in the embed's text (describePlanRow), not the picture.
  *
  * Rendered with next/og (satori), which lays out with flexbox only and no
  * cascade: every box says display:flex out loud, and text truncates by
@@ -119,12 +123,47 @@ async function loadIconDataUri(iconPath: string | undefined): Promise<string | u
   }
 }
 
+/**
+ * The uploaded board photograph, contain-fit into the card's hero area by
+ * hand: satori is not asked to guess an image's intrinsic size. The bounds
+ * assume the worst-case two-line title above; a shorter title just gives the
+ * photo more air. Dimensions come straight from the PNG's IHDR — width and
+ * height live at fixed offsets — so no pixel decode is paid per unfurl.
+ */
+const PREVIEW_BOX_WIDTH = 1084;
+const PREVIEW_BOX_HEIGHT = 330;
+
+function sizePlanPreview(
+  png: Buffer,
+): { dataUri: string; width: number; height: number } | undefined {
+  if (png.length < 24) {
+    return undefined;
+  }
+  const sourceWidth = png.readUInt32BE(16);
+  const sourceHeight = png.readUInt32BE(20);
+  if (sourceWidth <= 0 || sourceHeight <= 0) {
+    return undefined;
+  }
+  const scale = Math.min(
+    PREVIEW_BOX_WIDTH / sourceWidth,
+    PREVIEW_BOX_HEIGHT / sourceHeight,
+  );
+  return {
+    dataUri: `data:image/png;base64,${png.toString("base64")}`,
+    width: Math.max(1, Math.round(sourceWidth * scale)),
+    height: Math.max(1, Math.round(sourceHeight * scale)),
+  };
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ planId: string }> },
 ) {
   const { planId } = await params;
-  const row = await getPublicPlanRow(planId);
+  const [row, previewPng] = await Promise.all([
+    getPublicPlanRow(planId),
+    getPlanPreviewPng(planId),
+  ]);
   if (!row) {
     // The site's one generic face, rather than an error a chat would show
     // as a broken embed.
@@ -136,15 +175,21 @@ export async function GET(
     ? GT_TIER_COLORS[row.highest_tier as keyof typeof GT_TIER_COLORS]
     : undefined;
 
-  // The plan's chosen face, or an output's icon when it never chose one:
-  // items first, because their sprites are real art while a fluid's is
+  const preview = previewPng ? sizePlanPreview(previewPng) : undefined;
+
+  // Without a photograph: the plan's chosen face, or failing that any
+  // resource icon the summary row carries — outputs before needs, items
+  // before fluids, because item sprites are real art while a fluid's is
   // often a flat colour chip.
   const face = row.icon?.iconPath ? row.icon : undefined;
   const fallback =
     row.outputs?.find((stat) => stat.kind === "item" && stat.iconPath) ??
-    row.outputs?.find((stat) => stat.iconPath);
-  const iconDataUri =
-    (await loadIconDataUri(face?.iconPath)) ?? (await loadIconDataUri(fallback?.iconPath));
+    row.outputs?.find((stat) => stat.iconPath) ??
+    row.needs?.find((stat) => stat.kind === "item" && stat.iconPath) ??
+    row.needs?.find((stat) => stat.iconPath);
+  const iconDataUri = preview
+    ? undefined
+    : ((await loadIconDataUri(face?.iconPath)) ?? (await loadIconDataUri(fallback?.iconPath)));
   const iconBackdrop = (face ?? fallback)?.dominantColor ?? ICON_PANEL_FALLBACK;
 
   return new ImageResponse(
@@ -170,14 +215,17 @@ export async function GET(
             gap: 40,
           }}
         >
+          {/* With a photograph below, the name gets one clipped line (its
+              full text is the embed's own title); without one there is room
+              for two. */}
           <div
             style={{
               display: "flex",
-              fontSize: 52,
+              fontSize: preview ? 46 : 52,
               fontWeight: 700,
               lineHeight: 1.15,
               maxWidth: 780,
-              maxHeight: 122,
+              maxHeight: preview ? 54 : 122,
               overflow: "hidden",
             }}
           >
@@ -244,7 +292,19 @@ export async function GET(
             justifyContent: "center",
           }}
         >
-          {iconDataUri ? (
+          {preview ? (
+            <div
+              style={{
+                display: "flex",
+                borderRadius: 10,
+                overflow: "hidden",
+                border: `3px solid ${FRAME}`,
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={preview.dataUri} width={preview.width} height={preview.height} alt="" />
+            </div>
+          ) : iconDataUri ? (
             <div
               style={{
                 display: "flex",
