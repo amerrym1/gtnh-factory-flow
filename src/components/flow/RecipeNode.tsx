@@ -3870,8 +3870,9 @@ const SPEND_BAR_WIDTH_PX = 306;
  * draw, and each overclock is the slice of budget it cost — so every later
  * overclock is visibly ~3× wider than everything before it, which is the
  * whole exponential mechanic drawn as widths. Whatever the slices leave
- * unspent is the labeled SPARE tail: too little for the next step, whose
- * price the line below the bar names.
+ * unspent is the hatched SPARE tail (labeled when it has the room): budget
+ * held but too little for the next step, whose price the line hanging under
+ * the bar's right end names.
  *
  * Slices are inscribed where room allows — "recipe" on the first, the speed
  * reached (×2, ×4 …) on each overclock — cyan for perfect steps, amber for
@@ -3962,6 +3963,16 @@ function StoryOverclockBar({
           </div>
         );
       })}
+      {/* The unspent tail, hatched so it reads as budget deliberately held —
+          too little for the next step, whose price hangs right under it. */}
+      <span
+        className="absolute inset-y-0 right-0"
+        style={{
+          left: `${fractions[SPEND_BAR_SLOTS - 1] * 100}%`,
+          backgroundImage:
+            "repeating-linear-gradient(135deg, rgba(148,163,184,0.3) 0 2px, transparent 2px 6px)",
+        }}
+      />
       {sparePx >= 64 ? (
         <span
           className="absolute inset-y-0 right-0 flex items-center justify-center whitespace-nowrap text-[10px] leading-none text-slate-400"
@@ -4109,7 +4120,9 @@ function PowerStoryContent({ report }: { report: NodePowerReport }) {
                 </span>
               </div>
             ) : null}
-            <div className="text-[11px] text-slate-400">
+            {/* Right-aligned under the hatched tail: the leftover up there is
+                exactly what this line says it cannot buy. */}
+            <div className="text-right text-[11px] text-slate-400">
               {nextStepEuT > report.poolEuT ? (
                 <>
                   next overclock (×{nextSpeedLabel} speed):{" "}
