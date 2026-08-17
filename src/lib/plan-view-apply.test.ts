@@ -30,11 +30,12 @@ describe("applying a shared plan's view", () => {
   it("puts the author's whole arrangement on screen", () => {
     applyPlanView({
       canvasPattern: "cross",
-      // Historical flag: older plans carry it, and it must arrive as nothing
-      // at all — line colour rides the status glance mode now.
+      // Historical flags: older plans carry them, and they must arrive as
+      // nothing at all — line colour rides the status glance mode now, and
+      // the smart view is personal.
       lineHeatMode: true,
-      calmMode: true,
       glanceMode: "status",
+      calmMode: true,
       rateUnit: "hour",
       leftPanelOpen: false,
       showHiddenResources: true,
@@ -48,7 +49,7 @@ describe("applying a shared plan's view", () => {
 
     expect(board.canvasPattern).toBe("cross");
     expect(board.calmMode).toBe(true);
-    expect(board.glanceMode).toBe("status");
+    expect(board.glanceMode).toBe("identity");
     expect("lineHeatMode" in board).toBe(false);
     expect(workspace.leftPanelOpen).toBe(false);
     expect(workspace.showHiddenResources).toBe(true);
@@ -83,11 +84,23 @@ describe("applying a shared plan's view", () => {
     expect(readBoardViewSnapshot().glanceMode).toBe("identity");
   });
 
-  it("carries every smart view, the two new ones included", () => {
-    applyPlanView({ glanceMode: "usage" });
-    expect(readBoardViewSnapshot().glanceMode).toBe("usage");
+  it("resets the smart view to identity when a setup is opened", () => {
+    // The bottom-right view choice is personal, never part of the plan:
+    // whatever the viewer had picked, and whatever an older plan recorded,
+    // an opened setup starts on the identity view.
+    writeBoardView({ glanceMode: "power" });
+    applyPlanView({ glanceMode: "status" });
+    expect(readBoardViewSnapshot().glanceMode).toBe("identity");
 
-    applyPlanView({ glanceMode: "power" });
+    // Even a plan with no view at all lands there.
+    writeBoardView({ glanceMode: "usage" });
+    applyPlanView(undefined);
+    expect(readBoardViewSnapshot().glanceMode).toBe("identity");
+  });
+
+  it("keeps your smart view across your own tabs", () => {
+    writeBoardView({ glanceMode: "power" });
+    applyPlanView({ calmMode: true }, "board");
     expect(readBoardViewSnapshot().glanceMode).toBe("power");
   });
 
@@ -123,7 +136,6 @@ describe("applying a shared plan's view", () => {
     const view: PlanViewState = {
       canvasPattern: "none",
       calmMode: true,
-      glanceMode: "status",
       rateUnit: "minute",
       rightPanelOpen: false,
       favouritesOnly: true,
@@ -132,6 +144,10 @@ describe("applying a shared plan's view", () => {
     };
     applyPlanView(view);
 
-    expect(capturePlanView()).toMatchObject(view);
+    const captured = capturePlanView();
+    expect(captured).toMatchObject(view);
+    // And never the smart view: a re-share must not start pinning a reading
+    // the original never carried.
+    expect("glanceMode" in captured).toBe(false);
   });
 });

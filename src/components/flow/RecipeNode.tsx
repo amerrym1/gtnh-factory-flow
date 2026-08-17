@@ -799,6 +799,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         <NodeGlanceText
           accent={powerReport ? glanceAccent : undefined}
           className={powerReport ? undefined : "text-[var(--mc-ink-muted)]"}
+          // Sized by how many glyphs the settled figure needs, so a draw in
+          // the millions shrinks to fit rather than grazing the card frame.
+          valueSize={
+            powerReport
+              ? powerGlanceValueSize(formatCompact(powerDrawEuT(powerReport, projectNode)))
+              : undefined
+          }
           text={
             powerReport ? (
               <>
@@ -812,7 +819,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     return value === target ? formatCompact(target) : formatCompactStable(value);
                   }}
                 />
-                <tspan fontSize="9" fontWeight="600" opacity="0.7" dx="2">
+                <tspan fontSize="7.5" fontWeight="600" opacity="0.7" dx="2">
                   EU/t
                 </tspan>
               </>
@@ -1544,6 +1551,19 @@ function glanceToneSurface(tone: VerdictWord["tone"]): NodeSurfaceColor {
  * arithmetic as the footer's POWER cell and the shopping list row. */
 function powerDrawEuT(report: NodePowerReport, node: FactoryNode): number {
   return report.drawEuT * node.machineCount * node.parallel;
+}
+
+/**
+ * The power glance figure's size for a given compact string. The mono face
+ * at weight 900 runs wide in the 100-unit viewBox — "480 EU/t" already spans
+ * three quarters of it — so every glyph past three buys the whole line a
+ * step down, keeping "9.99M EU/t" inside the card frame.
+ */
+function powerGlanceValueSize(compact: string): number {
+  if (compact.length <= 3) {
+    return 22;
+  }
+  return compact.length === 4 ? 19.5 : 17;
 }
 
 /**

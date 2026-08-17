@@ -537,6 +537,8 @@ export interface PlanViewState {
   lineLabelsMode?: boolean;
   linePulseMode?: boolean;
   calmMode?: boolean;
+  /** Historical: older plans carry it, nothing applies it. The smart view is
+   * personal, and opening a setup always starts on the identity view. */
   glanceMode?: string;
   rateUnit?: "tick" | "second" | "minute" | "hour";
   leftPanelOpen?: boolean;

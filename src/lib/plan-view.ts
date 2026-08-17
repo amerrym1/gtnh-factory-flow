@@ -2,7 +2,6 @@
 
 import {
   CANVAS_PATTERNS,
-  isGlanceMode,
   readBoardViewSnapshot,
   writeBoardView,
   type CanvasPattern,
@@ -39,7 +38,9 @@ export function capturePlanView(): PlanViewState {
     lineLabelsMode: board.lineLabelsMode,
     linePulseMode: board.linePulseMode,
     calmMode: board.calmMode,
-    glanceMode: board.glanceMode,
+    // The smart view (bottom-right tray) is deliberately NOT captured: it is
+    // a personal reading of the board, not part of its dress, and a saved
+    // setup always opens on the default identity view.
     rateUnit: getActiveRateUnit(),
     leftPanelOpen: workspace.leftPanelOpen,
     rightPanelOpen: workspace.rightPanelOpen,
@@ -101,6 +102,13 @@ export function applyPlanView(
  * fields leave the viewer's own setting alone.
  */
 function applyViewSettings(view: PlanViewState | undefined, scope: PlanViewScope): void {
+  // The smart view is never taken from a plan — not even from an older one
+  // that recorded it. Opening a setup lands on the default identity view
+  // (the cube button) whether or not the plan carries a view at all;
+  // switching your own tabs leaves your choice alone.
+  if (scope === "all") {
+    writeBoardView({ glanceMode: "identity" });
+  }
   if (!view) {
     return;
   }
@@ -114,10 +122,8 @@ function applyViewSettings(view: PlanViewState | undefined, scope: PlanViewScope
   if (isCanvasThemeId(view.canvasTheme)) {
     boardPatch.canvasTheme = view.canvasTheme;
   }
-  if (isGlanceMode(view.glanceMode)) {
-    boardPatch.glanceMode = view.glanceMode;
-  }
-  // `lineHeatMode` from an older plan is deliberately NOT applied: line
+  // `glanceMode` from an older plan is skipped for the same reason the reset
+  // above exists; `lineHeatMode` is deliberately NOT applied either: line
   // colour rides the status glance mode now, and the old flag would arrive
   // with no control that turns it off.
   for (const key of [

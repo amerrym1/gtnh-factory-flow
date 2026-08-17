@@ -44,6 +44,7 @@ export function NodeGlanceText({
   className,
   accent,
   word,
+  valueSize = 24,
 }: {
   /** A string, or a text-producing fragment (the eased usage figure). */
   text: ReactNode;
@@ -53,6 +54,12 @@ export function NodeGlanceText({
   accent?: string;
   /** A second, small line under the figure — the reason word, the tier chip. */
   word?: string;
+  /**
+   * The two-line figure's size, for callers whose value can run long: the
+   * power view steps this down as the draw gains digits so "9.99M EU/t"
+   * still lands inside the card instead of grazing its frame.
+   */
+  valueSize?: number;
 }) {
   return (
     <div
@@ -78,7 +85,7 @@ export function NodeGlanceText({
               x="50"
               y="19"
               textAnchor="middle"
-              fontSize="24"
+              fontSize={valueSize}
               fontWeight="900"
               fill="currentColor"
               className="tabular-nums"
