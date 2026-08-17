@@ -281,14 +281,17 @@ describe("GT overclocking", () => {
       coilTier: "nichrome",
     });
 
-    // At its own tier there is no spare voltage, so no step is taken and only
-    // the discount and the 220% speed show up.
-    expect(stats.overclockSteps).toBe(0);
-    expect(stats.durationTicks).toBe(Math.floor(400 / 2.2));
+    // The discounted, halved draw times four parallels leaves room for one
+    // step inside the LuV hatch - counted from POWER, the way the game
+    // counts, not from the declared tier. Nichrome's heat pays for it as a
+    // perfect step: duration over four, then the 220% speed, floors at 45.
+    expect(stats.overclockSteps).toBe(1);
+    expect(stats.durationTicks).toBe(Math.floor(400 / 4 / 2.2));
     // The Utupu-Tanuri reads its coils raw - no 100 K per voltage tier, that
     // bonus belongs to the blast furnaces. Nichrome's 3601 K over the 0 K
-    // requirement is floor(3601/900) = 4 discounts on top of the flat half.
-    expect(stats.eut).toBeCloseTo(1920 * 0.5 * 0.95 ** 4, 6);
+    // requirement is floor(3601/900) = 4 discounts on top of the flat half,
+    // and the perfect step pays its 4x EU/t.
+    expect(stats.eut).toBeCloseTo(1920 * 0.5 * 0.95 ** 4 * 4, 6);
   });
 
   it("clamps a sub-LV recipe to 32 EU/t when counting overclocks", () => {

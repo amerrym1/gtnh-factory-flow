@@ -670,7 +670,10 @@ describe("calculateThroughput", () => {
           machineType: "Distillation Tower",
           minimumTier: "EV",
           durationTicks: 20,
-          eut: 512,
+          // A genuinely EV draw: 512 EU/t at an EV hatch would really
+          // overclock once (power-based, like the game), doubling the pull
+          // this test pins at 1,000 L/s.
+          eut: 1_920,
           inputs: [{ kind: "fluid", id: "woodtar", amount: 1_000 }],
           outputs: [{ kind: "fluid", id: "benzene", amount: 400 }],
         },

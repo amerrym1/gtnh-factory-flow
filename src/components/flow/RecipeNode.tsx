@@ -21,6 +21,14 @@ import type {
 } from "@/lib/model/types";
 import { getOverclockedRecipeStats } from "@/lib/solver/overclock";
 import {
+  describePowerStall,
+  getNodePowerReport,
+  hasPowerReport,
+  type NodePowerReport,
+} from "@/lib/solver/power-report";
+import { isMultiblockRecipe } from "@/lib/solver/power";
+import { prefersCuratedMachineMath } from "@/lib/solver/runtime-calculation";
+import {
   applyMachineOutputMultipliers,
   getMachineParallelMultiplier,
 } from "@/lib/solver/machine-effects";
@@ -247,6 +255,18 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     const tierControl = machineDrawsEu
       ? getNodeTierControl(effectiveRecipe, projectNode)
       : undefined;
+    // The card's power facts: pool, draw, and whether the build can start at
+    // all. Only where power means something - crops, bees, steam and zero-EU
+    // recipes have no power section.
+    const powerReport =
+      machineDrawsEu && tierControl && hasPowerReport(nodeRecipe)
+        ? getNodePowerReport(nodeRecipe, projectNode)
+        : undefined;
+    // The hatch chip rides only on multiblocks whose maths our own engine
+    // runs; runtime-ladder machines would show a knob that changes nothing.
+    const showHatchControl = Boolean(
+      powerReport?.isMultiblock && prefersCuratedMachineMath(effectiveRecipe),
+    );
     const coilControl = getRecipeCoilTierControl(effectiveRecipe, projectNode);
     const coilResource = coilControl
       ? resolveDatasetMachineConfigResource(coilControl.resource, dataset)
@@ -346,6 +366,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       programmedCircuit: getRecipeProgrammedCircuit(effectiveRecipe),
       overclockedRecipe,
       tierColor: tierControl ? GT_TIER_COLORS[tierControl.current] : undefined,
+      powerReport,
+      showHatchControl,
     };
   }, [dataset, previewedNode, recipe]);
 
@@ -373,6 +395,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     programmedCircuit,
     overclockedRecipe,
     tierColor,
+    powerReport,
+    showHatchControl,
   } = derived;
   // Verdict + rail ports read the board lazily (no extra subscription): the
   // node re-renders on every solver tick, which is exactly when any of these
@@ -407,9 +431,20 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       return;
     }
 
-    const nextTier = getAdjacentTier(tierControl.current, tierControl.minimum, direction);
+    const nextTier = getAdjacentTier(
+      tierControl.current,
+      tierControl.allowBelowMinimum ? undefined : tierControl.minimum,
+      direction,
+    );
     if (nextTier !== tierControl.current) {
       updateNode(projectNode.id, { overclockTier: nextTier });
+    }
+  };
+  const updateHatches = (direction: -1 | 1) => {
+    const current = powerReport?.hatches ?? 1;
+    const next = Math.min(16, Math.max(1, current + direction));
+    if (next !== current) {
+      updateNode(projectNode.id, { energyHatches: next });
     }
   };
   const updateCoilTier = (nextTier: string) => {
@@ -767,7 +802,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               // Calm mode drops the delete/clone chrome; the title takes the row.
               ...(calmMode ? [] : ["24px", "24px"]),
               "minmax(0,1fr)",
-              ...(tierControl ? ["50px"] : []),
+              // The tier chip, with its hatch-count sister fused on the left
+              // when the machine is a multiblock that takes energy hatches.
+              ...(tierControl ? [showHatchControl ? "78px" : "50px"] : []),
             ].join(" "),
           }}
         >
@@ -885,29 +922,60 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             ) : null}
           </div>
           {tierControl && tierColor ? (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                updateTier(1);
-              }}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                updateTier(-1);
-              }}
-              className="nodrag h-6 w-[50px] border-2 px-1 text-[11px] font-bold leading-[18px] shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
-              style={{
-                backgroundColor: tierColor.background,
-                borderColor: tierColor.border,
-                color: tierColor.text,
-                textShadow: `1px 1px 0 ${tierColor.shadow}`,
-              }}
-              title={`Tier ${tierControl.current}. Left click up, right click down.`}
-              aria-label={`Tier ${tierControl.current}`}
-            >
-              {tierControl.current}
-            </button>
+            <div className="flex">
+              {showHatchControl ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    updateHatches(1);
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    updateHatches(-1);
+                  }}
+                  // The tier chip's sister: same paint, fused on its left
+                  // (no right border), so "2x MV" reads as one fact.
+                  className="nodrag h-6 w-[28px] border-2 border-r-0 text-[11px] font-bold leading-[18px] shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+                  style={{
+                    backgroundColor: tierColor.background,
+                    borderColor: tierColor.border,
+                    color: tierColor.text,
+                    textShadow: `1px 1px 0 ${tierColor.shadow}`,
+                  }}
+                  title={`${powerReport?.hatches ?? 1} energy ${
+                    (powerReport?.hatches ?? 1) === 1 ? "hatch" : "hatches"
+                  } (${powerReport?.amps ?? 1} A). Left click adds one, right click removes one. Two or more hatches work at 2 amps each.`}
+                  aria-label={`${powerReport?.hatches ?? 1} energy hatches`}
+                >
+                  {powerReport?.hatches ?? 1}×
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  updateTier(1);
+                }}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  updateTier(-1);
+                }}
+                className="nodrag h-6 w-[50px] border-2 px-1 text-[11px] font-bold leading-[18px] shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+                style={{
+                  backgroundColor: tierColor.background,
+                  borderColor: tierColor.border,
+                  color: tierColor.text,
+                  textShadow: `1px 1px 0 ${tierColor.shadow}`,
+                }}
+                title={`Tier ${tierControl.current}. Left click up, right click down.`}
+                aria-label={`Tier ${tierControl.current}`}
+              >
+                {tierControl.current}
+              </button>
+            </div>
           ) : null}
         </div>
         </div>
@@ -1033,6 +1101,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                         ? "auto"
                         : [
                             "auto",
+                            ...(powerReport ? ["auto"] : []),
                             ...(machineParallelMultiplier > 1 ? ["auto"] : []),
                             "minmax(84px,1fr)",
                             // The circuit ends the row, square, in the corner
@@ -1048,6 +1117,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     />
                     {!isCustomRateNode ? (
                       <>
+                        {powerReport ? (
+                          <PowerStat
+                            report={powerReport}
+                            machineCount={projectNode.machineCount}
+                            nodeParallel={projectNode.parallel}
+                          />
+                        ) : null}
                         {machineParallelMultiplier > 1 ? (
                           <Stat
                             label="Parallel"
@@ -2692,8 +2768,16 @@ function getNodeTierControl(recipe: Recipe, node: FactoryNode) {
   }
 
   const minimum = getOverclockedRecipeStats(recipe, node).minimumTier;
-  const current = clampTier(resolveVoltageTier(node.overclockTier, minimum), minimum);
-  return { minimum, current };
+  // A multiblock's pick is honoured even below the minimum - the power cell
+  // is what says an underpowered build won't start, not a silent clamp. A
+  // singleblock is floored: a lower machine does not exist to be built.
+  const allowBelowMinimum = isMultiblockRecipe(recipe);
+  const resolved = resolveVoltageTier(node.overclockTier, minimum);
+  const current =
+    !allowBelowMinimum && getVoltageTierIndex(resolved) < getVoltageTierIndex(minimum)
+      ? minimum
+      : resolved;
+  return { minimum, current, allowBelowMinimum };
 }
 
 function isTierDrivenOutputRecipe(recipe: Recipe) {
@@ -2701,18 +2785,14 @@ function isTierDrivenOutputRecipe(recipe: Recipe) {
   return normalizeSearch(recipeMap) === "tree growth simulator";
 }
 
-function getAdjacentTier(current: VoltageTier, minimum: VoltageTier, direction: -1 | 1) {
+function getAdjacentTier(current: VoltageTier, floor: VoltageTier | undefined, direction: -1 | 1) {
   const currentIndex = getVoltageTierIndex(current);
-  const minimumIndex = getVoltageTierIndex(minimum);
+  const floorIndex = floor ? getVoltageTierIndex(floor) : 0;
   const nextIndex = Math.min(
     GT_OVERCLOCK_TIERS.length - 1,
-    Math.max(minimumIndex, currentIndex + direction),
+    Math.max(floorIndex, currentIndex + direction),
   );
   return GT_OVERCLOCK_TIERS[nextIndex]?.tier ?? current;
-}
-
-function clampTier(tier: VoltageTier, minimum: VoltageTier) {
-  return getVoltageTierIndex(tier) < getVoltageTierIndex(minimum) ? minimum : tier;
 }
 
 function resolveVoltageTier(value: string, defaultTier: VoltageTier): VoltageTier {
@@ -3412,6 +3492,113 @@ function Stat({
     <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
       <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">{label}</div>
       <div className={["truncate font-medium", valueClassName ?? ""].join(" ")}>{value}</div>
+    </div>
+  );
+}
+
+/**
+ * The card's power cell: what the build drinks, in the board's rate unit —
+ * or, when the game would refuse to start this configuration, the stall
+ * instead, pulsing. The hover is the whole story: pool, draw, overclocks,
+ * usage, and the fix. GT has no slow mode, so there is no third thing to say.
+ */
+function PowerStat({
+  report,
+  machineCount,
+  nodeParallel,
+}: {
+  report: NodePowerReport;
+  machineCount: number;
+  nodeParallel: number;
+}) {
+  const stalled = report.state !== "ok";
+  // EU/t is per tick; the board's rate unit scales off per-second.
+  const totalPerSecond = report.drawEuT * machineCount * nodeParallel * 20;
+  const value = stalled
+    ? report.state === "under-powered"
+      ? "LOW!"
+      : "TIER!"
+    : `${formatCompact(totalPerSecond * rateUnitMultiplier())} EU${rateUnitSuffix(false)}`;
+
+  return (
+    <MinecraftTooltip
+      content={
+        <PowerHoverContent
+          report={report}
+          machineCount={machineCount}
+          nodeParallel={nodeParallel}
+        />
+      }
+    >
+      <div
+        className={[
+          "min-w-0 border px-1",
+          stalled
+            ? "animate-pulse border-red-700 bg-red-950/60 text-red-300"
+            : "border-[var(--mc-47)] bg-[var(--mc-71)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]",
+        ].join(" ")}
+      >
+        <div
+          className={[
+            "truncate text-[11px] uppercase leading-[13px]",
+            stalled ? "text-red-400" : "text-[var(--mc-ink-muted)]",
+          ].join(" ")}
+        >
+          Power
+        </div>
+        <div className="truncate font-medium tabular-nums">{value}</div>
+      </div>
+    </MinecraftTooltip>
+  );
+}
+
+function PowerHoverContent({
+  report,
+  machineCount,
+  nodeParallel,
+}: {
+  report: NodePowerReport;
+  machineCount: number;
+  nodeParallel: number;
+}) {
+  const stall = describePowerStall(report);
+  const perParallel = report.parallels > 0 ? report.drawEuT / report.parallels : report.drawEuT;
+  const machines = machineCount * nodeParallel;
+  const poolLine = report.isMultiblock
+    ? `${report.hatches}× ${report.tier} ${
+        report.hatches === 1 ? "hatch" : "hatches"
+      } (${report.amps} A) = ${formatCompact(report.poolEuT)} EU/t`
+    : `${report.tier} machine${report.amps > 1 ? ` × ${report.amps} A` : ""} = ${formatCompact(
+        report.poolEuT,
+      )} EU/t`;
+
+  return (
+    <div className="space-y-1">
+      <div>
+        <span className="text-[var(--mc-ink-muted)]">Supply </span>
+        {poolLine}
+      </div>
+      <div>
+        <span className="text-[var(--mc-ink-muted)]">Draw </span>
+        {formatCompact(report.drawEuT)} EU/t
+        {report.parallels > 1 ? ` = ${formatCompact(perParallel)} EU/t × ${report.parallels} parallels` : ""}
+        {report.overclockSteps > 0
+          ? ` after ${report.overclockSteps} overclock${report.overclockSteps === 1 ? "" : "s"}`
+          : ""}
+      </div>
+      {!stall ? (
+        <div>
+          <span className="text-[var(--mc-ink-muted)]">Usage </span>
+          {Math.round(report.usage * 100)}% of the supply
+        </div>
+      ) : null}
+      {machines > 1 && !stall ? (
+        <div>
+          <span className="text-[var(--mc-ink-muted)]">Total </span>×{machines} machines ={" "}
+          {formatCompact(report.drawEuT * machines)} EU/t
+        </div>
+      ) : null}
+      {stall ? <div className="font-bold text-red-400">{stall}</div> : null}
     </div>
   );
 }

@@ -82,7 +82,13 @@ export function getRecipeMinimumVoltageTier(
     : powerTier;
 }
 
-/** The voltage the machine actually runs at: the requested tier, floored at the recipe's minimum. */
+/**
+ * The voltage the machine actually runs at: the requested tier, floored at the
+ * recipe's minimum. This is the SINGLEBLOCK rule - a machine below its
+ * recipe's tier does not exist to be built, and legacy plans lean on the
+ * clamp. Multiblocks go through `getNodeRunTier` in solver/power.ts instead,
+ * which honours an under-tiered hatch choice and lets power-report call it.
+ */
 export function getRunVoltageTier(
   recipe: Pick<Recipe, "eut" | "minimumTier">,
   requestedTier: string | undefined,

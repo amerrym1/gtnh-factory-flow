@@ -2,10 +2,10 @@ import {
   getRecipeMinimumVoltageTier,
   getVoltageTierIndex,
   getVoltageTierMaxEuT,
-  resolveVoltageTier,
 } from "@/lib/model/tiers";
 import { applyMachineHandlerToRecipe } from "@/lib/model/recipe-rules";
 import { getHeatOverclockStats } from "./heat";
+import { getEffectiveVoltageOrdinal, getNodePowerAmps, getNodeRunTier } from "./power";
 import {
   buildMachineContext,
   getBeeMegaApiaryTierEutMultiplier,
@@ -56,17 +56,21 @@ export interface OverclockedRecipeStats {
 
 export function getOverclockedRecipeStats(
   recipe: OverclockRecipeInput,
-  node: Pick<FactoryNode, "overclockTier" | "coilTier" | "machineHandlerId" | "machineConfigTiers">,
+  node: Pick<
+    FactoryNode,
+    "overclockTier" | "coilTier" | "machineHandlerId" | "machineConfigTiers"
+  > &
+    Partial<Pick<FactoryNode, "energyHatches">>,
 ): OverclockedRecipeStats {
   const effectiveRecipe = recipe.machineType
     ? applyMachineHandlerToRecipe(recipe as Recipe, node)
     : recipe;
   const minimumTier = getRecipeMinimumVoltageTier(effectiveRecipe);
-  const requestedTier = resolveVoltageTier(node.overclockTier, minimumTier);
-  const tier =
-    getVoltageTierIndex(requestedTier) < getVoltageTierIndex(minimumTier)
-      ? minimumTier
-      : requestedTier;
+  // A multiblock's pick stands even below the recipe's minimum - an
+  // underpowered build is shown as one (power-report.ts names the state),
+  // never silently promoted. A singleblock is floored at the minimum, because
+  // a lower machine does not exist to be built.
+  const tier = getNodeRunTier(effectiveRecipe, node);
   const overclockSteps = Math.max(0, getVoltageTierIndex(tier) - getVoltageTierIndex(minimumTier));
   const runtimeVariant = selectRuntimeCalculationVariant(effectiveRecipe, node);
   if (runtimeVariant) {
@@ -128,13 +132,23 @@ export function getOverclockedRecipeStats(
     };
   }
 
-  const heatOverclock = getHeatOverclockStats(effectiveRecipe, node, tier, overclockSteps);
   const durationMultiplier = effectiveRecipe.machineType
     ? getMachineDurationMultiplier(effectiveRecipe as Recipe, node)
     : 1;
   const eutMultiplier = effectiveRecipe.machineType
     ? getMachineEutMultiplier(effectiveRecipe as Recipe, node)
     : 1;
+
+  // The heat discount is independent of how many steps end up taken, and the
+  // parallel budget needs it first: ParallelHelper folds it into the draw.
+  const effectiveVoltageOrdinal = getEffectiveVoltageOrdinal(effectiveRecipe, node, tier);
+  const heatDiscountMultiplier = getHeatOverclockStats(
+    effectiveRecipe,
+    node,
+    tier,
+    0,
+    effectiveVoltageOrdinal,
+  ).heatDiscountMultiplier;
 
   // Parallels are spent before overclocks: they multiply EU/t one-for-one, so
   // only the voltage headroom left over after every parallel is paid for can
@@ -145,19 +159,18 @@ export function getOverclockedRecipeStats(
     ? getMachineParallelMultiplier(effectiveRecipe as Recipe, node)
     : 1;
   const parallelEuT =
-    Math.abs(effectiveRecipe.eut) *
-    eutMultiplier *
-    heatOverclock.heatDiscountMultiplier *
-    parallels;
+    Math.abs(effectiveRecipe.eut) * eutMultiplier * heatDiscountMultiplier * parallels;
 
   // Overclocks counted the way OverclockCalculator counts them: whole
-  // power-of-four steps of the machine's power over the recipe's draw. The
-  // machine's power is its tier voltage times its amperage (1 for nearly
-  // everything; the arc furnaces work with 3), and a recipe drawing under
-  // 32 EU/t is billed as 32 - "Treat ULV as LV for overclocking".
+  // power-of-four steps of the machine's power over the recipe's draw, and
+  // nothing else - a multiblock overclocks on amperage, so stacked hatches
+  // buy steps past the hatches' own tier. The machine's power is its tier
+  // voltage times its working amps (hatch count for a multiblock, the
+  // machine's own amperage for a singleblock - the arc furnaces work with 3),
+  // and a recipe drawing under 32 EU/t is billed as 32: "Treat ULV as LV for
+  // overclocking".
   const subTickCapable = canSubTick(recipe, effectiveRecipe);
-  const machinePower =
-    getVoltageTierMaxEuT(tier) * (getMachineBehaviour(effectiveRecipe.machineType)?.amperage ?? 1);
+  const machinePower = getVoltageTierMaxEuT(tier) * getNodePowerAmps(effectiveRecipe, node);
   const recipePower = Math.max(Math.ceil(parallelEuT), 32);
   let affordableSteps = Number.isFinite(machinePower)
     ? floorLog4(Math.floor(machinePower / recipePower))
@@ -174,7 +187,16 @@ export function getOverclockedRecipeStats(
     affordableSteps = Math.min(affordableSteps, machineVoltageTier - recipeVoltageTier);
   }
 
-  const affordable = Math.max(0, Math.min(overclockSteps, affordableSteps));
+  const affordable = Math.max(0, affordableSteps);
+  // How many of the affordable steps heat pays for, now that the count is
+  // settled; the rest are the machine's ordinary steps.
+  const heatOverclock = getHeatOverclockStats(
+    effectiveRecipe,
+    node,
+    tier,
+    affordable,
+    effectiveVoltageOrdinal,
+  );
   const rule = resolveOverclockRule(effectiveRecipe, node, heatOverclock.heatOverclockSteps);
 
   // Perfect steps are taken first, then normal ones. A perfect step divides

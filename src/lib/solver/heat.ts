@@ -52,6 +52,12 @@ export function getHeatOverclockStats(
   node: Pick<FactoryNode, "coilTier" | "machineConfigTiers" | "machineHandlerId">,
   tier: VoltageTier,
   overclockSteps: number,
+  /**
+   * The voltage-tier ordinal the +100 K bonus reads, which stacked hatches
+   * can push above the hatch tier (`getTier` of the SUMMED hatch voltage).
+   * Defaults to the tier's own ordinal.
+   */
+  voltageOrdinal?: number,
 ): HeatOverclockStats {
   const specialValue = getRecipeSpecialValue(recipe);
   const coilControl = recipe.machineType
@@ -86,8 +92,9 @@ export function getHeatOverclockStats(
   const coilHeat = coilControl.current.heat * (heatConfig?.coilHeatMultiplier ?? 1);
   // Only the blast furnaces and the Exothermic Hearth add 100 K per voltage
   // tier above MV; Volcanus and the Utupu-Tanuri read their coils raw.
+  const effectiveOrdinal = voltageOrdinal ?? getVoltageTierIndex(tier);
   const machineHeat = heatConfig?.voltageBonus
-    ? coilHeat + 100 * Math.max(0, getVoltageTierIndex(tier) - VOLTAGE_TIER_INDEX_MV)
+    ? coilHeat + 100 * Math.max(0, effectiveOrdinal - VOLTAGE_TIER_INDEX_MV)
     : coilHeat;
   const heatExcess = Math.max(0, machineHeat - specialValue);
   const heatOverclockSteps = Math.min(overclockSteps, Math.floor(heatExcess / 1800));
@@ -110,6 +117,7 @@ export function getHeatDiscountMultiplier(
   recipe: HeatRecipeInput,
   node: Pick<FactoryNode, "coilTier" | "machineConfigTiers" | "machineHandlerId">,
   tier: VoltageTier,
+  voltageOrdinal?: number,
 ): number {
-  return getHeatOverclockStats(recipe, node, tier, 0).heatDiscountMultiplier;
+  return getHeatOverclockStats(recipe, node, tier, 0, voltageOrdinal).heatDiscountMultiplier;
 }

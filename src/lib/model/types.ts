@@ -299,6 +299,13 @@ export interface FactoryNode {
   machineCount: number;
   parallel: number;
   overclockTier: MachineTier | string;
+  /**
+   * Energy hatches built into a multiblock, 1 by default. One hatch works at
+   * 1 amp of its tier; two or more work at 2 amps each, so 2 hatches carry
+   * four times the power of one. Ignored on singleblocks, which have no
+   * hatches.
+   */
+  energyHatches?: number;
   machineHandlerId?: string;
   coilTier?: string;
   machineConfigTiers?: Record<string, string>;

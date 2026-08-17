@@ -38,6 +38,12 @@ import {
 import { getMachineOutputMultiplier, getMachineParallelMultiplier } from "./machine-effects";
 import { getOverclockedRecipeStats } from "./overclock";
 import {
+  describePowerStall,
+  getNodePowerReport,
+  hasPowerReport,
+  isPowerStalled,
+} from "./power-report";
+import {
   getRuntimeCalculationOutputs,
   runtimeCalculationWarning,
   selectRuntimeCalculationVariant,
@@ -130,9 +136,17 @@ export function calculateThroughput(
     const runtimeOutputs = getRuntimeCalculationOutputs(effectiveRecipe, node);
     const machineParallelMultiplier =
       runtimeVariant?.parallel ?? getMachineParallelMultiplier(effectiveRecipe, node);
-    const operationRatePerSecond =
-      (node.machineCount * node.parallel * machineParallelMultiplier * TICKS_PER_SECOND) /
-      overclockedRecipe.durationTicks;
+    // A build the game would refuse to start produces nothing: GT has no slow
+    // mode, so an underpowered or over-tier node is a stopped node, and the
+    // card's power section is what says why.
+    const powerReport = hasPowerReport(nodeRecipe)
+      ? getNodePowerReport(nodeRecipe, node)
+      : undefined;
+    const powerStall = powerReport && isPowerStalled(powerReport) ? powerReport : undefined;
+    const operationRatePerSecond = powerStall
+      ? 0
+      : (node.machineCount * node.parallel * machineParallelMultiplier * TICKS_PER_SECOND) /
+        overclockedRecipe.durationTicks;
     const inputs: FlowRecord = {};
     const outputs: FlowRecord = {};
 
@@ -156,8 +170,9 @@ export function calculateThroughput(
       addFlow(outputs, output, amountPerSecond);
     }
 
-    const euT =
-      overclockedRecipe.eut * node.machineCount * node.parallel * machineParallelMultiplier;
+    const euT = powerStall
+      ? 0
+      : overclockedRecipe.eut * node.machineCount * node.parallel * machineParallelMultiplier;
     totalEuT += euT;
 
     nodes[node.id] = {
@@ -174,9 +189,10 @@ export function calculateThroughput(
       utilization: 0,
       theoreticalMachinesRequired: 0,
       status: "underutilized",
-      warnings: [runtimeCalculationWarning(effectiveRecipe, node)].filter(
-        (warning): warning is string => Boolean(warning),
-      ),
+      warnings: [
+        powerStall ? describePowerStall(powerStall) : undefined,
+        runtimeCalculationWarning(effectiveRecipe, node),
+      ].filter((warning): warning is string => Boolean(warning)),
     };
   }
 
