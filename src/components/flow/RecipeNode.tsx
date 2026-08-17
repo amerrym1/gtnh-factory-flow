@@ -1034,8 +1034,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 powerReport ? (
                   <PowerStoryContent
                     report={powerReport}
-                    machineCount={projectNode.machineCount}
-                    nodeParallel={projectNode.parallel}
                     durationTicks={overclockedRecipe.durationTicks}
                   />
                 ) : undefined
@@ -3760,8 +3758,9 @@ function Stat({
 /**
  * The card's power cell: what the build drinks, in the board's rate unit —
  * or, when the game would refuse to start this configuration, the stall
- * instead, pulsing. The hover is the whole story: pool, draw, overclocks,
- * usage, and the fix. GT has no slow mode, so there is no third thing to say.
+ * instead, pulsing. The hover is the whole story: pool, parallels,
+ * overclocks, and the fix. GT has no slow mode, so there is no third thing
+ * to say.
  */
 function PowerStat({
   report,
@@ -3782,14 +3781,7 @@ function PowerStat({
 
   return (
     <MinecraftTooltip
-      content={
-        <PowerStoryContent
-          report={report}
-          machineCount={machineCount}
-          nodeParallel={nodeParallel}
-          durationTicks={durationTicks}
-        />
-      }
+      content={<PowerStoryContent report={report} durationTicks={durationTicks} />}
     >
       <div
         className={[
@@ -3866,9 +3858,11 @@ function StoryTierChip({ tier }: { tier: NodePowerReport["tier"] }) {
  */
 function StorySectionLabel({ title, aside }: { title: string; aside?: string }) {
   return (
-    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
       {title}
-      {aside ? <span className="font-normal normal-case tracking-normal"> · {aside}</span> : null}
+      {aside ? (
+        <span className="font-normal normal-case tracking-normal text-slate-400"> · {aside}</span>
+      ) : null}
     </div>
   );
 }
@@ -3925,31 +3919,27 @@ function storySeconds(ticks: number): string {
  * so wherever the hover lands the language is the same.
  *
  * It reads top to bottom in the order the game spends the supply: the pool
- * the build offers (the BUDGET, and every later line spends or measures it),
- * the parallels it pays for FIRST, the overclocks bought with whatever is
- * left, then usage and the whole-node total. The teaching lives in the
- * section asides, a few words each; every other line is a bare fact. The
- * overclock ladder is a BAR — one cell per taken step, a hollow cell for the
- * next one filling with how much of its cost the budget covers — plus legend
- * rows carrying the ×power/×speed arithmetic and a line pricing that next
- * step. All of it drawn only when the arithmetic reproduces the real draw —
- * runtime-ladder machines, whose step kinds the game never exported, get the
- * honest count alone.
+ * the build offers (the BUDGET, and every later line spends it), the
+ * parallels it pays for FIRST, then the overclocks bought with whatever is
+ * left. The teaching lives in the section asides, a few words each; the
+ * headers sit flush left over indented bodies so the three beats are
+ * scannable; every other line is a bare fact. The overclock ladder is a BAR
+ * — one cell per taken step, a hollow cell for the next one filling with how
+ * much of its cost the budget covers — plus legend rows carrying the
+ * ×power/×speed arithmetic. Usage and the whole-node total stay off it: the
+ * footer cells under the cursor already say both. Drawn only when the
+ * arithmetic reproduces the real draw — runtime-ladder machines, whose step
+ * kinds the game never exported, get the honest count alone.
  */
 function PowerStoryContent({
   report,
-  machineCount,
-  nodeParallel,
   durationTicks,
 }: {
   report: NodePowerReport;
-  machineCount: number;
-  nodeParallel: number;
   /** The overclocked recipe's final duration, for the ladder's time column. */
   durationTicks?: number;
 }) {
   const stall = describePowerStall(report);
-  const machines = machineCount * nodeParallel;
   const perRunEuT = report.parallels > 0 ? report.drawEuT / report.parallels : report.drawEuT;
   const normalSteps = Math.max(0, report.overclockSteps - report.perfectOverclockSteps);
   const expectedEuT =
@@ -3980,7 +3970,7 @@ function PowerStoryContent({
     <div className="w-80 space-y-2 text-[12px] leading-4 text-slate-200">
       <div>
         <StorySectionLabel title="Supply" aside="the budget" />
-        <div>
+        <div className="pl-3">
           {/* ": 256 EU/t" is one fact: the nowrap keeps a line break from
               stranding the unit — or the whole figure — on its own line. */}
           {report.isMultiblock ? (
@@ -4008,7 +3998,7 @@ function PowerStoryContent({
       {report.parallels > 1 ? (
         <div>
           <StorySectionLabel title="Parallels" aside="paid for first" />
-          <div>
+          <div className="pl-3">
             ×{report.parallels} recipes at once,{" "}
             <span className="whitespace-nowrap">
               {formatCompact(report.singleDrawEuT)} EU/t each
@@ -4025,7 +4015,7 @@ function PowerStoryContent({
       <div>
         <StorySectionLabel title="Overclocks" aside="spare budget buys speed" />
         {ladderHonest ? (
-          <div className="space-y-0.5">
+          <div className="space-y-0.5 pl-3">
             {/* With parallels the batch line above IS the ladder's start;
                 alone, the recipe's own draw and time open it here. */}
             {report.parallels === 1 ? (
@@ -4066,20 +4056,9 @@ function PowerStoryContent({
                 </span>
               </div>
             ) : null}
-            {nextCoverage >= 1 ? (
-              <div className="text-[11px] text-slate-400">
-                The budget could pay for another, but this machine can&apos;t take it.
-              </div>
-            ) : (
-              <div className="text-[11px] text-slate-400">
-                {report.overclockSteps === 0 ? "None: the" : "The"} next step needs{" "}
-                <span className="whitespace-nowrap">{formatCompact(nextStepEuT)} EU/t</span>; the
-                budget covers {Math.round(nextCoverage * 100)}%.
-              </div>
-            )}
           </div>
         ) : (
-          <div>
+          <div className="pl-3">
             {report.overclockSteps} overclock{report.overclockSteps === 1 ? "" : "s"} ·{" "}
             <StoryTierChip tier={report.tier} /> runs at{" "}
             <span className="whitespace-nowrap">
@@ -4090,21 +4069,6 @@ function PowerStoryContent({
         )}
       </div>
 
-      {!stall ? (
-        <div>
-          <span className="text-slate-400">Usage </span>
-          {Math.round(report.usage * 100)}% of the budget
-          {machines > 1 ? (
-            <>
-              {" "}
-              <span className="whitespace-nowrap">
-                · ×{machines} machines ={" "}
-                <span className="font-bold">{formatCompact(report.drawEuT * machines)} EU/t</span>
-              </span>
-            </>
-          ) : null}
-        </div>
-      ) : null}
       {stall ? <div className="font-bold text-red-400">{stall}</div> : null}
     </div>
   );
