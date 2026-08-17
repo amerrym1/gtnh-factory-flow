@@ -3857,6 +3857,22 @@ function StoryTierChip({ tier }: { tier: NodePowerReport["tier"] }) {
   );
 }
 
+/**
+ * A power-story section header, with room for an ASIDE: the few plain words
+ * that say what the section does to the budget ("paid for first", "spare
+ * supply buys speed"). The whole explanation of how supply, parallels and
+ * overclocks interlock rides in these asides, so the fact lines below them
+ * never have to lecture.
+ */
+function StorySectionLabel({ title, aside }: { title: string; aside?: string }) {
+  return (
+    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+      {title}
+      {aside ? <span className="font-normal normal-case tracking-normal"> · {aside}</span> : null}
+    </div>
+  );
+}
+
 function trimFactor(value: number): string {
   return Number.isInteger(value)
     ? String(value)
@@ -3874,13 +3890,14 @@ function storySeconds(ticks: number): string {
  * the hatch chip, the tier chip, and the footer's POWER cell all say this,
  * so wherever the hover lands the language is the same.
  *
- * It reads top to bottom as the game computes it: what the build SUPPLIES,
- * what the recipe asks, the overclock ladder, then parallels, usage and the
- * total. Every line is a bare fact; the ladder rows themselves carry the
- * ×power/×speed arithmetic, so nothing gets explained twice and no line
- * teaches controls. The ladder is drawn only when its arithmetic reproduces
- * the real draw — runtime-ladder machines, whose step kinds the game never
- * exported, get the honest count alone.
+ * It reads top to bottom in the order the game spends the supply: the pool
+ * the build offers, the parallels it pays for FIRST, the overclocks bought
+ * with whatever is left, then usage and the whole-node total. The teaching
+ * lives in the section asides, a few words each; every other line is a bare
+ * fact, and the ladder rows carry their own ×power/×speed arithmetic. The
+ * ladder is drawn only when its arithmetic reproduces the real draw —
+ * runtime-ladder machines, whose step kinds the game never exported, get the
+ * honest count alone.
  */
 function PowerStoryContent({
   report,
@@ -3916,12 +3933,12 @@ function PowerStoryContent({
       ? "perfect overclock"
       : "machine overclock";
 
+  const batchEuT = report.singleDrawEuT * report.parallels;
+
   return (
     <div className="w-80 space-y-2 text-[12px] leading-4 text-slate-200">
       <div>
-        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-          Supply
-        </div>
+        <StorySectionLabel title="Supply" />
         <div>
           {/* "= 256 EU/t" is one fact: the nowrap keeps a line break from
               stranding the unit — or the whole figure — on its own line. */}
@@ -3931,7 +3948,8 @@ function PowerStoryContent({
               {report.hatches === 1 ? "hatch" : "hatches"} · {report.amps} A{" "}
               <span className="whitespace-nowrap">
                 = <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span>
-              </span>
+              </span>{" "}
+              to spend
             </>
           ) : (
             <>
@@ -3939,25 +3957,44 @@ function PowerStoryContent({
               {report.amps > 1 ? ` · ${report.amps} A` : ""}{" "}
               <span className="whitespace-nowrap">
                 = <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span>
-              </span>
+              </span>{" "}
+              to spend
             </>
           )}
         </div>
       </div>
 
-      <div>
-        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-          Overclocks
+      {report.parallels > 1 ? (
+        <div>
+          <StorySectionLabel title="Parallels" aside="paid for first" />
+          <div>
+            ×{report.parallels} recipes at once ·{" "}
+            <span className="whitespace-nowrap">
+              {formatCompact(report.singleDrawEuT)} EU/t each
+            </span>{" "}
+            <span className="whitespace-nowrap">
+              = <span className="font-bold">{formatCompact(batchEuT)} EU/t</span>
+              {ladderHonest && baseTicks !== undefined ? ` · ${storySeconds(baseTicks)}` : ""}
+            </span>
+          </div>
         </div>
+      ) : null}
+
+      <div>
+        <StorySectionLabel title="Overclocks" aside="spare supply buys speed" />
         {ladderHonest ? (
           <div className="space-y-0.5">
-            <div>
-              <StoryTierChip tier={report.minimumTier} /> recipe:{" "}
-              <span className="whitespace-nowrap">
-                <span className="font-bold">{formatCompact(report.singleDrawEuT)} EU/t</span>
-                {baseTicks !== undefined ? ` · ${storySeconds(baseTicks)}` : ""}
-              </span>
-            </div>
+            {/* With parallels the batch line above IS the ladder's start;
+                alone, the recipe's own draw and time open it here. */}
+            {report.parallels === 1 ? (
+              <div>
+                <StoryTierChip tier={report.minimumTier} /> recipe:{" "}
+                <span className="whitespace-nowrap">
+                  <span className="font-bold">{formatCompact(report.singleDrawEuT)} EU/t</span>
+                  {baseTicks !== undefined ? ` · ${storySeconds(baseTicks)}` : ""}
+                </span>
+              </div>
+            ) : null}
             {report.perfectOverclockSteps > 0 ? (
               <div className="pl-3 text-[11px] text-cyan-300">
                 ↓ {report.perfectOverclockSteps}× {perfectLabel}
@@ -3976,36 +4013,27 @@ function PowerStoryContent({
               <div>
                 <StoryTierChip tier={report.tier} /> runs at{" "}
                 <span className="whitespace-nowrap">
-                  <span className="font-bold">{formatCompact(perRunEuT)} EU/t</span>
+                  <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
                   {durationTicks !== undefined ? ` · ${storySeconds(durationTicks)}` : ""}
                 </span>
               </div>
             ) : (
               <div className="text-[11px] text-slate-400">
-                None: a step needs 4× the recipe's draw free.
+                None: a step needs 4× the draw free.
               </div>
             )}
           </div>
         ) : (
           <div>
-            {report.overclockSteps} overclock{report.overclockSteps === 1 ? "" : "s"}
+            {report.overclockSteps} overclock{report.overclockSteps === 1 ? "" : "s"} ·{" "}
+            <StoryTierChip tier={report.tier} /> runs at{" "}
+            <span className="whitespace-nowrap">
+              <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
+              {durationTicks !== undefined ? ` · ${storySeconds(durationTicks)}` : ""}
+            </span>
           </div>
         )}
       </div>
-
-      {report.parallels > 1 ? (
-        <div>
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-            Parallels
-          </div>
-          <div>
-            ×{report.parallels} recipes at once{" "}
-            <span className="whitespace-nowrap">
-              = <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
-            </span>
-          </div>
-        </div>
-      ) : null}
 
       {!stall ? (
         <div>
