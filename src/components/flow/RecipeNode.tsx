@@ -4071,19 +4071,22 @@ function PowerStoryContent({
               normalSteps={normalSteps}
               nextCoverage={nextCoverage}
             />
+            {/* Legend, not tally: the cells above carry the counts, so each
+                row just says what one cell of its colour buys, and the
+                arithmetic wraps as a whole phrase or not at all. */}
             {report.perfectOverclockSteps > 0 ? (
               <div className="text-[11px] text-cyan-300">
-                {report.perfectOverclockSteps}× {perfectLabel}
-                {report.perfectOverclockSteps === 1 ? "" : "s"}: ×
-                {trimFactor(report.perfectEuFactor)} power, ×
-                {trimFactor(report.perfectSpeedFactor)} speed
-                {report.perfectOverclockSteps === 1 ? "" : " each"}
+                {perfectLabel}:{" "}
+                <span className="whitespace-nowrap">
+                  ×{trimFactor(report.perfectEuFactor)} power buys ×
+                  {trimFactor(report.perfectSpeedFactor)} speed
+                </span>
               </div>
             ) : null}
             {normalSteps > 0 ? (
               <div className="text-[11px] text-amber-300">
-                {normalSteps}× regular overclock{normalSteps === 1 ? "" : "s"}: ×4 power, ×2
-                speed{normalSteps === 1 ? "" : " each"}
+                regular overclock:{" "}
+                <span className="whitespace-nowrap">×4 power buys ×2 speed</span>
               </div>
             ) : null}
             {report.overclockSteps > 0 ? (
