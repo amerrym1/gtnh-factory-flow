@@ -4,6 +4,7 @@ import { useMemo, useRef } from "react";
 import { MotionNumberText } from "./flow/board-motion";
 import { GT_TIER_COLORS } from "./flow/tier-colors";
 import { useMachineHandlerIcons, type MachineHandlerIcon } from "./flow/machine-icons";
+import { MinecraftTooltip } from "./nei/MinecraftTooltip";
 import { ResourceIcon } from "./nei/ResourceIcon";
 import { getSelectedMachineHandler } from "@/lib/model/recipe-rules";
 import { isCustomRateRecipe } from "@/lib/model/custom-rate";
@@ -217,29 +218,29 @@ export function MachineShoppingList() {
                 euT={uniform ? build?.euT : undefined}
                 state={uniform ? (build?.state ?? "ok") : "ok"}
                 wash={uniform ? build?.tier : undefined}
-                title={lineTitle(
-                  uniform ? group.count : undefined,
-                  group.label,
-                  group.nodeIds.length,
-                )}
+                explain={
+                  uniform && build
+                    ? explainBuild(group.label, build)
+                    : [
+                        `${group.label}: ${group.count} machines in ${group.builds.length} different builds`,
+                        ...clickHint(group.nodeIds.length),
+                      ]
+                }
                 onClick={() => focusNext(group.label, group.nodeIds)}
               />
               {uniform
                 ? null
-                : group.builds.map((buildLine) => (
+                : group.builds.map((buildLine, index) => (
                     <ListLine
                       key={buildLine.key}
                       indent
+                      isLast={index === group.builds.length - 1}
                       count={buildLine.count}
                       chip={buildLine}
                       euT={buildLine.euT}
                       state={buildLine.state}
                       wash={buildLine.tier}
-                      title={lineTitle(
-                        buildLine.count,
-                        `${group.label} (${buildLine.tier ?? "no power"})`,
-                        buildLine.nodeIds.length,
-                      )}
+                      explain={explainBuild(group.label, buildLine)}
                       onClick={() => focusNext(buildLine.key, buildLine.nodeIds)}
                     />
                   ))}
@@ -251,28 +252,65 @@ export function MachineShoppingList() {
   );
 }
 
-function lineTitle(count: number | undefined, label: string, cards: number): string {
-  const what = `${count !== undefined ? `${count}x ` : ""}${label}`;
-  return cards > 1
-    ? `${what}, across ${cards} cards. Click to jump to each in turn.`
-    : `${what}. Click to jump to this card.`;
+function clickHint(cards: number): string[] {
+  return [cards > 1 ? "Click to jump to each card in turn." : "Click to jump to its card."];
+}
+
+/**
+ * The hover, in plain English: what this line actually asks you to build.
+ * "3 machines, each with 2 HV energy hatches" says out loud what the fused
+ * chip abbreviates, and a stalled build states its problem in words.
+ */
+function explainBuild(
+  label: string,
+  build: Pick<BuildLine, "count" | "tier" | "hatches" | "isMultiblock" | "state"> & {
+    nodeIds: string[];
+  },
+): string[] {
+  const lines: string[] = [];
+  if (!build.tier) {
+    lines.push(`${label}: ${build.count} ${build.count === 1 ? "machine" : "machines"}`);
+  } else if (build.isMultiblock) {
+    const hatches = `${build.hatches} ${build.tier} energy ${build.hatches === 1 ? "hatch" : "hatches"}`;
+    lines.push(
+      build.count === 1
+        ? `${label}: 1 machine with ${hatches}`
+        : `${label}: ${build.count} machines, each with ${hatches}`,
+    );
+  } else {
+    lines.push(
+      build.count === 1
+        ? `${label}: 1 machine running at ${build.tier}`
+        : `${label}: ${build.count} machines running at ${build.tier}`,
+    );
+  }
+  if (build.state === "under-powered") {
+    lines.push("Underpowered: these hatches can't carry the recipe.");
+  } else if (build.state === "over-tier") {
+    lines.push("Won't run: the recipe is above this tier.");
+  }
+  lines.push(...clickHint(build.nodeIds.length));
+  return lines;
 }
 
 function ListLine({
   icon,
   indent = false,
+  isLast = false,
   count,
   label,
   chip,
   euT,
   state,
   wash,
-  title,
+  explain,
   onClick,
 }: {
   icon?: MachineHandlerIcon;
-  /** A sub-line: starts where the group line's NAME starts, no icon. */
+  /** A build sub-line: the icon column carries the tree branch instead. */
   indent?: boolean;
+  /** The last sub-line closes its branch with an L instead of a T. */
+  isLast?: boolean;
   /** Absent on a mixed machine's name line; "1×" is otherwise said out loud. */
   count?: number;
   label?: string;
@@ -282,50 +320,78 @@ function ListLine({
   state: NodePowerState;
   /** Tier whose colour faintly washes the whole line. */
   wash?: VoltageTier;
-  title: string;
+  /** The hover's plain-English lines. MinecraftTooltip, not `title`: the
+   * OS tooltip arrives late and slides about, and every other hover in the
+   * app already speaks through the game panel. */
+  explain: string[];
   onClick: () => void;
 }) {
   const stalled = state !== "ok";
   const chipColor = chip?.tier ? GT_TIER_COLORS[chip.tier] : undefined;
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      style={wash ? { backgroundColor: `${GT_TIER_COLORS[wash].background}14` } : undefined}
-      className={[
-        "flex w-full items-center gap-1.5 py-0.5 pr-2 text-left hover:bg-[var(--mc-71)]",
-        indent ? "pl-[38px]" : "pl-2",
-      ].join(" ")}
-    >
-      {indent ? null : (
-        <span className="flex h-[24px] w-[24px] shrink-0 items-center justify-center overflow-hidden">
-          {icon ? (
-            <ResourceIcon
-              resource={{ ...icon, amount: 1, consumed: true }}
-              size="sm"
-              showAmount={false}
-              bare
-              tooltip={false}
-              className="!h-full !w-full"
-            />
-          ) : null}
-        </span>
-      )}
-      {count !== undefined ? (
-        <span className="shrink-0 text-[14px] font-bold tabular-nums">{count}×</span>
-      ) : null}
-      <span className="min-w-0 flex-1 truncate whitespace-nowrap text-[14px] leading-6">
-        {label ?? ""}
-      </span>
-      {chipColor && chip ? (
-        /* The card's own chip, verbatim: hatch count fused left of the tier,
-           one paint job, so the panel and the board read as one. */
-        <span className="flex shrink-0">
-          {chip.isMultiblock ? (
+    <MinecraftTooltip label={explain}>
+      <button
+        type="button"
+        onClick={onClick}
+        style={wash ? { backgroundColor: `${GT_TIER_COLORS[wash].background}14` } : undefined}
+        className="flex w-full items-center gap-1.5 py-0.5 pl-2 pr-2 text-left hover:bg-[var(--mc-71)]"
+      >
+        {indent ? (
+          /* The branch: a vertical line dropping from under the parent's
+             icon, elbowing out to this build's count. Consecutive sub-lines
+             butt against each other, so the verticals join into one stem;
+             the last one stops at its elbow and the stem ends in an L. */
+          <span className="relative w-[24px] shrink-0 self-stretch">
             <span
-              className="h-5 border-2 border-r-0 px-1 text-[11px] font-bold leading-4"
+              className={[
+                "absolute left-[11px] top-0 w-[2px] bg-[var(--mc-47)]",
+                isLast ? "h-[calc(50%+1px)]" : "h-full",
+              ].join(" ")}
+            />
+            <span className="absolute left-[11px] right-0 top-1/2 h-[2px] -translate-y-[1px] bg-[var(--mc-47)]" />
+          </span>
+        ) : (
+          <span className="flex h-[24px] w-[24px] shrink-0 items-center justify-center overflow-hidden">
+            {icon ? (
+              <ResourceIcon
+                resource={{ ...icon, amount: 1, consumed: true }}
+                size="sm"
+                showAmount={false}
+                bare
+                tooltip={false}
+                className="!h-full !w-full"
+              />
+            ) : null}
+          </span>
+        )}
+        {count !== undefined ? (
+          <span className="shrink-0 text-[14px] font-bold tabular-nums">{count}×</span>
+        ) : null}
+        <span className="min-w-0 flex-1 truncate whitespace-nowrap text-[14px] leading-6">
+          {label ?? ""}
+        </span>
+        {chipColor && chip ? (
+          /* The card's own chip, verbatim: hatch count fused left of the
+             tier, one paint job, so the panel and the board read as one.
+             Always in the right-hand column, so every chip on the list sits
+             on one line however the rows around it are shaped. */
+          <span className="flex shrink-0">
+            {chip.isMultiblock ? (
+              <span
+                className="h-5 border-2 border-r-0 px-1 text-[11px] font-bold leading-4"
+                style={{
+                  backgroundColor: chipColor.background,
+                  borderColor: chipColor.border,
+                  color: chipColor.text,
+                  textShadow: `1px 1px 0 ${chipColor.shadow}`,
+                }}
+              >
+                {chip.hatches}×
+              </span>
+            ) : null}
+            <span
+              className="h-5 border-2 px-1.5 text-[11px] font-bold leading-4"
               style={{
                 backgroundColor: chipColor.background,
                 borderColor: chipColor.border,
@@ -333,22 +399,10 @@ function ListLine({
                 textShadow: `1px 1px 0 ${chipColor.shadow}`,
               }}
             >
-              {chip.hatches}×
+              {chip.tier}
             </span>
-          ) : null}
-          <span
-            className="h-5 border-2 px-1.5 text-[11px] font-bold leading-4"
-            style={{
-              backgroundColor: chipColor.background,
-              borderColor: chipColor.border,
-              color: chipColor.text,
-              textShadow: `1px 1px 0 ${chipColor.shadow}`,
-            }}
-          >
-            {chip.tier}
           </span>
-        </span>
-      ) : null}
+        ) : null}
       <span
         className={[
           // Fixed width so every tier chip sits on one column, however wide a
@@ -381,7 +435,8 @@ function ListLine({
         ) : (
           ""
         )}
-      </span>
-    </button>
+        </span>
+      </button>
+    </MinecraftTooltip>
   );
 }
