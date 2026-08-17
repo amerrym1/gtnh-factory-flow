@@ -5166,11 +5166,7 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
           title="Fit the whole plan on the screen"
           aria-label="Fit the plan on the screen"
         >
-          {/* h-8 in a 32px content box: these five run twice the size of
-              the app's usual h-4 glyphs on purpose - they are the board's
-              main dial, and the lucide viewBox carries its own breathing
-              room, so nothing grazes the frame and nothing is cropped. */}
-          <Focus className="h-8 w-8" />
+          <Focus className="h-4 w-4" />
         </button>
       </ToolTray>
       {/* The smart views. Every one of them is a zoomed-out reading: up close
@@ -5184,7 +5180,7 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
           aria-label="Big icons"
           aria-pressed={glanceMode === "identity"}
         >
-          <Box className="h-8 w-8" />
+          <Box className="h-4 w-4" />
         </button>
         <button
           type="button"
@@ -5194,7 +5190,7 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
           aria-label="Speed"
           aria-pressed={glanceMode === "status"}
         >
-          <Gauge className="h-8 w-8" />
+          <Gauge className="h-4 w-4" />
         </button>
         <button
           type="button"
@@ -5204,7 +5200,7 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
           aria-label="Usage"
           aria-pressed={glanceMode === "usage"}
         >
-          <TriangleAlert className="h-8 w-8" />
+          <TriangleAlert className="h-4 w-4" />
         </button>
         <button
           type="button"
@@ -5214,7 +5210,7 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
           aria-label="Power"
           aria-pressed={glanceMode === "power"}
         >
-          <Zap className="h-8 w-8" />
+          <Zap className="h-4 w-4" />
         </button>
       </ToolTray>
     </div>
