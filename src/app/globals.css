@@ -762,6 +762,19 @@ textarea {
 
 .factory-flow-board--value-motion[data-detail-level="glance"] [data-node-detail="glance"] {
   transition: opacity 560ms ease, visibility 0s;
+  /* Mount fade. A transition only plays on a value CHANGE, and switching
+     smart views replaces the whole layer — the identity tile or a stat row
+     arrives as a NEW element already at opacity 1, which is why mode
+     switches used to pop while the card colour underneath glided. An
+     animation runs whenever the rule starts applying, mounts included, so
+     the incoming layer fades in on the same clock as the wash. */
+  animation: glance-layer-in 560ms ease;
+}
+
+@keyframes glance-layer-in {
+  from {
+    opacity: 0;
+  }
 }
 
 .factory-flow-board--value-motion[data-detail-level="glance"]

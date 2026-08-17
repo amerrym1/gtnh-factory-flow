@@ -3310,10 +3310,16 @@ export function FactoryFlow() {
       // card detail FORCED rather than inherited from wherever the screen's
       // zoom left it - an export framed at 0.2x must not come out as
       // unreadable full-detail specks just because the user was zoomed in.
-      // The card look is the ATTRIBUTE alone (pure CSS, see node-detail.ts);
-      // the published LEVEL is pinned to full so the edges keep their
-      // arrowheads and publish their dashes either way - glance's per-edge
-      // economies are per-frame costs, and a photograph is one frame.
+      // For "full" and "glance" the card look is the ATTRIBUTE alone (pure
+      // CSS, see node-detail.ts) and the published LEVEL is pinned to full so
+      // the edges keep their arrowheads and publish their dashes - glance's
+      // per-edge economies are per-frame costs, and a photograph is one
+      // frame. The three smart views publish GLANCE instead: their lines ARE
+      // the zoomed-out look (speed colour, no arrowheads), and photographing
+      // anything else would not be the view the dialog named.
+      const cardDetail = request.cardDetail ?? "full";
+      const isStatLook =
+        cardDetail === "status" || cardDetail === "usage" || cardDetail === "power";
       const restoreDetailLevel = getPublishedNodeDetailLevel();
       const savedBoardView = readBoardViewSnapshot();
       const applyCardDetail = (level: NodeDetailLevel) => {
@@ -3329,14 +3335,17 @@ export function FactoryFlow() {
         }
       };
       setExportRendering(true);
-      setNodeDetailLevel(NODE_DETAIL_FULL);
-      applyCardDetail(request.cardDetail === "glance" ? NODE_DETAIL_GLANCE : NODE_DETAIL_FULL);
+      setNodeDetailLevel(isStatLook ? NODE_DETAIL_GLANCE : NODE_DETAIL_FULL);
+      applyCardDetail(cardDetail === "full" ? NODE_DETAIL_FULL : NODE_DETAIL_GLANCE);
       // The dashes exist for the GIF whether or not the live board shows
       // them, and the calm (presentation) colours follow the dialog's choice
-      // rather than the board's switch. Both restored after.
+      // rather than the board's switch. The smart view follows the dialog's
+      // card look, not whatever the live board is switched to. All restored
+      // after.
       writeBoardView({
         linePulseMode: true,
         calmMode: request.presentation === true,
+        glanceMode: isStatLook ? cardDetail : "identity",
       });
       // Motion pauses for the photograph. Values tween for a second and
       // routes morph for a quarter of one, so a capture taken two frames
@@ -3470,6 +3479,7 @@ export function FactoryFlow() {
         writeBoardView({
           linePulseMode: savedBoardView.linePulseMode,
           calmMode: savedBoardView.calmMode,
+          glanceMode: savedBoardView.glanceMode,
         });
         setNodeDetailLevel(restoreDetailLevel);
         applyCardDetail(restoreDetailLevel);
@@ -3521,7 +3531,13 @@ export function FactoryFlow() {
         projectJson: typeof detail.projectJson === "string" ? detail.projectJson : undefined,
         capture: detail.capture === true,
         background: typeof detail.background === "string" ? detail.background : undefined,
-        cardDetail: detail.cardDetail === "glance" ? "glance" : "full",
+        cardDetail:
+          detail.cardDetail === "glance" ||
+          detail.cardDetail === "status" ||
+          detail.cardDetail === "usage" ||
+          detail.cardDetail === "power"
+            ? detail.cardDetail
+            : "full",
         hideAnnotations: detail.hideAnnotations === true,
         presentation: detail.presentation === true,
       });
@@ -5160,8 +5176,8 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
           type="button"
           onClick={() => onModeChange("identity")}
           className={buttonClass(glanceMode === "identity")}
-          title="Zoomed out, cards show what they are: the machine icon, count and name. Hover a card for its rates."
-          aria-label="Show machines"
+          title="Big icons: each card shows its machine"
+          aria-label="Big icons"
           aria-pressed={glanceMode === "identity"}
         >
           <Box className="h-4 w-4" />
@@ -5170,8 +5186,8 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
           type="button"
           onClick={() => onModeChange("status")}
           className={buttonClass(glanceMode === "status")}
-          title="Speed view. Zoomed out, cards and lines take colour from how hard they run: red is idle, green is full speed. Hovering a card maps the board by wire distance."
-          aria-label="Show speed"
+          title="Speed: red is idle, green is full speed"
+          aria-label="Speed"
           aria-pressed={glanceMode === "status"}
         >
           <Gauge className="h-4 w-4" />
@@ -5180,8 +5196,8 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
           type="button"
           onClick={() => onModeChange("usage")}
           className={buttonClass(glanceMode === "usage")}
-          title="Usage view. Zoomed out, each card is coloured by WHY it runs the way it does: bottleneck, starved, clogged, no power."
-          aria-label="Show usage reasons"
+          title="Usage: coloured by the reason word"
+          aria-label="Usage"
           aria-pressed={glanceMode === "usage"}
         >
           <TriangleAlert className="h-4 w-4" />
@@ -5190,8 +5206,8 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
           type="button"
           onClick={() => onModeChange("power")}
           className={buttonClass(glanceMode === "power")}
-          title="Power view. Zoomed out, each card wears its voltage tier's colour and shows its power draw and hatches."
-          aria-label="Show power"
+          title="Power: coloured by voltage tier"
+          aria-label="Power"
           aria-pressed={glanceMode === "power"}
         >
           <Zap className="h-4 w-4" />
