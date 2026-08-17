@@ -138,7 +138,7 @@ import {
   type NodeSurfaceColor,
 } from "./node-colors";
 import { useBoardView } from "./board-view";
-import { MotionNumberText } from "./board-motion";
+import { MotionNumberText, useBoardMotion, useMotionValue } from "./board-motion";
 import { getPaintBrushCursor } from "./paint-cursor";
 import { GT_TIER_COLORS } from "./tier-colors";
 
@@ -3873,6 +3873,13 @@ function StorySectionLabel({ title, aside }: { title: string; aside?: string }) 
  * because the mechanic is. Cyan cells are perfect steps, amber ones regular,
  * and the hollow last cell is the NEXT step, filling with how much of its
  * cost the budget already covers.
+ *
+ * The fill LERPS on the board's value-motion clock, like every other number
+ * on the board: a fresh hover mounts the bar already settled (a tooltip does
+ * not count up from zero), and a tier or hatch click made while the panel is
+ * held up eases the pour from where it stood to the new answer — forward for
+ * a step gained, draining back for one lost — while the cells re-segment to
+ * the new shape at once.
  */
 function StoryOverclockBar({
   perfectSteps,
@@ -3883,18 +3890,40 @@ function StoryOverclockBar({
   normalSteps: number;
   nextCoverage: number;
 }) {
+  const { valueMotion } = useBoardMotion();
+  const taken = perfectSteps + normalSteps;
+  const coverage = Math.min(1, Math.max(0, nextCoverage));
+  // The one number that moves: the pour's reach in cell units, every taken
+  // step plus the covered slice of the next. Cell N holds whatever of it
+  // exceeds N, capped at one cell.
+  const filled = useMotionValue(taken + coverage, valueMotion);
+
   return (
     <div className="flex h-2.5 gap-0.5" aria-hidden>
-      {Array.from({ length: perfectSteps }, (_, index) => (
-        <div key={`perfect-${index}`} className="flex-1 border border-cyan-300 bg-cyan-400/60" />
-      ))}
-      {Array.from({ length: normalSteps }, (_, index) => (
-        <div key={`normal-${index}`} className="flex-1 border border-amber-300 bg-amber-300/60" />
-      ))}
+      {Array.from({ length: taken }, (_, index) => {
+        const perfect = index < perfectSteps;
+        return (
+          <div
+            key={index}
+            className={[
+              "relative flex-1 overflow-hidden border",
+              perfect ? "border-cyan-300" : "border-amber-300",
+            ].join(" ")}
+          >
+            <div
+              className={[
+                "absolute inset-y-0 left-0",
+                perfect ? "bg-cyan-400/60" : "bg-amber-300/60",
+              ].join(" ")}
+              style={{ width: `${Math.min(1, Math.max(0, filled - index)) * 100}%` }}
+            />
+          </div>
+        );
+      })}
       <div className="relative flex-1 overflow-hidden border border-slate-500">
         <div
           className="absolute inset-y-0 left-0 bg-slate-400/50"
-          style={{ width: `${Math.min(1, Math.max(0, nextCoverage)) * 100}%` }}
+          style={{ width: `${Math.min(coverage, Math.max(0, filled - taken)) * 100}%` }}
         />
       </div>
     </div>
