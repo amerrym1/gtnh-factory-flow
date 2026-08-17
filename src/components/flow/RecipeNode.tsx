@@ -138,7 +138,7 @@ import {
   type NodeSurfaceColor,
 } from "./node-colors";
 import { useBoardView } from "./board-view";
-import { MotionNumberText, useBoardMotion, useMotionValue } from "./board-motion";
+import { MotionNumberText, useBoardMotion, useMotionValues } from "./board-motion";
 import { getPaintBrushCursor } from "./paint-cursor";
 import { GT_TIER_COLORS } from "./tier-colors";
 
@@ -3874,12 +3874,14 @@ function StorySectionLabel({ title, aside }: { title: string; aside?: string }) 
  * and the hollow last cell is the NEXT step, filling with how much of its
  * cost the budget already covers.
  *
- * The fill LERPS on the board's value-motion clock, like every other number
- * on the board: a fresh hover mounts the bar already settled (a tooltip does
- * not count up from zero), and a tier or hatch click made while the panel is
- * held up eases the pour from where it stood to the new answer — forward for
- * a step gained, draining back for one lost — while the cells re-segment to
- * the new shape at once.
+ * The whole DRAWING lerps on the board's value-motion clock, like any other
+ * number: a fresh hover mounts it settled (a tooltip does not count up from
+ * zero), and a tier or hatch click made while the panel is held up eases it
+ * to the new answer. Two lerped quantities drive every pixel — the pour's
+ * reach and the ladder's length, both in cell units — and slot edges, widths
+ * and fills all derive from them, so a step gained GROWS its cell in while
+ * the others make room and the pour runs forward, instead of the bar
+ * re-segmenting in one frame with only the fill easing.
  */
 function StoryOverclockBar({
   perfectSteps,
@@ -3893,39 +3895,47 @@ function StoryOverclockBar({
   const { valueMotion } = useBoardMotion();
   const taken = perfectSteps + normalSteps;
   const coverage = Math.min(1, Math.max(0, nextCoverage));
-  // The one number that moves: the pour's reach in cell units, every taken
-  // step plus the covered slice of the next. Cell N holds whatever of it
-  // exceeds N, capped at one cell.
-  const filled = useMotionValue(taken + coverage, valueMotion);
+  const [reach, cells] = useMotionValues([taken + coverage, taken + 1], valueMotion);
+  // Mid-lerp the ladder holds a fractional number of cells; the last sliver
+  // slot is the new cell arriving (or the lost one leaving).
+  const slotCount = Math.max(1, Math.ceil(cells - 1e-6));
 
   return (
-    <div className="flex h-2.5 gap-0.5" aria-hidden>
-      {Array.from({ length: taken }, (_, index) => {
-        const perfect = index < perfectSteps;
+    <div className="relative h-2.5" aria-hidden>
+      {Array.from({ length: slotCount }, (_, index) => {
+        const kind = index < perfectSteps ? "perfect" : index < taken ? "normal" : "next";
+        const leftPct = (index / cells) * 100;
+        const widthPct = (Math.min(1, cells - index) / cells) * 100;
+        // The fill is a fraction of the CELL UNIT; rendered inside a slot
+        // still growing to full size it scales with it.
+        const fillFraction = Math.min(1, Math.max(0, reach - index));
         return (
           <div
             key={index}
             className={[
-              "relative flex-1 overflow-hidden border",
-              perfect ? "border-cyan-300" : "border-amber-300",
+              "absolute inset-y-0 overflow-hidden border",
+              kind === "perfect"
+                ? "border-cyan-300"
+                : kind === "normal"
+                  ? "border-amber-300"
+                  : "border-slate-500",
             ].join(" ")}
+            style={{ left: `calc(${leftPct}% + 1px)`, width: `calc(${widthPct}% - 2px)` }}
           >
             <div
               className={[
                 "absolute inset-y-0 left-0",
-                perfect ? "bg-cyan-400/60" : "bg-amber-300/60",
+                kind === "perfect"
+                  ? "bg-cyan-400/60"
+                  : kind === "normal"
+                    ? "bg-amber-300/60"
+                    : "bg-slate-400/50",
               ].join(" ")}
-              style={{ width: `${Math.min(1, Math.max(0, filled - index)) * 100}%` }}
+              style={{ width: `${fillFraction * 100}%` }}
             />
           </div>
         );
       })}
-      <div className="relative flex-1 overflow-hidden border border-slate-500">
-        <div
-          className="absolute inset-y-0 left-0 bg-slate-400/50"
-          style={{ width: `${Math.min(coverage, Math.max(0, filled - taken)) * 100}%` }}
-        />
-      </div>
     </div>
   );
 }
