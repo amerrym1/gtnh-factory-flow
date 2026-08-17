@@ -97,6 +97,10 @@ export function MachineShoppingList() {
     (sum, band) => sum + band.rows.reduce((rows, row) => rows + row.count, 0),
     0,
   );
+  const totalEuT = bands.reduce(
+    (sum, band) => sum + band.rows.reduce((rows, row) => rows + (row.euT ?? 0), 0),
+    0,
+  );
   if (totalMachines === 0) {
     return null;
   }
@@ -108,6 +112,11 @@ export function MachineShoppingList() {
         <span className="rounded bg-[var(--mc-56)] px-1.5 py-0.5 text-xs font-bold tabular-nums">
           {totalMachines}
         </span>
+        {totalEuT > 0 ? (
+          <span className="ml-auto text-[13px] font-bold tabular-nums text-[var(--mc-ink-muted)]">
+            {formatNumberWithThousands(Math.round(totalEuT))} EU/t
+          </span>
+        ) : null}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto pb-1">
         {bands.map((band) => (

@@ -1119,7 +1119,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                       nodeId={projectNode.id}
                       verdict={verdict}
                       isCustomRate={isCustomRateNode}
-                      powerStalled={powerReport ? powerReport.state !== "ok" : false}
+                      powerStall={powerReport}
                     />
                     {!isCustomRateNode ? (
                       <>
@@ -1472,19 +1472,38 @@ function UsageStat({
   nodeId,
   verdict,
   isCustomRate = false,
-  powerStalled = false,
+  powerStall,
 }: {
   nodeId: string;
   verdict: NodeVerdict;
   isCustomRate?: boolean;
-  powerStalled?: boolean;
+  /** Set when the power setup cannot start the build; owns the word AND the hover. */
+  powerStall?: NodePowerReport;
 }) {
-  const state = verdictWord(verdict, isCustomRate, powerStalled);
+  const stalled = powerStall !== undefined && powerStall.state !== "ok";
+  const state = verdictWord(verdict, isCustomRate, stalled);
   const showPct = verdict.kind !== "off" && verdict.kind !== "no-recipe";
 
   return (
     <MinecraftTooltip
-      content={<VerdictHoverContent verdict={verdict} isCustomRate={isCustomRate} />}
+      content={
+        stalled && powerStall ? (
+          // The power story replaces the flow story outright: whatever the
+          // wires would say, nothing moves until the power fits.
+          <div className="w-60">
+            <div className="text-[13px] font-semibold text-white">
+              {powerStall.state === "under-powered"
+                ? "The hatches can't carry it"
+                : "The recipe is above this tier"}
+            </div>
+            <div className="mt-0.5 text-[11px] leading-4 text-slate-300">
+              {describePowerStall(powerStall)}
+            </div>
+          </div>
+        ) : (
+          <VerdictHoverContent verdict={verdict} isCustomRate={isCustomRate} />
+        )
+      }
     >
       {/* One card, one divider: the number and the word are the same
           sentence — how hard it runs, and why. Two boxes read as two facts. */}
@@ -1662,9 +1681,13 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
         return undefined;
       }
       const missing = formatSlotRate(deficit.missingPerSecond, deficit.kind);
+      // Two levers, named without picking one: the machine count and the
+      // power setup both buy speed, and which is cheaper is the player's
+      // call, not the hover's.
+      const levers = " More machines would cover it; so might more power.";
       return deficit.pluggedOutputs > 1
-        ? `${deficit.hungryOutputs} of ${deficit.pluggedOutputs} wired outputs go unfilled, ${missing} short on ${deficit.displayName}.`
-        : `${missing} short on ${deficit.displayName}.`;
+        ? `${deficit.hungryOutputs} of ${deficit.pluggedOutputs} wired outputs go unfilled, ${missing} short on ${deficit.displayName}.${levers}`
+        : `${missing} short on ${deficit.displayName}.${levers}`;
     }
     case "clogged": {
       const clog = verdict.clog;
@@ -3529,13 +3552,13 @@ function PowerStat({
   nodeParallel: number;
 }) {
   const stalled = report.state !== "ok";
-  // EU/t is per tick; the board's rate unit scales off per-second.
-  const totalPerSecond = report.drawEuT * machineCount * nodeParallel * 20;
+  // Always EU/t, whatever the board's rate unit: power is a per-tick fact in
+  // GT and reads as noise in any other clock.
   const value = stalled
     ? report.state === "under-powered"
       ? "LOW!"
       : "TIER!"
-    : `${formatCompact(totalPerSecond * rateUnitMultiplier())} EU${rateUnitSuffix(false)}`;
+    : `${formatCompact(report.drawEuT * machineCount * nodeParallel)} EU/t`;
 
   return (
     <MinecraftTooltip
