@@ -776,7 +776,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               />
             )
           }
-          className={VERDICT_WORD_CLASS[verdictWord(verdict, isCustomRateNode).tone]}
+          className={
+            VERDICT_WORD_CLASS[
+              verdictWord(verdict, isCustomRateNode, powerReport ? powerReport.state !== "ok" : false)
+                .tone
+            ]
+          }
         />
       )}
       {/* No vertical padding: the head, the rails, the panels and the footer
@@ -1114,6 +1119,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                       nodeId={projectNode.id}
                       verdict={verdict}
                       isCustomRate={isCustomRateNode}
+                      powerStalled={powerReport ? powerReport.state !== "ok" : false}
                     />
                     {!isCustomRateNode ? (
                       <>
@@ -1398,7 +1404,16 @@ interface VerdictWord {
   tone: "fine" | "starved" | "blocked" | "bottleneck" | "clogged" | "unwired";
 }
 
-function verdictWord(verdict: NodeVerdict, isCustomRate: boolean): VerdictWord {
+function verdictWord(
+  verdict: NodeVerdict,
+  isCustomRate: boolean,
+  powerStalled = false,
+): VerdictWord {
+  // A build the game would refuse outranks every flow story: whatever the
+  // wires say, the reason nothing moves is the power setup.
+  if (powerStalled) {
+    return { word: "no power", tone: "unwired" };
+  }
   switch (verdict.kind) {
     case "starved":
       return { word: "starved", tone: "starved" };
@@ -1457,12 +1472,14 @@ function UsageStat({
   nodeId,
   verdict,
   isCustomRate = false,
+  powerStalled = false,
 }: {
   nodeId: string;
   verdict: NodeVerdict;
   isCustomRate?: boolean;
+  powerStalled?: boolean;
 }) {
-  const state = verdictWord(verdict, isCustomRate);
+  const state = verdictWord(verdict, isCustomRate, powerStalled);
   const showPct = verdict.kind !== "off" && verdict.kind !== "no-recipe";
 
   return (

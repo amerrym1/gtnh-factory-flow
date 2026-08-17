@@ -136,17 +136,18 @@ export function calculateThroughput(
     const runtimeOutputs = getRuntimeCalculationOutputs(effectiveRecipe, node);
     const machineParallelMultiplier =
       runtimeVariant?.parallel ?? getMachineParallelMultiplier(effectiveRecipe, node);
-    // A build the game would refuse to start produces nothing: GT has no slow
-    // mode, so an underpowered or over-tier node is a stopped node, and the
-    // card's power section is what says why.
+    // A build the game would refuse to start produces nothing - GT has no
+    // slow mode - but it is a machine at 0%, not a blank card: rates stay
+    // nameplate so ports and wires keep their shape, and the equilibrium pins
+    // the node to zero the same way a bare slot does. The card's power cell
+    // is what says why.
     const powerReport = hasPowerReport(nodeRecipe)
       ? getNodePowerReport(nodeRecipe, node)
       : undefined;
     const powerStall = powerReport && isPowerStalled(powerReport) ? powerReport : undefined;
-    const operationRatePerSecond = powerStall
-      ? 0
-      : (node.machineCount * node.parallel * machineParallelMultiplier * TICKS_PER_SECOND) /
-        overclockedRecipe.durationTicks;
+    const operationRatePerSecond =
+      (node.machineCount * node.parallel * machineParallelMultiplier * TICKS_PER_SECOND) /
+      overclockedRecipe.durationTicks;
     const inputs: FlowRecord = {};
     const outputs: FlowRecord = {};
 
@@ -170,9 +171,8 @@ export function calculateThroughput(
       addFlow(outputs, output, amountPerSecond);
     }
 
-    const euT = powerStall
-      ? 0
-      : overclockedRecipe.eut * node.machineCount * node.parallel * machineParallelMultiplier;
+    const euT =
+      overclockedRecipe.eut * node.machineCount * node.parallel * machineParallelMultiplier;
     totalEuT += euT;
 
     nodes[node.id] = {
@@ -184,6 +184,7 @@ export function calculateThroughput(
       inputs,
       outputs,
       euT,
+      powerStalled: Boolean(powerStall),
       requiredRatePerSecond: 0,
       maxRatePerSecond: 0,
       utilization: 0,
@@ -765,6 +766,16 @@ function finalizeNodeReports(
     nodeResult.utilization = utilizationReport.utilization;
     nodeResult.theoreticalMachinesRequired = utilizationReport.theoreticalMachinesRequired;
     nodeResult.limitingResource = utilizationReport.limitingResource;
+    // A power-stalled build sits at zero whatever the flows would allow: the
+    // game refuses to start it. The nameplate rates above keep the card's
+    // shape; this is the one place the stillness is stamped on.
+    if (nodeResult.powerStalled) {
+      nodeResult.utilization = 0;
+      nodeResult.capableUtilization = 0;
+      nodeResult.demandUtilization = 0;
+      nodeResult.requiredRatePerSecond = 0;
+      nodeResult.theoreticalMachinesRequired = 0;
+    }
     nodeResult.status = getNodeStatus(nodeResult.utilization);
   }
 }

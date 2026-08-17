@@ -646,6 +646,12 @@ export interface NodeThroughputResult {
   maxRatePerSecond: number;
   utilization: number;
   /**
+   * The build cannot start: underpowered or over-tier hatches. Rates above
+   * stay nameplate - the card keeps its shape - and the equilibrium pins the
+   * node at 0%, exactly like a machine stopped by a bare slot.
+   */
+  powerStalled?: boolean;
+  /**
    * How hard this node COULD run given only its own input supply (1 when
    * nothing upstream limits it). Solver-internal: `utilization` is demand-
    * throttled, but supply allocation must offer consumers what a producer

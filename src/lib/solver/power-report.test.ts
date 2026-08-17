@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { Recipe } from "@/lib/model/types";
+import { PROJECT_SCHEMA_VERSION, type FactoryProject, type Recipe } from "@/lib/model/types";
 import { getNodePowerReport } from "./power-report";
 import { getOverclockedRecipeStats } from "./overclock";
+import { calculateThroughput } from "./throughput";
 
 /** A synthetic LCR recipe: the table marks the machine a multiblock. */
 function lcrRecipe(eut: number, minimumTier: string): Recipe {
@@ -78,6 +79,80 @@ describe("energy hatches", () => {
 
     expect(withField).toEqual(without);
     expect(withField.overclockSteps).toBe(1);
+  });
+
+  it("stalls a wired underpowered node at 0% without hiding its shape", () => {
+    // The card must stay a machine at zero, not a blank: nameplate rates keep
+    // the ports and wires drawn while the equilibrium pins the node still.
+    const recipe = {
+      id: "stall-lcr",
+      name: "LCR stall test",
+      machineType: "Large Chemical Reactor",
+      minimumTier: "HV",
+      durationTicks: 20,
+      eut: 480,
+      inputs: [{ kind: "fluid", id: "ethylene", amount: 100 }],
+      outputs: [{ kind: "fluid", id: "polyethylene", amount: 150 }],
+    } as unknown as Recipe;
+    const project: FactoryProject = {
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      id: "power-stall",
+      name: "Power stall",
+      recipes: [recipe],
+      nodes: [
+        {
+          id: "reactor",
+          recipeId: "stall-lcr",
+          machineCount: 1,
+          parallel: 1,
+          overclockTier: "MV",
+          energyHatches: 1,
+          enabled: true,
+          position: { x: 0, y: 0 },
+        },
+      ],
+      storages: [
+        { id: "in-tank", kind: "fluid", resourceId: "ethylene", position: { x: -160, y: 0 } },
+        { id: "out-tank", kind: "fluid", resourceId: "polyethylene", position: { x: 160, y: 0 } },
+      ],
+      edges: [
+        {
+          id: "feed",
+          source: "in-tank",
+          target: "reactor",
+          resourceKind: "fluid",
+          resourceId: "ethylene",
+        },
+        {
+          id: "ship",
+          source: "reactor",
+          target: "out-tank",
+          resourceKind: "fluid",
+          resourceId: "polyethylene",
+        },
+      ],
+      fuelProfiles: [],
+    };
+
+    const stalled = calculateThroughput(project);
+    const reactor = stalled.nodes.reactor;
+    expect(reactor.powerStalled).toBe(true);
+    // Nameplate shape survives - one op per second, 100 L in, 150 L out.
+    expect(reactor.inputs["fluid:ethylene"].amountPerSecond).toBeCloseTo(100);
+    expect(reactor.outputs["fluid:polyethylene"].amountPerSecond).toBeCloseTo(150);
+    // But nothing actually moves.
+    expect(reactor.utilization).toBeCloseTo(0);
+    expect(stalled.edges.ship.transferredPerSecond).toBeCloseTo(0);
+    expect(reactor.warnings.some((warning) => warning.includes("Underpowered"))).toBe(true);
+
+    // The same build with a second hatch runs.
+    const powered = calculateThroughput({
+      ...project,
+      nodes: [{ ...project.nodes[0], energyHatches: 2 }],
+    });
+    expect(powered.nodes.reactor.powerStalled).toBe(false);
+    expect(powered.nodes.reactor.utilization).toBeGreaterThan(0.99);
+    expect(powered.edges.ship.transferredPerSecond).toBeCloseTo(150);
   });
 
   it("ignores hatch counts on a singleblock and floors its tier at the minimum", () => {
