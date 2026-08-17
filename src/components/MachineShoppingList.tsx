@@ -6,7 +6,7 @@ import { useMachineHandlerIcons, type MachineHandlerIcon } from "./flow/machine-
 import { ResourceIcon } from "./nei/ResourceIcon";
 import { getSelectedMachineHandler } from "@/lib/model/recipe-rules";
 import { isCustomRateRecipe } from "@/lib/model/custom-rate";
-import { formatNumberWithThousands } from "@/lib/model/resources";
+import { formatCompact } from "@/lib/model/resources";
 import { getVoltageTierIndex } from "@/lib/model/tiers";
 import type { MachineTier } from "@/lib/model/types";
 import {
@@ -113,8 +113,9 @@ export function MachineShoppingList() {
           {totalMachines}
         </span>
         {totalEuT > 0 ? (
-          <span className="ml-auto text-[13px] font-bold tabular-nums text-[var(--mc-ink-muted)]">
-            {formatNumberWithThousands(Math.round(totalEuT))} EU/t
+          <span className="ml-auto text-[13px] font-bold tabular-nums">
+            {formatCompact(totalEuT)}
+            <span className="ml-0.5 text-[10px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
           </span>
         ) : null}
       </div>
@@ -204,17 +205,26 @@ function ShoppingRowLine({ row, onFocus }: { row: ShoppingRow; onFocus: () => vo
       ) : null}
       <span
         className={[
-          "w-[76px] shrink-0 whitespace-nowrap text-right text-[13px] tabular-nums",
-          stalled ? "font-bold text-red-400" : "text-[var(--mc-ink-muted)]",
+          "shrink-0 whitespace-nowrap text-right text-[13px] tabular-nums",
+          stalled ? "font-bold text-red-400" : "",
         ].join(" ")}
       >
-        {stalled
-          ? row.state === "under-powered"
-            ? "LOW!"
-            : "TIER!"
-          : row.euT !== undefined
-            ? `${formatNumberWithThousands(Math.round(row.euT))} EU/t`
-            : ""}
+        {stalled ? (
+          row.state === "under-powered" ? (
+            "LOW!"
+          ) : (
+            "TIER!"
+          )
+        ) : row.euT !== undefined ? (
+          <>
+            {formatCompact(row.euT)}
+            {/* Same suffix treatment as the card's power cell: small, grey,
+                hugging the number. */}
+            <span className="ml-0.5 text-[10px] text-[var(--mc-ink-muted)]">EU/t</span>
+          </>
+        ) : (
+          ""
+        )}
       </span>
     </button>
   );

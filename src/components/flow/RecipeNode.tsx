@@ -3553,12 +3553,13 @@ function PowerStat({
 }) {
   const stalled = report.state !== "ok";
   // Always EU/t, whatever the board's rate unit: power is a per-tick fact in
-  // GT and reads as noise in any other clock.
+  // GT and reads as noise in any other clock. The unit itself is rendered as
+  // a small suffix below, not part of this string.
   const value = stalled
     ? report.state === "under-powered"
       ? "LOW!"
       : "TIER!"
-    : `${formatCompact(report.drawEuT * machineCount * nodeParallel)} EU/t`;
+    : formatCompact(report.drawEuT * machineCount * nodeParallel);
 
   return (
     <MinecraftTooltip
@@ -3586,7 +3587,18 @@ function PowerStat({
         >
           Power
         </div>
-        <div className="truncate font-medium tabular-nums">{value}</div>
+        <div className="truncate font-medium tabular-nums">
+          {stalled ? (
+            value
+          ) : (
+            <>
+              {value}
+              {/* The unit rides small and grey against the number: the row
+                  is fighting for width and EVERY power figure is EU/t. */}
+              <span className="ml-0.5 text-[10px] text-[var(--mc-ink-muted)]">EU/t</span>
+            </>
+          )}
+        </div>
       </div>
     </MinecraftTooltip>
   );
