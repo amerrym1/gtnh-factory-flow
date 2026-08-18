@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.16.2",
+    date: "2026-08-18",
+    headline: "Pocket cards work again",
+    notes: [
+      "Pocket cards show their ports and rates again, with sketch mode on or off.",
+      "Saved blueprints list what they need and make again.",
+    ],
+  },
+  {
     version: "2.16.1",
     date: "2026-08-17",
     headline: "The overclock story, in plain words",
