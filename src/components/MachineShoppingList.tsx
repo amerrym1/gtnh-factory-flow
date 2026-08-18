@@ -547,10 +547,11 @@ function ListLine({
         ) : null}
       <span
         className={[
-          // Fixed width so every tier chip sits on one column, however wide a
-          // row's power figure runs. formatCompact caps the number at four
-          // characters, so the worst case fits with its energy mark.
-          "w-[70px] shrink-0 whitespace-nowrap text-right text-[13px] tabular-nums",
+          // A FLOOR, not a fixed width: 70px keeps the tier chips on one
+          // column for ordinary figures, and a wider one ("999.9k" plus its
+          // mark) grows the cell while the name column yields. Fixed, the
+          // overflow had nowhere honest to go and figures left the row.
+          "min-w-[70px] shrink-0 whitespace-nowrap text-right text-[13px] tabular-nums",
           stalled ? "font-bold text-red-400" : "",
         ].join(" ")}
       >
