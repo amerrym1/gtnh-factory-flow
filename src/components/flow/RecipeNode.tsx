@@ -23,8 +23,10 @@ import { getOverclockedRecipeStats } from "@/lib/solver/overclock";
 import {
   describePowerStall,
   getNodePowerReport,
+  getNodeSteamReport,
   hasPowerReport,
   type NodePowerReport,
+  type NodeSteamReport,
 } from "@/lib/solver/power-report";
 import { isMultiblockRecipe } from "@/lib/solver/power";
 import { prefersCuratedMachineMath } from "@/lib/solver/runtime-calculation";
@@ -270,6 +272,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       machineDrawsEu && tierControl && hasPowerReport(nodeRecipe)
         ? getNodePowerReport(nodeRecipe, projectNode)
         : undefined;
+    // Steam machines get a steam cell where electric ones get the power cell:
+    // the litres per second a boiler bank has to cover.
+    const steamReport = !machineDrawsEu
+      ? getNodeSteamReport(nodeRecipe, projectNode)
+      : undefined;
     // The hatch chip rides only on multiblocks whose maths our own engine
     // runs; runtime-ladder machines would show a knob that changes nothing.
     const showHatchControl = Boolean(
@@ -375,6 +382,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       overclockedRecipe,
       tierColor: tierControl ? GT_TIER_COLORS[tierControl.current] : undefined,
       powerReport,
+      steamReport,
       showHatchControl,
     };
   }, [dataset, previewedNode, recipe]);
@@ -404,6 +412,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     overclockedRecipe,
     tierColor,
     powerReport,
+    steamReport,
     showHatchControl,
   } = derived;
   // The full footer — usage, power, parallel, machines, circuit — does not
@@ -412,7 +421,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // own grid when the card has one, sharing a row with the coil and solenoid
   // knobs, or onto a slim right-aligned row of its own when it does not.
   const parallelChipLifts =
-    !isCustomRateNode && powerReport !== undefined && machineParallelMultiplier > 1;
+    !isCustomRateNode &&
+    (powerReport !== undefined || steamReport !== undefined) &&
+    machineParallelMultiplier > 1;
   // Verdict + rail ports read the board lazily (no extra subscription): the
   // node re-renders on every solver tick, which is exactly when any of these
   // numbers can change.
@@ -816,14 +827,16 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               small
             />
           }
-          accent={powerReport ? glanceAccent : undefined}
-          className={powerReport ? undefined : "text-[var(--mc-ink-muted)]"}
+          accent={powerReport || steamReport ? glanceAccent : undefined}
+          className={powerReport || steamReport ? undefined : "text-[var(--mc-ink-muted)]"}
           // Sized by how many glyphs the settled figure needs, so a draw in
           // the millions shrinks to fit rather than grazing the card frame.
           valueSize={
             powerReport
               ? powerGlanceValueSize(formatCompact(powerDrawEuT(powerReport, projectNode)))
-              : undefined
+              : steamReport
+                ? powerGlanceValueSize(formatCompact(steamDrawLitresPerSecond(steamReport, projectNode)))
+                : undefined
           }
           text={
             powerReport ? (
@@ -840,6 +853,20 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 />
                 <span className="ml-1.5 text-[18px] font-semibold opacity-70">EU/t</span>
               </>
+            ) : steamReport ? (
+              // A steam machine's draw is litres, not EU: same cell, its own
+              // unit, so the power view still answers on a steam line.
+              <>
+                <MotionNumberText
+                  values={[steamDrawLitresPerSecond(steamReport, projectNode)]}
+                  render={(shown) => {
+                    const target = steamDrawLitresPerSecond(steamReport, projectNode);
+                    const value = shown[0] ?? target;
+                    return value === target ? formatCompact(target) : formatCompactStable(value);
+                  }}
+                />
+                <span className="ml-1.5 text-[18px] font-semibold opacity-70">L/s</span>
+              </>
             ) : (
               "—"
             )
@@ -849,7 +876,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               ? powerReport.isMultiblock
                 ? `${powerReport.hatches}× ${powerReport.tier}`
                 : powerReport.tier
-              : undefined
+              : steamReport
+                ? steamReport.highPressure
+                  ? "HP steam"
+                  : "Steam"
+                : undefined
           }
         />
       ) : (
@@ -1224,6 +1255,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                           : [
                               "auto",
                               ...(powerReport ? ["auto"] : []),
+                              ...(steamReport ? ["auto"] : []),
                               ...(machineParallelMultiplier > 1 && !parallelChipLifts
                                 ? ["auto"]
                                 : []),
@@ -1245,6 +1277,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                           {powerReport ? (
                             <PowerStat
                               report={powerReport}
+                              machineCount={projectNode.machineCount}
+                              nodeParallel={projectNode.parallel}
+                            />
+                          ) : null}
+                          {steamReport ? (
+                            <SteamStat
+                              report={steamReport}
                               machineCount={projectNode.machineCount}
                               nodeParallel={projectNode.parallel}
                             />
@@ -1628,6 +1667,14 @@ function glanceToneSurface(tone: VerdictWord["tone"]): NodeSurfaceColor {
  * arithmetic as the footer's POWER cell and the shopping list row. */
 function powerDrawEuT(report: NodePowerReport, node: FactoryNode): number {
   return report.drawEuT * node.machineCount * node.parallel;
+}
+
+/** A steam card's whole burn in L/s, the unit boilers are sized against. */
+function steamDrawLitresPerSecond(
+  report: NodeSteamReport,
+  node: Pick<FactoryNode, "machineCount" | "parallel">,
+): number {
+  return report.drawSteamPerTick * 20 * node.machineCount * node.parallel;
 }
 
 /**
@@ -3817,6 +3864,71 @@ function PowerStat({
               <span className="ml-0.5 text-[8px] text-[var(--mc-ink-muted)]">EU/t</span>
             </>
           )}
+        </div>
+      </div>
+    </MinecraftTooltip>
+  );
+}
+
+/**
+ * The steam machines' power cell: litres per second, the figure a boiler bank
+ * is sized against. Per second because that is how the game's own WAILA quotes
+ * it. The hover carries the arithmetic; nothing here can stall, because a
+ * steam machine either has steam or sits still and the planner assumes supply.
+ */
+function SteamStat({
+  report,
+  machineCount,
+  nodeParallel,
+}: {
+  report: NodeSteamReport;
+  machineCount: number;
+  nodeParallel: number;
+}) {
+  const drawLitresPerSecond = steamDrawLitresPerSecond(report, {
+    machineCount,
+    parallel: nodeParallel,
+  });
+  const perMachine = report.drawSteamPerTick * 20;
+
+  return (
+    <MinecraftTooltip
+      content={
+        <div className="w-60 space-y-1">
+          <div className="text-[13px] font-semibold text-white">Burns steam, not EU</div>
+          <div className="text-[11px] leading-4 text-slate-300">
+            {report.isMultiblock ? (
+              <>
+                One machine burns {formatCompact(perMachine)} L/s at full speed:{" "}
+                {formatCompact(report.singleDrawSteamPerTick)} L/t per recipe across{" "}
+                {report.parallels} parallels.
+              </>
+            ) : (
+              <>One machine burns {formatCompact(perMachine)} L/s while running.</>
+            )}
+          </div>
+          <div className="text-[11px] leading-4 text-slate-300">
+            {report.highPressure
+              ? "High pressure builds run twice as fast and burn twice the steam."
+              : "A high pressure build runs twice as fast and burns twice the steam."}
+          </div>
+        </div>
+      }
+    >
+      <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+        <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">
+          Steam
+        </div>
+        <div className="truncate font-medium tabular-nums">
+          <MotionNumberText
+            values={[drawLitresPerSecond]}
+            render={(shown) =>
+              shown[0] === drawLitresPerSecond
+                ? formatCompact(drawLitresPerSecond)
+                : formatCompactStable(shown[0] ?? drawLitresPerSecond)
+            }
+          />
+          <span className="ml-0.5 text-[8px] text-[var(--mc-ink-muted)]">L/s</span>
         </div>
       </div>
     </MinecraftTooltip>

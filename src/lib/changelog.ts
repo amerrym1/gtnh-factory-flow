@@ -73,6 +73,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.17.0",
+    date: "2026-08-18",
+    headline: "Steam machines run at steam speed",
+    notes: [
+      "Steam machines now show their real speed: bronze builds run slower than LV, high pressure builds twice as fast as bronze.",
+      "Every steam card shows the litres of steam it burns per second.",
+      "The build list adds up your steam so you can size the boilers.",
+      "Machines like the Volcanus no longer look faster and cheaper than they run in game.",
+    ],
+    warning:
+      "Steam plans read slower now. The old numbers showed every steam machine at twice its real speed.",
+  },
+  {
     version: "2.16.3",
     date: "2026-08-18",
     headline: "Machines only run on what actually arrives",

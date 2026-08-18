@@ -14,6 +14,7 @@ import { getVoltageTierIndex } from "@/lib/model/tiers";
 import type { MachineTier } from "@/lib/model/types";
 import {
   getNodePowerReport,
+  getNodeSteamReport,
   hasPowerReport,
   type NodePowerState,
 } from "@/lib/solver/power-report";
@@ -35,6 +36,9 @@ interface BuildLine {
   tier?: VoltageTier;
   tierIndex: number;
   euT?: number;
+  steamLs?: number;
+  /** Set on steam machines: bronze and high pressure are different builds. */
+  pressure?: "bronze" | "high-pressure";
   state: NodePowerState;
   nodeIds: string[];
 }
@@ -44,6 +48,7 @@ interface MachineGroup {
   icon?: MachineHandlerIcon;
   count: number;
   euT?: number;
+  steamLs?: number;
   builds: BuildLine[];
   nodeIds: string[];
   minTierIndex: number;
@@ -86,9 +91,14 @@ export function MachineShoppingList() {
         continue;
       }
       const handler = getSelectedMachineHandler(recipe, node);
-      const report = hasPowerReport(recipe) ? getNodePowerReport(recipe, node) : undefined;
+      // A steam machine's row bills litres, never EU: its power report would
+      // only carry a phantom tier chip and a zero draw.
+      const steam = getNodeSteamReport(recipe, node);
+      const report =
+        !steam && hasPowerReport(recipe) ? getNodePowerReport(recipe, node) : undefined;
       const count = node.machineCount * Math.max(1, node.parallel);
       const euT = report ? report.drawEuT * count : undefined;
+      const steamLs = steam ? steam.drawSteamPerTick * 20 * count : undefined;
 
       const group =
         byMachine.get(handler.label) ??
@@ -98,6 +108,7 @@ export function MachineShoppingList() {
             icon: undefined as MachineHandlerIcon | undefined,
             count: 0,
             euT: undefined as number | undefined,
+            steamLs: undefined as number | undefined,
             builds: [],
             nodeIds: [],
             minTierIndex: Number.POSITIVE_INFINITY,
@@ -112,13 +123,22 @@ export function MachineShoppingList() {
       if (euT !== undefined) {
         group.euT = (group.euT ?? 0) + euT;
       }
+      if (steamLs !== undefined) {
+        group.steamLs = (group.steamLs ?? 0) + steamLs;
+      }
 
       // The stacking rule: singleblocks of one tier are one build; a
-      // multiblock's hatch count splits it further.
+      // multiblock's hatch count splits it further. A steam multiblock splits
+      // on its pressure: a bronze build and a steel one are different things
+      // to construct.
       const buildKey = report
         ? `${report.tier}|${report.isMultiblock ? report.hatches : "single"}`
-        : "plain";
-      const tierIndex = report ? getVoltageTierIndex(report.tier) : Number.POSITIVE_INFINITY;
+        : steam
+          ? `steam|${steam.highPressure ? "high" : "bronze"}`
+          : "plain";
+      // Steam machines sort with ULV: they are the start of the game, not the
+      // end of the list a missing tier would banish them to.
+      const tierIndex = report ? getVoltageTierIndex(report.tier) : steam ? 0 : Number.POSITIVE_INFINITY;
       group.minTierIndex = Math.min(group.minTierIndex, tierIndex);
       const build =
         group.buildsByKey.get(buildKey) ??
@@ -127,10 +147,12 @@ export function MachineShoppingList() {
             key: `${handler.label}|${buildKey}`,
             count: 0,
             hatches: report?.hatches ?? 1,
-            isMultiblock: report?.isMultiblock ?? false,
+            isMultiblock: report?.isMultiblock ?? steam?.isMultiblock ?? false,
             tier: report?.tier,
             tierIndex,
             euT: undefined,
+            steamLs: undefined,
+            pressure: steam ? (steam.highPressure ? "high-pressure" : "bronze") : undefined,
             state: "ok",
             nodeIds: [],
           };
@@ -142,6 +164,9 @@ export function MachineShoppingList() {
       build.nodeIds.push(node.id);
       if (euT !== undefined) {
         build.euT = (build.euT ?? 0) + euT;
+      }
+      if (steamLs !== undefined) {
+        build.steamLs = (build.steamLs ?? 0) + steamLs;
       }
       if (report && report.state !== "ok" && build.state === "ok") {
         build.state = report.state;
@@ -177,6 +202,7 @@ export function MachineShoppingList() {
 
   const totalMachines = groups.reduce((sum, group) => sum + group.count, 0);
   const totalEuT = groups.reduce((sum, group) => sum + (group.euT ?? 0), 0);
+  const totalSteamLs = groups.reduce((sum, group) => sum + (group.steamLs ?? 0), 0);
   if (totalMachines === 0) {
     return null;
   }
@@ -188,17 +214,38 @@ export function MachineShoppingList() {
         <span className="rounded bg-[var(--mc-56)] px-1.5 py-0.5 text-xs font-bold tabular-nums">
           {totalMachines}
         </span>
-        {totalEuT > 0 ? (
-          <span className="ml-auto text-[13px] font-bold tabular-nums">
-            <MotionNumberText
-              values={[totalEuT]}
-              render={(shown) =>
-                shown[0] === totalEuT
-                  ? formatCompact(totalEuT)
-                  : formatCompactStable(shown[0] ?? totalEuT)
-              }
-            />
-            <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
+        {totalEuT > 0 || totalSteamLs > 0 ? (
+          <span className="ml-auto flex items-baseline gap-2 text-[13px] font-bold tabular-nums">
+            {totalSteamLs > 0 ? (
+              <span>
+                <MotionNumberText
+                  values={[totalSteamLs]}
+                  render={(shown) =>
+                    shown[0] === totalSteamLs
+                      ? formatCompact(totalSteamLs)
+                      : formatCompactStable(shown[0] ?? totalSteamLs)
+                  }
+                />
+                <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">
+                  L/s
+                </span>
+              </span>
+            ) : null}
+            {totalEuT > 0 ? (
+              <span>
+                <MotionNumberText
+                  values={[totalEuT]}
+                  render={(shown) =>
+                    shown[0] === totalEuT
+                      ? formatCompact(totalEuT)
+                      : formatCompactStable(shown[0] ?? totalEuT)
+                  }
+                />
+                <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">
+                  EU/t
+                </span>
+              </span>
+            ) : null}
           </span>
         ) : null}
       </div>
@@ -217,6 +264,7 @@ export function MachineShoppingList() {
                 label={group.label}
                 chip={uniform ? build : undefined}
                 euT={uniform ? build?.euT : undefined}
+                steamLs={uniform ? build?.steamLs : undefined}
                 state={uniform ? (build?.state ?? "ok") : "ok"}
                 wash={uniform ? build?.tier : undefined}
                 explain={
@@ -237,8 +285,18 @@ export function MachineShoppingList() {
                       indent
                       isLast={index === group.builds.length - 1}
                       count={buildLine.count}
+                      // A steam build has no tier chip; the pressure is the
+                      // build, so the sub-line says it in words.
+                      label={
+                        buildLine.pressure === "high-pressure"
+                          ? "High pressure"
+                          : buildLine.pressure === "bronze"
+                            ? "Bronze"
+                            : undefined
+                      }
                       chip={buildLine}
                       euT={buildLine.euT}
+                      steamLs={buildLine.steamLs}
                       state={buildLine.state}
                       wash={buildLine.tier}
                       explain={explainBuild(group.label, buildLine)}
@@ -264,12 +322,20 @@ function clickHint(cards: number): string[] {
  */
 function explainBuild(
   label: string,
-  build: Pick<BuildLine, "count" | "tier" | "hatches" | "isMultiblock" | "state"> & {
+  build: Pick<BuildLine, "count" | "tier" | "hatches" | "isMultiblock" | "state" | "pressure"> & {
     nodeIds: string[];
   },
 ): string[] {
   const lines: string[] = [];
-  if (!build.tier) {
+  if (build.pressure) {
+    const kind = build.pressure === "high-pressure" ? "high pressure" : "bronze";
+    lines.push(
+      build.count === 1
+        ? `${label}: 1 ${kind} build`
+        : `${label}: ${build.count} ${kind} builds`,
+    );
+    lines.push("Runs on steam. The figure is what it burns at full speed.");
+  } else if (!build.tier) {
     lines.push(`${label}: ${build.count} ${build.count === 1 ? "machine" : "machines"}`);
   } else if (build.isMultiblock) {
     const hatches = `${build.hatches} ${build.tier} energy ${build.hatches === 1 ? "hatch" : "hatches"}`;
@@ -302,6 +368,7 @@ function ListLine({
   label,
   chip,
   euT,
+  steamLs,
   state,
   wash,
   explain,
@@ -318,6 +385,8 @@ function ListLine({
   /** The fused hatch-and-tier chip, when this line is one build. */
   chip?: Pick<BuildLine, "tier" | "hatches" | "isMultiblock">;
   euT?: number;
+  /** A steam machine's figure: what it burns, in L/s, instead of EU/t. */
+  steamLs?: number;
   state: NodePowerState;
   /** Tier whose colour faintly washes the whole line. */
   wash?: VoltageTier;
@@ -444,6 +513,18 @@ function ListLine({
             {/* Same suffix treatment as the card's power cell: small, grey,
                 hugging the number. */}
             <span className="ml-0.5 text-[8px] text-[var(--mc-ink-muted)]">EU/t</span>
+          </>
+        ) : steamLs !== undefined ? (
+          <>
+            <MotionNumberText
+              values={[steamLs]}
+              render={(shown) =>
+                shown[0] === steamLs
+                  ? formatCompact(steamLs)
+                  : formatCompactStable(shown[0] ?? steamLs)
+              }
+            />
+            <span className="ml-0.5 text-[8px] text-[var(--mc-ink-muted)]">L/s</span>
           </>
         ) : (
           ""
