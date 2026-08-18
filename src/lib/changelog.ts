@@ -73,6 +73,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.16.1",
+    date: "2026-08-17",
+    headline: "The overclock story, in plain words",
+    notes: [
+      "The power tooltip is wider, so its lines stop wrapping oddly.",
+      "It says whether a machine overclocks the regular way or the perfect way, and what that trades.",
+      "It ends plainly: what the machine runs at, and what the next overclock would take.",
+    ],
+  },
+  {
     version: "2.16.0",
     date: "2026-08-17",
     headline: "Power explains itself",

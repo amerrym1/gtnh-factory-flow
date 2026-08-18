@@ -4141,38 +4141,32 @@ function PowerStoryContent({ report }: { report: NodePowerReport }) {
         ) : null}
       </StoryCard>
 
-      {/* The outcome, ending on the next overclock's price. */}
+      {/* The outcome, plainly: what it all lands at, then the next rung's
+          price. No tier chip opening the card — the conclusion is a number,
+          not a tier. */}
       <StoryCard>
+        <div>
+          So it runs at{" "}
+          <span className="whitespace-nowrap">
+            <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
+          </span>
+          {!ladderHonest
+            ? ` (${report.overclockSteps} overclock${report.overclockSteps === 1 ? "" : "s"})`
+            : ""}
+          .
+        </div>
         {ladderHonest ? (
-          <>
-            {report.overclockSteps > 0 ? (
-              <div>
-                <StoryTierChip tier={report.tier} /> runs at{" "}
-                <span className="whitespace-nowrap">
-                  <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
-                </span>
-              </div>
-            ) : null}
-            <div className="text-[11px] text-slate-400">
-              {nextStepEuT > report.poolEuT ? (
-                <>
-                  next overclock (×{nextSpeedLabel} speed):{" "}
-                  <span className="whitespace-nowrap">{formatCompact(nextStepEuT)} EU/t</span>
-                </>
-              ) : (
-                <>more power won&apos;t buy another overclock here</>
-              )}
-            </div>
-          </>
-        ) : (
-          <div>
-            {report.overclockSteps} overclock{report.overclockSteps === 1 ? "" : "s"} ·{" "}
-            <StoryTierChip tier={report.tier} /> runs at{" "}
-            <span className="whitespace-nowrap">
-              <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
-            </span>
+          <div className="text-[11px] text-slate-400">
+            {nextStepEuT > report.poolEuT ? (
+              <>
+                The next overclock (×{nextSpeedLabel} speed) would take{" "}
+                <span className="whitespace-nowrap">{formatCompact(nextStepEuT)} EU/t</span>.
+              </>
+            ) : (
+              <>More power won&apos;t buy another overclock here.</>
+            )}
           </div>
-        )}
+        ) : null}
       </StoryCard>
 
       {stall ? <div className="font-bold text-red-400">{stall}</div> : null}
