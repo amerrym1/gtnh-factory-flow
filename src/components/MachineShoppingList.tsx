@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef } from "react";
+import { Cloud, Zap } from "lucide-react";
 import { MotionNumberText } from "./flow/board-motion";
 import { GT_TIER_COLORS } from "./flow/tier-colors";
 import { useMachineHandlerIcons, type MachineHandlerIcon } from "./flow/machine-icons";
@@ -218,6 +219,7 @@ export function MachineShoppingList() {
           <span className="ml-auto flex items-baseline gap-2 text-[13px] font-bold tabular-nums">
             {totalSteamLs > 0 ? (
               <span>
+                <SteamMark />
                 <MotionNumberText
                   values={[totalSteamLs]}
                   render={(shown) =>
@@ -233,6 +235,7 @@ export function MachineShoppingList() {
             ) : null}
             {totalEuT > 0 ? (
               <span>
+                <EuMark />
                 <MotionNumberText
                   values={[totalEuT]}
                   render={(shown) =>
@@ -313,6 +316,27 @@ export function MachineShoppingList() {
 
 function clickHint(cards: number): string[] {
   return [cards > 1 ? "Click to jump to each card in turn." : "Click to jump to its card."];
+}
+
+/**
+ * EU/t and L/s sit a few pixels apart in this list and read alike at a
+ * glance, so each figure wears its energy's mark: a bolt for EU, steam for
+ * litres. The units themselves stay as they are - power is a per-tick fact,
+ * steam a per-second one.
+ */
+function EuMark() {
+  return <Zap aria-hidden className="mr-0.5 inline h-2.5 w-2.5 -translate-y-px text-amber-400" />;
+}
+
+function SteamMark() {
+  // A little grey cloud, filled: steam is a gas, and at ten pixels a solid
+  // silhouette reads where an outline or a droplet does not.
+  return (
+    <Cloud
+      aria-hidden
+      className="mr-0.5 inline h-2.5 w-2.5 -translate-y-px fill-current text-slate-300"
+    />
+  );
 }
 
 /**
@@ -489,8 +513,8 @@ function ListLine({
         className={[
           // Fixed width so every tier chip sits on one column, however wide a
           // row's power figure runs. formatCompact caps the number at four
-          // characters, so the worst case fits.
-          "w-[58px] shrink-0 whitespace-nowrap text-right text-[13px] tabular-nums",
+          // characters, so the worst case fits with its energy mark.
+          "w-[70px] shrink-0 whitespace-nowrap text-right text-[13px] tabular-nums",
           stalled ? "font-bold text-red-400" : "",
         ].join(" ")}
       >
@@ -502,6 +526,7 @@ function ListLine({
           )
         ) : euT !== undefined ? (
           <>
+            <EuMark />
             <MotionNumberText
               values={[euT]}
               render={(shown) =>
@@ -516,6 +541,7 @@ function ListLine({
           </>
         ) : steamLs !== undefined ? (
           <>
+            <SteamMark />
             <MotionNumberText
               values={[steamLs]}
               render={(shown) =>
