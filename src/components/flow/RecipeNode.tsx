@@ -4018,12 +4018,17 @@ function PowerStoryContent({ report }: { report: NodePowerReport }) {
   const ladderHonest =
     report.overclockSteps === 0 ||
     Math.abs(expectedEuT - perRunEuT) <= Math.max(2, perRunEuT * 0.02);
-  const perfectLabel =
-    report.perfectSpeedFactor === 4 && report.perfectEuFactor === 4
-      ? "perfect overclock"
-      : "machine overclock";
+  // "perfect" is the standard ×4/×4 deal; a machine with its own factors
+  // (arc electrodes and kin) is called by the honest generic word instead.
+  const perfectWord =
+    report.perfectSpeedFactor === 4 && report.perfectEuFactor === 4 ? "perfect" : "machine";
 
   const batchEuT = report.singleDrawEuT * report.parallels;
+  // How many times over the budget covers one batch, said the way a player
+  // would: whole numbers once it's big, one decimal while it's close.
+  const powerRatio = report.poolEuT / Math.max(1, batchEuT);
+  const ratioText =
+    powerRatio >= 9.95 ? String(Math.round(powerRatio)) : trimFactor(Math.round(powerRatio * 10) / 10);
   // What the untaken step would bill, the way the game bills it: whole
   // powers of four over the batch draw, floored at 32 ("treat ULV as LV").
   const nextStepEuT = Math.max(batchEuT, 32) * 4 ** (report.overclockSteps + 1);
@@ -4093,15 +4098,36 @@ function PowerStoryContent({ report }: { report: NodePowerReport }) {
             poolEuT={report.poolEuT}
           />
         ) : null}
-        {/* Which steps are the special kind, whenever cyan is on the bar. */}
-        {ladderHonest && report.perfectOverclockSteps > 0 ? (
-          <div className="text-[11px] text-cyan-300">
-            cyan: {perfectLabel}
-            {report.perfectOverclockSteps === 1 ? "" : "s"},{" "}
-            <span className="whitespace-nowrap">
-              ×{trimFactor(report.perfectSpeedFactor)} speed for ×
-              {trimFactor(report.perfectEuFactor)} power
-            </span>
+        {/* The deal, in one sentence: the ratio, the ×4 rule, and what it
+            bought — each overclock kind in the colour of its slices. */}
+        {ladderHonest && Number.isFinite(report.poolEuT) && report.poolEuT > 0 ? (
+          <div className="text-[11px] leading-4 text-slate-400">
+            You have <span className="text-slate-200">{ratioText}×</span> the power this recipe
+            needs.{" "}
+            {report.overclockSteps > 0 ? (
+              <>
+                Each whole ×4 of that buys an overclock:{" "}
+                {report.perfectOverclockSteps > 0 ? (
+                  <span className="text-cyan-300">
+                    {report.perfectOverclockSteps}× {perfectWord} (×
+                    {trimFactor(report.perfectSpeedFactor)} speed
+                    {report.perfectEuFactor !== 4
+                      ? ` for ×${trimFactor(report.perfectEuFactor)} power`
+                      : ""}
+                    {report.perfectOverclockSteps === 1 ? "" : " each"})
+                  </span>
+                ) : null}
+                {report.perfectOverclockSteps > 0 && normalSteps > 0 ? ", then " : null}
+                {normalSteps > 0 ? (
+                  <span className="text-amber-300">
+                    {normalSteps}× regular (×2 speed{normalSteps === 1 ? "" : " each"})
+                  </span>
+                ) : null}
+                .
+              </>
+            ) : (
+              <>An overclock takes a whole ×4, so none fire yet.</>
+            )}
           </div>
         ) : null}
       </StoryCard>
