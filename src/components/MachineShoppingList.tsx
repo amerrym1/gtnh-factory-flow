@@ -247,48 +247,57 @@ export function MachineShoppingList() {
     return null;
   }
 
+  const steamFigure = hasSteam ? (
+    <span className="whitespace-nowrap">
+      <SteamMark />
+      <MotionNumberText
+        values={[totalSteamLs]}
+        render={(shown) =>
+          shown[0] === totalSteamLs
+            ? formatCompact(totalSteamLs)
+            : formatCompactStable(shown[0] ?? totalSteamLs)
+        }
+      />
+      <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">L/s</span>
+    </span>
+  ) : null;
+  const euFigure = hasEu ? (
+    <span className="whitespace-nowrap">
+      <EuMark />
+      <MotionNumberText
+        values={[totalEuT]}
+        render={(shown) =>
+          shown[0] === totalEuT
+            ? formatCompact(totalEuT)
+            : formatCompactStable(shown[0] ?? totalEuT)
+        }
+      />
+      <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
+    </span>
+  ) : null;
+
   return (
     <div className="flex min-h-0 shrink-0 basis-[40%] flex-col border-t-2 border-[var(--mc-47)]">
-      <div className="flex w-full items-center gap-2 border-b border-[var(--mc-47)] bg-[var(--mc-71)] px-2 py-1">
-        <span className="text-sm font-bold uppercase tracking-wider">Power</span>
-        {hasEu || hasSteam ? (
-          <>
-            <DrawModePill average={average} />
-            <span className="ml-auto flex shrink-0 items-baseline gap-2 whitespace-nowrap text-[13px] font-bold tabular-nums">
-              {hasSteam ? (
-                <span>
-                  <SteamMark />
-                  <MotionNumberText
-                    values={[totalSteamLs]}
-                    render={(shown) =>
-                      shown[0] === totalSteamLs
-                        ? formatCompact(totalSteamLs)
-                        : formatCompactStable(shown[0] ?? totalSteamLs)
-                    }
-                  />
-                  <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">
-                    L/s
-                  </span>
-                </span>
-              ) : null}
-              {hasEu ? (
-                <span>
-                  <EuMark />
-                  <MotionNumberText
-                    values={[totalEuT]}
-                    render={(shown) =>
-                      shown[0] === totalEuT
-                        ? formatCompact(totalEuT)
-                        : formatCompactStable(shown[0] ?? totalEuT)
-                    }
-                  />
-                  <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">
-                    EU/t
-                  </span>
-                </span>
-              ) : null}
+      <div className="border-b border-[var(--mc-47)] bg-[var(--mc-71)] px-2 py-1">
+        <div className="flex w-full items-center gap-2">
+          <span className="text-sm font-bold uppercase tracking-wider">Power</span>
+          {hasEu || hasSteam ? <DrawModePill average={average} /> : null}
+          {/* ONE energy rides the title line. Two do not fit the column
+              beside the title and the pill, so the pair moves to a line of
+              its own below — decided by what the board HAS, never by
+              measured width, so a figure animating near the edge cannot
+              bounce the header between one line and two. */}
+          {hasEu !== hasSteam ? (
+            <span className="ml-auto shrink-0 text-[13px] font-bold tabular-nums">
+              {steamFigure ?? euFigure}
             </span>
-          </>
+          ) : null}
+        </div>
+        {hasEu && hasSteam ? (
+          <span className="flex items-baseline justify-end gap-2 text-[13px] font-bold tabular-nums">
+            {steamFigure}
+            {euFigure}
+          </span>
         ) : null}
       </div>
       {/* overflow-x hidden outright: Windows overlay scrollbars float over
