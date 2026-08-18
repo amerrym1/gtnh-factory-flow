@@ -3915,7 +3915,8 @@ function StoryOverclockBar({
   const sparePx = (1 - fractions[SPEND_BAR_SLOTS - 1]) * SPEND_BAR_WIDTH_PX;
 
   return (
-    <div className="relative h-4 border border-slate-600" aria-hidden>
+    <div aria-hidden>
+      <div className="relative h-4 border border-slate-600">
       {Array.from({ length: SPEND_BAR_SLOTS }, (_, slot) => {
         const startPct = (slot === 0 ? 0 : fractions[slot - 1]) * 100;
         const widthPct = fractions[slot] * 100 - startPct;
@@ -3963,14 +3964,22 @@ function StoryOverclockBar({
             "repeating-linear-gradient(135deg, rgba(148,163,184,0.3) 0 2px, transparent 2px 6px)",
         }}
       />
-      {sparePx >= 64 ? (
-        <span
-          className="absolute inset-y-0 right-0 flex items-center justify-center whitespace-nowrap text-[10px] leading-none text-slate-400"
-          style={{ left: `${fractions[SPEND_BAR_SLOTS - 1] * 100}%` }}
-        >
-          spare {formatCompact(spareEuT)}
-        </span>
-      ) : null}
+        {sparePx >= 64 ? (
+          <span
+            className="absolute inset-y-0 right-0 flex items-center justify-center whitespace-nowrap text-[10px] leading-none text-slate-400"
+            style={{ left: `${fractions[SPEND_BAR_SLOTS - 1] * 100}%` }}
+          >
+            spare {formatCompact(spareEuT)}
+          </span>
+        ) : null}
+      </div>
+      {/* The axis, named: the whole track is exactly the budget from the
+          balance card, zero at the left. Without these two figures the
+          range read as arbitrary. */}
+      <div className="flex justify-between text-[9px] leading-3 text-slate-500">
+        <span>0</span>
+        <span>{formatCompact(poolEuT)} EU/t</span>
+      </div>
     </div>
   );
 }
