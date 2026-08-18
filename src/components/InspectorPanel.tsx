@@ -64,8 +64,6 @@ const SELECTION_DEBOUNCE_MS = 100;
 const ROW_HEIGHTS = { header: 24, item: 30, empty: 24, chart: 60 };
 const ICON_COLUMN = `${ROW_HEIGHTS.item}px`;
 const ROW_OVERSCAN = 6;
-/** The strip a FLOATING scrollbar paints over, kept free of the wide copy. */
-const SCROLLBAR_STRIP = 18;
 /** Stable identity so the row memo holds when charts are switched off. */
 const EMPTY_KEYS: ReadonlySet<string> = new Set();
 
@@ -987,7 +985,10 @@ function FlowVirtualList({
     // arriving, and it has not been painted yet.
     overlay.classList.add("resource-row-measuring");
     overlay.style.width = "max-content";
-    const natural = overlay.offsetWidth;
+    // Fractional measurement plus slack, never offsetWidth: that rounds to
+    // whole pixels, and a round-down of a fractional max-content re-trims
+    // the name to "…" — the whole point of the copy is that it never does.
+    const natural = Math.ceil(overlay.getBoundingClientRect().width) + 2;
     overlay.style.width = `${Math.round(
       Math.min(Math.max(natural, box.width), Math.max(box.right - 12, box.width)),
     )}px`;
@@ -1012,35 +1013,14 @@ function FlowVirtualList({
   }, [expandedKey, positionExpanded, sizeExpanded]);
 
   /**
-   * Where a FLOATING scrollbar lives, the copy stands down. Windows-style
-   * overlay scrollbars paint on top of the rows instead of taking a column,
-   * so a copy over that strip would hide the bar exactly while the pointer
-   * reaches for it. A classic scrollbar keeps the rows clear of itself
-   * (offsetWidth wider than clientWidth), and then the strip rule is off and
-   * the whole row expands as normal.
-   */
-  const expandAllowedAt = useCallback((clientX: number) => {
-    const scroller = scrollRef.current;
-    if (!scroller) {
-      return true;
-    }
-    const floating =
-      scroller.scrollHeight > scroller.clientHeight &&
-      scroller.offsetWidth === scroller.clientWidth;
-    if (!floating) {
-      return true;
-    }
-    return clientX < scroller.getBoundingClientRect().right - SCROLLBAR_STRIP;
-  }, []);
-
-  /**
    * Dismissal, watched from the document: the copy is pointer-transparent,
    * so it cannot see the pointer leave it. While one is up, the pointer is
    * either on a list row (rows keep or replace the copy themselves), on the
    * copy's own box (reading the overhang, or on its mark buttons), or it has
-   * moved on — board, headers, filter box — and the copy folds. Entering the
-   * floating scrollbar's strip folds it too, so the bar is never hidden
-   * under a copy while being grabbed.
+   * moved on — board, headers, filter box — and the copy folds. There is
+   * deliberately NO carve-out near the scrollbar: the ghost already lets the
+   * bar be grabbed through it, and an early fold there dropped the copy
+   * exactly while the pointer travelled toward the star and eye.
    */
   useEffect(() => {
     if (!expandedKey) {
@@ -1051,13 +1031,6 @@ function FlowVirtualList({
       const target = event.target;
       if (target instanceof Element && overlay?.contains(target)) {
         return;
-      }
-      if (!expandAllowedAt(event.clientX)) {
-        const list = scrollRef.current?.getBoundingClientRect();
-        if (list && event.clientY >= list.top && event.clientY <= list.bottom) {
-          setExpandedState(undefined);
-          return;
-        }
       }
       if (
         target instanceof Element &&
@@ -1079,7 +1052,7 @@ function FlowVirtualList({
     };
     document.addEventListener("mousemove", onMove, { capture: true, passive: true });
     return () => document.removeEventListener("mousemove", onMove, { capture: true });
-  }, [expandAllowedAt, expandedKey]);
+  }, [expandedKey]);
 
   useEffect(() => {
     const element = scrollRef.current;
@@ -1197,7 +1170,6 @@ function FlowVirtualList({
               // chart takes the section's tint too or the band breaks under
               // every favourite.
               tint={TONE_STYLES[row.section.tone].tint}
-              expandAllowed={expandAllowedAt}
               onHover={onHover}
               onExpand={setExpanded}
               onFocusBoard={onFocusBoard}
@@ -1216,7 +1188,6 @@ function FlowVirtualList({
             isHidden={hidden.has(row.balance.key)}
             isFavourite={favourites.has(row.balance.key)}
             manageMode={manageMode}
-            expandAllowed={expandAllowedAt}
             onHover={onHover}
             onExpand={setExpanded}
             onFocusBoard={onFocusBoard}
@@ -1315,7 +1286,6 @@ const FlowChartRow = memo(function FlowChartRow({
   series,
   tint = "",
   expanded = false,
-  expandAllowed,
   onHover,
   onExpand,
   onFocusBoard,
@@ -1325,8 +1295,6 @@ const FlowChartRow = memo(function FlowChartRow({
   /** The section colour its row carries, so the pair reads as one block. */
   tint?: string;
   expanded?: boolean;
-  /** Absent on the wide copy itself; see FlowVirtualList's strip rule. */
-  expandAllowed?: (clientX: number) => boolean;
   onHover: (resourceKey?: string) => void;
   onExpand: (resourceKey: string, top: number, right: number, startWidth: number) => void;
   onFocusBoard: (resourceKey: string) => void;
@@ -1338,9 +1306,6 @@ const FlowChartRow = memo(function FlowChartRow({
       className={["px-1 pb-1", tint].join(" ")}
       onMouseEnter={(event) => {
         onHover(balance.key);
-        if (expandAllowed && !expandAllowed(event.clientX)) {
-          return;
-        }
         // Widens with its row: the chart is the half of the pair that most
         // needs the extra width, since more pixels across is literally more
         // edits you can pick out. The top of the PAIR is what the overlay
@@ -1423,7 +1388,6 @@ const FlowResourceRow = memo(function FlowResourceRow({
   isFavourite,
   manageMode,
   expanded = false,
-  expandAllowed,
   onHover,
   onExpand,
   onMarkChanged,
@@ -1440,8 +1404,6 @@ const FlowResourceRow = memo(function FlowResourceRow({
   manageMode: boolean;
   /** The wide copy floating over the board: no truncation, opaque, raised. */
   expanded?: boolean;
-  /** Absent on the wide copy itself; see FlowVirtualList's strip rule. */
-  expandAllowed?: (clientX: number) => boolean;
   onHover: (resourceKey?: string) => void;
   onExpand: (resourceKey: string, top: number, right: number, startWidth: number) => void;
   /** Raised after a star or hide, so the wide copy can stand down. */
@@ -1476,9 +1438,6 @@ const FlowResourceRow = memo(function FlowResourceRow({
       ].join(" ")}
       onMouseEnter={(event) => {
         onHover(balance.key);
-        if (expandAllowed && !expandAllowed(event.clientX)) {
-          return;
-        }
         // The pointed-at row is re-drawn wider, out over the board, so a long
         // name can be read in full without the column being sized for the
         // worst case at all times. It has to be a separate fixed-position
