@@ -3986,7 +3986,8 @@ function trimFactor(value: number): string {
  * the hatch chip, the tier chip, and the footer's POWER cell all say this,
  * so wherever the hover lands the language is the same.
  *
- * It reads as three little CARDS, unlabeled, in the order the game spends
+ * One title — "Overclocking", what the whole panel is about — then three
+ * little CARDS, unlabeled, in the order the game spends
  * the supply: the balance (what the build gets you to spend), the recipe and
  * where you're at (its cost, the parallels paid first, and the spend drawn
  * as a bar to scale — StoryOverclockBar), and the outcome (what it runs at,
@@ -4023,6 +4024,10 @@ function PowerStoryContent({ report }: { report: NodePowerReport }) {
 
   return (
     <div className="w-80 space-y-1.5 text-[12px] leading-4 text-slate-200">
+      {/* The one title the panel keeps: what ALL of this is about. */}
+      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
+        Overclocking
+      </div>
       {/* The balance. The nowrap keeps a line break from stranding the
           figure's unit on its own line. */}
       <StoryCard>
