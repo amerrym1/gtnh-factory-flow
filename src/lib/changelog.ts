@@ -73,6 +73,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.16.3",
+    date: "2026-08-18",
+    headline: "Machines only run on what actually arrives",
+    notes: [
+      "A machine fed by a clogged supplier now runs at what its wire delivers, not at full speed.",
+      "A slowed machine draws less of its other ingredients too, so drawers drain at the true rate.",
+      "The card names the input that holds it back.",
+      "A card's inputs and outputs no longer disagree about its speed.",
+    ],
+    warning:
+      "Some saved plans read lower now. The old numbers counted material that never actually arrived, so the new ones match what the machines build in game.",
+  },
+  {
     version: "2.16.2",
     date: "2026-08-18",
     headline: "Pocket cards work again",
