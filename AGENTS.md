@@ -304,6 +304,21 @@ gh run watch <run-id> --exit-status
 - Edge rate labels are a VIEW mode, off by default: the tag button in the
   board toolbar shows lean rate pills on the lines. No dragging, no popover.
 
+## Player-Facing Copy
+
+- Every player-facing string states its fact in the plainest words available.
+  No quips, no jokes, no colourful verbs ("fire", "unleash", "boom"), no
+  cleverness of any kind. The user is adamant about this. It applies to
+  tooltips, dialogs, buttons, empty states, warnings, everything a player
+  reads.
+- Model sentence: "You have 3x the power this recipe needs. An overclock
+  takes x4, so no overclock." State the number, state the rule, state the
+  consequence. Stop.
+- The only figurative language allowed is a feature's own established
+  vocabulary (the power tooltip's budget may be "spent"; nothing else gets a
+  metaphor).
+- Short plain sentences or colons; never em dashes.
+
 ## Import/Export Plans
 
 - Plan import/export must preserve item/fluid identity. `fluid.*` showing in UI usually means fluid IDs were imported without resolving display resource metadata.

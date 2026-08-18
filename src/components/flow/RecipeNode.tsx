@@ -4106,7 +4106,7 @@ function PowerStoryContent({ report }: { report: NodePowerReport }) {
             needs.{" "}
             {report.overclockSteps > 0 ? (
               <>
-                Each whole ×4 of that buys an overclock:{" "}
+                Each whole ×4 buys one overclock:{" "}
                 {report.perfectOverclockSteps > 0 ? (
                   <span className="text-cyan-300">
                     {report.perfectOverclockSteps}× {perfectWord} (×
@@ -4126,7 +4126,7 @@ function PowerStoryContent({ report }: { report: NodePowerReport }) {
                 .
               </>
             ) : (
-              <>An overclock takes a whole ×4, so none fire yet.</>
+              <>An overclock takes ×4, so no overclock.</>
             )}
           </div>
         ) : null}
@@ -4151,7 +4151,7 @@ function PowerStoryContent({ report }: { report: NodePowerReport }) {
                   <span className="whitespace-nowrap">{formatCompact(nextStepEuT)} EU/t</span>
                 </>
               ) : (
-                <>more power won&apos;t buy another overclock here</>
+                <>this machine cannot take another overclock</>
               )}
             </div>
           </>
