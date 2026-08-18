@@ -9,6 +9,7 @@ import type {
   ThroughputResult,
 } from "@/lib/model/types";
 import { collectPocketMembers, listPocketPortResources } from "@/lib/model/pocket-connections";
+import { closeBoundaries } from "@/lib/solver/close-boundaries";
 import { makeResourceKey, resourceMatchesInput } from "@/lib/model/resources";
 import { makeResourceHandleId, parseResourceHandleId } from "./resource-handles";
 import type { RailPort } from "./node-verdict";
@@ -92,13 +93,21 @@ export function computePocketSummaries(
       (edge) => memberIds.has(edge.source) && memberIds.has(edge.target),
     );
 
-    const scoped = calculateThroughput({
-      ...project,
-      nodes,
-      storages,
-      annotations: [],
-      edges,
-    });
+    // Heal the cut before solving, exactly as calculateSelectionFlow does.
+    // The plan is closed at both ends, so every wire severed at the pocket
+    // boundary leaves a bare slot that stops its machine dead — left alone,
+    // the scoped solve answers zero for any pocket that touches the outside
+    // world, and the card draws no ports at all (unless the sketch toggle
+    // happened to close the boundary for it).
+    const scoped = calculateThroughput(
+      closeBoundaries({
+        ...project,
+        nodes,
+        storages,
+        annotations: [],
+        edges,
+      }),
+    );
 
     const toPort = (balance: ResourceBalance, ratePerSecond: number): PocketPortSummary => {
       const icon = icons.get(balance.key);
