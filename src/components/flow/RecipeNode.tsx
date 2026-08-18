@@ -3852,7 +3852,7 @@ function StoryCard({ children }: { children: ReactNode }) {
 /** Slots the spend bar can lerp between; comfortably past GT's tier count. */
 const SPEND_BAR_SLOTS = 17;
 /** The bar's content width in px, for judging whether a label fits. */
-const SPEND_BAR_WIDTH_PX = 300;
+const SPEND_BAR_WIDTH_PX = 364;
 
 /**
  * The budget as a bar, spent left to right, TO SCALE: the track's full width
@@ -4037,7 +4037,7 @@ function PowerStoryContent({ report }: { report: NodePowerReport }) {
   );
 
   return (
-    <div className="w-80 space-y-1.5 text-[12px] leading-4 text-slate-200">
+    <div className="w-96 space-y-1.5 text-[12px] leading-4 text-slate-200">
       {/* The one title the panel keeps: what ALL of this is about. */}
       <div className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
         Overclocking
@@ -4098,32 +4098,41 @@ function PowerStoryContent({ report }: { report: NodePowerReport }) {
             poolEuT={report.poolEuT}
           />
         ) : null}
-        {/* The deal, in one sentence: the ratio, the ×4 rule, and what it
-            bought — each overclock kind in the colour of its slices. */}
+        {/* The deal, spelled out: the ratio, the count it buys, and what
+            this machine's KIND of overclock trades — regular pays ×4 power
+            for only ×2 speed, perfect gets the full ×4 back. The kind is the
+            machine's own nature (only the heat machines ever mix the two,
+            when spare coil heat upgrades the first steps), so the sentence
+            states it as a fact about the machine, in its slices' colour. */}
         {ladderHonest && Number.isFinite(report.poolEuT) && report.poolEuT > 0 ? (
           <div className="text-[11px] leading-4 text-slate-400">
             You have <span className="text-slate-200">{ratioText}×</span> the power this recipe
             needs.{" "}
             {report.overclockSteps > 0 ? (
               <>
-                Each whole ×4 of that buys an overclock:{" "}
-                {report.perfectOverclockSteps > 0 ? (
+                Each whole ×4 of that buys an overclock, so {report.overclockSteps} fire
+                {report.overclockSteps === 1 ? "s" : ""}.{" "}
+                {report.perfectOverclockSteps > 0 && normalSteps > 0 ? (
+                  <>
+                    The first {report.perfectOverclockSteps === 1 ? "is" : `${report.perfectOverclockSteps} are`}{" "}
+                    <span className="text-cyan-300">
+                      {perfectWord}: ×{trimFactor(report.perfectEuFactor)} power buys the full ×
+                      {trimFactor(report.perfectSpeedFactor)} speed
+                    </span>
+                    ; the rest {normalSteps === 1 ? "is" : "are"}{" "}
+                    <span className="text-amber-300">regular: ×4 power buys only ×2 speed</span>.
+                  </>
+                ) : report.perfectOverclockSteps > 0 ? (
                   <span className="text-cyan-300">
-                    {report.perfectOverclockSteps}× {perfectWord} (×
-                    {trimFactor(report.perfectSpeedFactor)} speed
-                    {report.perfectEuFactor !== 4
-                      ? ` for ×${trimFactor(report.perfectEuFactor)} power`
-                      : ""}
-                    {report.perfectOverclockSteps === 1 ? "" : " each"})
+                    {perfectWord === "perfect"
+                      ? "This machine overclocks perfectly: every ×4 power buys the full ×4 speed, no energy wasted."
+                      : `This machine overclocks its own way: ×${trimFactor(report.perfectEuFactor)} power buys ×${trimFactor(report.perfectSpeedFactor)} speed.`}
                   </span>
-                ) : null}
-                {report.perfectOverclockSteps > 0 && normalSteps > 0 ? ", then " : null}
-                {normalSteps > 0 ? (
+                ) : (
                   <span className="text-amber-300">
-                    {normalSteps}× regular (×2 speed{normalSteps === 1 ? "" : " each"})
+                    This machine&apos;s overclocks are regular: ×4 power buys only ×2 speed.
                   </span>
-                ) : null}
-                .
+                )}
               </>
             ) : (
               <>An overclock takes a whole ×4, so none fire yet.</>
