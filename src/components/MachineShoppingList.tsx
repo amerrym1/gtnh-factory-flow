@@ -19,6 +19,7 @@ import {
   hasPowerReport,
   type NodePowerState,
 } from "@/lib/solver/power-report";
+import { useWorkspaceView, writeWorkspaceView } from "@/lib/workspace-view";
 import { useFactoryStore } from "@/store/factory-store";
 
 type VoltageTier = Exclude<MachineTier, "DEMO">;
@@ -38,6 +39,9 @@ interface BuildLine {
   tierIndex: number;
   euT?: number;
   steamLs?: number;
+  /** The same figures weighted by each card's solved usage, for AVG mode. */
+  avgEuT?: number;
+  avgSteamLs?: number;
   /** Set on steam machines: bronze and high pressure are different builds. */
   pressure?: "bronze" | "high-pressure";
   state: NodePowerState;
@@ -50,6 +54,8 @@ interface MachineGroup {
   count: number;
   euT?: number;
   steamLs?: number;
+  avgEuT?: number;
+  avgSteamLs?: number;
   builds: BuildLine[];
   nodeIds: string[];
   minTierIndex: number;
@@ -73,8 +79,13 @@ interface MachineGroup {
  */
 export function MachineShoppingList() {
   const project = useFactoryStore((state) => state.project);
+  const lastResult = useFactoryStore((state) => state.lastResult);
   const focusBoardNode = useFactoryStore((state) => state.focusBoardNode);
   const machineIcons = useMachineHandlerIcons();
+  // PEAK against AVG, panel arithmetic only: PEAK is every machine at full
+  // draw at once (what the cables must carry), AVG weights each card by how
+  // hard the solve says it actually runs (what the setup burns over time).
+  const average = useWorkspaceView().averageMachineDraw;
 
   const groups = useMemo<MachineGroup[]>(() => {
     const recipesById = new Map(project.recipes.map((recipe) => [recipe.id, recipe]));
@@ -98,8 +109,17 @@ export function MachineShoppingList() {
       const report =
         !steam && hasPowerReport(recipe) ? getNodePowerReport(recipe, node) : undefined;
       const count = node.machineCount * Math.max(1, node.parallel);
-      const euT = report ? report.drawEuT * count : undefined;
-      const steamLs = steam ? steam.drawSteamPerTick * 20 * count : undefined;
+      // A machine at 30% runs at full draw 30% of the time, so its
+      // time-averaged burn is the nameplate figure times its solved usage.
+      // At exactly 0% it never starts, so even PEAK bills it nothing; any
+      // usage above zero still spikes to the full draw when it runs.
+      const usage = Math.min(
+        1,
+        Math.max(0, lastResult.nodes[node.id]?.utilization ?? 1),
+      );
+      const runningCount = usage > 0 ? count : 0;
+      const euT = report ? report.drawEuT * runningCount : undefined;
+      const steamLs = steam ? steam.drawSteamPerTick * 20 * runningCount : undefined;
 
       const group =
         byMachine.get(handler.label) ??
@@ -110,6 +130,8 @@ export function MachineShoppingList() {
             count: 0,
             euT: undefined as number | undefined,
             steamLs: undefined as number | undefined,
+            avgEuT: undefined as number | undefined,
+            avgSteamLs: undefined as number | undefined,
             builds: [],
             nodeIds: [],
             minTierIndex: Number.POSITIVE_INFINITY,
@@ -123,9 +145,11 @@ export function MachineShoppingList() {
       group.nodeIds.push(node.id);
       if (euT !== undefined) {
         group.euT = (group.euT ?? 0) + euT;
+        group.avgEuT = (group.avgEuT ?? 0) + euT * usage;
       }
       if (steamLs !== undefined) {
         group.steamLs = (group.steamLs ?? 0) + steamLs;
+        group.avgSteamLs = (group.avgSteamLs ?? 0) + steamLs * usage;
       }
 
       // The stacking rule: singleblocks of one tier are one build; a
@@ -153,6 +177,8 @@ export function MachineShoppingList() {
             tierIndex,
             euT: undefined,
             steamLs: undefined,
+            avgEuT: undefined,
+            avgSteamLs: undefined,
             pressure: steam ? (steam.highPressure ? "high-pressure" : "bronze") : undefined,
             state: "ok",
             nodeIds: [],
@@ -165,9 +191,11 @@ export function MachineShoppingList() {
       build.nodeIds.push(node.id);
       if (euT !== undefined) {
         build.euT = (build.euT ?? 0) + euT;
+        build.avgEuT = (build.avgEuT ?? 0) + euT * usage;
       }
       if (steamLs !== undefined) {
         build.steamLs = (build.steamLs ?? 0) + steamLs;
+        build.avgSteamLs = (build.avgSteamLs ?? 0) + steamLs * usage;
       }
       if (report && report.state !== "ok" && build.state === "ok") {
         build.state = report.state;
@@ -175,6 +203,8 @@ export function MachineShoppingList() {
     }
 
     const list = [...byMachine.values()];
+    // Ordered by PEAK in both modes, so flipping the switch changes numbers
+    // without reshuffling the list under the pointer.
     for (const group of list) {
       group.builds.sort(
         (a, b) => a.tierIndex - b.tierIndex || (b.euT ?? 0) - (a.euT ?? 0),
@@ -187,7 +217,7 @@ export function MachineShoppingList() {
         a.label.localeCompare(b.label),
     );
     return list;
-  }, [machineIcons, project]);
+  }, [lastResult, machineIcons, project]);
 
   // Click-to-cycle state: which card of a line the last click landed on.
   // A ref, not state — advancing it must not re-render the list.
@@ -202,8 +232,18 @@ export function MachineShoppingList() {
   };
 
   const totalMachines = groups.reduce((sum, group) => sum + group.count, 0);
-  const totalEuT = groups.reduce((sum, group) => sum + (group.euT ?? 0), 0);
-  const totalSteamLs = groups.reduce((sum, group) => sum + (group.steamLs ?? 0), 0);
+  // Presence gates what shows, never the value: a figure whose machines
+  // exist stays up and reads 0 rather than vanishing when everything idles.
+  const hasEu = groups.some((group) => group.euT !== undefined);
+  const hasSteam = groups.some((group) => group.steamLs !== undefined);
+  const totalEuT = groups.reduce(
+    (sum, group) => sum + ((average ? group.avgEuT : group.euT) ?? 0),
+    0,
+  );
+  const totalSteamLs = groups.reduce(
+    (sum, group) => sum + ((average ? group.avgSteamLs : group.steamLs) ?? 0),
+    0,
+  );
   if (totalMachines === 0) {
     return null;
   }
@@ -211,45 +251,45 @@ export function MachineShoppingList() {
   return (
     <div className="flex min-h-0 shrink-0 basis-[40%] flex-col border-t-2 border-[var(--mc-47)]">
       <div className="flex w-full items-center gap-2 border-b border-[var(--mc-47)] bg-[var(--mc-71)] px-2 py-1">
-        <span className="text-sm font-bold uppercase tracking-wider">Machines</span>
-        <span className="rounded bg-[var(--mc-56)] px-1.5 py-0.5 text-xs font-bold tabular-nums">
-          {totalMachines}
-        </span>
-        {totalEuT > 0 || totalSteamLs > 0 ? (
-          <span className="ml-auto flex items-baseline gap-2 text-[13px] font-bold tabular-nums">
-            {totalSteamLs > 0 ? (
-              <span>
-                <SteamMark />
-                <MotionNumberText
-                  values={[totalSteamLs]}
-                  render={(shown) =>
-                    shown[0] === totalSteamLs
-                      ? formatCompact(totalSteamLs)
-                      : formatCompactStable(shown[0] ?? totalSteamLs)
-                  }
-                />
-                <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">
-                  L/s
+        <span className="text-sm font-bold uppercase tracking-wider">Power</span>
+        {hasEu || hasSteam ? (
+          <>
+            <DrawModePill average={average} />
+            <span className="ml-auto flex shrink-0 items-baseline gap-2 whitespace-nowrap text-[13px] font-bold tabular-nums">
+              {hasSteam ? (
+                <span>
+                  <SteamMark />
+                  <MotionNumberText
+                    values={[totalSteamLs]}
+                    render={(shown) =>
+                      shown[0] === totalSteamLs
+                        ? formatCompact(totalSteamLs)
+                        : formatCompactStable(shown[0] ?? totalSteamLs)
+                    }
+                  />
+                  <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">
+                    L/s
+                  </span>
                 </span>
-              </span>
-            ) : null}
-            {totalEuT > 0 ? (
-              <span>
-                <EuMark />
-                <MotionNumberText
-                  values={[totalEuT]}
-                  render={(shown) =>
-                    shown[0] === totalEuT
-                      ? formatCompact(totalEuT)
-                      : formatCompactStable(shown[0] ?? totalEuT)
-                  }
-                />
-                <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">
-                  EU/t
+              ) : null}
+              {hasEu ? (
+                <span>
+                  <EuMark />
+                  <MotionNumberText
+                    values={[totalEuT]}
+                    render={(shown) =>
+                      shown[0] === totalEuT
+                        ? formatCompact(totalEuT)
+                        : formatCompactStable(shown[0] ?? totalEuT)
+                    }
+                  />
+                  <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">
+                    EU/t
+                  </span>
                 </span>
-              </span>
-            ) : null}
-          </span>
+              ) : null}
+            </span>
+          </>
         ) : null}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto pb-1">
@@ -266,13 +306,13 @@ export function MachineShoppingList() {
                 count={uniform ? group.count : undefined}
                 label={group.label}
                 chip={uniform ? build : undefined}
-                euT={uniform ? build?.euT : undefined}
-                steamLs={uniform ? build?.steamLs : undefined}
+                euT={uniform ? (average ? build?.avgEuT : build?.euT) : undefined}
+                steamLs={uniform ? (average ? build?.avgSteamLs : build?.steamLs) : undefined}
                 state={uniform ? (build?.state ?? "ok") : "ok"}
                 wash={uniform ? build?.tier : undefined}
                 explain={
                   uniform && build
-                    ? explainBuild(group.label, build)
+                    ? explainBuild(group.label, build, average)
                     : [
                         `${group.label}: ${group.count} machines in ${group.builds.length} different builds`,
                         ...clickHint(group.nodeIds.length),
@@ -298,11 +338,11 @@ export function MachineShoppingList() {
                             : undefined
                       }
                       chip={buildLine}
-                      euT={buildLine.euT}
-                      steamLs={buildLine.steamLs}
+                      euT={average ? buildLine.avgEuT : buildLine.euT}
+                      steamLs={average ? buildLine.avgSteamLs : buildLine.steamLs}
                       state={buildLine.state}
                       wash={buildLine.tier}
-                      explain={explainBuild(group.label, buildLine)}
+                      explain={explainBuild(group.label, buildLine, average)}
                       onClick={() => focusNext(buildLine.key, buildLine.nodeIds)}
                     />
                   ))}
@@ -316,6 +356,52 @@ export function MachineShoppingList() {
 
 function clickHint(cards: number): string[] {
   return [cards > 1 ? "Click to jump to each card in turn." : "Click to jump to its card."];
+}
+
+/**
+ * PEAK against AVG, both words always up, the same rule the RAW/NET switch
+ * follows: a reader who has never met the distinction can see there is one
+ * and read both answers before clicking anything. Panel arithmetic only; no
+ * machine changes speed because of this switch. Anchored beside the title so
+ * the right-hand figures can grow digits without moving it.
+ */
+function DrawModePill({ average }: { average: boolean }) {
+  return (
+    <div
+      role="group"
+      aria-label="Power figures"
+      className="flex h-5 shrink-0 overflow-hidden rounded border border-[var(--mc-47)]"
+    >
+      <button
+        type="button"
+        onClick={() => writeWorkspaceView({ averageMachineDraw: false })}
+        aria-label="Show peak draw"
+        aria-pressed={!average}
+        className={[
+          "px-1.5 text-[9px] font-black leading-none tracking-tight",
+          average
+            ? "text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]"
+            : "bg-[var(--mc-56)] text-[var(--mc-ink)]",
+        ].join(" ")}
+      >
+        PEAK
+      </button>
+      <button
+        type="button"
+        onClick={() => writeWorkspaceView({ averageMachineDraw: true })}
+        aria-label="Show average draw"
+        aria-pressed={average}
+        className={[
+          "border-l border-[var(--mc-47)] px-1.5 text-[9px] font-black leading-none tracking-tight",
+          average
+            ? "bg-[var(--mc-56)] text-[var(--mc-ink)]"
+            : "text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]",
+        ].join(" ")}
+      >
+        AVG
+      </button>
+    </div>
+  );
 }
 
 /**
@@ -349,6 +435,7 @@ function explainBuild(
   build: Pick<BuildLine, "count" | "tier" | "hatches" | "isMultiblock" | "state" | "pressure"> & {
     nodeIds: string[];
   },
+  average: boolean,
 ): string[] {
   const lines: string[] = [];
   if (build.pressure) {
@@ -358,7 +445,11 @@ function explainBuild(
         ? `${label}: 1 ${kind} build`
         : `${label}: ${build.count} ${kind} builds`,
     );
-    lines.push("Runs on steam. The figure is what it burns at full speed.");
+    lines.push(
+      average
+        ? "Runs on steam. The figure is what it burns at the speed it actually runs."
+        : "Runs on steam. The figure is what it burns at full speed.",
+    );
   } else if (!build.tier) {
     lines.push(`${label}: ${build.count} ${build.count === 1 ? "machine" : "machines"}`);
   } else if (build.isMultiblock) {

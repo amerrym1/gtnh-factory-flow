@@ -98,6 +98,7 @@ import { publishDockTopInset } from "./dock-insets";
 import { useRenderedHandles } from "./use-rendered-handles";
 import { MinecraftSelect } from "./MinecraftSelect";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
+import { useWorkspaceView } from "@/lib/workspace-view";
 import { MachineStatsContent } from "./MachineStatsContent";
 import {
   fluidArtPixels,
@@ -185,6 +186,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   }>();
   const [isCropMenuOpen, setCropMenuOpen] = useState(false);
   const recipeSearch = useFactoryStore((state) => state.highlightSearch);
+  // The right panel's PEAK/AVG switch drives the card's power figures too,
+  // so the board and the power list always tell one story.
+  const averageDraw = useWorkspaceView().averageMachineDraw;
   const hoveredFlowResourceKey = useFactoryStore((state) => state.hoveredFlowResourceKey);
   const selectedFlowResourceKey = useFactoryStore((state) => state.selectedFlowResourceKey);
   const hoveredNodeBottlenecks = useFactoryStore((state) => state.hoveredNodeBottlenecks);
@@ -437,6 +441,16 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     verdict,
   );
   const powerStalled = powerReport !== undefined && powerReport.state !== "ok";
+  // The card's draw figures follow the PEAK/AVG switch. PEAK is the full
+  // draw the machine spikes to when it runs, 0 only at exactly 0% (a machine
+  // that never starts draws nothing); AVG weights it by the solve's usage.
+  const drawScale = drawScaleFor(averageDraw, result?.utilization);
+  const glanceDrawEuT = powerReport
+    ? powerDrawEuT(powerReport, projectNode) * drawScale
+    : 0;
+  const glanceSteamLs = steamReport
+    ? steamDrawLitresPerSecond(steamReport, projectNode) * drawScale
+    : 0;
   // What the LOD step paints this card, per smart view. Every non-identity
   // view returns a surface for EVERY card — a card with nothing to say gets
   // the neutral one rather than keeping its paint, because a red paint tag
@@ -833,22 +847,23 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           // the millions shrinks to fit rather than grazing the card frame.
           valueSize={
             powerReport
-              ? powerGlanceValueSize(formatCompact(powerDrawEuT(powerReport, projectNode)))
+              ? powerGlanceValueSize(formatCompact(glanceDrawEuT))
               : steamReport
-                ? powerGlanceValueSize(formatCompact(steamDrawLitresPerSecond(steamReport, projectNode)))
+                ? powerGlanceValueSize(formatCompact(glanceSteamLs))
                 : undefined
           }
           text={
             powerReport ? (
               <>
                 <MotionNumberText
-                  values={[powerDrawEuT(powerReport, projectNode)]}
+                  values={[glanceDrawEuT]}
                   render={(shown) => {
-                    const target = powerDrawEuT(powerReport, projectNode);
-                    const value = shown[0] ?? target;
+                    const value = shown[0] ?? glanceDrawEuT;
                     // Same pact as the footer's POWER cell: stable widths
                     // mid-tween, the clean compact form at rest.
-                    return value === target ? formatCompact(target) : formatCompactStable(value);
+                    return value === glanceDrawEuT
+                      ? formatCompact(glanceDrawEuT)
+                      : formatCompactStable(value);
                   }}
                 />
                 <span className="ml-1.5 text-[18px] font-semibold opacity-70">EU/t</span>
@@ -858,11 +873,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               // unit, so the power view still answers on a steam line.
               <>
                 <MotionNumberText
-                  values={[steamDrawLitresPerSecond(steamReport, projectNode)]}
+                  values={[glanceSteamLs]}
                   render={(shown) => {
-                    const target = steamDrawLitresPerSecond(steamReport, projectNode);
-                    const value = shown[0] ?? target;
-                    return value === target ? formatCompact(target) : formatCompactStable(value);
+                    const value = shown[0] ?? glanceSteamLs;
+                    return value === glanceSteamLs
+                      ? formatCompact(glanceSteamLs)
+                      : formatCompactStable(value);
                   }}
                 />
                 <span className="ml-1.5 text-[18px] font-semibold opacity-70">L/s</span>
@@ -1062,7 +1078,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             // titles survive only where there is no report to tell it.
             <MinecraftTooltip
               content={
-                powerReport ? <PowerStoryContent report={powerReport} /> : undefined
+                powerReport ? (
+                  <PowerStoryContent
+                    report={powerReport}
+                    utilization={result?.utilization}
+                    machines={projectNode.machineCount * projectNode.parallel}
+                  />
+                ) : undefined
               }
             >
             <div className="flex">
@@ -1279,6 +1301,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                               report={powerReport}
                               machineCount={projectNode.machineCount}
                               nodeParallel={projectNode.parallel}
+                              utilization={result?.utilization}
+                              average={averageDraw}
                             />
                           ) : null}
                           {steamReport ? (
@@ -1286,6 +1310,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                               report={steamReport}
                               machineCount={projectNode.machineCount}
                               nodeParallel={projectNode.parallel}
+                              utilization={result?.utilization}
+                              average={averageDraw}
                             />
                           ) : null}
                           {machineParallelMultiplier > 1 && !parallelChipLifts ? (
@@ -1667,6 +1693,17 @@ function glanceToneSurface(tone: VerdictWord["tone"]): NodeSurfaceColor {
  * arithmetic as the footer's POWER cell and the shopping list row. */
 function powerDrawEuT(report: NodePowerReport, node: FactoryNode): number {
   return report.drawEuT * node.machineCount * node.parallel;
+}
+
+/**
+ * What a draw figure is multiplied by under the PEAK/AVG switch. PEAK shows
+ * the full draw for anything that runs at all and 0 for a machine at exactly
+ * 0%, which never starts; AVG weights the draw by the solve's usage. An
+ * unknown usage counts as running flat out.
+ */
+function drawScaleFor(average: boolean, utilization: number | undefined): number {
+  const usage = Math.min(1, Math.max(0, utilization ?? 1));
+  return average ? usage : usage > 0 ? 1 : 0;
 }
 
 /** A steam card's whole burn in L/s, the unit boilers are sized against. */
@@ -3807,20 +3844,33 @@ function PowerStat({
   report,
   machineCount,
   nodeParallel,
+  utilization,
+  average,
 }: {
   report: NodePowerReport;
   machineCount: number;
   nodeParallel: number;
+  utilization?: number;
+  /** The right panel's PEAK/AVG switch; see drawScaleFor. */
+  average: boolean;
 }) {
   const stalled = report.state !== "ok";
   // Always EU/t, whatever the board's rate unit: power is a per-tick fact in
   // GT and reads as noise in any other clock. The unit itself is rendered as
-  // a small suffix below, not part of this string.
-  const drawEuT = report.drawEuT * machineCount * nodeParallel;
+  // a small suffix below, not part of this string. The figure follows the
+  // PEAK/AVG switch; the hover still tells the build's whole story.
+  const drawEuT =
+    report.drawEuT * machineCount * nodeParallel * drawScaleFor(average, utilization);
 
   return (
     <MinecraftTooltip
-      content={<PowerStoryContent report={report} />}
+      content={
+        <PowerStoryContent
+          report={report}
+          utilization={utilization}
+          machines={machineCount * nodeParallel}
+        />
+      }
     >
       <div
         className={[
@@ -3880,15 +3930,21 @@ function SteamStat({
   report,
   machineCount,
   nodeParallel,
+  utilization,
+  average,
 }: {
   report: NodeSteamReport;
   machineCount: number;
   nodeParallel: number;
+  utilization?: number;
+  /** The right panel's PEAK/AVG switch; see drawScaleFor. */
+  average: boolean;
 }) {
-  const drawLitresPerSecond = steamDrawLitresPerSecond(report, {
-    machineCount,
-    parallel: nodeParallel,
-  });
+  // Same rule as the POWER cell: the figure follows the PEAK/AVG switch;
+  // the hover still quotes the per-machine burn.
+  const drawLitresPerSecond =
+    steamDrawLitresPerSecond(report, { machineCount, parallel: nodeParallel }) *
+    drawScaleFor(average, utilization);
   const perMachine = report.drawSteamPerTick * 20;
 
   return (
@@ -4102,6 +4158,13 @@ function trimFactor(value: number): string {
     : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
 }
 
+/** Usage as the card's own percent: one decimal only while a whole number
+ * would round a running machine down to a flat 0%. */
+function usagePctText(usage: number): string {
+  const pct = usage * 100;
+  return pct > 0 && pct < 0.5 ? formatRate(pct, 1) : formatPct(pct);
+}
+
 /**
  * THE power tooltip, one panel shared by every power surface on the card:
  * the hatch chip, the tier chip, and the footer's POWER cell all say this,
@@ -4113,14 +4176,31 @@ function trimFactor(value: number): string {
  * where you're at (its cost, the parallels paid first, and the spend drawn
  * as a bar to scale — StoryOverclockBar), and the outcome (what it runs at,
  * with the next overclock's price as the last word). Everything here is
- * EU/t — never seconds, which no other surface on the card speaks — and
- * usage and the whole-node total stay off it too: the footer cells under the
- * cursor already say both. The bar is drawn only when the arithmetic
+ * EU/t — never seconds, which no other surface on the card speaks — and the
+ * whole-node total stays off it: the footer cells under the cursor already
+ * say it. Usage closes the outcome, once: the peak figure is what the
+ * machine draws while running, and a machine running part of the time
+ * averages peak times usage. The bar is drawn only when the arithmetic
  * reproduces the real draw — runtime-ladder machines, whose step kinds the
  * game never exported, get the honest count alone.
  */
-function PowerStoryContent({ report }: { report: NodePowerReport }) {
+function PowerStoryContent({
+  report,
+  utilization,
+  machines = 1,
+}: {
+  report: NodePowerReport;
+  /** The solve's usage for this card, when one is known: 0..1+. */
+  utilization?: number;
+  /** Machine count times node parallel: what the POWER cell multiplies by.
+   * The story is told per machine, so the outcome names both figures or the
+   * conclusion contradicts the cell under the cursor. */
+  machines?: number;
+}) {
   const stall = describePowerStall(report);
+  const usage =
+    utilization === undefined ? undefined : Math.min(1, Math.max(0, utilization));
+  const cardPeakEuT = report.drawEuT * machines;
   const perRunEuT = report.parallels > 0 ? report.drawEuT / report.parallels : report.drawEuT;
   const normalSteps = Math.max(0, report.overclockSteps - report.perfectOverclockSteps);
   const expectedEuT =
@@ -4258,10 +4338,23 @@ function PowerStoryContent({ report }: { report: NodePowerReport }) {
           not a tier. */}
       <StoryCard>
         <div>
-          So it runs at{" "}
-          <span className="whitespace-nowrap">
-            <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
-          </span>
+          {machines > 1 ? (
+            <>
+              So at peak each machine runs at{" "}
+              <span className="whitespace-nowrap">{formatCompact(report.drawEuT)} EU/t</span>:{" "}
+              <span className="whitespace-nowrap">
+                <span className="font-bold">{formatCompact(cardPeakEuT)} EU/t</span>
+              </span>{" "}
+              across {machines}
+            </>
+          ) : (
+            <>
+              So at peak it runs at{" "}
+              <span className="whitespace-nowrap">
+                <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
+              </span>
+            </>
+          )}
           {!ladderHonest
             ? ` (${report.overclockSteps} overclock${report.overclockSteps === 1 ? "" : "s"})`
             : ""}
@@ -4277,6 +4370,16 @@ function PowerStoryContent({ report }: { report: NodePowerReport }) {
             ) : (
               <>More power won&apos;t buy another overclock here.</>
             )}
+          </div>
+        ) : null}
+        {usage !== undefined && usage < 0.995 ? (
+          <div className="text-[11px] text-slate-400">
+            Because {machines > 1 ? "the machines run" : "the machine runs"} at{" "}
+            {usagePctText(usage)}%, the average draw is{" "}
+            <span className="whitespace-nowrap">
+              {formatCompact(cardPeakEuT * usage)} EU/t
+            </span>
+            .
           </div>
         ) : null}
       </StoryCard>

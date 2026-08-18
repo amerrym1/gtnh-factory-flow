@@ -79,7 +79,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     notes: [
       "Steam machines now show their real speed: bronze builds run slower than LV, high pressure builds twice as fast as bronze.",
       "Every steam card shows the litres of steam it burns per second.",
-      "The build list adds up your steam so you can size the boilers.",
+      "The power list totals your steam and EU, and can switch between peak and average draw.",
       "Machines like the Volcanus no longer look faster and cheaper than they run in game.",
     ],
     warning:
