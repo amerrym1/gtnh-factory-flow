@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.17.1",
+    date: "2026-08-18",
+    headline: "Side panel fixes",
+    notes: [
+      "The resource list scrolls while a row is popped out wide.",
+      "The popped out row stays clear of the scroll bar.",
+      "The power list lost its stray sideways scroll bar.",
+      "Power lines no longer show hover popups.",
+    ],
+  },
+  {
     version: "2.17.0",
     date: "2026-08-18",
     headline: "Steam machines run at steam speed",

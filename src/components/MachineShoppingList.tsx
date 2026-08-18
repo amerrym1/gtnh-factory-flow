@@ -6,7 +6,6 @@ import { MotionNumberText } from "./flow/board-motion";
 import { GT_TIER_COLORS } from "./flow/tier-colors";
 import { useMachineHandlerIcons, type MachineHandlerIcon } from "./flow/machine-icons";
 import { machineArtPixels } from "./flow/MachinePicker";
-import { MinecraftTooltip } from "./nei/MinecraftTooltip";
 import { ResourceIcon } from "./nei/ResourceIcon";
 import { getSelectedMachineHandler } from "@/lib/model/recipe-rules";
 import { isCustomRateRecipe } from "@/lib/model/custom-rate";
@@ -292,7 +291,11 @@ export function MachineShoppingList() {
           </>
         ) : null}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto pb-1">
+      {/* overflow-x hidden outright: Windows overlay scrollbars float over
+          content, so a row even a pixel wide of the column summons a
+          horizontal bar across the list. Nothing here is allowed to scroll
+          sideways; the name column truncates instead. */}
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-1">
         {groups.map((group) => {
           const uniform = group.builds.length === 1;
           const build = group.builds[0];
@@ -310,14 +313,6 @@ export function MachineShoppingList() {
                 steamLs={uniform ? (average ? build?.avgSteamLs : build?.steamLs) : undefined}
                 state={uniform ? (build?.state ?? "ok") : "ok"}
                 wash={uniform ? build?.tier : undefined}
-                explain={
-                  uniform && build
-                    ? explainBuild(group.label, build, average)
-                    : [
-                        `${group.label}: ${group.count} machines in ${group.builds.length} different builds`,
-                        ...clickHint(group.nodeIds.length),
-                      ]
-                }
                 onClick={() => focusNext(group.label, group.nodeIds)}
               />
               {uniform
@@ -342,7 +337,6 @@ export function MachineShoppingList() {
                       steamLs={average ? buildLine.avgSteamLs : buildLine.steamLs}
                       state={buildLine.state}
                       wash={buildLine.tier}
-                      explain={explainBuild(group.label, buildLine, average)}
                       onClick={() => focusNext(buildLine.key, buildLine.nodeIds)}
                     />
                   ))}
@@ -352,10 +346,6 @@ export function MachineShoppingList() {
       </div>
     </div>
   );
-}
-
-function clickHint(cards: number): string[] {
-  return [cards > 1 ? "Click to jump to each card in turn." : "Click to jump to its card."];
 }
 
 /**
@@ -425,56 +415,6 @@ function SteamMark() {
   );
 }
 
-/**
- * The hover, in plain English: what this line actually asks you to build.
- * "3 machines, each with 2 HV energy hatches" says out loud what the fused
- * chip abbreviates, and a stalled build states its problem in words.
- */
-function explainBuild(
-  label: string,
-  build: Pick<BuildLine, "count" | "tier" | "hatches" | "isMultiblock" | "state" | "pressure"> & {
-    nodeIds: string[];
-  },
-  average: boolean,
-): string[] {
-  const lines: string[] = [];
-  if (build.pressure) {
-    const kind = build.pressure === "high-pressure" ? "high pressure" : "bronze";
-    lines.push(
-      build.count === 1
-        ? `${label}: 1 ${kind} build`
-        : `${label}: ${build.count} ${kind} builds`,
-    );
-    lines.push(
-      average
-        ? "Runs on steam. The figure is what it burns at the speed it actually runs."
-        : "Runs on steam. The figure is what it burns at full speed.",
-    );
-  } else if (!build.tier) {
-    lines.push(`${label}: ${build.count} ${build.count === 1 ? "machine" : "machines"}`);
-  } else if (build.isMultiblock) {
-    const hatches = `${build.hatches} ${build.tier} energy ${build.hatches === 1 ? "hatch" : "hatches"}`;
-    lines.push(
-      build.count === 1
-        ? `${label}: 1 machine with ${hatches}`
-        : `${label}: ${build.count} machines, each with ${hatches}`,
-    );
-  } else {
-    lines.push(
-      build.count === 1
-        ? `${label}: 1 machine running at ${build.tier}`
-        : `${label}: ${build.count} machines running at ${build.tier}`,
-    );
-  }
-  if (build.state === "under-powered") {
-    lines.push("Underpowered: these hatches can't carry the recipe.");
-  } else if (build.state === "over-tier") {
-    lines.push("Won't run: the recipe is above this tier.");
-  }
-  lines.push(...clickHint(build.nodeIds.length));
-  return lines;
-}
-
 function ListLine({
   icon,
   indent = false,
@@ -486,7 +426,6 @@ function ListLine({
   steamLs,
   state,
   wash,
-  explain,
   onClick,
 }: {
   icon?: MachineHandlerIcon;
@@ -505,17 +444,14 @@ function ListLine({
   state: NodePowerState;
   /** Tier whose colour faintly washes the whole line. */
   wash?: VoltageTier;
-  /** The hover's plain-English lines. MinecraftTooltip, not `title`: the
-   * OS tooltip arrives late and slides about, and every other hover in the
-   * app already speaks through the game panel. */
-  explain: string[];
   onClick: () => void;
 }) {
   const stalled = state !== "ok";
   const chipColor = chip?.tier ? GT_TIER_COLORS[chip.tier] : undefined;
 
+  // No hover panel on these lines: the row already says everything it knows,
+  // and a tooltip repeating it was noise in the way of the scrollbar.
   return (
-    <MinecraftTooltip label={explain}>
       <button
         type="button"
         onClick={onClick}
@@ -648,6 +584,5 @@ function ListLine({
         )}
         </span>
       </button>
-    </MinecraftTooltip>
   );
 }

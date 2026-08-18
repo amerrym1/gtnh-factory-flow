@@ -950,11 +950,25 @@ function FlowVirtualList({
     }
     overlay.style.visibility = "";
     overlay.style.top = `${box.top}px`;
+    // Windows-style overlay scrollbars float over the list's right edge
+    // rather than taking a column of their own, so a copy flush with the row
+    // would sit on top of the bar and swallow every attempt to grab it. A
+    // classic scrollbar already keeps the rows clear of itself (offsetWidth
+    // wider than clientWidth), so the gutter applies only when it does not.
+    const scroller = scrollRef.current;
+    const scrollbarGutter =
+      scroller &&
+      scroller.scrollHeight > scroller.clientHeight &&
+      scroller.offsetWidth === scroller.clientWidth
+        ? 14
+        : 0;
     // clientWidth, not innerWidth: innerWidth counts the width of a classic
     // scrollbar and the `right` of a fixed element is measured from the initial
     // containing block, which does not. That difference is what let the row
     // underneath peek out down one side of its own copy.
-    overlay.style.right = `${document.documentElement.clientWidth - box.right}px`;
+    overlay.style.right = `${
+      document.documentElement.clientWidth - box.right + scrollbarGutter
+    }px`;
   }, [expandedKey, findExpandedRow]);
 
   /**
@@ -1185,6 +1199,13 @@ function FlowVirtualList({
           onMouseLeave={() => {
             setExpandedState(undefined);
             onHover(undefined);
+          }}
+          // The copy is a fixed layer outside the list, so a wheel over it
+          // scrolled nothing. Hand it to the list, which is what the pointer
+          // is visually on; the scroll listener above then re-glues or hides
+          // the copy as its row moves.
+          onWheel={(event) => {
+            scrollRef.current?.scrollBy(0, event.deltaY);
           }}
         >
           <FlowResourceRow
