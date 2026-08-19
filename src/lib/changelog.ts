@@ -77,8 +77,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-08-19",
     headline: "Seeds are not machines",
     notes: [
+      "A board that read 0% after you wired in a supply drawer runs again.",
       "The machine list counts the Crop Managers and Industrial Farms your crops fill, not one machine per seed.",
-      "Hand-picked crops no longer appear in the machine list at all.",
       "A shared setup's card refreshes its rates with the current app instead of showing the numbers it was saved with.",
       "The two voltage tiers above UIV now wear their right names: UMV, then UXV.",
     ],

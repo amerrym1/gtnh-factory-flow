@@ -2074,71 +2074,25 @@ export function solveEquilibrium(
     // scale per need turns granted flow into consumed flow, so a producer is
     // bounded by what its takers really drink, never by what they were merely
     // handed.
-    const buildTakeScale = (
-      round: RoundOutput,
-      levels: Map<string, number>,
-    ): Map<string, number> => {
-      const scale = new Map<string, number>();
-      for (const [needKey, need] of needs) {
-        let granted = 0;
-        for (const edge of [...need.machineEdges, ...need.storageEdges]) {
-          granted += round.eatenByEdge.get(edge.id) ?? 0;
-        }
-        const consumed =
-          clampUtilization(levels.get(need.targetId) ?? 0) * need.nameplatePerSecond;
-        scale.set(needKey, granted > consumed + EPSILON && granted > 0 ? consumed / granted : 1);
-      }
-      return scale;
-    };
-    const sustainedBound = (
-      round: RoundOutput,
-      info: MachineNodeInfo,
-      takeScale: Map<string, number>,
-    ): { bound: number; binder?: ResourceKey } => {
-      let bound = 1;
-      let binder: ResourceKey | undefined;
-      for (const budget of info.budgets) {
-        if (
-          budget.freeDisposal ||
-          budget.trashEdges.length > 0 ||
-          budget.edges.length === 0 ||
-          budget.makePerSecond <= EPSILON
-        ) {
-          continue;
-        }
-        let taken = 0;
-        for (const edge of budget.edges) {
-          const eaten = round.eatenByEdge.get(edge.id) ?? 0;
-          // Machine consumers eat at their actual level; tank sinks already
-          // absorb at the producer's actual level (their fill runs on it).
-          taken += edge.needKey ? eaten * (takeScale.get(edge.needKey) ?? 1) : eaten;
-        }
-        const ratio = clampUtilization(taken / budget.makePerSecond);
-        if (ratio < bound) {
-          bound = ratio;
-          binder = budget.outputKey;
-        }
-      }
-      return { bound, binder };
-    };
+    // THE MIRROR BOUND IS PARKED, deliberately (2026-08-19). Bounding a
+    // machine by what its takers actually drink is the right physics - an
+    // output with no drawer backs up in game - but crediting a producer with
+    // its takers' consumption needs an allocation rule that is fair to
+    // co-suppliers AND leaves a dipped supplier room to recover, and every
+    // rule tried so far fixes one pinned board while breaking another.
+    // Judged on the fill's own grants it walked healthy boards to zero, and
+    // the player who repaired his bauxite line with an NaOH source drawer
+    // watched the repair READ as dead. Branch solver-sustained-credit-wip
+    // carries the four attempted rules and the acceptance matrix for the
+    // real fix. Until then an unconsumed surplus shows on the books but does
+    // not throttle its maker: too-generous numbers over false zeros.
     let needsSettling = false;
-    {
-      const takeScale = buildTakeScale(lastRound, act);
-      for (const info of machineNodes) {
-        const delivered = deliveredBound(lastRound, info);
-        const sustained = sustainedBound(lastRound, info, takeScale);
-        if (
-          Math.min(delivered.bound, sustained.bound) <
-          (act.get(info.id) ?? 0) - CONVERGENCE_EPS
-        ) {
-          needsSettling = true;
-          if (delivered.bound <= sustained.bound) {
-            if (delivered.binder !== undefined) {
-              actBinders.set(info.id, delivered.binder);
-            }
-          } else if (sustained.binder !== undefined) {
-            actClogBinders.set(info.id, sustained.binder);
-          }
+    for (const info of machineNodes) {
+      const { bound, binder } = deliveredBound(lastRound, info);
+      if (bound < (act.get(info.id) ?? 0) - CONVERGENCE_EPS) {
+        needsSettling = true;
+        if (binder !== undefined) {
+          actBinders.set(info.id, binder);
         }
       }
     }
@@ -2150,8 +2104,7 @@ export function solveEquilibrium(
       // (the silicone electrolyzer stuck at 75% while its suppliers' output
       // must be drunk) may honestly rise once the settled asks reach it. A
       // rise is never invention - it is still capped by what the wires
-      // actually granted (deliveredBound) and by what takers actually drink
-      // (sustainedBound), both of which ride act-throttled offers.
+      // actually granted (deliveredBound), which rides act-throttled offers.
       const verdictLastRound = lastRound;
       const verdictAct = new Map(act);
       const verdictInputBinders = new Map(actBinders);
@@ -2165,18 +2118,16 @@ export function solveEquilibrium(
         const settled = runRound();
         rounds += 1;
         lastSettled = settled;
-        const takeScale = buildTakeScale(settled, act);
         const settleDemNext = new Map<string, number>();
         let maxDelta = 0;
         for (const info of machineNodes) {
           const delivered = deliveredBound(settled, info);
-          const sustained = sustainedBound(settled, info, takeScale);
           // Demand may only RISE from its verdict seed. A rise is the honest
           // correction (a node pinned by a demand computed around the phantom
           // point, like the silicone electrolyzer at 75%); a fall is the
           // collapse vector - settle demand rides the settle asks, which ride
           // the falling levels, and letting it follow them down unravels
-          // every ring. Delivered and sustained do all honest downward work.
+          // every ring. The delivered bound does all honest downward work.
           const demandCeiling = Math.max(
             clampUtilization(dem.get(info.id) ?? 1),
             clampUtilization(settleDem?.get(info.id) ?? 0),
@@ -2189,7 +2140,6 @@ export function solveEquilibrium(
               clampUtilization(disp.get(info.id) ?? 1),
               demandCeiling,
               delivered.bound,
-              sustained.bound,
             ),
           );
           const previous = act.get(info.id) ?? 0;
@@ -2197,18 +2147,9 @@ export function solveEquilibrium(
           // The binder is only visible while the bound is DROPPING: at the
           // settled point every input of a throttled node ties at its level
           // (a machine at 10% eats 10% of everything), so the name is taken
-          // from the pass that pulled it down. One story per node: whichever
-          // side pulled harder this pass owns the name.
-          if (next < previous - CONVERGENCE_EPS) {
-            if (delivered.bound <= sustained.bound) {
-              if (delivered.binder !== undefined) {
-                actBinders.set(info.id, delivered.binder);
-                actClogBinders.delete(info.id);
-              }
-            } else if (sustained.binder !== undefined) {
-              actClogBinders.set(info.id, sustained.binder);
-              actBinders.delete(info.id);
-            }
+          // from the pass that pulled it down.
+          if (next < previous - CONVERGENCE_EPS && delivered.binder !== undefined) {
+            actBinders.set(info.id, delivered.binder);
           }
           act.set(info.id, next);
         }
