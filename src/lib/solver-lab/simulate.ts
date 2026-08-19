@@ -3,6 +3,7 @@ import { makeResourceKey } from "@/lib/model/resources";
 import { getStorageRoles } from "@/lib/model/storage-role";
 import { collectTrashNodeIds } from "@/lib/model/trash";
 import { calculateThroughput } from "@/lib/solver/throughput";
+import { getCompatibleOutputFlow, getEdgeTargetDemandKey } from "@/lib/solver/equilibrium";
 
 /**
  * The truth machine: a tick simulation of the board with virtual machines and
@@ -41,6 +42,9 @@ export interface SimulationResult {
   /** True when the two halves of the measuring window agreed within tolerance. */
   settled: boolean;
   simulatedSeconds: number;
+  /** Why each idle machine was idle at the final tick: the first starved
+   * input or the first full output, for reading a dead board's story. */
+  stalls: Record<string, string>;
 }
 
 export interface SimulationOptions {
@@ -85,7 +89,11 @@ interface SimEndpoint {
 
 interface SimEdge {
   id: string;
-  key: ResourceKey;
+  /** The hopper key on each side: a wire's own resource id may differ from
+   * the port it lands on (oredict overrides, effective resources), so each
+   * side is resolved with the solver's own matching helpers. */
+  fromKey: ResourceKey;
+  toKey: ResourceKey;
   from: SimEndpoint;
   to: SimEndpoint;
   moved: number;
@@ -170,17 +178,30 @@ export function simulateSteadyState(
   const chests = new Map<string, Hopper>();
   const storagesById = new Map((project.storages ?? []).map((s) => [s.id, s]));
 
-  const endpoint = (nodeId: string, key: ResourceKey, side: "from" | "to"): SimEndpoint | undefined => {
+  const endpoint = (
+    nodeId: string,
+    edge: FactoryProject["edges"][number],
+    side: "from" | "to",
+  ): { point: SimEndpoint; key: ResourceKey } | undefined => {
+    const wireKey = makeResourceKey(edge.resourceKind, edge.resourceId);
     const machine = machines.get(nodeId);
     if (machine) {
-      const hopper = side === "from" ? machine.outputs.get(key) : machine.inputs.get(key);
-      if (!hopper) {
-        return undefined;
+      // The wire's id may not literally match the port's: resolve with the
+      // solver's own matching (oredict membership, effective resources).
+      if (side === "from") {
+        const flow = getCompatibleOutputFlow(nameplates.nodes[nodeId], edge);
+        const key = flow ? makeResourceKey(flow.kind, flow.resourceId) : wireKey;
+        return machine.outputs.has(key)
+          ? { point: { kind: "machine-out", machine }, key }
+          : undefined;
       }
-      return { kind: side === "from" ? "machine-out" : "machine-in", machine };
+      const key = getEdgeTargetDemandKey(project, edge) ?? wireKey;
+      return machine.inputs.has(key)
+        ? { point: { kind: "machine-in", machine }, key }
+        : undefined;
     }
     if (trashIds.has(nodeId)) {
-      return { kind: "sink" };
+      return { point: { kind: "sink" }, key: wireKey };
     }
     const storage = storagesById.get(nodeId);
     if (!storage) {
@@ -188,10 +209,10 @@ export function simulateSteadyState(
     }
     const role = roles.get(nodeId);
     if (role === "source") {
-      return { kind: "source" };
+      return { point: { kind: "source" }, key: wireKey };
     }
     if (role === "product" || role === "byproduct") {
-      return { kind: "sink" };
+      return { point: { kind: "sink" }, key: wireKey };
     }
     // A buffer: an overflow buffer is a very large chest, a strict one holds
     // nothing and only relays what the far side can take this tick.
@@ -201,18 +222,24 @@ export function simulateSteadyState(
       chest = { amount: 0, capacity: strict ? 0 : Number.POSITIVE_INFINITY };
       chests.set(nodeId, chest);
     }
-    return { kind: "chest", chest };
+    return { point: { kind: "chest", chest }, key: wireKey };
   };
 
   const edges: SimEdge[] = [];
   for (const edge of [...project.edges].sort((a, b) => a.id.localeCompare(b.id))) {
-    const key = makeResourceKey(edge.resourceKind, edge.resourceId);
-    const from = endpoint(edge.source, key, "from");
-    const to = endpoint(edge.target, key, "to");
-    if (!from || !to || from.kind === "sink" || to.kind === "source") {
+    const from = endpoint(edge.source, edge, "from");
+    const to = endpoint(edge.target, edge, "to");
+    if (!from || !to || from.point.kind === "sink" || to.point.kind === "source") {
       continue;
     }
-    edges.push({ id: edge.id, key, from, to, moved: 0 });
+    edges.push({
+      id: edge.id,
+      fromKey: from.key,
+      toKey: to.key,
+      from: from.point,
+      to: to.point,
+      moved: 0,
+    });
   }
 
   // Transfers grouped by their supplying hopper, so contention splits fairly.
@@ -220,7 +247,7 @@ export function simulateSteadyState(
   for (const edge of edges) {
     const supplier =
       edge.from.kind === "machine-out"
-        ? edge.from.machine!.outputs.get(edge.key)
+        ? edge.from.machine!.outputs.get(edge.fromKey)
         : edge.from.kind === "chest"
           ? edge.from.chest
           : `source:${edge.id}`;
@@ -240,7 +267,7 @@ export function simulateSteadyState(
       const chest = edge.to.chest!;
       return chest.capacity - chest.amount;
     }
-    const hopper = edge.to.machine!.inputs.get(edge.key)!;
+    const hopper = edge.to.machine!.inputs.get(edge.toKey)!;
     return hopper.capacity - hopper.amount;
   };
 
@@ -252,7 +279,7 @@ export function simulateSteadyState(
     if (edge.to.kind === "chest") {
       edge.to.chest!.amount += amount;
     } else if (edge.to.kind === "machine-in") {
-      const hopper = edge.to.machine!.inputs.get(edge.key)!;
+      const hopper = edge.to.machine!.inputs.get(edge.toKey)!;
       hopper.amount += amount;
     }
   };
@@ -378,11 +405,34 @@ export function simulateSteadyState(
       (movedAtEnd.get(edge.id)! - (movedAtStart.get(edge.id) ?? 0)) / measureSeconds;
   }
 
+  const stalls: Record<string, string> = {};
+  for (const machine of machines.values()) {
+    if (machine.pendingEmit) {
+      for (const [key, perOp] of machine.makes) {
+        const hopper = machine.outputs.get(key)!;
+        if (hopper.amount + perOp > hopper.capacity + 1e-9) {
+          stalls[machine.id] = `clogged: ${key} full`;
+          break;
+        }
+      }
+      continue;
+    }
+    if (Number.isNaN(machine.progress)) {
+      for (const [key, perOp] of machine.eats) {
+        if (machine.inputs.get(key)!.amount < perOp - 1e-9) {
+          stalls[machine.id] = `starved: ${key} empty`;
+          break;
+        }
+      }
+    }
+  }
+
   return {
     opsPerSecond,
     utilization,
     edgeFlowPerSecond,
     settled,
     simulatedSeconds: warmupSeconds + measureSeconds,
+    stalls,
   };
 }
