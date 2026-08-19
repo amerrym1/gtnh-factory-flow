@@ -73,14 +73,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "2.17.1",
+    version: "2.18.0",
     date: "2026-08-18",
-    headline: "Side panel fixes",
+    headline: "The board moves from the keyboard",
     notes: [
-      "The resource list scrolls while a row is popped out wide.",
-      "The popped out row stays clear of the scroll bar.",
-      "The power list lost its stray sideways scroll bar.",
-      "Power lines no longer show hover popups.",
+      "WASD and the arrow keys pan the board, plus and minus zoom it.",
+      "The camera eases into its zoom and glides a touch after a fling.",
+      "A drawer no longer pours into a machine that cannot run, and the false shortage warning went with it.",
+      "The side panel scrolls cleanly while a row is popped out wide.",
     ],
   },
   {
