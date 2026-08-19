@@ -153,6 +153,9 @@ export async function solveEquations(
     if (!fromKind || !toKind || fromKind === "sink" || toKind === "source") {
       continue;
     }
+    if (fromKind === "source" && toKind === "sink") {
+      continue;
+    }
     if (fromMachine && !outPort(edge)) {
       continue;
     }
@@ -296,6 +299,23 @@ export async function solveEquations(
     equalities.push({ coefficients, rhs: 0 });
   }
 
+  // Defense: a flow variable that ended up in no row would be free to grow
+  // without bound (and mean a shape the model does not understand yet), so
+  // it is clamped to zero and reported alongside the unwired ports.
+  {
+    const seen = new Set<number>();
+    for (const row of equalities) for (const v of row.coefficients.keys()) seen.add(v);
+    for (const row of upperBounds) for (const v of row.coefficients.keys()) seen.add(v);
+    for (const row of outputRows) for (const v of row.coefficients.keys()) seen.add(v);
+    for (const edge of usable) {
+      const v = flowVar.get(edge.id)!;
+      if (!seen.has(v)) {
+        unwiredPorts.push(`orphan flow ${edge.id} (${edge.resourceId})`);
+        upperBounds.push({ coefficients: new Map([[v, 1]]), rhs: 0 });
+      }
+    }
+  }
+
   const withOutputRows = (mode: "all" | "none" | { dropIndex: number }): {
     eq: LinearProgram["equalities"];
     ub: LinearProgram["upperBounds"];
@@ -360,6 +380,16 @@ export async function solveEquations(
     const weight = 1 / Math.max(1, port?.ratePerSecond ?? 1);
     productPull.set(flowVar.get(edge.id)!, (productPull.get(flowVar.get(edge.id)!) ?? 0) + weight);
   }
+  // Pure sinks - generators, anything with no material outputs - always want
+  // full blast: nothing downstream can pace them (the live solver's own
+  // doctrine, kept). A power board with no product drawer is FOR its
+  // generators, so they join the purpose stage.
+  for (const id of machineIds) {
+    const report = nameplates.nodes[id]!;
+    if (Object.keys(report.outputs).length === 0) {
+      productPull.set(actVar.get(id)!, (productPull.get(actVar.get(id)!) ?? 0) + 1);
+    }
+  }
   stages.push(productPull);
 
   const leastMachinery = new Map<number, number>();
@@ -411,7 +441,7 @@ export async function solveEquations(
     for (const [v, weight] of stage) {
       lock.set(v, -weight);
     }
-    model.ub.push({ coefficients: lock, rhs: -solution.objective + Math.max(1e-6, Math.abs(solution.objective) * 1e-6) });
+    model.ub.push({ coefficients: lock, rhs: -solution.objective + Math.max(1e-5, Math.abs(solution.objective) * 1e-5) });
   }
 
   const x = solution?.x ?? new Array<number>(totalVars).fill(0);
