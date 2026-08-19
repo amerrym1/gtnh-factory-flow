@@ -73,6 +73,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.18.1",
+    date: "2026-08-19",
+    headline: "Seeds are not machines",
+    notes: [
+      "The machine list counts the Crop Managers and Industrial Farms your crops fill, not one machine per seed.",
+      "Hand-picked crops no longer appear in the machine list at all.",
+      "A shared setup's card refreshes its rates with the current app instead of showing the numbers it was saved with.",
+    ],
+  },
+  {
     version: "2.18.0",
     date: "2026-08-19",
     headline: "Stalled lines read stalled",
