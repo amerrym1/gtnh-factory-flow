@@ -13,8 +13,8 @@ export const GT_VOLTAGE_TIERS: Array<{ tier: Exclude<MachineTier, "DEMO">; maxEu
   { tier: "UHV", maxEuT: 2097152 },
   { tier: "UEV", maxEuT: 8388608 },
   { tier: "UIV", maxEuT: 33554432 },
-  { tier: "UXV", maxEuT: 134217728 },
-  { tier: "OpV", maxEuT: 536870912 },
+  { tier: "UMV", maxEuT: 134217728 },
+  { tier: "UXV", maxEuT: 536870912 },
   { tier: "MAX", maxEuT: Number.POSITIVE_INFINITY },
 ];
 
