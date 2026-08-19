@@ -74,12 +74,12 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "2.18.0",
-    date: "2026-08-18",
-    headline: "The board moves from the keyboard",
+    date: "2026-08-19",
+    headline: "Stalled lines read stalled",
     notes: [
+      "A machine only counts what really arrives and only makes what something takes away.",
+      "A loop that cannot keep itself fed reads 0%, and each card names what stops it.",
       "WASD and the arrow keys pan the board, plus and minus zoom it.",
-      "The camera eases into its zoom and glides a touch after a fling.",
-      "A drawer no longer pours into a machine that cannot run, and the false shortage warning went with it.",
       "The side panel scrolls cleanly while a row is popped out wide.",
     ],
   },
