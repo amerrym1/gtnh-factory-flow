@@ -309,6 +309,33 @@ describe("conservation: both ends, or the machine does not run", () => {
     expect(result.externalInputs.find((b) => b.resourceId === "gold")).toBeUndefined();
   });
 
+  it("a machine stopped by a bare slot draws nothing from its source drawer", () => {
+    // The player's board: an EBF with its fluid input unwired, magnesium on a
+    // SOURCE drawer, products drained. The card read 0% while the drawer
+    // "drained" the full nameplate into it and the boundary called the plan
+    // short of magnesium - the desire fill's grants are demand-throttled on
+    // purpose, so the exported books must be clamped to what the node runs at.
+    const result = calculateThroughput(
+      project({
+        recipes: [recipe("mix", [["gold", 5], ["redstone", 5]], [["goldblock", 1]])],
+        nodes: [node("au", "mix")],
+        storages: [drawer("src", "gold"), drawer("d-au", "goldblock")],
+        edges: [wire("s1", "src", "au", "gold"), wire("d2", "au", "d-au", "goldblock")],
+      }),
+      { generatedAt: "fixed" },
+    );
+
+    expect(result.nodes["au"].utilization).toBeCloseTo(0);
+    // The wire still SHOWS the want - diagnosis - but carries nothing.
+    expect(result.edges["s1"].demandPerSecond).toBeCloseTo(5);
+    expect(result.edges["s1"].transferredPerSecond).toBeCloseTo(0);
+    // The drawer pours nothing, and the plan is not "short" of gold: the
+    // boundary and the warnings read off the same physical book as the card.
+    expect(result.storages["src"].consumedPerSecond).toBeCloseTo(0);
+    expect(result.externalInputs.find((b) => b.resourceId === "gold")).toBeUndefined();
+    expect(result.bottlenecks).toHaveLength(0);
+  });
+
   it("a SOURCE drawer is how a plan says it imports something", () => {
     const result = calculateThroughput(
       project({

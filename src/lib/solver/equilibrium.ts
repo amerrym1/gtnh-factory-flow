@@ -2008,6 +2008,39 @@ export function solveEquilibrium(
     }
   }
 
+  // The physical-flow book must not outrun the machines it feeds. The desire
+  // fill's asks are throttled by DEMAND alone, deliberately (see askDesire):
+  // a machine pinned below its demand - a bare slot, a clog, the settlement -
+  // was still granted its full demand-level intake, and exporting that grant
+  // as-is makes every downstream book lie in unison: the wire pill carries
+  // flow the card denies, a source drawer "drains" 0.05/s into an EBF at 0%,
+  // and the boundary calls the plan short of material nothing consumes. So
+  // the exported intake of every need is scaled down to the node's actual
+  // level here, after all verdicts are final. Settled boards already sit at
+  // exactly this bound (the settle asks are act-throttled), so this touches
+  // only the skip case. The verdict books - demand, availability, unmet
+  // desire - keep telling what is WANTED; this is only what MOVES.
+  for (const [, need] of needs) {
+    const info = infoById.get(need.targetId);
+    if (!info || need.nameplatePerSecond <= EPSILON) {
+      continue;
+    }
+    const allowed =
+      clampUtilization(act.get(need.targetId) ?? 0) * need.nameplatePerSecond;
+    const intakeEdges = [...need.machineEdges, ...need.storageEdges];
+    let intake = 0;
+    for (const edge of intakeEdges) {
+      intake += lastRound.eatenByEdge.get(edge.id) ?? 0;
+    }
+    if (intake <= allowed + Math.max(EPSILON, allowed * 1e-9)) {
+      continue;
+    }
+    const scale = allowed / intake;
+    for (const edge of intakeEdges) {
+      lastRound.eatenByEdge.set(edge.id, (lastRound.eatenByEdge.get(edge.id) ?? 0) * scale);
+    }
+  }
+
   const edgeAllocations = new Map<string, EdgeAllocationResult>();
   for (const edge of edges) {
     edgeAllocations.set(edge.id, {
