@@ -719,6 +719,14 @@ function finalizeNodeReports(
           amountPerSecond: utilizationReport.requiredRatePerSecond,
         };
       }
+      // When the settlement's OUTPUT side is what bound the node - it makes
+      // more than its takers really drink and has nowhere to shed it - the
+      // clog-blind verdict names no culprit, so the settled world's own clog
+      // key fills the silence and the card can still say why it is slow.
+      const actualClog = equilibrium.actualClogOutputByNode.get(node.id);
+      if (actualClog !== undefined && nodeResult.clogOutputKey === undefined) {
+        nodeResult.clogOutputKey = actualClog;
+      }
     }
 
     const capableUtilization = clampUtilization(inputSupplyLimit ?? 1);

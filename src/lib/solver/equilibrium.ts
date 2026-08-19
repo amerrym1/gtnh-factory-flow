@@ -138,6 +138,13 @@ export interface EquilibriumSolution {
   /** The input whose real arrivals pulled `actualByNode` below the verdict
    * level, for nodes the settlement throttled. */
   actualLimitingInputByNode: Map<string, ResourceKey>;
+  /**
+   * The OUTPUT whose settled takers pulled `actualByNode` down instead: the
+   * machine over-ran what its consumers really drink and has no drain to
+   * shed the difference. The verdict clog stays clog-blind by design; this
+   * is the settled world's own clog name, so the card can still say why.
+   */
+  actualClogOutputByNode: Map<string, ResourceKey>;
   edgeAllocations: Map<string, EdgeAllocationResult>;
   eatenByNeed: Map<string, number>;
   unmetDesireByNeed: Map<string, number>;
@@ -1920,6 +1927,7 @@ export function solveEquilibrium(
   // skip this entirely and keep their figures bit for bit.
   const act = new Map<string, number>();
   const actBinders = new Map<string, ResourceKey>();
+  const actClogBinders = new Map<string, ResourceKey>();
   {
     for (const info of machineNodes) {
       act.set(
@@ -1956,13 +1964,59 @@ export function solveEquilibrium(
       }
       return { bound, binder };
     };
+    // The MIRROR bound: production has to be TAKEN, not only fed. An output
+    // wired only to machines (no drain, no can, no overflow buffer) has
+    // nowhere to shed a surplus, so in game the chest behind it fills and the
+    // machine slows to its takers' real pace. Without this half, a machine
+    // could settle above its consumers, the difference vanished from every
+    // book, and - worse - its OTHER outputs, byproducts of production that
+    // never really happened, kept feeding the board: the bauxite line's mixer
+    // needs 9 NaOH per op, the loop returns 0.75, and the plan still read 23%
+    // because the AlOH reactor ran 3x past its taker and the phantom run's
+    // byproduct NaOH was booked as real. The verdict layer stays clog-blind
+    // on purpose (one wire clears it); the settled flows must not.
+    const sustainedBound = (
+      round: RoundOutput,
+      info: MachineNodeInfo,
+    ): { bound: number; binder?: ResourceKey } => {
+      let bound = 1;
+      let binder: ResourceKey | undefined;
+      for (const budget of info.budgets) {
+        if (
+          budget.freeDisposal ||
+          budget.trashEdges.length > 0 ||
+          budget.edges.length === 0 ||
+          budget.makePerSecond <= EPSILON
+        ) {
+          continue;
+        }
+        let taken = 0;
+        for (const edge of budget.edges) {
+          taken += round.eatenByEdge.get(edge.id) ?? 0;
+        }
+        const ratio = clampUtilization(taken / budget.makePerSecond);
+        if (ratio < bound) {
+          bound = ratio;
+          binder = budget.outputKey;
+        }
+      }
+      return { bound, binder };
+    };
     let needsSettling = false;
     for (const info of machineNodes) {
-      const { bound, binder } = deliveredBound(lastRound, info);
-      if (bound < (act.get(info.id) ?? 0) - CONVERGENCE_EPS) {
+      const delivered = deliveredBound(lastRound, info);
+      const sustained = sustainedBound(lastRound, info);
+      if (
+        Math.min(delivered.bound, sustained.bound) <
+        (act.get(info.id) ?? 0) - CONVERGENCE_EPS
+      ) {
         needsSettling = true;
-        if (binder !== undefined) {
-          actBinders.set(info.id, binder);
+        if (delivered.bound <= sustained.bound) {
+          if (delivered.binder !== undefined) {
+            actBinders.set(info.id, delivered.binder);
+          }
+        } else if (sustained.binder !== undefined) {
+          actClogBinders.set(info.id, sustained.binder);
         }
       }
     }
@@ -1978,16 +2032,30 @@ export function solveEquilibrium(
         rounds += 1;
         let maxDelta = 0;
         for (const info of machineNodes) {
-          const { bound, binder } = deliveredBound(settled, info);
-          const next = Math.min(actCeiling.get(info.id) ?? 0, bound);
+          const delivered = deliveredBound(settled, info);
+          const sustained = sustainedBound(settled, info);
+          const next = Math.min(
+            actCeiling.get(info.id) ?? 0,
+            delivered.bound,
+            sustained.bound,
+          );
           const previous = act.get(info.id) ?? 0;
           maxDelta = Math.max(maxDelta, Math.abs(next - previous));
           // The binder is only visible while the bound is DROPPING: at the
           // settled point every input of a throttled node ties at its level
           // (a machine at 10% eats 10% of everything), so the name is taken
-          // from the pass that pulled it down.
-          if (next < previous - CONVERGENCE_EPS && binder !== undefined) {
-            actBinders.set(info.id, binder);
+          // from the pass that pulled it down. One story per node: whichever
+          // side pulled harder this pass owns the name.
+          if (next < previous - CONVERGENCE_EPS) {
+            if (delivered.bound <= sustained.bound) {
+              if (delivered.binder !== undefined) {
+                actBinders.set(info.id, delivered.binder);
+                actClogBinders.delete(info.id);
+              }
+            } else if (sustained.binder !== undefined) {
+              actClogBinders.set(info.id, sustained.binder);
+              actBinders.delete(info.id);
+            }
           }
           act.set(info.id, next);
         }
@@ -2076,6 +2144,7 @@ export function solveEquilibrium(
     clogOutputByNode: lastRound.clogOutputNext,
     actualByNode: act,
     actualLimitingInputByNode: actBinders,
+    actualClogOutputByNode: actClogBinders,
     edgeAllocations,
     eatenByNeed,
     unmetDesireByNeed: lastRound.unmetDesireByNeed,
