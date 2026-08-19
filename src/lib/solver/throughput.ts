@@ -709,7 +709,15 @@ function finalizeNodeReports(
     const actualBound =
       actualLimit !== undefined &&
       actualLimit < Math.min(1, utilizationReport.utilization) - EPSILON;
-    if (actualBound) {
+    // The settle world may also RAISE a node past a stale verdict demand -
+    // one computed around the phantom operating point - never past 100%, and
+    // always backed by flow the wires really granted. Figures above 100%
+    // (a genuinely over-asked node) are left alone.
+    const actualRaise =
+      actualLimit !== undefined &&
+      utilizationReport.utilization <= 1 + EPSILON &&
+      actualLimit > utilizationReport.utilization + EPSILON;
+    if (actualBound || actualRaise) {
       utilizationReport.utilization = actualLimit;
       utilizationReport.requiredRatePerSecond = utilizationReport.maxRatePerSecond * actualLimit;
       utilizationReport.theoreticalMachinesRequired = node.machineCount * actualLimit;
