@@ -41,7 +41,42 @@ interface PortRef {
   ratePerSecond: number;
 }
 
-export async function solveEquations(project: FactoryProject): Promise<EquationsResult> {
+/**
+ * Lab probe: the maximum total act under the model's rows, with output rows
+ * as equalities (the real model) or relaxed to <= (surplus may vanish).
+ * The bug reducer's oracle: a board is "wrongly dead" when it is alive
+ * relaxed and dead exact while a hand-solve says otherwise.
+ */
+export async function probeMaxAct(
+  project: FactoryProject,
+  outputs: "exact" | "relaxed",
+): Promise<number> {
+  const previous = process.env.EQ_RELAX_OUTPUTS;
+  if (outputs === "relaxed") {
+    process.env.EQ_RELAX_OUTPUTS = "1";
+  } else {
+    delete process.env.EQ_RELAX_OUTPUTS;
+  }
+  try {
+    const result = await solveEquations(project, { probeTotalAct: true });
+    let total = 0;
+    for (const value of Object.values(result.utilization)) {
+      total += value;
+    }
+    return result.status === "optimal" ? total : Number.NaN;
+  } finally {
+    if (previous === undefined) {
+      delete process.env.EQ_RELAX_OUTPUTS;
+    } else {
+      process.env.EQ_RELAX_OUTPUTS = previous;
+    }
+  }
+}
+
+export async function solveEquations(
+  project: FactoryProject,
+  options: { probeTotalAct?: boolean } = {},
+): Promise<EquationsResult> {
   const nameplates = calculateThroughput(project, { generatedAt: "equations" });
   const roles = getStorageRoles(project);
   const trashIds = collectTrashNodeIds(project);
@@ -178,6 +213,16 @@ export async function solveEquations(project: FactoryProject): Promise<Equations
         }
       }
     }
+    const dump = typeof process !== "undefined" && process.env?.EQ_DUMP && id.includes(process.env.EQ_DUMP);
+    if (dump) {
+      for (const edge of usable) {
+        if (edge.source === id || edge.target === id) {
+          console.log(
+            `  var ${flowVar.get(edge.id)}: ${edge.id} ${edge.resourceId.replace("gregtech:gt.metaitem.01@", "@")} ${edge.source.slice(0, 13)} -> ${edge.target.slice(0, 13)}`,
+          );
+        }
+      }
+    }
     for (const [portKey, port] of portEdges) {
       if (port.vars.length === 0) unwiredPorts.push(`${id} in ${portKey}`);
       const scale = 1 / Math.max(1, port.rate);
@@ -186,6 +231,11 @@ export async function solveEquations(project: FactoryProject): Promise<Equations
         coefficients.set(v, scale);
       }
       coefficients.set(actVar.get(id)!, -port.rate * scale);
+      if (dump) {
+        console.log(
+          `row ${id.slice(5, 13)} in ${portKey}: rate=${port.rate} vars=[${port.vars.join(",")}] scale=${scale}`,
+        );
+      }
       equalities.push({ coefficients, rhs: 0 });
     }
     for (const [portKey, port] of outputs) {
@@ -196,6 +246,11 @@ export async function solveEquations(project: FactoryProject): Promise<Equations
         coefficients.set(v, scale);
       }
       coefficients.set(actVar.get(id)!, -port.rate * scale);
+      if (dump) {
+        console.log(
+          `row ${id.slice(5, 13)} out ${portKey}: rate=${port.rate} vars=[${port.vars.join(",")}] scale=${scale}`,
+        );
+      }
       outputRows.push({ label: `${id} out ${portKey}`, coefficients });
     }
   }
@@ -282,6 +337,16 @@ export async function solveEquations(project: FactoryProject): Promise<Equations
   // the next runs.
   const stages: Array<Map<number, number>> = [];
 
+  if (options.probeTotalAct) {
+    // Probe mode: one solve maximizing total act, no doctrine stages.
+    const total = new Map<number, number>();
+    for (const id of machineIds) {
+      total.set(actVar.get(id)!, 1);
+    }
+    stages.push(total);
+  }
+
+  if (!options.probeTotalAct) {
   const productPull = new Map<number, number>();
   for (const edge of usable) {
     if (storageKind(edge.target) !== "sink") {
@@ -318,6 +383,7 @@ export async function solveEquations(project: FactoryProject): Promise<Equations
     leastFlow.set(flowVar.get(edge.id)!, -(1 / 1000));
   }
   stages.push(leastFlow);
+  }
 
   const model = withOutputRows(
     typeof process !== "undefined" && process.env?.EQ_RELAX_OUTPUTS ? "none" : "all",
@@ -345,7 +411,7 @@ export async function solveEquations(project: FactoryProject): Promise<Equations
     for (const [v, weight] of stage) {
       lock.set(v, -weight);
     }
-    model.ub.push({ coefficients: lock, rhs: -solution.objective + 1e-7 });
+    model.ub.push({ coefficients: lock, rhs: -solution.objective + Math.max(1e-6, Math.abs(solution.objective) * 1e-6) });
   }
 
   const x = solution?.x ?? new Array<number>(totalVars).fill(0);

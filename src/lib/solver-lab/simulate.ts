@@ -54,6 +54,11 @@ export interface SimulationOptions {
   measureSeconds?: number;
   /** Input/output hopper size, in whole crafts. Two matches a GT bus queue. */
   hopperCrafts?: number;
+  /** Crafts of material seeded into every input hopper: the player priming
+   * the loops. A conserving ring circulates exactly what it was primed with,
+   * so its level is prime-dependent BY GAME PHYSICS; the equations report
+   * the ceiling a sufficient prime reaches. */
+  primeCrafts?: number;
   /** Relative disagreement between window halves that still counts as settled. */
   settleTolerance?: number;
 }
@@ -130,6 +135,7 @@ export function simulateSteadyState(
   const warmupSeconds = options.warmupSeconds ?? 600;
   const measureSeconds = options.measureSeconds ?? 600;
   const hopperCrafts = options.hopperCrafts ?? 2;
+  const primeCrafts = Math.min(options.primeCrafts ?? 1, hopperCrafts);
   const settleTolerance = options.settleTolerance ?? 0.02;
 
   // Nameplates from the planner's own machine math - one source of truth.
@@ -152,8 +158,8 @@ export function simulateSteadyState(
     for (const [key, flow] of Object.entries(report.inputs)) {
       const perOp = flow.amountPerSecond / opsPerSecond;
       eats.set(key as ResourceKey, perOp);
-      // Primed with one craft: the player's kick-start, see the header note.
-      inputs.set(key as ResourceKey, { amount: perOp, capacity: perOp * hopperCrafts });
+      // Primed with primeCrafts: the player's kick-start, see the header note.
+      inputs.set(key as ResourceKey, { amount: perOp * primeCrafts, capacity: perOp * hopperCrafts });
     }
     for (const [key, flow] of Object.entries(report.outputs)) {
       const perOp = flow.amountPerSecond / opsPerSecond;
