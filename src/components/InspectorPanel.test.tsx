@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { gtnhFuelProfiles } from "@/lib/model/fuels";
 import {
@@ -120,7 +120,7 @@ describe("InspectorPanel", () => {
   // otherwise pile up in the same document.
   afterEach(cleanup);
 
-  it("shows all four groups at once, without tab switching", () => {
+  it("shows the three groups at once, with Internal folded by default", () => {
     seedResult({
       externalInputs: [makeBalance(1, { deficitPerSecond: 240 })],
       unconsumedOutputs: [makeBalance(2, { producedPerSecond: 64, surplusPerSecond: 64 })],
@@ -130,27 +130,29 @@ describe("InspectorPanel", () => {
     render(<InspectorPanel />);
 
     expect(screen.getByText("Inputs")).toBeDefined();
-    expect(screen.getByText("Products")).toBeDefined();
-    expect(screen.getByText("Byproducts")).toBeDefined();
+    expect(screen.getByText("Outputs")).toBeDefined();
     expect(screen.getByText("Internal")).toBeDefined();
     expect(screen.getByText("Resource 1")).toBeDefined();
     expect(screen.getByText("Resource 2")).toBeDefined();
+    // Internal is the long tail and the group that means "nothing to see",
+    // so it starts folded; one click on its header opens it.
+    expect(screen.queryByText("Internal 3")).toBeNull();
+    fireEvent.click(screen.getByText("Internal").closest("button")!);
     expect(screen.getByText("Internal 3")).toBeDefined();
   });
 
-  // Nothing left over is a byproduct: it is coming out and no product drawer
-  // claimed it. Calling it a product because a drawer has not been placed yet
-  // would decide what the factory is for on the reader's behalf.
-  it("files unclaimed spare output under byproducts", () => {
+  // One Outputs section: the old Products/Byproducts split is gone, so spare
+  // output nothing claims still lands in plain sight under Outputs.
+  it("files unclaimed spare output under the one Outputs section", () => {
     seedResult({
       unconsumedOutputs: [makeBalance(2, { producedPerSecond: 64, surplusPerSecond: 64 })],
     });
 
     render(<InspectorPanel />);
 
-    const headers = screen.getAllByText(/^(Products|Byproducts)$/).map((el) => el.textContent);
-    expect(headers).toEqual(["Products", "Byproducts"]);
-    expect(screen.getByText("Nothing asked for yet.")).toBeDefined();
+    expect(screen.getByText("Outputs")).toBeDefined();
+    expect(screen.queryByText("Products")).toBeNull();
+    expect(screen.queryByText("Byproducts")).toBeNull();
     expect(screen.getByText("Resource 2")).toBeDefined();
   });
 
@@ -168,9 +170,13 @@ describe("InspectorPanel", () => {
 
   it("windows a large plan instead of rendering every row", () => {
     // The panel has to stay cheap at hundreds of resources; rendering them all
-    // is the thing this replaced.
+    // is the thing this replaced. Inputs, because that group starts open.
     withViewport(600, () => {
-      seedResult({ internal: Array.from({ length: 400 }, (_, index) => makeInternal(index, 100)) });
+      seedResult({
+        externalInputs: Array.from({ length: 400 }, (_, index) =>
+          makeBalance(index, { deficitPerSecond: 100 }),
+        ),
+      });
 
       const { container } = render(<InspectorPanel />);
       const rowCount = container.querySelectorAll("[data-resource-row]").length;
@@ -183,27 +189,33 @@ describe("InspectorPanel", () => {
 
   it("keeps a section header pinned when scrolled deep into a long group", () => {
     withViewport(600, () => {
-      seedResult({ internal: Array.from({ length: 400 }, (_, index) => makeInternal(index, 100)) });
+      seedResult({
+        externalInputs: Array.from({ length: 400 }, (_, index) =>
+          makeBalance(index, { deficitPerSecond: 100 }),
+        ),
+      });
 
       const { container } = render(<InspectorPanel />);
       const scroller = container.querySelector(".overflow-y-auto")!;
       fireEvent.scroll(scroller, { target: { scrollTop: 5000 } });
 
       // Far past the header's own row, so it only survives via the pinned copy.
-      expect(screen.getByText("Internal")).toBeDefined();
-      expect(screen.queryByText("Internal 0")).toBeNull();
+      expect(screen.getAllByText("Inputs").length).toBeGreaterThan(0);
+      expect(screen.queryByText("Resource 0")).toBeNull();
     });
   });
 
-  it("collapses a section to its header", () => {
-    seedResult({ internal: [makeInternal(1, 100), makeInternal(2, 200)] });
+  it("collapses a section to its header", async () => {
+    seedResult({ externalInputs: [makeBalance(1, { deficitPerSecond: 100 })] });
 
     render(<InspectorPanel />);
-    expect(screen.getByText("Internal 1")).toBeDefined();
+    expect(screen.getByText("Resource 1")).toBeDefined();
 
-    fireEvent.click(screen.getByText("Internal").closest("button")!);
-    expect(screen.queryByText("Internal 1")).toBeNull();
-    expect(screen.getByText("Internal")).toBeDefined();
+    // The row folds away over a short presence tween rather than popping,
+    // so give the fold its moment before asserting it finished.
+    fireEvent.click(screen.getByText("Inputs").closest("button")!);
+    await waitFor(() => expect(screen.queryByText("Resource 1")).toBeNull());
+    expect(screen.getByText("Inputs")).toBeDefined();
   });
 
   it("keeps section counts on the header while filtering", () => {
@@ -222,7 +234,7 @@ describe("InspectorPanel", () => {
   it("explains an empty group rather than showing a blank area", () => {
     render(<InspectorPanel />);
     expect(screen.getByText(/Nothing missing/)).toBeDefined();
-    expect(screen.getByText(/Nothing left over/)).toBeDefined();
+    expect(screen.getByText(/Nothing coming out yet/)).toBeDefined();
   });
 
   it("lights a resource on the canvas while it is pointed at", () => {
@@ -326,8 +338,11 @@ describe("InspectorPanel", () => {
       render(<InspectorPanel />);
 
       expect(screen.queryByText("Selection")).toBeNull();
-      // Made and eaten in-plan, so it sits under Internal, not Need.
       expect(screen.getByText("Ore")).toBeDefined();
+      // Made and eaten in-plan, so it sits under Internal, not Need — and
+      // Internal starts folded.
+      expect(screen.queryByText("Ingot")).toBeNull();
+      fireEvent.click(screen.getByText("Internal").closest("button")!);
       expect(screen.getByText("Ingot")).toBeDefined();
     });
 
