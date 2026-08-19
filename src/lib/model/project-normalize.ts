@@ -18,11 +18,31 @@ export function normalizeLoadedProject(project: FactoryProject): FactoryProject 
     repairPocketReferences(
       unpaintCustomRateCards(
         releaseCustomRates(
-          dropDuplicateEdges(dropCrossFormConnections(normalizeProjectFuelProfiles(project))),
+          dropDuplicateEdges(
+            dropCrossFormConnections(normalizeProjectFuelProfiles(renameOpvTier(project))),
+          ),
         ),
       ),
     ),
   );
+}
+
+/**
+ * The 536M EU/t tier spent a while misnamed "OpV" (a GTCEu name; GTNH calls it
+ * UXV). Plans saved back then still say it on their cards, and a name nothing
+ * recognises would drop those machines to their recipe's default voltage and
+ * desync every tier dropdown. Same voltage, today's name.
+ */
+function renameOpvTier(project: FactoryProject): FactoryProject {
+  let changed = false;
+  const nodes = project.nodes.map((node) => {
+    if (node.overclockTier !== "OpV") {
+      return node;
+    }
+    changed = true;
+    return { ...node, overclockTier: "UXV" as const };
+  });
+  return changed ? { ...project, nodes } : project;
 }
 
 /**

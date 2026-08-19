@@ -80,11 +80,13 @@ export interface BlueprintRow {
 /** GT tier labels a blueprint may report; anything else stores as none. */
 const KNOWN_TIERS = new Set([
   "ULV", "LV", "MV", "HV", "EV", "IV", "LuV", "ZPM", "UV",
-  "UHV", "UEV", "UIV", "UXV", "OpV", "MAX",
+  "UHV", "UEV", "UIV", "UMV", "UXV", "MAX",
 ]);
 
 export function parseHighestTier(value: unknown): string | null {
-  return typeof value === "string" && KNOWN_TIERS.has(value) ? value : null;
+  // "OpV" is the old misname of the 536M EU/t tier; it stores as UXV now.
+  const tier = value === "OpV" ? "UXV" : value;
+  return typeof tier === "string" && KNOWN_TIERS.has(tier) ? tier : null;
 }
 
 export function rowToBlueprintSummary(
