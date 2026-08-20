@@ -12,6 +12,7 @@ import {
   Grid3x3,
   Link,
   MoveUpRight,
+  Network,
   Paintbrush,
   Presentation,
   Search,
@@ -55,10 +56,8 @@ import {
   tourBufferDrawerSelector,
   tourByproductDrawerSelector,
   tourLabArmQuiet,
-  tourLabArmStrict,
   tourLabQuiet,
   tourLabReset,
-  tourLabStrict,
   tourProductDrawerSelector,
   tourSourceDrawerSelector,
 } from "./tour-boards";
@@ -86,9 +85,11 @@ import {
  * any step should ever want.
  *
  * EVERY CLAIM MUST BE TRUE ON THE LIVE BOARD. The second lesson's steps were
- * checked against the posted titanium line with the real solver: what a full
- * input bar means, which card gets marked and why, what each flip in the
- * drawer lab actually changes. Rewrite a row only with the board open.
+ * checked against the posted titanium line with the real solver (the equation
+ * books, 2026-08-20): what a full input bar means, which card gets marked and
+ * why, what the drawer lab's flip actually changes - which is bookkeeping and
+ * one word, never a speed. `tour-board-alive.test.ts` pins the solves the
+ * copy leans on. Rewrite a row only with the board open.
  *
  * `before` runs just ahead of the step and is for making the target visible:
  * opening a column, landing the sidebar on a tab. A step must never leave the
@@ -181,6 +182,7 @@ const LOOK_AROUND: TourLesson = {
         { icon: Sprout, text: "*Crop farm*: CropsNH (2.9)." },
         { icon: Trash, text: "*Trash can*: voids whatever is wired into it." },
         { icon: Gauge, text: "*Custom rate*: set any rate in or out by hand." },
+        { icon: Network, text: "*Auto-arrange*: lays the whole board out. Undo puts it back." },
         { chip: "/s", text: "Per tick, second, minute or hour." },
       ],
     },
@@ -321,7 +323,7 @@ const READ_THE_BOARD: TourLesson = {
   title: "Read the board",
   recommended: true,
   blurb:
-    "Opens a real titanium line: what the words on the cards mean, what each drawer does, and two live changes to watch.",
+    "Opens a real titanium line: what the words on the cards mean, what each drawer does, and one live change to watch.",
   // Both columns out of the way for the duration: this lesson is about the
   // canvas and nothing else, and with them open there is not enough board left
   // to magnify a card into. They come back exactly as they were.
@@ -380,7 +382,7 @@ const READ_THE_BOARD: TourLesson = {
       rows: [
         { text: "One row per product, with its output rate." },
         {
-          text: "The machine downstream wants *far more* of one of these than this machine can make.",
+          text: "The next machine wants *far more* of one of these than this machine can make.",
         },
         {
           text: "The *percentage* on an output row is how much of what was asked for actually arrived at the next machine.",
@@ -398,7 +400,7 @@ const READ_THE_BOARD: TourLesson = {
           text: "Fully fed and running at *100%*, and still not making enough.",
         },
         {
-          text: "This word means *build more of this machine* or *raise its voltage*. Nothing upstream will help: it already has everything it wants.",
+          text: "This word means *build more of this machine* or *raise its voltage*. More supply would not help: it already has everything it wants.",
         },
       ],
     },
@@ -446,15 +448,20 @@ const READ_THE_BOARD: TourLesson = {
       rows: [
         { text: "What it makes is nowhere near enough." },
         { text: "The machine waiting on it gets *a fraction* of what it needs." },
-        { text: "One shortage upstream becomes a whole chain of slowed machines." },
+        { text: "One short machine becomes a whole chain of slowed machines." },
       ],
     },
     {
       anchorSelector: tourBottleneckUsageSelector,
       side: "right",
       before: frameTourBottleneck,
-      title: "Two more status words",
+      title: "Three more words",
       rows: [
+        {
+          chip: "PACED",
+          tone: "fine",
+          text: "Fed, nothing jammed, still under 100%: it *runs at the speed of the machines around it*. Nothing to fix.",
+        },
         {
           chip: "NO WIRES",
           tone: "starved",
@@ -462,11 +469,11 @@ const READ_THE_BOARD: TourLesson = {
         },
         {
           chip: "CLOGGED",
-          tone: "blocked",
-          text: "Wired up, but it makes more of something than anyone takes, and the extra has *nowhere* to go.",
+          tone: "clogged",
+          text: "It makes more of something than its takers use, and the spare has *nowhere* to go. It slows to the pace they set, as in game.",
         },
         {
-          text: "When an output backs up the machine stops, as in game. Wire the spare to a *Byproduct* drawer or a *Buffer* and it runs again.",
+          text: "Wire the spare to a *Byproduct* drawer and it speeds back up.",
         },
       ],
     },
@@ -474,18 +481,42 @@ const READ_THE_BOARD: TourLesson = {
       anchor: "board",
       side: "inside",
       before: frameTourWholeBoard,
-      title: "A line is not meant to run flat out",
+      title: "When a line feeds itself",
       rows: [
         {
-          text: "Almost nothing here sits at *100 percent*. A real line never does.",
+          text: "Machines can feed each other in a circle. Two diseases live there, and the board names both.",
         },
         {
-          text: "Recipes want different rates, so most machines idle part of the time. That is normal.",
+          chip: "DEAD LOOP",
+          tone: "bottleneck",
+          text: "*Red*: the circle loses material every pass, so every machine in it starves to zero.",
+        },
+        {
+          chip: "CLOG LOCK",
+          tone: "clogged",
+          text: "*Blue*: the circle makes more of something than it uses. Every chest fills, then everything freezes at *0%*.",
+        },
+        {
+          text: "*Show me* on the bottom notice walks you to the machines whose spare needs a drawer.",
+        },
+      ],
+    },
+    {
+      anchor: "board",
+      side: "inside",
+      before: frameTourWholeBoard,
+      title: "Machines run as fast as they can",
+      rows: [
+        {
+          text: "Almost nothing here sits at *100 percent*, and nothing here idles by choice.",
+        },
+        {
+          text: "Each machine runs at whatever pace its supplies allow, so one short machine slows every machine after it.",
         },
         {
           chip: "BOTTLENECK",
           tone: "bottleneck",
-          text: "The one to fix. *Add machines* or *raise voltage* there and the next bottleneck appears somewhere else.",
+          text: "Where to act. *Add machines* or *raise voltage* there and the next bottleneck appears somewhere else.",
         },
       ],
     },
@@ -525,13 +556,16 @@ const READ_THE_BOARD: TourLesson = {
       anchorSelector: tourProductDrawerSelector,
       side: "right",
       before: frameTourProductDrawer,
-      title: "A Product pulls",
+      title: "A Product is the goal",
       rows: [
-        { text: "The *titanium ingot* drawer. Nothing draws from it, so it *asks*." },
+        { text: "The *titanium ingot* drawer. The freezer fills it, and nothing draws from it." },
         {
           chip: "PRODUCT",
           tone: "product",
-          text: "It asks its machine for *everything it can make*. This sets the pace of the whole line.",
+          text: "Marks what the plan is *for*. What lands here is the plan's output.",
+        },
+        {
+          text: "It does not make the freezer run faster. No drawer does: speed comes from supply.",
         },
         {
           text: "The button on its header flips it to a Byproduct. The next steps do exactly that.",
@@ -542,13 +576,16 @@ const READ_THE_BOARD: TourLesson = {
       anchorSelector: tourByproductDrawerSelector,
       side: "right",
       before: frameTourByproductDrawer,
-      title: "A Byproduct never asks for more",
+      title: "A Byproduct catches the spare",
       rows: [
         { text: "Two of them here: *cast iron* and *carbon monoxide*." },
         {
           chip: "BYPRODUCT",
           tone: "output",
-          text: "A Byproduct *never asks its machine to speed up*, even when the machine could. It just catches whatever gets made.",
+          text: "A machine makes these *alongside* the thing you want. They land here so they cannot back up and clog it.",
+        },
+        {
+          text: "Product or Byproduct changes what the plan counts as its goal. It never changes speed.",
         },
       ],
     },
@@ -562,10 +599,16 @@ const READ_THE_BOARD: TourLesson = {
         {
           chip: "BUFFER",
           tone: "internal",
-          text: "It hands the freezer what the freezer pulls, and *stores anything extra*, at the rate shown on its tile.",
+          text: "It hands the freezer what arrives and *stores* anything the freezer does not take.",
         },
         {
-          text: "It never creates supply: run it short and the taker slows. Its header button can also make it *strict*. The steps ahead show both.",
+          text: "Today it stores nothing: the freezer takes *every ingot* the furnace makes, and still wants more.",
+        },
+        {
+          text: "It never creates supply: the freezer is short because the furnace makes too few, and no tank fixes that.",
+        },
+        {
+          text: "Its header button can make it *strict*: a strict buffer stores nothing, so spare output backs up into its maker.",
         },
       ],
     },
@@ -573,77 +616,44 @@ const READ_THE_BOARD: TourLesson = {
       anchor: "board",
       side: "inside",
       before: tourLabArmQuiet,
-      title: "Next: the Product stops asking",
+      title: "Next: the Product pill flips",
       rows: [
         {
           text: "*The blue titanium drawer is blinking*: it is the one about to change.",
         },
         {
-          text: "Press *Next* and it becomes a Byproduct. Nothing on the board will ask for titanium after that.",
+          text: "Press *Next* and it becomes a Byproduct.",
         },
-        { text: "Watch the *freezer* and the *buffer*." },
+        { text: "Watch each card's *usage* number. Not one of them will change." },
       ],
     },
     {
       anchor: "board",
       side: "inside",
       before: tourLabQuiet,
-      title: "The Product stopped asking",
+      title: "Nothing slowed down",
       rows: [
         {
-          text: "The titanium drawer is a *Byproduct* now. Nothing on the board asks for titanium any more.",
+          text: "The titanium drawer is a *Byproduct* now, and every usage number *held still*.",
         },
         {
-          chip: "UNUSED",
-          tone: "internal",
-          text: "*Only the freezer stopped.* Nothing asks for its ingots, so it has nothing to do.",
+          text: "The freezer is still fed and its ingots still have a place to land, so it *runs exactly as before*.",
         },
         {
-          text: "Everything upstream keeps running. The *Buffer stores* the hot ingots the furnace keeps making, at the rate on its tile.",
+          text: "Its word changed: *starved* became *on demand*. Nothing is waiting on titanium now, so its pace stopped being a problem.",
         },
-        { text: "A Byproduct never sets the pace." },
-      ],
-    },
-    {
-      anchor: "board",
-      side: "inside",
-      before: tourLabArmStrict,
-      title: "Next: the Buffer goes strict",
-      rows: [
-        { text: "Now *the Buffer is blinking*." },
-        {
-          text: "Press *Next* and it goes strict: it will *refuse to store the surplus* it has been catching.",
-        },
-        { text: "Watch the *furnace* first, then everything upstream of it." },
-      ],
-    },
-    {
-      anchor: "board",
-      side: "inside",
-      before: tourLabStrict,
-      title: "The Buffer is strict",
-      rows: [
-        { text: "The Buffer now *refuses to store the surplus*." },
-        {
-          chip: "UNUSED",
-          tone: "internal",
-          text: "Nothing asks and nothing catches, so the furnace has *nowhere* to send its ingots. It stops, and every machine upstream follows. *The whole line reads zero.*",
-        },
-        {
-          text: "Strict stores nothing, so an imbalance stops the line instead of hiding in a tank.",
-        },
-        { text: "Press *Next* to put everything back." },
+        { text: "The pill moves titanium out of the plan's goals. It never touches speed." },
       ],
     },
     {
       anchor: "board",
       side: "inside",
       before: tourLabReset,
-      title: "Back on track",
+      title: "Back where we started",
       rows: [
-        { text: "Product asking, Buffer catching. The line runs again." },
+        { text: "The titanium drawer is a *Product* again. The speeds never moved." },
         {
-          text: "Every drawer does one of three jobs: *ask, catch, or hold*.",
+          text: "The pill says which drawers are *the point* and which just catch spillover. The machines never noticed.",
         },
         { text: "The header buttons flip a drawer's job in one click. No rewiring." },
       ],

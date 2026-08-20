@@ -4,7 +4,7 @@ import { loadBiodieselDemoProject } from "@/examples";
 import { downloadCommunityPlan, tagPlanWithCommunityId } from "@/lib/community/client";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import type { FactoryProject } from "@/lib/model/types";
-import { closeBoundaries } from "@/lib/solver/close-boundaries";
+import { prepareTourProject, quietStage } from "./tour-plan-prep";
 import { getStorageRoles, type StorageRole } from "@/lib/model/storage-role";
 import { deriveNodeVerdict } from "@/components/flow/node-verdict";
 import { readWorkspaceViewSnapshot, writeWorkspaceView } from "@/lib/workspace-view";
@@ -175,22 +175,21 @@ function moveCamera(run: () => boolean) {
  * back rather than leaving the tour pointing at nothing.
  */
 async function fetchTourProject(): Promise<FactoryProject> {
-  // Both routes go through closeBoundaries. Every plan worth teaching from was
-  // authored before a plan had to declare its own edges, so its raw ingredients
-  // arrive from nowhere and its product goes nowhere - and under the closed
-  // rules that is a board of machines all reading NO WIRES at 0%. Nobody
-  // learns to read a factory from a dead one. Closing it puts a SOURCE on
-  // every raw input and a PRODUCT drawer on every finished output, which is
-  // exactly what the lesson goes on to teach.
+  // Both routes go through prepareTourProject: boundaries closed (a plan
+  // authored before plans declared their own edges is a board of NO WIRES at
+  // 0%, and nobody learns to read a factory from a dead one) and strict
+  // buffer flags unset, so the buffer the lesson describes is the plain one.
+  // The repairs and their reasons live in tour-plan-prep.ts, next to the
+  // test that pins what they must produce.
   try {
     const { plan } = await downloadCommunityPlan(TOUR_PLAN_COMMUNITY_ID);
     const project = parseFactoryProjectJson(
       JSON.stringify(tagPlanWithCommunityId(plan, TOUR_PLAN_COMMUNITY_ID)),
     );
-    return closeBoundaries({ ...project, name: TOUR_PLAN_DESIGN_NAME });
+    return prepareTourProject({ ...project, name: TOUR_PLAN_DESIGN_NAME });
   } catch {
     const project = loadBiodieselDemoProject();
-    return closeBoundaries({ ...project, name: TOUR_PLAN_DESIGN_NAME });
+    return prepareTourProject({ ...project, name: TOUR_PLAN_DESIGN_NAME });
   }
 }
 
@@ -485,37 +484,39 @@ export function frameTourWholeBoard(): void {
 }
 
 /**
- * The drawer laboratory: the states the drawers-and-buffers lesson walks the
- * board through, each rebuilt whole from a pristine snapshot.
+ * The drawer laboratory: one live experiment, rebuilt whole from a pristine
+ * snapshot.
  *
- *   quiet   every product drawer flipped to byproduct. Nothing asks for
- *           titanium, so ONLY the freezer stops - the furnace was never
- *           working for the freezer, and the buffer quietly banks the hot
- *           ingots it keeps making.
- *   strict  quiet, plus every buffer set strict. The refused surplus backs
- *           up into the furnace, the furnace stops, and the stall rolls all
- *           the way upstream: the whole line reads zero.
+ *   quiet   every product drawer flipped to byproduct. Under the equation
+ *           books NOTHING slows down - a fed machine with somewhere to put
+ *           its output keeps running - so every number on the board holds
+ *           still, and that stillness is the whole point of the step: the
+ *           pill is bookkeeping, never a speed control. (The old engine ran
+ *           this lab in two acts, byproduct then a strict buffer, and the
+ *           line died on stage. The engine that punished those flips is
+ *           gone, and `quietStage` in tour-plan-prep.ts is pinned by test
+ *           to change no utilization at all.)
  *
  * Rebuilt from the snapshot rather than toggled, because the progress dots
  * let a reader jump to any step from any other, and a toggle would need to
- * know where it was coming from. Every state frames the same whole-board
- * shot: the states are the pictures being compared, so the camera must not
- * be part of the difference. Routed through `moveCamera` for its
+ * know where it was coming from. Every state frames the same shot of the
+ * drawer and its feeders: the states are the pictures being compared, so
+ * the camera must not be part of the difference. Routed through `moveCamera` for its
  * retry-and-supersede behaviour - it keeps trying until the picks resolve,
  * and a newer intention cancels a flip that has not landed yet.
  */
 /**
  * A change never rides a timer and never rides the camera: it lands on the
- * PRESS. Each flip is two steps. The GET READY step frames the whole line,
+ * PRESS. The flip is two steps. The GET READY step frames the whole line,
  * changes nothing, and keeps the target tiles FLASHING until the reader
  * commits; pressing Next enters the flip step, whose arrival applies the
  * change with one bright pulse on the tiles that did it. The tour is a
  * TIMELINE: every step's entry rebuilds its own stage from the pristine
- * snapshot, so stepping back across a flip undoes it the same way stepping
+ * snapshot, so stepping back across the flip undoes it the same way stepping
  * forward made it, and the progress dots can land anywhere on a consistent
  * frame.
  */
-type LabStage = "baseline" | "quiet" | "strict";
+type LabStage = "baseline" | "quiet";
 let drawerLabBaseline: FactoryProject | undefined;
 let labStageApplied: LabStage = "baseline";
 let flashing: Animation[] = [];
@@ -543,16 +544,42 @@ function armFlashCancel(): void {
   subscribeTourState(stopFlashing);
 }
 
-function labTiles(group: "products" | "buffers" | "both"): string[] {
+/** The tiles the lab changes: every product drawer. */
+function labTiles(): string[] {
+  return ensurePicks()?.productDrawerIds ?? [];
+}
+
+/**
+ * What the lab keeps in frame: the product drawers, the machines that fill
+ * them, and whatever feeds THOSE. Close enough that real usage numbers are
+ * on screen - the step's whole claim is that none of them move, and at the
+ * whole-board distance the cards fold to icons and there is no number to
+ * watch. The same shot for every lab step, so between any two of them the
+ * flip is the only thing that changes.
+ */
+function labFrameIds(): string[] {
   const found = ensurePicks();
   if (!found) {
     return [];
   }
-  return group === "products"
-    ? found.productDrawerIds
-    : group === "buffers"
-      ? found.bufferDrawerIds
-      : [...found.productDrawerIds, ...found.bufferDrawerIds];
+  const project = useFactoryStore.getState().project;
+  const ids = new Set(found.productDrawerIds);
+  // Two hops upstream of the drawer: its feeder, then the feeder's supply.
+  // Hopped frontier by frontier - a plain "grow the set" pass would chase
+  // the board's recycle ring and frame everything, which is the exact shot
+  // this exists to avoid.
+  let frontier: ReadonlySet<string> = ids;
+  for (let hop = 0; hop < 2; hop += 1) {
+    const next = new Set<string>();
+    for (const edge of project.edges) {
+      if (frontier.has(edge.target) && !ids.has(edge.source)) {
+        ids.add(edge.source);
+        next.add(edge.source);
+      }
+    }
+    frontier = next;
+  }
+  return [...ids];
 }
 
 function tileElement(id: string): HTMLElement | null {
@@ -592,8 +619,7 @@ function pulseTiles(ids: string[]): void {
 }
 
 function applyLabStage(stage: LabStage): boolean {
-  const found = ensurePicks();
-  if (!found) {
+  if (!ensurePicks()) {
     return false;
   }
   const store = useFactoryStore.getState();
@@ -610,43 +636,31 @@ function applyLabStage(stage: LabStage): boolean {
   // The snapshot is only ever taken while the plan is pristine: any other
   // stage was itself built from a snapshot that already existed.
   drawerLabBaseline ??= store.project;
-  const products = new Set(found.productDrawerIds);
-  const buffers = new Set(found.bufferDrawerIds);
-  store.markHydratedProject({
-    ...drawerLabBaseline,
-    storages: (drawerLabBaseline.storages ?? []).map((storage) =>
-      products.has(storage.id)
-        ? { ...storage, drainMode: "byproduct" as const }
-        : stage === "strict" && buffers.has(storage.id)
-          ? { ...storage, bufferMode: "strict" as const }
-          : storage,
-    ),
-  });
+  store.markHydratedProject(quietStage(drawerLabBaseline));
   labStageApplied = stage;
   return true;
 }
 
-function runLabStep(
-  stage: LabStage,
-  fx: { flash?: "products" | "buffers" | "both"; pulse?: "products" | "buffers" | "both" },
-): void {
+function runLabStep(stage: LabStage, fx: { flash?: boolean; pulse?: boolean }): void {
   moveCamera(() => {
     if (!ensurePicks()) {
       return false;
     }
-    // Every lab step frames the SAME whole-board shot, so between any two of
-    // them the stage is the only thing that changes. Framed FIRST, and on
-    // every retry: the board only renders on-screen cards, so a tile hidden
-    // by the previous step's close-up does not exist until this camera move
-    // lands - a guard that waited for the tile before framing would wait on
-    // itself forever.
-    useFactoryStore.getState().frameBoardNodes(undefined, WHOLE_BOARD);
+    // Every lab step frames the SAME shot (see labFrameIds), so between any
+    // two of them the flip is the only thing that changes. Framed FIRST, and
+    // on every retry: the board only renders on-screen cards, so a tile
+    // hidden by the previous step's close-up does not exist until this
+    // camera move lands - a guard that waited for the tile before framing
+    // would wait on itself forever.
+    const frameIds = labFrameIds();
+    useFactoryStore
+      .getState()
+      .frameBoardNodes(frameIds.length > 0 ? frameIds : undefined, GROUP_SHOT);
     // The flash and the pulse land on real pixels or not at all: until the
     // target tiles are in the DOM this step has not really arrived, so keep
     // retrying rather than flipping a board nobody can see yet.
-    const targetGroup = fx.flash ?? fx.pulse;
-    const targetIds = targetGroup ? labTiles(targetGroup) : [];
-    if (targetGroup && targetIds.length > 0 && targetIds.some((id) => !tileElement(id))) {
+    const targetIds = fx.flash || fx.pulse ? labTiles() : [];
+    if ((fx.flash || fx.pulse) && targetIds.length > 0 && targetIds.some((id) => !tileElement(id))) {
       return false;
     }
     if (!applyLabStage(stage)) {
@@ -664,27 +678,17 @@ function runLabStep(
 
 /** Get ready: nothing changes, the product drawer blinks until the press. */
 export function tourLabArmQuiet(): void {
-  runLabStep("baseline", { flash: "products" });
+  runLabStep("baseline", { flash: true });
 }
 
 /** The press lands: product to byproduct, one pulse on the drawer that did it. */
 export function tourLabQuiet(): void {
-  runLabStep("quiet", { pulse: "products" });
+  runLabStep("quiet", { pulse: true });
 }
 
-/** Get ready again: board holds the quiet stage, the buffer blinks. */
-export function tourLabArmStrict(): void {
-  runLabStep("quiet", { flash: "buffers" });
-}
-
-/** The press lands: the buffer refuses the surplus and the line goes dark. */
-export function tourLabStrict(): void {
-  runLabStep("strict", { pulse: "buffers" });
-}
-
-/** Back to the pristine plan, both flipped tiles pulsing their return. */
+/** Back to the pristine plan, the flipped tile pulsing its return. */
 export function tourLabReset(): void {
-  runLabStep("baseline", { pulse: "both" });
+  runLabStep("baseline", { pulse: true });
 }
 
 /**

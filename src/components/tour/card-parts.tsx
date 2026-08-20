@@ -26,7 +26,8 @@ export type GlanceTone =
   | "fine"
   | "starved"
   | "blocked"
-  | "bottleneck";
+  | "bottleneck"
+  | "clogged";
 
 /** Which mouse button a row is about, drawn as a little lit-up mouse. */
 export type GlanceMouse = "left" | "right" | "scroll";
@@ -52,9 +53,9 @@ export const GLANCE_LINE = "#2a3441";
 /**
  * Chip colours, taken from the app rather than invented.
  *
- * The four machine states are the board's own verdict inks (globals.css), so a
+ * The machine states are the board's own verdict inks (globals.css), so a
  * chip is the same colour as the word on the card it describes. None of them is
- * green: on this board green says "fine", and three of the four are not.
+ * green: on this board green says "fine", and most of these are not.
  */
 export const GLANCE_TONES: Record<GlanceTone, string> = {
   need: "#f87171",
@@ -66,6 +67,8 @@ export const GLANCE_TONES: Record<GlanceTone, string> = {
   starved: "#b3ae76",
   blocked: "#e0a63a",
   bottleneck: "#e05252",
+  // The clog family's cool blue (--verdict-clogged-ink): full, not broken.
+  clogged: "#6fb2d6",
 };
 
 export const GLANCE_CARD_CLASS =
