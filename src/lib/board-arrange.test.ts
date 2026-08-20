@@ -638,6 +638,21 @@ describe("arrangeBoard", () => {
     }
     expect(result.wireRoutes.find((entry) => entry.id === "near")).toBeUndefined();
     expect(result.wireRoutes.find((entry) => entry.id === "next")).toBeUndefined();
+    // The stops walk WITH the wire: every stop sits inside the run's own
+    // horizontal span, in travel order - never behind the start, never past
+    // the target, never doubling back.
+    const p = positionsById(result.moves);
+    const from = p.get("a3")!;
+    const to = p.get("c3")!;
+    const low = Math.min(from.x + 360, to.x);
+    const high = Math.max(from.x + 360, to.x);
+    let previousX = from.x + 360;
+    for (const point of haul!.waypoints) {
+      expect(point.x).toBeGreaterThanOrEqual(low);
+      expect(point.x).toBeLessThanOrEqual(high);
+      expect(point.x).toBeGreaterThanOrEqual(previousX - BOARD_GRID);
+      previousX = point.x;
+    }
   });
 
   it("stands each bypass buffer between its own two machines", () => {

@@ -212,11 +212,15 @@ function atIslandScale<T>(run: () => T): T {
     satellitePad: SATELLITE_PAD,
     satelliteStackGap: SATELLITE_STACK_GAP,
   };
-  ROW_GAP = ISLAND_GAP;
-  SECTION_GAP = ISLAND_GAP;
-  COLUMN_GAP_MIN = ISLAND_GAP;
-  SATELLITE_PAD = ISLAND_GAP;
-  SATELLITE_STACK_GAP = ISLAND_GAP;
+  // A touch tighter than the outer island gap: islands should cluster,
+  // staying close enough to read as one factory while every ground keeps
+  // room for a wire to walk around it.
+  const metaGap = Math.max(ISLAND_GAP - cells(2), cells(8));
+  ROW_GAP = metaGap;
+  SECTION_GAP = metaGap;
+  COLUMN_GAP_MIN = metaGap;
+  SATELLITE_PAD = metaGap;
+  SATELLITE_STACK_GAP = metaGap;
   PAGE_FOLD = true;
   try {
     return run();
@@ -630,21 +634,27 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
   }
 
   // Bridges never cut through a foreign island. A wire between two islands
-  // that would pass through a third gets steering stops walking it around
-  // that island's ground - box padding and clearance included - because the
-  // router routes around CARDS, not around the ground an island stands on.
+  // that would pass OVER a third gets steering stops walking it around that
+  // island's ground - because the router routes around CARDS, not around
+  // the ground an island stands on. The hit is judged against the island's
+  // own rectangle, so a wire passing NEAR an island earns nothing; the
+  // detour lane is laid on the no-go collar, two cells clear of the box.
   const wireRoutes: ArrangeResult["wireRoutes"] = [];
   {
-    // The drawn box sits two cells past the cards, and the box itself wears
-    // a two-cell NO-GO collar: bridges keep that far off every foreign
-    // ground. The island gap is sized so two neighbouring collars never
-    // touch - overlapping collars once drowned a board in steering dots.
-    const margin = cells(4);
+    const collar = cells(4);
     const grounds = islands.map((island) => ({
-      left: island.x - margin,
-      top: island.y - margin,
-      right: island.x + island.width + margin,
-      bottom: island.y + island.height + margin,
+      tight: {
+        left: island.x,
+        top: island.y,
+        right: island.x + island.width,
+        bottom: island.y + island.height,
+      },
+      lane: {
+        left: island.x - collar,
+        top: island.y - collar,
+        right: island.x + island.width + collar,
+        bottom: island.y + island.height + collar,
+      },
     }));
     for (const bridge of bridgeLinks) {
       if (bridge.link.id === undefined) {
@@ -725,20 +735,21 @@ function segmentHitsGround(
 
 /**
  * Walk a straight run around every ground it would cut through: for each
- * offender in travel order, two stops trace the nearer side of its box,
- * then the walk continues toward the target. TWO detours at most, and a
- * walk that still cannot get clear places NO stops at all - the router
- * making its own way beats a trail of confused dots every time.
+ * offender in travel order, stops trace the nearer collar side, then the
+ * walk continues toward the target. Every stop is CLAMPED inside the
+ * run's own span - a stop the wire must double back for reads as broken -
+ * and a walk still blocked after two detours places NO stops at all: the
+ * router making its own way beats a trail of confused dots.
  */
 function routeAroundGrounds(
   start: { x: number; y: number },
   end: { x: number; y: number },
-  grounds: Ground[],
+  grounds: Array<{ tight: Ground; lane: Ground }>,
 ): Array<{ x: number; y: number }> {
   const stops: Array<{ x: number; y: number }> = [];
   let current = start;
   for (let guard = 0; guard <= 2; guard += 1) {
-    const blockers = grounds.filter((box) => segmentHitsGround(current, end, box));
+    const blockers = grounds.filter((ground) => segmentHitsGround(current, end, ground.tight));
     if (blockers.length === 0) {
       break;
     }
@@ -747,37 +758,60 @@ function routeAroundGrounds(
       return [];
     }
     const horizontal = Math.abs(end.x - current.x) >= Math.abs(end.y - current.y);
+    let next: { x: number; y: number };
     if (horizontal) {
       const rightward = end.x >= current.x;
-      blockers.sort((a, b) => (rightward ? a.left - b.left : b.right - a.right));
-      const box = blockers[0];
+      blockers.sort((a, b) =>
+        rightward ? a.tight.left - b.tight.left : b.tight.right - a.tight.right,
+      );
+      const ground = blockers[0];
       const midY = (current.y + end.y) / 2;
       const laneY = snapToGrid(
-        Math.abs(midY - box.top) <= Math.abs(midY - box.bottom) ? box.top : box.bottom,
+        Math.abs(midY - ground.lane.top) <= Math.abs(midY - ground.lane.bottom)
+          ? ground.lane.top
+          : ground.lane.bottom,
       );
-      const enterX = snapToGrid(rightward ? box.left : box.right);
-      const exitX = snapToGrid(rightward ? box.right : box.left);
-      if (exitX === current.x && laneY === current.y) {
-        return [];
+      const low = Math.min(current.x, end.x);
+      const high = Math.max(current.x, end.x);
+      const clamp = (value: number) => snapToGrid(Math.min(high, Math.max(low, value)));
+      const enterX = clamp(rightward ? ground.lane.left : ground.lane.right);
+      const exitX = clamp(rightward ? ground.lane.right : ground.lane.left);
+      if (enterX !== current.x || laneY !== current.y) {
+        stops.push({ x: enterX, y: laneY });
       }
-      stops.push({ x: enterX, y: laneY }, { x: exitX, y: laneY });
-      current = { x: exitX, y: laneY };
+      if (exitX !== enterX) {
+        stops.push({ x: exitX, y: laneY });
+      }
+      next = { x: exitX, y: laneY };
     } else {
       const downward = end.y >= current.y;
-      blockers.sort((a, b) => (downward ? a.top - b.top : b.bottom - a.bottom));
-      const box = blockers[0];
+      blockers.sort((a, b) =>
+        downward ? a.tight.top - b.tight.top : b.tight.bottom - a.tight.bottom,
+      );
+      const ground = blockers[0];
       const midX = (current.x + end.x) / 2;
       const laneX = snapToGrid(
-        Math.abs(midX - box.left) <= Math.abs(midX - box.right) ? box.left : box.right,
+        Math.abs(midX - ground.lane.left) <= Math.abs(midX - ground.lane.right)
+          ? ground.lane.left
+          : ground.lane.right,
       );
-      const enterY = snapToGrid(downward ? box.top : box.bottom);
-      const exitY = snapToGrid(downward ? box.bottom : box.top);
-      if (laneX === current.x && exitY === current.y) {
-        return [];
+      const low = Math.min(current.y, end.y);
+      const high = Math.max(current.y, end.y);
+      const clamp = (value: number) => snapToGrid(Math.min(high, Math.max(low, value)));
+      const enterY = clamp(downward ? ground.lane.top : ground.lane.bottom);
+      const exitY = clamp(downward ? ground.lane.bottom : ground.lane.top);
+      if (laneX !== current.x || enterY !== current.y) {
+        stops.push({ x: laneX, y: enterY });
       }
-      stops.push({ x: laneX, y: enterY }, { x: laneX, y: exitY });
-      current = { x: laneX, y: exitY };
+      if (exitY !== enterY) {
+        stops.push({ x: laneX, y: exitY });
+      }
+      next = { x: laneX, y: exitY };
     }
+    if (next.x === current.x && next.y === current.y) {
+      return [];
+    }
+    current = next;
   }
   return stops;
 }
