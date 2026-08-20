@@ -4018,43 +4018,41 @@ export function FactoryFlow() {
       state.project,
       state.activePocketId,
       state.lastResult,
+      // Tight spacing and normal island splitting, always: the two dials
+      // that existed for these were both ever set one way.
       {
-        spacing: view.autoArrangeSpacing,
-        islands: view.autoArrangeIslands,
+        spacing: "compact",
+        islands: "normal",
         steerWires: view.autoArrangeLanes,
       },
     );
     if (moves.length === 0) {
       return;
     }
-    // Islands always wear a background while island splitting is on: a
-    // quiet textured paper in the chosen theme. Stale grounds from an
-    // earlier arrange go either way. The shelf and interchange buffers
-    // stay bare.
-    const drawInk = view.autoArrangeIslands !== "off";
+    // Islands always wear a background: a quiet textured paper in the
+    // chosen theme. Stale grounds from an earlier arrange are cleared
+    // first. The shelf and interchange buffers stay bare.
     state.applyBoardArrangement({
       moves,
       resetEdgeIds,
       setWaypoints: wireRoutes,
       removeAnnotationIds: staleInkIds,
-      addAnnotations: drawInk
-        ? islands
-            .filter((island) => island.backdrop)
-            .map((island) => ({
-              kind: "box" as const,
-              colorTag: "steel" as const,
-              position: { x: island.x - BOARD_GRID * 2, y: island.y - BOARD_GRID * 2 },
-              size: {
-                width: island.width + BOARD_GRID * 4,
-                height: island.height + BOARD_GRID * 4,
-              },
-              style: {
-                border: "none" as const,
-                fill: "tint" as const,
-                fillTheme: view.autoArrangeInkTheme,
-              },
-            }))
-        : undefined,
+      addAnnotations: islands
+        .filter((island) => island.backdrop)
+        .map((island) => ({
+          kind: "box" as const,
+          colorTag: "steel" as const,
+          position: { x: island.x - BOARD_GRID * 2, y: island.y - BOARD_GRID * 2 },
+          size: {
+            width: island.width + BOARD_GRID * 4,
+            height: island.height + BOARD_GRID * 4,
+          },
+          style: {
+            border: "none" as const,
+            fill: "tint" as const,
+            fillTheme: view.autoArrangeInkTheme,
+          },
+        })),
     });
     useFactoryStore.getState().frameBoardNodes();
   }, []);
@@ -5549,28 +5547,6 @@ const SourceToolbar = memo(function SourceToolbar({
             Auto layout
           </div>
           <ArrangeDial
-            label="Spacing"
-            title="How much room everything gets"
-            value={boardView.autoArrangeSpacing}
-            options={[
-              { value: "compact", label: "Tight" },
-              { value: "normal", label: "Normal" },
-              { value: "roomy", label: "Wide" },
-            ]}
-            onPick={(value) => writeBoardView({ autoArrangeSpacing: value })}
-          />
-          <ArrangeDial
-            label="Islands"
-            title="A group holding onto the rest by one or two wires becomes its own island with a background. More splits smaller and looser groups; off keeps every connected group together"
-            value={boardView.autoArrangeIslands}
-            options={[
-              { value: "off", label: "Off" },
-              { value: "normal", label: "Normal" },
-              { value: "eager", label: "More" },
-            ]}
-            onPick={(value) => writeBoardView({ autoArrangeIslands: value })}
-          />
-          <ArrangeDial
             label="Steer long wires"
             title="Long wires get stops placed in a clear lane, so they run around the cards instead of between them"
             value={boardView.autoArrangeLanes ? "on" : "off"}
@@ -5580,33 +5556,31 @@ const SourceToolbar = memo(function SourceToolbar({
             ]}
             onPick={(value) => writeBoardView({ autoArrangeLanes: value === "on" })}
           />
-          {boardView.autoArrangeIslands !== "off" ? (
-            <div className="py-1" title="The paper each island's background is drawn on">
-              <div className="mb-1 text-[11px] font-bold text-[var(--mc-ink)]">
-                Island background
-              </div>
-              <div className="grid grid-cols-5 gap-1">
-                {CANVAS_THEMES.map((theme) => (
-                  <button
-                    key={theme.id}
-                    type="button"
-                    onClick={() => writeBoardView({ autoArrangeInkTheme: theme.id })}
-                    className={[
-                      "flex items-center justify-center border-2 p-0.5",
-                      boardView.autoArrangeInkTheme === theme.id
-                        ? "border-white ring-1 ring-cyan-300"
-                        : "border-[var(--mc-15)]",
-                    ].join(" ")}
-                    title={theme.name}
-                    aria-label={`Island background: ${theme.name}`}
-                    aria-pressed={boardView.autoArrangeInkTheme === theme.id}
-                  >
-                    <ThemeSwatch theme={theme} />
-                  </button>
-                ))}
-              </div>
+          <div className="py-1" title="The paper each island's background is drawn on">
+            <div className="mb-1 text-[11px] font-bold text-[var(--mc-ink)]">
+              Island background
             </div>
-          ) : null}
+            <div className="grid grid-cols-5 gap-1">
+              {CANVAS_THEMES.map((theme) => (
+                <button
+                  key={theme.id}
+                  type="button"
+                  onClick={() => writeBoardView({ autoArrangeInkTheme: theme.id })}
+                  className={[
+                    "flex items-center justify-center border-2 p-0.5",
+                    boardView.autoArrangeInkTheme === theme.id
+                      ? "border-white ring-1 ring-cyan-300"
+                      : "border-[var(--mc-15)]",
+                  ].join(" ")}
+                  title={theme.name}
+                  aria-label={`Island background: ${theme.name}`}
+                  aria-pressed={boardView.autoArrangeInkTheme === theme.id}
+                >
+                  <ThemeSwatch theme={theme} />
+                </button>
+              ))}
+            </div>
+          </div>
           <button
             type="button"
             onClick={() => {

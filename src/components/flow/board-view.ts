@@ -95,10 +95,6 @@ export interface BoardView {
   calmMode: boolean;
   /** What the glance (zoomed-out) view shows. See GlanceMode. */
   glanceMode: GlanceMode;
-  /** Auto-arrange: how much air everything gets. */
-  autoArrangeSpacing: "compact" | "normal" | "roomy";
-  /** Auto-arrange: how eagerly loose clusters become their own islands. */
-  autoArrangeIslands: "off" | "normal" | "eager";
   /** Auto-arrange: author waypoint stops that guide long wires. */
   autoArrangeLanes: boolean;
   /**
@@ -124,8 +120,6 @@ export const DEFAULT_BOARD_VIEW: BoardView = {
   linePulseMode: true,
   calmMode: false,
   glanceMode: "identity",
-  autoArrangeSpacing: "normal",
-  autoArrangeIslands: "normal",
   autoArrangeLanes: true,
   autoArrangeInkTheme: "slate",
 };
@@ -147,8 +141,6 @@ function readBoardView(): BoardView {
     // and every new default would ship switched off for existing users.
     const flag = (value: unknown, fallback: boolean) =>
       typeof value === "boolean" ? value : fallback;
-    const pick = <T extends string>(value: unknown, choices: readonly T[], fallback: T): T =>
-      choices.includes(value as T) ? (value as T) : fallback;
     const glanceMode = isGlanceMode(parsed.glanceMode)
       ? parsed.glanceMode
       : DEFAULT_BOARD_VIEW.glanceMode;
@@ -165,16 +157,6 @@ function readBoardView(): BoardView {
       linePulseMode: flag(parsed.linePulseMode, DEFAULT_BOARD_VIEW.linePulseMode),
       calmMode: flag(parsed.calmMode, DEFAULT_BOARD_VIEW.calmMode),
       glanceMode,
-      autoArrangeSpacing: pick(
-        parsed.autoArrangeSpacing,
-        ["compact", "normal", "roomy"] as const,
-        DEFAULT_BOARD_VIEW.autoArrangeSpacing,
-      ),
-      autoArrangeIslands: pick(
-        parsed.autoArrangeIslands,
-        ["off", "normal", "eager"] as const,
-        DEFAULT_BOARD_VIEW.autoArrangeIslands,
-      ),
       autoArrangeLanes: flag(parsed.autoArrangeLanes, DEFAULT_BOARD_VIEW.autoArrangeLanes),
       autoArrangeInkTheme: isCanvasThemeId(parsed.autoArrangeInkTheme)
         ? parsed.autoArrangeInkTheme

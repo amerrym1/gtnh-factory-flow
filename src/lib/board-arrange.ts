@@ -453,16 +453,29 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
     toExits.set(toId, (toExits.get(toId) ?? 0) - direction * bridge.weight);
   }
 
-  const blocks: Block[] = islandGroups.map((group, index) => {
-    const block = layoutIsland(group.members, group.links, group.satellites, exitsByGroup[index]);
-    if (group.interchange) {
-      block.plain = true;
+  const layoutAll = (
+    pullsByGroup?: Array<Map<string, Array<{ y: number; weight: number; anchor: number }>>>,
+  ): Block[] => {
+    const built = islandGroups.map((group, index) => {
+      const pulls = pullsByGroup?.[index];
+      const block = layoutIsland(
+        group.members,
+        group.links,
+        group.satellites,
+        exitsByGroup[index],
+        pulls && pulls.size > 0 ? pulls : undefined,
+      );
+      if (group.interchange) {
+        block.plain = true;
+      }
+      return block;
+    });
+    if (parked.length > 0) {
+      built.push(layoutShelf(parked, built[0]?.width ?? 0));
     }
-    return block;
-  });
-  if (parked.length > 0) {
-    blocks.push(layoutShelf(parked, blocks[0]?.width ?? 0));
-  }
+    return built;
+  };
+  let blocks = layoutAll();
 
   const origin = input.origin ?? boundingTopLeft(cards);
   const originX = snapToGrid(origin.x);
@@ -471,26 +484,73 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
   // The islands trade with each other, so WHERE each island stands follows
   // the same rule as the cards inside one: whoever feeds sits to the left
   // of whoever drinks, and the bridge wires' own endpoints align.
-  const localPlaceOfCard = new Map<string, Placement>();
-  blocks.forEach((block) => {
-    block.ids.forEach((id, i) => {
-      localPlaceOfCard.set(id, block.places[i]);
+  const assemble = () => {
+    const local = new Map<string, Placement>();
+    blocks.forEach((block) => {
+      block.ids.forEach((id, i) => {
+        local.set(id, block.places[i]);
+      });
     });
-  });
-  const crossLinks: IslandLink[] = bridgeLinks.map((bridge) => {
-    const fromPlace = localPlaceOfCard.get(bridge.link.from.card.id)!;
-    const toPlace = localPlaceOfCard.get(bridge.link.to.card.id)!;
-    return {
-      from: bridge.from,
-      to: bridge.to,
-      weight: bridge.weight,
-      fromX: fromPlace.x + bridge.link.from.card.width / 2,
-      toX: toPlace.x + bridge.link.to.card.width / 2,
-      fromY: fromPlace.y + bridge.link.fromAnchor,
-      toY: toPlace.y + bridge.link.toAnchor,
+    const cross: IslandLink[] = bridgeLinks.map((bridge) => {
+      const fromPlace = local.get(bridge.link.from.card.id)!;
+      const toPlace = local.get(bridge.link.to.card.id)!;
+      return {
+        from: bridge.from,
+        to: bridge.to,
+        weight: bridge.weight,
+        fromX: fromPlace.x + bridge.link.from.card.width / 2,
+        toX: toPlace.x + bridge.link.to.card.width / 2,
+        fromY: fromPlace.y + bridge.link.fromAnchor,
+        toY: toPlace.y + bridge.link.toAnchor,
+      };
+    });
+    return { local, cross };
+  };
+  let { local: localPlaceOfCard, cross: crossLinks } = assemble();
+  let offsets = placeIslands(blocks, crossLinks, islandLayer);
+
+  // The second pass. With every island standing somewhere real, each
+  // bridge's far end is a known point - so every island lays itself out
+  // once more with its bridges pulling their exit cards toward where the
+  // partner actually is. A wire to the island below now leaves from the
+  // bottom edge, not the top corner, and the islands are placed again
+  // around the reshaped blocks.
+  if (bridgeLinks.length > 0) {
+    const pullsByGroup = islandGroups.map(
+      () => new Map<string, Array<{ y: number; weight: number; anchor: number }>>(),
+    );
+    const addPull = (
+      group: number,
+      cardId: string,
+      target: { y: number; weight: number; anchor: number },
+    ) => {
+      const map = pullsByGroup[group];
+      const list = map.get(cardId);
+      if (list) {
+        list.push(target);
+      } else {
+        map.set(cardId, [target]);
+      }
     };
-  });
-  const offsets = placeIslands(blocks, crossLinks, islandLayer);
+    for (const bridge of bridgeLinks) {
+      const fromLocal = localPlaceOfCard.get(bridge.link.from.card.id)!;
+      const toLocal = localPlaceOfCard.get(bridge.link.to.card.id)!;
+      const weight = bridge.weight * 3;
+      addPull(bridge.from, bridge.link.from.card.id, {
+        y: offsets[bridge.to].y + toLocal.y + bridge.link.toAnchor - offsets[bridge.from].y,
+        weight,
+        anchor: bridge.link.fromAnchor,
+      });
+      addPull(bridge.to, bridge.link.to.card.id, {
+        y: offsets[bridge.from].y + fromLocal.y + bridge.link.fromAnchor - offsets[bridge.to].y,
+        weight,
+        anchor: bridge.link.toAnchor,
+      });
+    }
+    blocks = layoutAll(pullsByGroup);
+    ({ local: localPlaceOfCard, cross: crossLinks } = assemble());
+    offsets = placeIslands(blocks, crossLinks, islandLayer);
+  }
 
   const moves: ArrangeMove[] = [];
   const islands: ArrangeResult["islands"] = [];
@@ -802,7 +862,36 @@ function layoutIsland(
   links: WireLink[],
   satellites: Map<CardSlot, SatellitePlan>,
   exits: ReadonlyMap<string, number>,
+  pulls?: ReadonlyMap<string, Array<{ y: number; weight: number; anchor: number }>>,
 ): Block {
+  // The layout may run twice over the same slots (the second pass knows
+  // where every island stands); everything derived is recomputed from
+  // scratch, so clear the one flag that only ever gets set.
+  for (const slot of members) {
+    slot.trunk = false;
+  }
+  // Bridge pulls become phantom partners: a fixed point in island space the
+  // exit card's port is drawn toward, so a wire leaving for another island
+  // exits from the corner facing it instead of crossing its own island.
+  let extraPartners: Map<CardSlot, PartnerEntry[]> | undefined;
+  if (pulls && pulls.size > 0) {
+    extraPartners = new Map();
+    for (const slot of members) {
+      const entries = pulls.get(slot.card.id);
+      if (!entries) {
+        continue;
+      }
+      extraPartners.set(
+        slot,
+        entries.map((entry) => ({
+          other: { ...slot, y: entry.y },
+          own: entry.anchor,
+          their: 0,
+          weight: entry.weight,
+        })),
+      );
+    }
+  }
   // -- Cycles. A layered layout needs an acyclic graph to rank, so a DFS in
   // input order marks the wires that close each loop. Those wires still
   // exist for every later pass - they pull their ends together vertically -
@@ -872,12 +961,12 @@ function layoutIsland(
   // that would cross between columns uncross by swapping their ends. Bands
   // survive: the polish permutes order only among cards already sharing a
   // column and a section. Then the column settles again.
-  placeRows(collectLayers(members), links);
+  placeRows(collectLayers(members), links, extraPartners);
   for (let pass = 0; pass < 3; pass += 1) {
-    polishColumnOrder(collectLayers(members), links);
-    placeRows(collectLayers(members), links);
+    polishColumnOrder(collectLayers(members), links, extraPartners);
+    placeRows(collectLayers(members), links, extraPartners);
   }
-  straightenRows(collectLayers(members), links);
+  straightenRows(collectLayers(members), links, extraPartners);
   const layers = collectLayers(members);
 
   // -- Columns. Every column is as wide as its widest card; the corridor
@@ -1749,7 +1838,10 @@ interface PartnerEntry {
 }
 type PartnerMap = Map<CardSlot, PartnerEntry[]>;
 
-function buildPartners(links: WireLink[]): PartnerMap {
+function buildPartners(
+  links: WireLink[],
+  extra?: ReadonlyMap<CardSlot, PartnerEntry[]>,
+): PartnerMap {
   const partners: PartnerMap = new Map();
   for (const link of links) {
     // The main line is the one wire run that must read ruler-straight, so a
@@ -1767,6 +1859,16 @@ function buildPartners(links: WireLink[]): PartnerMap {
       their: link.fromAnchor,
       weight: link.weight * emphasis,
     });
+  }
+  // Phantom partners: fixed anchors a card is pulled toward - how a bridge
+  // to another island reaches inside and pulls its exit card to the edge
+  // facing the partner.
+  if (extra) {
+    for (const [slot, entries] of extra) {
+      for (const entry of entries) {
+        push(partners, slot, entry);
+      }
+    }
   }
   return partners;
 }
@@ -1798,8 +1900,12 @@ function wishFor(
  * The column's seq numbers are dealt back out in the new order; seq only
  * ever means "my order within my column", so nothing else moves.
  */
-function polishColumnOrder(layers: CardSlot[][], links: WireLink[]): void {
-  const partners = buildPartners(links);
+function polishColumnOrder(
+  layers: CardSlot[][],
+  links: WireLink[],
+  extra?: ReadonlyMap<CardSlot, PartnerEntry[]>,
+): void {
+  const partners = buildPartners(links, extra);
   for (const layer of layers) {
     if (layer.length < 2) {
       continue;
@@ -1839,8 +1945,12 @@ function polishColumnOrder(layers: CardSlot[][], links: WireLink[]): void {
   }
 }
 
-function placeRows(layers: CardSlot[][], links: WireLink[]): void {
-  const partners = buildPartners(links);
+function placeRows(
+  layers: CardSlot[][],
+  links: WireLink[],
+  extra?: ReadonlyMap<CardSlot, PartnerEntry[]>,
+): void {
+  const partners = buildPartners(links, extra);
 
   // First stacking: straight down in order, so every wish below starts from
   // a legal picture.
@@ -1891,8 +2001,12 @@ function gapBetween(upper: CardSlot, lower: CardSlot): number {
  * a nudge of two cells or less and its column neighbours keep their air -
  * the difference between a wire that is almost straight and one that IS.
  */
-function straightenRows(layers: CardSlot[][], links: WireLink[]): void {
-  const partners = buildPartners(links);
+function straightenRows(
+  layers: CardSlot[][],
+  links: WireLink[],
+  extra?: ReadonlyMap<CardSlot, PartnerEntry[]>,
+): void {
+  const partners = buildPartners(links, extra);
   for (const layer of layers) {
     for (const slot of layer) {
       slot.y = snapToGrid(slot.y);
