@@ -233,8 +233,9 @@ import {
   reuseObjectIdentity,
 } from "./edge-detail";
 import { compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
-import { describeDeathSpiral, findDeathSpirals } from "./death-spiral";
-import { describeClogLock, findClogLocks } from "./clog-lock";
+import { describeDeathSpiral, findDeathSpirals, type DeathSpiral } from "./death-spiral";
+import { describeClogLock, findClogLocks, type ClogLock } from "./clog-lock";
+import { useTourLoopNoticeExample } from "@/lib/tour/tour-mock-notice";
 import { findUnwiredNodeIds } from "./node-verdict";
 import { useBoardPulseSync } from "./animation-phase";
 import { getDockTabsRight, getDockTopInset } from "./dock-insets";
@@ -4788,6 +4789,7 @@ export function FactoryFlow() {
           wrong, unfinished wiring is just work still to do. The add chips ride
           on top: they are the most transient thing here. */}
       <div className="nodrag pointer-events-none absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 flex-col-reverse items-center gap-2">
+        <TourLoopNoticeExample />
         <UnwiredNotice onShow={handleShowNodes} />
         <DeathSpiralNotice onShow={handleShowNodes} />
         <ClogLockNotice onShow={handleShowNodes} />
@@ -4974,6 +4976,84 @@ const ClogLockNotice = memo(function ClogLockNotice({
       >
         ×
       </button>
+    </div>
+  );
+});
+
+/**
+ * The tour's specimen shelf: both loop notices, conjured as EXAMPLES while
+ * the "When a line feeds itself" step is up (`tour-mock-notice.ts` is the
+ * switch). The lesson describes two diseases the tour board does not have,
+ * and a notice the reader has never seen is a shape they will not recognise
+ * when it is real - so the step shows the banners themselves, without
+ * touching the plan. The copy comes through the same describe functions the
+ * real notices use, over fixed specimen rings, so the examples can never
+ * drift out of the product's own voice. Marked EXAMPLE and fully inert: the
+ * wrapper swallows no clicks, and there is nothing for Show me to fly to.
+ */
+const TOUR_EXAMPLE_SPIRAL: DeathSpiral = {
+  id: "tour-example-dead-loop",
+  nodeIds: ["tour-a", "tour-b", "tour-c", "tour-d"],
+  machineIds: ["tour-a", "tour-b", "tour-c", "tour-d"],
+  edgeIds: [],
+  resourceNames: ["Sulfuric Acid"],
+  hasExternalSource: false,
+  externalSourceDry: false,
+  deadFeeders: [],
+};
+
+const TOUR_EXAMPLE_LOCK: ClogLock = {
+  id: "tour-example-clog-lock",
+  nodeIds: ["tour-a", "tour-b", "tour-c", "tour-d", "tour-e"],
+  machineIds: ["tour-a", "tour-b", "tour-c", "tour-d", "tour-e"],
+  ventNodeIds: ["tour-a"],
+  edgeIds: [],
+  vents: [
+    {
+      nodeId: "tour-a",
+      machineName: "Distillation Tower",
+      resourceKey: makeResourceKey("fluid", "dilutedsulfuricacid"),
+      resourceName: "Diluted Sulfuric Acid",
+      perSecond: 2.5,
+    },
+  ],
+};
+
+const TourLoopNoticeExample = memo(function TourLoopNoticeExample() {
+  const shown = useTourLoopNoticeExample();
+  if (!shown) {
+    return null;
+  }
+  const spiral = describeDeathSpiral(TOUR_EXAMPLE_SPIRAL);
+  const lock = describeClogLock(TOUR_EXAMPLE_LOCK);
+  return (
+    <div data-tour-anchor="loop-notice" className="pointer-events-none flex flex-col items-center gap-2">
+      <div className="flex items-center gap-2 border-2 border-[#c34c4c] bg-[#2b1c1c]/95 px-2 py-1.5 font-mono text-[12px] text-[#f2e4e4] shadow-[inset_2px_2px_0_#7a3636,inset_-2px_-2px_0_#1a1010,4px_4px_0_rgba(0,0,0,0.35)]">
+        <span className="shrink-0 font-bold tracking-[0.5px] text-[#ff9c9c]">DEAD LOOP</span>
+        <span className="shrink-0 border border-[#7a3636] px-1 text-[10px] font-bold tracking-[0.5px] text-[#b89a9a]">
+          EXAMPLE
+        </span>
+        <span className="text-[#e6d2d2]">{spiral.short}</span>
+        <span
+          aria-hidden
+          className="shrink-0 border border-[#c34c4c] bg-[#4a2424] px-2 py-0.5 font-bold text-[#ffd0d0]"
+        >
+          Show me
+        </span>
+      </div>
+      <div className="flex items-center gap-2 border-2 border-[#4c7ec3] bg-[#1a222b]/95 px-2 py-1.5 font-mono text-[12px] text-[#e4ecf2] shadow-[inset_2px_2px_0_#365d7a,inset_-2px_-2px_0_#10161a,4px_4px_0_rgba(0,0,0,0.35)]">
+        <span className="shrink-0 font-bold tracking-[0.5px] text-[#9cc9ff]">CLOG LOCK</span>
+        <span className="shrink-0 border border-[#365d7a] px-1 text-[10px] font-bold tracking-[0.5px] text-[#9aaab8]">
+          EXAMPLE
+        </span>
+        <span className="text-[#d2e0e6]">{lock.short}</span>
+        <span
+          aria-hidden
+          className="shrink-0 border border-[#4c7ec3] bg-[#24384a] px-2 py-0.5 font-bold text-[#d0e6ff]"
+        >
+          Show me
+        </span>
+      </div>
     </div>
   );
 });

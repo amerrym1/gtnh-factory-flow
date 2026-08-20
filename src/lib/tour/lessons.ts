@@ -30,6 +30,10 @@ import {
 } from "lucide-react";
 import type { GlanceRow } from "@/components/tour/card-parts";
 import { openSidebarTab } from "@/lib/sidebar-tab";
+import {
+  hideTourLoopNoticeExample,
+  showTourLoopNoticeExample,
+} from "@/lib/tour/tour-mock-notice";
 import { writeWorkspaceView } from "@/lib/workspace-view";
 import {
   clearTheDecks,
@@ -338,6 +342,7 @@ const READ_THE_BOARD: TourLesson = {
   // ends - finished, skipped, closed - the plan goes back exactly as it loaded,
   // and so do the rate dial and the columns.
   teardown: () => {
+    hideTourLoopNoticeExample();
     restoreDrawerLab();
     restoreTourRateUnit();
     restoreTheDecks();
@@ -478,13 +483,16 @@ const READ_THE_BOARD: TourLesson = {
       ],
     },
     {
-      anchor: "board",
-      side: "inside",
-      before: frameTourWholeBoard,
+      anchor: "loop-notice",
+      side: "top",
+      before: () => {
+        frameTourWholeBoard();
+        showTourLoopNoticeExample();
+      },
       title: "When a line feeds itself",
       rows: [
         {
-          text: "Machines can feed each other in a circle. Two diseases live there, and the board names both.",
+          text: "Machines can feed each other in a circle. Two diseases live there, and the board calls each one out like this.",
         },
         {
           chip: "DEAD LOOP",
@@ -497,7 +505,7 @@ const READ_THE_BOARD: TourLesson = {
           text: "*Blue*: the circle makes more of something than it uses. Every chest fills, then everything freezes at *0%*.",
         },
         {
-          text: "*Show me* on the bottom notice walks you to the machines whose spare needs a drawer.",
+          text: "These two are *examples*, not your board. On a real one, *Show me* walks you to the machines to fix.",
         },
       ],
     },
