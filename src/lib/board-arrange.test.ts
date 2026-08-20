@@ -352,6 +352,48 @@ describe("arrangeBoard", () => {
     expectNoOverlaps(cards, moves);
   });
 
+  it("taste: islands off keeps a loose web whole", () => {
+    const cards = [
+      card("a"),
+      card("b"),
+      card("c"),
+      card("d"),
+      card("e"),
+      card("e2"),
+      card("f"),
+      card("g"),
+    ];
+    const wires = [
+      wire("a", "b"),
+      wire("b", "c"),
+      wire("c", "d"),
+      wire("e", "f"),
+      wire("e2", "f"),
+      wire("f", "g"),
+      wire("g", "b"),
+    ];
+    const together = arrangeBoard({ cards, wires, origin: { x: 0, y: 0 }, taste: { islands: "off" } });
+    expect(together.islands).toHaveLength(1);
+    const split = arrangeBoard({ cards, wires, origin: { x: 0, y: 0 } });
+    expect(split.islands).toHaveLength(2);
+  });
+
+  it("taste: snug spacing packs tighter than airy", () => {
+    const cards = [card("a"), card("x1"), card("x2"), card("b"), card("c")];
+    const wires = [wire("a", "b"), wire("x1", "x2"), wire("x2", "b"), wire("b", "c")];
+    const area = (taste: { spacing: "compact" | "roomy" }) => {
+      const { moves } = arrangeBoard({ cards, wires, origin: { x: 0, y: 0 }, taste });
+      let maxX = 0;
+      let maxY = 0;
+      for (const move of moves) {
+        maxX = Math.max(maxX, move.position.x + 360);
+        maxY = Math.max(maxY, move.position.y + 280);
+      }
+      return maxX * maxY;
+    };
+    expect(area({ spacing: "compact" })).toBeLessThan(area({ spacing: "roomy" }));
+  });
+
   it("handles an empty board and wires to missing cards", () => {
     expect(arrangeBoard({ cards: [], wires: [wire("x", "y")] }).moves).toEqual([]);
     const { moves } = arrangeBoard({ cards: [card("a")], wires: [wire("a", "ghost")] });

@@ -55,7 +55,6 @@ import {
   Redo2,
   Sprout,
   Square,
-  SquareDashed,
   Trash,
   Trash2,
   TriangleAlert,
@@ -152,6 +151,7 @@ import {
   arrangeBoard,
   type ArrangeCard,
   type ArrangeInk,
+  type ArrangeTaste,
   type ArrangeWire,
 } from "@/lib/board-arrange";
 import {
@@ -4013,40 +4013,52 @@ export function FactoryFlow() {
   // lives on must not re-render per project edit.
   const handleAutoArrange = useCallback(() => {
     const state = useFactoryStore.getState();
+    const view = readBoardViewSnapshot();
     const { moves, islands, wireRoutes, resetEdgeIds, staleInkIds } = computeAutoArrangement(
       state.project,
       state.activePocketId,
       state.lastResult,
+      {
+        spacing: view.autoArrangeSpacing,
+        islands: view.autoArrangeIslands,
+        steerWires: view.autoArrangeLanes,
+      },
     );
     if (moves.length === 0) {
       return;
     }
-    // The island boxes are opt-out ink (the dashed-square toggle beside the
-    // arrange button); stale boxes from an earlier arrange go either way.
-    const drawInk = readBoardViewSnapshot().autoArrangeInk;
+    // Island ink per the arrange settings: a quiet steel wash, a plain
+    // outline, or nothing. Stale boxes from an earlier arrange go either way.
+    const backdrop = view.autoArrangeBackdrop;
     state.applyBoardArrangement({
       moves,
       resetEdgeIds,
       setWaypoints: wireRoutes,
       removeAnnotationIds: staleInkIds,
-      addAnnotations: drawInk
-        ? islands.map((island) => ({
-            kind: "box" as const,
-            // A quiet grey ground under each island - no border, just a
-            // faint steel wash that makes the station read as one place.
-            colorTag: "steel" as const,
-            position: { x: island.x - BOARD_GRID * 2, y: island.y - BOARD_GRID * 2 },
-            size: {
-              width: island.width + BOARD_GRID * 4,
-              height: island.height + BOARD_GRID * 4,
-            },
-            style: {
-              border: "none" as const,
-              fill: "tint" as const,
-              fillColor: "steel" as const,
-            },
-          }))
-        : undefined,
+      addAnnotations:
+        backdrop !== "none"
+          ? islands.map((island) => ({
+              kind: "box" as const,
+              colorTag: "steel" as const,
+              position: { x: island.x - BOARD_GRID * 2, y: island.y - BOARD_GRID * 2 },
+              size: {
+                width: island.width + BOARD_GRID * 4,
+                height: island.height + BOARD_GRID * 4,
+              },
+              style:
+                backdrop === "wash"
+                  ? {
+                      border: "none" as const,
+                      fill: "tint" as const,
+                      fillColor: "steel" as const,
+                    }
+                  : {
+                      border: "dashed" as const,
+                      borderColor: "steel" as const,
+                      fill: "none" as const,
+                    },
+            }))
+          : undefined,
     });
     useFactoryStore.getState().frameBoardNodes();
   }, []);
@@ -5298,6 +5310,44 @@ const RATE_UNIT_CHOICES: Array<{ unit: RateUnit; label: string; title: string }>
   { unit: "hour", label: "/h", title: "Show all rates per hour" },
 ];
 
+/** One row of the arrange settings: a label over its handful of choices. */
+function ArrangeDial<T extends string>({
+  label,
+  title,
+  value,
+  options,
+  onPick,
+}: {
+  label: string;
+  title?: string;
+  value: T;
+  options: Array<{ value: T; label: string }>;
+  onPick: (value: T) => void;
+}) {
+  return (
+    <div className="py-1" title={title}>
+      <div className="mb-1 text-[11px] font-bold text-[var(--mc-ink)]">{label}</div>
+      <div className="grid auto-cols-fr grid-flow-col gap-1">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onPick(option.value)}
+            className={[
+              "border-2 border-[var(--mc-15)] px-1 py-1 font-mono text-[10px] font-bold",
+              value === option.value ? TOOL_FACE_ON : TOOL_FACE_OFF,
+            ].join(" ")}
+            aria-pressed={value === option.value}
+            aria-label={`${label}: ${option.label}`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const SourceToolbar = memo(function SourceToolbar({
   compact,
   openGroup,
@@ -5316,7 +5366,31 @@ const SourceToolbar = memo(function SourceToolbar({
   const addCropFarmNode = useFactoryStore((state) => state.addCropFarmNode);
   const addTrashNode = useFactoryStore((state) => state.addTrashNode);
   const addCustomRateNode = useFactoryStore((state) => state.addCustomRateNode);
-  const { autoArrangeInk } = useBoardView();
+  const boardView = useBoardView();
+  const [arrangeOpen, setArrangeOpen] = useState(false);
+  // A pop-over, not a mode: clicking anywhere off it (or Escape) puts it away.
+  const arrangeRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!arrangeOpen) {
+      return;
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      if (!arrangeRef.current?.contains(event.target as Element | null)) {
+        setArrangeOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setArrangeOpen(false);
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [arrangeOpen]);
   const rateUnit = useFactoryStore((state) => state.rateUnit);
   const setRateUnit = useFactoryStore((state) => state.setRateUnit);
   const assumeBoundaries = useFactoryStore((state) => Boolean(state.project.assumeBoundaries));
@@ -5338,7 +5412,10 @@ const SourceToolbar = memo(function SourceToolbar({
       data-board-toolbar
       data-help-anchor="build"
       className={[
-        "nodrag pointer-events-none absolute left-3 z-20 flex items-start gap-2",
+        "nodrag pointer-events-none absolute left-3 flex items-start gap-2",
+        // Lifted while the arrange panel is out so no later toolbar paints
+        // over it - the same trap the theme picker once fell into.
+        arrangeOpen ? "z-40" : "z-20",
         // Inside a pocket the breadcrumb takes the top line and every trigger row
         // steps down to make room; its fold-out follows, since that is positioned
         // against this root.
@@ -5446,36 +5523,88 @@ const SourceToolbar = memo(function SourceToolbar({
           <Gauge className="h-4 w-4" />
         </button>
       </ToolTray>
-      {/* The tidy-up stands on its own plate: unlike its neighbours it puts
-          nothing down, it moves everything already there. The dashed square
-          beside it is its one option: draw a box around each island. */}
+      {/* The tidy-up: the button opens the arrange settings pop-over, and
+          the panel's own button does the arranging. Every dial is
+          remembered; clicking anywhere off the panel puts it away. */}
       <ToolTray>
+        <div ref={arrangeRef} className="relative">
         <button
           type="button"
-          onClick={onAutoArrange}
-          className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
-          title="Auto-arrange: lay every card out left to right by what feeds what. Undo puts the old layout back"
-          aria-label="Auto-arrange the board"
+          onClick={() => setArrangeOpen((open) => !open)}
+          className={[
+            "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+            arrangeOpen ? TOOL_FACE_ON : TOOL_FACE_OFF,
+          ].join(" ")}
+          title="Auto-arrange: choose how the board is laid out, then arrange it"
+          aria-label="Auto-arrange settings"
+          aria-pressed={arrangeOpen}
         >
           <Network className="h-4 w-4" />
         </button>
-        <button
-          type="button"
-          onClick={() => writeBoardView({ autoArrangeInk: !autoArrangeInk })}
+        <div
           className={[
-            "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
-            autoArrangeInk ? TOOL_FACE_ON : TOOL_FACE_OFF,
+            "absolute left-0 top-full mt-2 w-[248px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-2 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
+            arrangeOpen
+              ? "pointer-events-auto translate-y-0 opacity-100"
+              : "pointer-events-none -translate-y-1 opacity-0",
           ].join(" ")}
-          title={
-            autoArrangeInk
-              ? "Island boxes: on. Auto-arrange draws a dashed box around each island. Click to leave the board unmarked"
-              : "Island boxes: off. Click to let auto-arrange draw a dashed box around each island"
-          }
-          aria-label={autoArrangeInk ? "Turn island boxes off" : "Turn island boxes on"}
-          aria-pressed={autoArrangeInk}
         >
-          <SquareDashed className="h-4 w-4" />
-        </button>
+          <ArrangeDial
+            label="Spacing"
+            value={boardView.autoArrangeSpacing}
+            options={[
+              { value: "compact", label: "Snug" },
+              { value: "normal", label: "Normal" },
+              { value: "roomy", label: "Airy" },
+            ]}
+            onPick={(value) => writeBoardView({ autoArrangeSpacing: value })}
+          />
+          <ArrangeDial
+            label="Islands"
+            title="A cluster hanging onto the rest by a wire or two becomes its own island. Eager splits smaller and looser clusters; off keeps every connected group together"
+            value={boardView.autoArrangeIslands}
+            options={[
+              { value: "off", label: "Off" },
+              { value: "normal", label: "Normal" },
+              { value: "eager", label: "Eager" },
+            ]}
+            onPick={(value) => writeBoardView({ autoArrangeIslands: value })}
+          />
+          <ArrangeDial
+            label="Guide wires"
+            title="Long wires get stops placed in a clear lane, so they run around the cards instead of between them"
+            value={boardView.autoArrangeLanes ? "on" : "off"}
+            options={[
+              { value: "off", label: "Off" },
+              { value: "on", label: "On" },
+            ]}
+            onPick={(value) => writeBoardView({ autoArrangeLanes: value === "on" })}
+          />
+          <ArrangeDial
+            label="Island ink"
+            title="What is drawn under each island: a faint grey shade, a plain outline, or nothing"
+            value={boardView.autoArrangeBackdrop}
+            options={[
+              { value: "none", label: "None" },
+              { value: "wash", label: "Shade" },
+              { value: "outline", label: "Line" },
+            ]}
+            onPick={(value) => writeBoardView({ autoArrangeBackdrop: value })}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setArrangeOpen(false);
+              onAutoArrange();
+            }}
+            className="mt-2 w-full border-2 border-[var(--mc-15)] bg-[var(--mc-49)] py-1.5 font-mono text-[12px] font-black text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+            title="Lay every card out left to right by what feeds what. Undo puts the old layout back"
+            aria-label="Auto-arrange the board"
+          >
+            Arrange the board
+          </button>
+        </div>
+        </div>
       </ToolTray>
       </ToolGroup>
     </div>
@@ -8701,6 +8830,7 @@ function computeAutoArrangement(
   project: FactoryProject,
   activePocketId: string | undefined,
   result: ThroughputResult | undefined,
+  taste: ArrangeTaste,
 ): {
   moves: Array<{ id: string; position: { x: number; y: number } }>;
   islands: Array<{ x: number; y: number; width: number; height: number }>;
@@ -8852,7 +8982,7 @@ function computeAutoArrangement(
     });
   }
 
-  const arranged = arrangeBoard({ cards, wires, ink });
+  const arranged = arrangeBoard({ cards, wires, ink, taste });
   return {
     moves: arranged.moves,
     islands: arranged.islands,
