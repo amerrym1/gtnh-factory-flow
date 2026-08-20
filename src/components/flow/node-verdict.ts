@@ -75,6 +75,7 @@ export type NodeVerdictKind =
   | "dead-loop"
   | "clog-lock"
   | "demand-set"
+  | "paced"
   | "balanced";
 
 /**
@@ -511,10 +512,19 @@ export function deriveNodeVerdict(
   // answer is whether anyone is going without: a machine feeding a drawer,
   // a trash can or nothing at all is short on ingredients and short on
   // nobody, which is not a fault to paint red at the top of the board.
+  const binding = findBindingInput(project, result, nodeResult, nodeId, incoming);
+  // COHERENCE GUARD. The solver can hold a machine below full speed with
+  // every input covered - a fair split of contended supply, a loop running
+  // at its level - and blaming the least-oversupplied input then produced
+  // "gets 2,000/s, wants 100/s, so you are short", which is nonsense. No
+  // genuinely short input means no shortage story: the line is pacing it.
+  if (!binding || binding.shortfallPerSecond <= RATE_EPSILON) {
+    return deficit ? { kind: "bottleneck", pct, deficit } : { kind: "paced", pct };
+  }
   return {
     kind: deficit ? "blocked" : "starved",
     pct,
-    binding: findBindingInput(project, result, nodeResult, nodeId, incoming),
+    binding,
     deficit,
   };
 }

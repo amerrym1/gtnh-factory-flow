@@ -307,13 +307,13 @@ export function describeClogLockForNode(
       .join(" and ");
     return {
       title: `Spare ${own[0]!.resourceName} has nowhere to go`,
-      detail: `This machine makes more than the line drinks: ${list} needs a home. Wire it to a drawer or a trash can and the ${lock.machineIds.length} frozen machines run.`,
+      detail: `${list} needs a home. Wire it to a drawer or a trash can and the ${lock.machineIds.length} frozen machines run.`,
     };
   }
   const vent = lock.vents[0]!;
   return {
     title: "Frozen by a clog lock",
-    detail: `This machine has what it needs. It sits at 0% because the line's spare ${vent.resourceName} has nowhere to go and the jam holds all ${lock.machineIds.length} machines. Fix it at ${vent.machineName}: wire ${vent.resourceName} to a drawer there and this machine runs.`,
+    detail: `The line's spare ${vent.resourceName} has nowhere to go, and the jam holds all ${lock.machineIds.length} machines at 0%. Fix it at ${vent.machineName}: wire ${vent.resourceName} to a drawer there.`,
   };
 }
 

@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.20.2",
+    date: "2026-08-20",
+    headline: "Plainer words on every card",
+    notes: [
+      "A card slowed by fair sharing now says the line sets the pace instead of inventing a shortage.",
+      "Hover stories are shorter everywhere: the word, the numbers, the one fix.",
+    ],
+  },
+  {
     version: "2.20.1",
     date: "2026-08-20",
     headline: "The clog lock points truer",

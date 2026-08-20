@@ -361,6 +361,8 @@ function explainVerdict(verdict: NodeVerdict, refs: Map<string, string>): string
       return verdict.headroomPct
         ? `nothing asks for more; it could climb ${round(verdict.headroomPct, 1)} points if asked`
         : "nothing asks for more";
+    case "paced":
+      return "inputs covered, nothing jammed; the machines around it set the speed";
     case "balanced":
       return describeDeficit(verdict);
     default:

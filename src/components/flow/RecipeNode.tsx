@@ -1663,6 +1663,10 @@ function verdictWord(
       return verdict.pct <= 0.05
         ? { word: "unused", tone: "fine" }
         : { word: isCustomRate ? "under the dial" : "on demand", tone: "fine" };
+    // Calm on purpose: inputs covered, nothing jammed, the machines around
+    // it set the speed. Nothing here needs fixing.
+    case "paced":
+      return { word: "paced", tone: "fine" };
     case "balanced":
       return { word: isCustomRate ? "at the dial" : "full", tone: "fine" };
     case "unwired":
@@ -1930,6 +1934,8 @@ function verdictHoverTitle(verdict: NodeVerdict, isCustomRate: boolean): string 
         : "Choking on a surplus";
     case "demand-set":
       return verdict.pct <= 0.05 ? "Nothing draws from this yet" : "Downstream sets the speed";
+    case "paced":
+      return "The line sets the pace";
     case "balanced":
       return isCustomRate ? "Dialed rate met exactly" : "Full speed, all asks met";
     case "unwired":
@@ -1949,23 +1955,19 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
       if (!binding) {
         return undefined;
       }
+      // One sentence of numbers, one of consequence. The guard in
+      // deriveNodeVerdict promises supplied < needed here, so the numbers
+      // can never argue with the word above them.
       const supplied = formatSlotRate(binding.suppliedPerSecond, binding.kind);
       const needed = formatSlotRate(binding.neededPerSecond, binding.kind);
       const tied = binding.tiedWithNames?.length
-        ? ` Tied with ${binding.tiedWithNames.join(", ")}. Raise either.`
+        ? ` Tied with ${binding.tiedWithNames.join(", ")}.`
         : "";
-      // The two states differ in one thing only: whether the shortage costs
-      // anybody anything. Say which, because that is the whole reason one is
-      // worth a click and the other is not.
       const cost =
         verdict.kind === "starved"
-          ? " Nothing is waiting on it, so nothing here is broken."
-          : ` ${
-              verdict.deficit
-                ? `${formatSlotRate(verdict.deficit.missingPerSecond, verdict.deficit.kind)} of ${verdict.deficit.displayName} goes unmade because of it.`
-                : "Downstream goes short because of it."
-            }`;
-      return `Gets ${supplied}, wants ${needed} at full speed.${cost}${tied}`;
+          ? " Nothing downstream goes short."
+          : " Downstream goes short because of it.";
+      return `Gets ${supplied} of the ${needed} it could eat.${cost}${tied}`;
     }
     case "bottleneck": {
       const deficit = verdict.deficit;
@@ -1973,13 +1975,7 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
         return undefined;
       }
       const missing = formatSlotRate(deficit.missingPerSecond, deficit.kind);
-      // Two levers, named without picking one: the machine count and the
-      // power setup both buy speed, and which is cheaper is the player's
-      // call, not the hover's.
-      const levers = " More machines would cover it; so might more power.";
-      return deficit.pluggedOutputs > 1
-        ? `${deficit.hungryOutputs} of ${deficit.pluggedOutputs} wired outputs go unfilled, ${missing} short on ${deficit.displayName}.${levers}`
-        : `${missing} short on ${deficit.displayName}.${levers}`;
+      return `${missing} short on ${deficit.displayName}. More machines here would cover it.`;
     }
     case "clogged": {
       const clog = verdict.clog;
@@ -1987,20 +1983,17 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
         return undefined;
       }
       const spare = formatSlotRate(clog.surplusPerSecond, clog.kind);
-      // Nothing takes it at all is a different sentence from some of it is
-      // taken, and the first is what a port with no wire on it means.
       if (clog.takenPerSecond <= 0.0005) {
-        return `Nothing takes the ${clog.displayName}, so all ${spare} of it would pile up. A machine cannot run with an output it never empties.`;
+        return `Nothing takes the ${clog.displayName}. A machine cannot run with a full output.`;
       }
-      const taken = formatSlotRate(clog.takenPerSecond, clog.kind);
-      return `Only ${taken} of ${clog.displayName} is taken, so ${spare} would pile up with nowhere to go. That holds the whole machine at ${formatPct(verdict.pct)}%.`;
+      return `The spare ${spare} of ${clog.displayName} has nowhere to go. That holds it at ${formatPct(verdict.pct)}%.`;
     }
     case "dead-loop": {
       if (!verdict.spiral) {
         return undefined;
       }
       const story = describeDeathSpiral(verdict.spiral);
-      return `${story.what} ${story.why}`;
+      return `${story.short} ${story.fix}`;
     }
     case "clog-lock": {
       if (!verdict.clogLock || !verdict.clogLockNodeId) {
@@ -2012,6 +2005,8 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
       return verdict.headroomPct && verdict.headroomPct > 0
         ? `Nothing downstream wants the other ${formatPct(verdict.headroomPct)}%.`
         : undefined;
+    case "paced":
+      return "Inputs covered, nothing jammed. The machines around it set how fast it goes.";
     case "balanced":
       return isCustomRate ? undefined : "Fed, full, and everything it makes gets taken.";
     case "unwired":
