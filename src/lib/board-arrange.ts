@@ -29,7 +29,7 @@
  * like before. Everything lands on the 20px grid.
  */
 
-import { cells, snapToGrid } from "./board-grid";
+import { BOARD_GRID, cells, snapToGrid } from "./board-grid";
 
 /** A card to place: its id, footprint, and where it sits today. */
 export interface ArrangeCard {
@@ -50,6 +50,12 @@ export interface ArrangeCard {
 
 /** A wire between two cards, source makes the resource, target drinks it. */
 export interface ArrangeWire {
+  /**
+   * The project edge behind this wire, when the caller wants steering back:
+   * long-haul wires get waypoint routes named by this id. Absent wires
+   * still place cards, they just cannot be steered.
+   */
+  id?: string;
   source: string;
   target: string;
   /**
@@ -82,6 +88,24 @@ export interface ArrangeMove {
   position: { x: number; y: number };
 }
 
+export interface ArrangeResult {
+  moves: ArrangeMove[];
+  /**
+   * The rectangle every island landed in (waypoint lanes included), in
+   * final board coordinates - what an island box is drawn around. The
+   * shelf of strays is the last entry when one exists.
+   */
+  islands: Array<{ x: number; y: number; width: number; height: number }>;
+  /**
+   * Steering for the wires that must travel: a long-haul wire gets two
+   * stops in a clear lane above or below its island, so it runs the
+   * outside of the board instead of weaving between cards. Ids are the
+   * ArrangeWire ids; wires without routes here should have their old
+   * steering cleared.
+   */
+  wireRoutes: Array<{ id: string; waypoints: Array<{ x: number; y: number }> }>;
+}
+
 export interface ArrangeInput {
   cards: readonly ArrangeCard[];
   wires: readonly ArrangeWire[];
@@ -108,8 +132,13 @@ const COLUMN_GAP_MAX = cells(10);
 const ROW_GAP = cells(2);
 /** Vertical air between two different sections sharing a column. */
 const SECTION_GAP = cells(4);
-/** Air around a whole island. */
-const ISLAND_GAP = cells(6);
+/**
+ * Air around a whole island. Deliberately generous: islands reading as
+ * clearly separate places is the point of having them.
+ */
+const ISLAND_GAP = cells(12);
+/** A long-haul wire travels this many columns or more to earn a lane. */
+const LANE_MIN_SPAN = 3;
 /** Air between parked, unwired cards on the shelf. */
 const SHELF_GAP = cells(2);
 /** Ink counts as "written over" a card up to this far away from it. */
@@ -134,6 +163,7 @@ interface CardSlot {
 }
 
 interface WireLink {
+  id?: string;
   from: CardSlot;
   to: CardSlot;
   fromAnchor: number;
@@ -158,6 +188,8 @@ interface SatellitePlan {
 interface Block {
   ids: string[];
   places: Placement[];
+  /** Waypoint lanes for the block's long-haul wires, block-relative. */
+  routes: Array<{ id: string; points: Placement[] }>;
   width: number;
   height: number;
   size: number;
@@ -166,10 +198,10 @@ interface Block {
   shelf?: boolean;
 }
 
-export function arrangeBoard(input: ArrangeInput): ArrangeMove[] {
+export function arrangeBoard(input: ArrangeInput): ArrangeResult {
   const { cards, wires } = input;
   if (cards.length === 0) {
-    return [];
+    return { moves: [], islands: [], wireRoutes: [] };
   }
 
   const slotById = new Map<string, CardSlot>();
@@ -186,6 +218,7 @@ export function arrangeBoard(input: ArrangeInput): ArrangeMove[] {
       continue;
     }
     links.push({
+      id: wire.id,
       from,
       to,
       fromAnchor: wire.sourcePortY ?? from.card.height / 2,
@@ -256,6 +289,8 @@ export function arrangeBoard(input: ArrangeInput): ArrangeMove[] {
   const originY = snapToGrid(origin.y);
 
   const moves: ArrangeMove[] = [];
+  const islands: ArrangeResult["islands"] = [];
+  const wireRoutes: ArrangeResult["wireRoutes"] = [];
   const newById = new Map<string, Placement>();
   const targetWidth = Math.max(blocks[0]?.width ?? 0, cells(80));
   let rowX = 0;
@@ -271,14 +306,26 @@ export function arrangeBoard(input: ArrangeInput): ArrangeMove[] {
       rowX = 0;
       rowHeight = 0;
     }
+    const blockX = snapToGrid(originX + rowX);
+    const blockY = snapToGrid(originY + rowY);
     block.ids.forEach((id, i) => {
       const position = {
-        x: snapToGrid(originX + rowX + block.places[i].x),
-        y: snapToGrid(originY + rowY + block.places[i].y),
+        x: blockX + block.places[i].x,
+        y: blockY + block.places[i].y,
       };
       moves.push({ id, position });
       newById.set(id, position);
     });
+    for (const route of block.routes) {
+      wireRoutes.push({
+        id: route.id,
+        waypoints: route.points.map((point) => ({
+          x: blockX + point.x,
+          y: blockY + point.y,
+        })),
+      });
+    }
+    islands.push({ x: blockX, y: blockY, width: block.width, height: block.height });
     rowX += block.width + ISLAND_GAP;
     rowHeight = Math.max(rowHeight, block.height);
   });
@@ -317,7 +364,7 @@ export function arrangeBoard(input: ArrangeInput): ArrangeMove[] {
     }
   }
 
-  return moves;
+  return { moves, islands, wireRoutes };
 }
 
 function boundingTopLeft(cards: readonly ArrangeCard[]): { x: number; y: number } {
@@ -464,13 +511,35 @@ function layoutIsland(
 
   buildBands(members, links, forward);
   if (topDeck.size > 0) {
-    // The return deck rides ABOVE the line it feeds, as one band: its cards
-    // keep their relative order but outrank every bottom-deck seq.
+    // The return deck rides ABOVE the line it feeds: its cards keep their
+    // relative order but outrank every bottom-deck seq. Each CONNECTED run
+    // of deck cards is its own band - two unrelated returns folded onto the
+    // deck must not interleave.
     const shift = members.length * 4;
+    const deckChunk = new Map<CardSlot, number>();
+    let nextChunk = 0;
+    for (const slot of members) {
+      if (!topDeck.has(slot) || deckChunk.has(slot)) {
+        continue;
+      }
+      deckChunk.set(slot, nextChunk);
+      const queue = [slot];
+      for (let head = 0; head < queue.length; head += 1) {
+        for (const link of links) {
+          const other =
+            link.from === queue[head] ? link.to : link.to === queue[head] ? link.from : undefined;
+          if (other && topDeck.has(other) && !deckChunk.has(other)) {
+            deckChunk.set(other, nextChunk);
+            queue.push(other);
+          }
+        }
+      }
+      nextChunk += 1;
+    }
     for (const slot of members) {
       if (topDeck.has(slot)) {
         slot.seq -= shift;
-        slot.section = -1;
+        slot.section = -1 - (deckChunk.get(slot) ?? 0);
       }
     }
   }
@@ -483,10 +552,11 @@ function layoutIsland(
   // survive: the polish permutes order only among cards already sharing a
   // column and a section. Then the column settles again.
   placeRows(collectLayers(members), links);
-  for (let pass = 0; pass < 2; pass += 1) {
-    polishSectionOrder(collectLayers(members), links);
+  for (let pass = 0; pass < 3; pass += 1) {
+    polishColumnOrder(collectLayers(members), links);
     placeRows(collectLayers(members), links);
   }
+  straightenRows(collectLayers(members), links);
   const layers = collectLayers(members);
 
   // -- Columns. Every column is as wide as its widest card; the corridor
@@ -575,19 +645,71 @@ function layoutIsland(
     }
   }
 
-  // Satellites can poke past the island's top or left edge; pull the whole
-  // block back to its own origin, then measure it.
+  // Long-haul wires get a LANE: two stops in the clear above or below the
+  // island, so the wire runs along the outside instead of weaving between
+  // cards. The lane side is whichever half of the island the wire's ends
+  // sit in; every lane on a side steps one further out.
+  const routes: Block["routes"] = [];
+  {
+    let islandBottom = 0;
+    for (const [slot, place] of placeBySlot) {
+      islandBottom = Math.max(islandBottom, place.y + slot.card.height);
+    }
+    const longHaul = links
+      .filter(
+        (link) =>
+          link.id !== undefined &&
+          Math.abs(link.from.layer - link.to.layer) >= LANE_MIN_SPAN,
+      )
+      .sort((a, b) => a.from.index - b.from.index || a.to.index - b.to.index);
+    let topLanes = 0;
+    let bottomLanes = 0;
+    for (const link of longHaul) {
+      const from = placeBySlot.get(link.from)!;
+      const to = placeBySlot.get(link.to)!;
+      const wireMid = (from.y + link.fromAnchor + to.y + link.toAnchor) / 2;
+      const above = wireMid < islandBottom / 2;
+      topLanes += above ? 1 : 0;
+      bottomLanes += above ? 0 : 1;
+      const laneY = above ? -cells(2) * topLanes : islandBottom + cells(2) * bottomLanes;
+      routes.push({
+        id: link.id!,
+        points: [
+          { x: snapToGrid(from.x + link.from.card.width + cells(3)), y: snapToGrid(laneY) },
+          { x: snapToGrid(to.x - cells(3)), y: snapToGrid(laneY) },
+        ],
+      });
+    }
+  }
+
+  // Satellites and lanes can poke past the island's top or left edge; pull
+  // the whole block back to its own origin, then measure it around
+  // everything it owns.
   let minX = 0;
   let minY = 0;
   for (const place of places) {
     minX = Math.min(minX, place.x);
     minY = Math.min(minY, place.y);
   }
+  for (const route of routes) {
+    for (const point of route.points) {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+    }
+  }
   let width = 0;
   let height = 0;
   for (const place of places) {
     place.x -= minX;
     place.y -= minY;
+  }
+  for (const route of routes) {
+    for (const point of route.points) {
+      point.x -= minX;
+      point.y -= minY;
+      width = Math.max(width, point.x);
+      height = Math.max(height, point.y);
+    }
   }
   const slotOf = new Map<string, CardSlot>();
   for (const slot of members) {
@@ -604,6 +726,7 @@ function layoutIsland(
   return {
     ids,
     places,
+    routes,
     width,
     height,
     size: members.length + satellites.size,
@@ -738,6 +861,10 @@ function slideTowardWires(
         slot.layer = upper;
       } else if (inWeight > outWeight) {
         slot.layer = lower;
+      } else if (ins.length > 0 && outs.length > 0) {
+        // A tie is flat under linear cost, but long wires read worst, so
+        // split the difference.
+        slot.layer = Math.round((lower + upper) / 2);
       }
     }
   }
@@ -909,10 +1036,13 @@ function foldBigCycles(
     const span = group.reduce((max, slot) => Math.max(max, flat.get(slot)!), 0);
     // SQUARED span: one wire lassoing four columns is far worse than four
     // wires each hopping one - long wires are the ugliness being priced.
+    // A same-column link is NOT free: an output feeding an input in its own
+    // column wraps around the cards, so it prices like a two-column hop.
+    // Without this, two rings sharing a machine fold into one tower.
     const cost = (layerOf: (slot: CardSlot) => number) =>
       inner.reduce((sum, link) => {
         const d = Math.abs(layerOf(link.from) - layerOf(link.to));
-        return sum + d * d;
+        return sum + (d === 0 ? 4 : d * d);
       }, 0);
     const baseCost = cost((slot) => flat.get(slot)!);
     let bestM = -1;
@@ -1028,9 +1158,13 @@ function buildBands(members: CardSlot[], links: WireLink[], forward: WireLink[])
   }
 
   // The root: among cards nothing forward flows OUT of (final products,
-  // export drawers), the one with the most cards feeding it wins.
+  // export drawers), the one with the most cards feeding it wins. A machine
+  // outranks a drawer - growing the tree from a chest gives the walk a
+  // trivial first step and scrambles the bands behind it.
   const hasForwardOut = new Set(forward.map((link) => link.from));
-  const sinks = members.filter((slot) => !hasForwardOut.has(slot));
+  const allSinks = members.filter((slot) => !hasForwardOut.has(slot));
+  const machineSinks = allSinks.filter((slot) => slot.card.role !== "storage");
+  const sinks = machineSinks.length > 0 ? machineSinks : allSinks;
   const feeders = new Map<CardSlot, WireLink[]>();
   for (const link of forward) {
     push(feeders, link.to, link);
@@ -1320,34 +1454,52 @@ function wishFor(
 }
 
 /**
- * The anti-crossing pass. Within one column, cards of one section are
- * reordered by where their wires wish them - the seq numbers the group
- * already holds are dealt back out in wish order. Reusing exactly those
- * seq values is what keeps the polish local: nothing changes hands between
- * sections or columns, so bands stay bands.
+ * The anti-crossing pass, at two levels. Within one column, every SECTION
+ * moves as one block to where its members' wires pull on average, and the
+ * members reorder inside their block by their own pull - so a whole band
+ * dealt to the wrong side of the trunk migrates across it, a drawer fed
+ * from the bottom of its machine drops below it, and two wires that would
+ * cross between columns uncross, while a band can never be split up.
+ * The column's seq numbers are dealt back out in the new order; seq only
+ * ever means "my order within my column", so nothing else moves.
  */
-function polishSectionOrder(layers: CardSlot[][], links: WireLink[]): void {
+function polishColumnOrder(layers: CardSlot[][], links: WireLink[]): void {
   const partners = buildPartners(links);
   for (const layer of layers) {
+    if (layer.length < 2) {
+      continue;
+    }
+    const wish = new Map<CardSlot, { y: number; w: number }>();
+    for (const slot of layer) {
+      const { wish: y, weight } = wishFor(slot, partners.get(slot));
+      wish.set(slot, { y, w: weight });
+    }
     const groups = new Map<number, CardSlot[]>();
     for (const slot of layer) {
       push(groups, slot.section, slot);
     }
-    for (const group of groups.values()) {
-      if (group.length < 2) {
-        continue;
+    const blocks = [...groups.values()].map((cardsInGroup) => {
+      cardsInGroup.sort((a, b) => wish.get(a)!.y - wish.get(b)!.y || a.seq - b.seq);
+      let sum = 0;
+      let weight = 0;
+      for (const slot of cardsInGroup) {
+        sum += wish.get(slot)!.y * wish.get(slot)!.w;
+        weight += wish.get(slot)!.w;
       }
-      const desired = new Map<CardSlot, number>();
-      for (const slot of group) {
-        desired.set(slot, wishFor(slot, partners.get(slot)).wish);
+      return {
+        cards: cardsInGroup,
+        mean: weight > 0 ? sum / weight : 0,
+        minSeq: cardsInGroup.reduce((min, slot) => Math.min(min, slot.seq), Infinity),
+      };
+    });
+    blocks.sort((a, b) => a.mean - b.mean || a.minSeq - b.minSeq);
+    const seqs = layer.map((slot) => slot.seq).sort((a, b) => a - b);
+    let next = 0;
+    for (const block of blocks) {
+      for (const slot of block.cards) {
+        slot.seq = seqs[next];
+        next += 1;
       }
-      const seqs = group.map((slot) => slot.seq).sort((a, b) => a - b);
-      const sorted = [...group].sort(
-        (a, b) => desired.get(a)! - desired.get(b)! || a.seq - b.seq,
-      );
-      sorted.forEach((slot, i) => {
-        slot.seq = seqs[i];
-      });
     }
   }
 }
@@ -1396,6 +1548,57 @@ function placeRows(layers: CardSlot[][], links: WireLink[]): void {
 /** The air owed between two vertically adjacent cards in one column. */
 function gapBetween(upper: CardSlot, lower: CardSlot): number {
   return upper.section === lower.section ? ROW_GAP : SECTION_GAP;
+}
+
+/**
+ * The last word on straight wires. Every card lands on the grid, then each
+ * card in turn snaps onto the exact line of its heaviest wire, when that is
+ * a nudge of two cells or less and its column neighbours keep their air -
+ * the difference between a wire that is almost straight and one that IS.
+ */
+function straightenRows(layers: CardSlot[][], links: WireLink[]): void {
+  const partners = buildPartners(links);
+  for (const layer of layers) {
+    for (const slot of layer) {
+      slot.y = snapToGrid(slot.y);
+    }
+  }
+  for (let sweep = 0; sweep < 2; sweep += 1) {
+    const leftToRight = sweep % 2 === 0;
+    for (let i = 0; i < layers.length; i += 1) {
+      const layer = layers[leftToRight ? i : layers.length - 1 - i];
+      layer.forEach((slot, row) => {
+        let best: { y: number; weight: number } | undefined;
+        for (const p of partners.get(slot) ?? []) {
+          const aligned = p.other.y + p.their - p.own;
+          if (aligned % BOARD_GRID !== 0) {
+            continue;
+          }
+          const distance = Math.abs(aligned - slot.y);
+          if (distance === 0 || distance > cells(2)) {
+            continue;
+          }
+          if (!best || p.weight > best.weight) {
+            best = { y: aligned, weight: p.weight };
+          }
+        }
+        if (!best) {
+          return;
+        }
+        const previous = layer[row - 1];
+        const next = layer[row + 1];
+        const lowest = previous
+          ? previous.y + previous.card.height + gapBetween(previous, slot)
+          : Number.NEGATIVE_INFINITY;
+        const highest = next
+          ? next.y - slot.card.height - gapBetween(slot, next)
+          : Number.POSITIVE_INFINITY;
+        if (best.y >= lowest && best.y <= highest) {
+          slot.y = best.y;
+        }
+      });
+    }
+  }
 }
 
 /**
@@ -1479,6 +1682,7 @@ function layoutShelf(parked: CardSlot[], mainWidth: number): Block {
   return {
     ids,
     places,
+    routes: [],
     width,
     height,
     size: sorted.length,

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { arrangeBoard, type ArrangeCard, type ArrangeWire } from "./board-arrange";
+import {
+  arrangeBoard,
+  type ArrangeCard,
+  type ArrangeMove,
+  type ArrangeWire,
+} from "./board-arrange";
 import { BOARD_GRID } from "./board-grid";
 
 function card(id: string, overrides: Partial<ArrangeCard> = {}): ArrangeCard {
@@ -10,7 +15,7 @@ function wire(source: string, target: string, extra: Partial<ArrangeWire> = {}):
   return { source, target, ...extra };
 }
 
-function positionsById(moves: ReturnType<typeof arrangeBoard>) {
+function positionsById(moves: ArrangeMove[]) {
   return new Map(moves.map((move) => [move.id, move.position]));
 }
 
@@ -21,7 +26,7 @@ function rectsOverlap(
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
-function expectNoOverlaps(cards: ArrangeCard[], moves: ReturnType<typeof arrangeBoard>) {
+function expectNoOverlaps(cards: ArrangeCard[], moves: ArrangeMove[]) {
   const byId = positionsById(moves);
   const rects = cards.map((c) => {
     const p = byId.get(c.id)!;
@@ -40,7 +45,7 @@ function expectNoOverlaps(cards: ArrangeCard[], moves: ReturnType<typeof arrange
 describe("arrangeBoard", () => {
   it("lays a chain out left to right on the grid", () => {
     const cards = [card("c", { x: 500, y: 900 }), card("a", { x: 40, y: 40 }), card("b")];
-    const moves = arrangeBoard({ cards, wires: [wire("a", "b"), wire("b", "c")] });
+    const { moves } = arrangeBoard({ cards, wires: [wire("a", "b"), wire("b", "c")] });
     const p = positionsById(moves);
 
     expect(p.get("a")!.x).toBeLessThan(p.get("b")!.x);
@@ -72,7 +77,7 @@ describe("arrangeBoard", () => {
 
   it("anchors the layout at the old bounding box by default", () => {
     const cards = [card("a", { x: 1000, y: 2000 }), card("b", { x: 1400, y: 2400 })];
-    const moves = arrangeBoard({ cards, wires: [wire("a", "b")] });
+    const { moves } = arrangeBoard({ cards, wires: [wire("a", "b")] });
     const p = positionsById(moves);
     expect(Math.min(p.get("a")!.x, p.get("b")!.x)).toBe(1000);
     expect(Math.min(p.get("a")!.y, p.get("b")!.y)).toBe(2000);
@@ -86,7 +91,7 @@ describe("arrangeBoard", () => {
       card("b1"),
       card("b2"),
     ];
-    const moves = arrangeBoard({
+    const { moves } = arrangeBoard({
       cards,
       wires: [wire("a1", "a2"), wire("a2", "a3"), wire("b1", "b2")],
       origin: { x: 0, y: 0 },
@@ -107,7 +112,7 @@ describe("arrangeBoard", () => {
       card("loose1", { width: 100, height: 80 }),
       card("loose2", { width: 100, height: 80 }),
     ];
-    const moves = arrangeBoard({ cards, wires: [wire("a", "b")], origin: { x: 0, y: 0 } });
+    const { moves } = arrangeBoard({ cards, wires: [wire("a", "b")], origin: { x: 0, y: 0 } });
     const p = positionsById(moves);
     const wiredBottom = Math.max(p.get("a")!.y + 280, p.get("b")!.y + 280);
     expect(p.get("loose1")!.y).toBeGreaterThanOrEqual(wiredBottom);
@@ -117,7 +122,7 @@ describe("arrangeBoard", () => {
 
   it("puts a buffer in its own column between producer and consumer", () => {
     const cards = [card("machineA"), card("tank", { width: 100, height: 80 }), card("machineB")];
-    const moves = arrangeBoard({
+    const { moves } = arrangeBoard({
       cards,
       wires: [wire("machineA", "tank"), wire("tank", "machineB")],
     });
@@ -129,7 +134,7 @@ describe("arrangeBoard", () => {
 
   it("survives a recycle loop and keeps the majority direction", () => {
     const cards = [card("a"), card("b"), card("c")];
-    const moves = arrangeBoard({
+    const { moves } = arrangeBoard({
       cards,
       wires: [wire("a", "b"), wire("b", "c"), wire("c", "a")],
     });
@@ -143,7 +148,7 @@ describe("arrangeBoard", () => {
       card(id, { height: 200 + i * 40 }),
     );
     const cards = [card("hub"), ...consumers];
-    const moves = arrangeBoard({
+    const { moves } = arrangeBoard({
       cards,
       wires: consumers.map((c) => wire("hub", c.id)),
     });
@@ -156,7 +161,7 @@ describe("arrangeBoard", () => {
 
   it("lines measured ports up straight across a wire", () => {
     const cards = [card("maker"), card("eater")];
-    const moves = arrangeBoard({
+    const { moves } = arrangeBoard({
       cards,
       wires: [wire("maker", "eater", { sourcePortY: 100, targetPortY: 60 })],
     });
@@ -166,7 +171,7 @@ describe("arrangeBoard", () => {
 
   it("moves ink with the cards it was written over, and leaves far ink alone", () => {
     const cards = [card("a", { x: 0, y: 0 }), card("b", { x: 0, y: 1000 })];
-    const moves = arrangeBoard({
+    const { moves } = arrangeBoard({
       cards,
       wires: [wire("a", "b")],
       origin: { x: 2000, y: 2000 },
@@ -196,7 +201,7 @@ describe("arrangeBoard", () => {
       card("b"),
       card("c"),
     ];
-    const moves = arrangeBoard({
+    const { moves } = arrangeBoard({
       cards,
       wires: [
         wire("a1", "a2"),
@@ -224,7 +229,7 @@ describe("arrangeBoard", () => {
       card("c"),
       card("slag-drawer", { width: 100, height: 80 }),
     ];
-    const moves = arrangeBoard({
+    const { moves } = arrangeBoard({
       cards,
       wires: [wire("a", "b"), wire("b", "c"), wire("b", "slag-drawer")],
     });
@@ -237,7 +242,7 @@ describe("arrangeBoard", () => {
 
   it("keeps a recycle loop tight beside its section", () => {
     const cards = [card("a"), card("m2"), card("b"), card("m6", { height: 200 })];
-    const moves = arrangeBoard({
+    const { moves } = arrangeBoard({
       cards,
       wires: [wire("a", "m2"), wire("m2", "b"), wire("m2", "m6"), wire("m6", "m2")],
     });
@@ -249,7 +254,7 @@ describe("arrangeBoard", () => {
 
   it("lets the heavier wire hold the straighter line", () => {
     const cards = [card("hub"), card("heavy"), card("light")];
-    const moves = arrangeBoard({
+    const { moves } = arrangeBoard({
       cards,
       wires: [wire("hub", "heavy", { weight: 10 }), wire("hub", "light", { weight: 1 })],
     });
@@ -265,7 +270,7 @@ describe("arrangeBoard", () => {
     // leaves the middle, so the drawer belongs below the trunk line: leaving
     // it above would drag its wire across the t1-to-t2 run.
     const cards = [card("t1"), card("t2"), card("t3"), card("d", { width: 100, height: 80 })];
-    const moves = arrangeBoard({
+    const { moves } = arrangeBoard({
       cards,
       wires: [
         wire("t1", "t2", { sourcePortY: 140, targetPortY: 140 }),
@@ -284,7 +289,7 @@ describe("arrangeBoard", () => {
       card("supply", { width: 100, height: 80, role: "storage" }),
       card("next"),
     ];
-    const moves = arrangeBoard({
+    const { moves } = arrangeBoard({
       cards,
       wires: [wire("supply", "machine", { targetPortY: 140 }), wire("machine", "next")],
     });
@@ -303,7 +308,7 @@ describe("arrangeBoard", () => {
       card("machine"),
       card("catch", { width: 100, height: 80, role: "storage" }),
     ];
-    const moves = arrangeBoard({
+    const { moves } = arrangeBoard({
       cards,
       wires: [wire("prev", "machine"), wire("machine", "catch", { sourcePortY: 220 })],
     });
@@ -320,7 +325,7 @@ describe("arrangeBoard", () => {
       card("b"),
       card("shared", { width: 100, height: 80, role: "storage" }),
     ];
-    const moves = arrangeBoard({
+    const { moves } = arrangeBoard({
       cards,
       wires: [wire("a", "mid"), wire("mid", "b"), wire("a", "shared"), wire("b", "shared")],
     });
@@ -333,7 +338,7 @@ describe("arrangeBoard", () => {
   it("folds a long recycle ring into a loop instead of a line", () => {
     const ids = ["r1", "r2", "r3", "r4", "r5", "r6"];
     const cards = ids.map((id) => card(id));
-    const moves = arrangeBoard({
+    const { moves } = arrangeBoard({
       cards,
       wires: ids.map((id, i) => wire(id, ids[(i + 1) % ids.length])),
       origin: { x: 0, y: 0 },
@@ -348,8 +353,57 @@ describe("arrangeBoard", () => {
   });
 
   it("handles an empty board and wires to missing cards", () => {
-    expect(arrangeBoard({ cards: [], wires: [wire("x", "y")] })).toEqual([]);
-    const moves = arrangeBoard({ cards: [card("a")], wires: [wire("a", "ghost")] });
+    expect(arrangeBoard({ cards: [], wires: [wire("x", "y")] }).moves).toEqual([]);
+    const { moves } = arrangeBoard({ cards: [card("a")], wires: [wire("a", "ghost")] });
     expect(moves).toHaveLength(1);
+  });
+
+  it("hands long-haul wires a waypoint lane outside the cards", () => {
+    // A chain long enough that the closure from its head to its tail earns
+    // a lane: two grid-aligned stops, level with each other, clear of every
+    // card, on the wire named by its id.
+    const ids = ["h1", "h2", "h3", "h4", "h5"];
+    const cards = ids.map((id) => card(id));
+    const wires = ids.slice(0, -1).map((id, i) => wire(id, ids[i + 1]));
+    wires.push({ ...wire("h1", "h5"), id: "haul" });
+    const result = arrangeBoard({ cards, wires, origin: { x: 0, y: 0 } });
+    const route = result.wireRoutes.find((entry) => entry.id === "haul");
+    expect(route).toBeDefined();
+    expect(route!.waypoints).toHaveLength(2);
+    const p = positionsById(result.moves);
+    for (const point of route!.waypoints) {
+      expect(point.x % BOARD_GRID).toBe(0);
+      expect(point.y % BOARD_GRID).toBe(0);
+      for (const id of ids) {
+        const pos = p.get(id)!;
+        const inside =
+          point.x > pos.x && point.x < pos.x + 360 && point.y > pos.y && point.y < pos.y + 280;
+        expect(inside, `waypoint sits inside ${id}`).toBe(false);
+      }
+    }
+    expect(route!.waypoints[0].y).toBe(route!.waypoints[1].y);
+  });
+
+  it("reports one rectangle per island, covering its cards", () => {
+    const cards = [card("a1"), card("a2"), card("b1"), card("b2")];
+    const result = arrangeBoard({
+      cards,
+      wires: [wire("a1", "a2"), wire("b1", "b2")],
+      origin: { x: 0, y: 0 },
+    });
+    expect(result.islands).toHaveLength(2);
+    const p = positionsById(result.moves);
+    for (const [ids, island] of [
+      [["a1", "a2"], result.islands[0]],
+      [["b1", "b2"], result.islands[1]],
+    ] as const) {
+      for (const id of ids) {
+        const pos = p.get(id)!;
+        expect(pos.x).toBeGreaterThanOrEqual(island.x);
+        expect(pos.y).toBeGreaterThanOrEqual(island.y);
+        expect(pos.x + 360).toBeLessThanOrEqual(island.x + island.width);
+        expect(pos.y + 280).toBeLessThanOrEqual(island.y + island.height);
+      }
+    }
   });
 });

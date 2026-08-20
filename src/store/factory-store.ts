@@ -317,14 +317,20 @@ interface FactoryStore {
    */
   moveBoardItems: (moves: Array<{ id: string; position: FactoryNode["position"] }>) => void;
   /**
-   * Land an auto-arrange as ONE undo entry: every card's new position, plus
-   * a reset of hand-pinned waypoints and dragged rate labels on the wires the
-   * rearranged level shows - steering aimed at the old positions would only
-   * fight the router on the new ones. Undo restores layout and steering both.
+   * Land an auto-arrange as ONE undo entry: every card's new position; a
+   * reset of hand-pinned waypoints and dragged rate labels on the wires the
+   * rearranged level shows (steering aimed at the old positions would only
+   * fight the router on the new ones); fresh waypoint lanes for the wires
+   * the arrange chose to steer itself; and the island boxes it draws,
+   * replacing any it drew before. Undo restores all of it together.
    */
   applyBoardArrangement: (arrangement: {
     moves: Array<{ id: string; position: FactoryNode["position"] }>;
     resetEdgeIds?: string[];
+    setWaypoints?: Array<{ id: string; waypoints: Array<{ x: number; y: number }> }>;
+    /** Auto-drawn island boxes; ids are stamped here with the auto prefix. */
+    addAnnotations?: Array<Omit<FactoryAnnotation, "id">>;
+    removeAnnotationIds?: string[];
   }) => void;
   /**
    * Delete a whole selection as a single undo entry. `nodeIds` may hold any
@@ -1665,7 +1671,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       return withProjectHistory(state, { project });
     });
   },
-  applyBoardArrangement: ({ moves, resetEdgeIds }) => {
+  applyBoardArrangement: ({ moves, resetEdgeIds, setWaypoints, addAnnotations, removeAnnotationIds }) => {
     set((state) => {
       const positionById = new Map(moves.map((move) => [move.id, move.position] as const));
       let changed = false;
@@ -1683,18 +1689,46 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
 
       const nodes = applyMoves(state.project.nodes);
       const storages = state.project.storages ? applyMoves(state.project.storages) : undefined;
-      const annotations = state.project.annotations
-        ? applyMoves(state.project.annotations)
-        : undefined;
       const pockets = state.project.pockets ? applyMoves(state.project.pockets) : undefined;
 
+      const doomedInk = new Set(removeAnnotationIds ?? []);
+      let annotations = state.project.annotations
+        ? applyMoves(state.project.annotations).filter((annotation) => {
+            if (doomedInk.has(annotation.id)) {
+              changed = true;
+              return false;
+            }
+            return true;
+          })
+        : undefined;
+      if (addAnnotations && addAnnotations.length > 0) {
+        changed = true;
+        annotations = [
+          ...(annotations ?? []),
+          ...addAnnotations.map((annotation) => ({
+            ...annotation,
+            id: createId("auto-island-box"),
+            pocketId: state.activePocketId,
+          })),
+        ];
+      }
+
       const reset = new Set(resetEdgeIds ?? []);
+      const waypointsById = new Map(
+        (setWaypoints ?? []).map((entry) => [entry.id, entry.waypoints] as const),
+      );
       const edges = state.project.edges.map((edge) => {
+        const lane = waypointsById.get(edge.id);
+        if (lane) {
+          changed = true;
+          const { labelOffset: _labelOffset, ...rest } = edge;
+          return { ...rest, waypoints: lane };
+        }
         if (!reset.has(edge.id) || (!edge.waypoints && !edge.labelOffset)) {
           return edge;
         }
         changed = true;
-        const { waypoints: _waypoints, labelOffset: _labelOffset, ...rest } = edge;
+        const { waypoints: _waypoints, labelOffset: _labelOffset2, ...rest } = edge;
         return rest;
       });
 

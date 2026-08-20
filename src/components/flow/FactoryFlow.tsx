@@ -55,6 +55,7 @@ import {
   Redo2,
   Sprout,
   Square,
+  SquareDashed,
   Trash,
   Trash2,
   TriangleAlert,
@@ -4012,7 +4013,7 @@ export function FactoryFlow() {
   // lives on must not re-render per project edit.
   const handleAutoArrange = useCallback(() => {
     const state = useFactoryStore.getState();
-    const { moves, resetEdgeIds } = computeAutoArrangement(
+    const { moves, islands, wireRoutes, resetEdgeIds, staleInkIds } = computeAutoArrangement(
       state.project,
       state.activePocketId,
       state.lastResult,
@@ -4020,7 +4021,26 @@ export function FactoryFlow() {
     if (moves.length === 0) {
       return;
     }
-    state.applyBoardArrangement({ moves, resetEdgeIds });
+    // The island boxes are opt-out ink (the dashed-square toggle beside the
+    // arrange button); stale boxes from an earlier arrange go either way.
+    const drawInk = readBoardViewSnapshot().autoArrangeInk;
+    state.applyBoardArrangement({
+      moves,
+      resetEdgeIds,
+      setWaypoints: wireRoutes,
+      removeAnnotationIds: staleInkIds,
+      addAnnotations: drawInk
+        ? islands.map((island) => ({
+            kind: "box" as const,
+            position: { x: island.x - BOARD_GRID * 2, y: island.y - BOARD_GRID * 2 },
+            size: {
+              width: island.width + BOARD_GRID * 4,
+              height: island.height + BOARD_GRID * 4,
+            },
+            style: { border: "dashed" as const, fill: "none" as const },
+          }))
+        : undefined,
+    });
     useFactoryStore.getState().frameBoardNodes();
   }, []);
 
@@ -5289,6 +5309,7 @@ const SourceToolbar = memo(function SourceToolbar({
   const addCropFarmNode = useFactoryStore((state) => state.addCropFarmNode);
   const addTrashNode = useFactoryStore((state) => state.addTrashNode);
   const addCustomRateNode = useFactoryStore((state) => state.addCustomRateNode);
+  const { autoArrangeInk } = useBoardView();
   const rateUnit = useFactoryStore((state) => state.rateUnit);
   const setRateUnit = useFactoryStore((state) => state.setRateUnit);
   const assumeBoundaries = useFactoryStore((state) => Boolean(state.project.assumeBoundaries));
@@ -5419,7 +5440,8 @@ const SourceToolbar = memo(function SourceToolbar({
         </button>
       </ToolTray>
       {/* The tidy-up stands on its own plate: unlike its neighbours it puts
-          nothing down, it moves everything already there. */}
+          nothing down, it moves everything already there. The dashed square
+          beside it is its one option: draw a box around each island. */}
       <ToolTray>
         <button
           type="button"
@@ -5429,6 +5451,23 @@ const SourceToolbar = memo(function SourceToolbar({
           aria-label="Auto-arrange the board"
         >
           <Network className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => writeBoardView({ autoArrangeInk: !autoArrangeInk })}
+          className={[
+            "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+            autoArrangeInk ? TOOL_FACE_ON : TOOL_FACE_OFF,
+          ].join(" ")}
+          title={
+            autoArrangeInk
+              ? "Island boxes: on. Auto-arrange draws a dashed box around each island. Click to leave the board unmarked"
+              : "Island boxes: off. Click to let auto-arrange draw a dashed box around each island"
+          }
+          aria-label={autoArrangeInk ? "Turn island boxes off" : "Turn island boxes on"}
+          aria-pressed={autoArrangeInk}
+        >
+          <SquareDashed className="h-4 w-4" />
         </button>
       </ToolTray>
       </ToolGroup>
@@ -8655,7 +8694,13 @@ function computeAutoArrangement(
   project: FactoryProject,
   activePocketId: string | undefined,
   result: ThroughputResult | undefined,
-): { moves: Array<{ id: string; position: { x: number; y: number } }>; resetEdgeIds: string[] } {
+): {
+  moves: Array<{ id: string; position: { x: number; y: number } }>;
+  islands: Array<{ x: number; y: number; width: number; height: number }>;
+  wireRoutes: Array<{ id: string; waypoints: Array<{ x: number; y: number }> }>;
+  resetEdgeIds: string[];
+  staleInkIds: string[];
+} {
   const pockets = project.pockets ?? [];
   const parentById = new Map(pockets.map((pocket) => [pocket.id, pocket.parentPocketId]));
   const itemPocketById = new Map<string, string | undefined>();
@@ -8760,6 +8805,7 @@ function computeAutoArrangement(
     // side feed without flattening every other distinction.
     const transferred = result?.edges[edge.id]?.transferredPerSecond ?? edge.ratePerSecond ?? 0;
     wires.push({
+      id: edge.id,
       source: sourceRep,
       target: targetRep,
       // Port rows are only meaningful on the endpoint's own card; a pocket
@@ -8779,17 +8825,34 @@ function computeAutoArrangement(
     }
   }
 
-  const ink: ArrangeInk[] = (project.annotations ?? [])
-    .filter((annotation) => annotation.pocketId === activePocketId)
-    .map((annotation) => ({
+  // Boxes a previous arrange drew are replaced, not dragged along.
+  const staleInkIds: string[] = [];
+  const ink: ArrangeInk[] = [];
+  for (const annotation of project.annotations ?? []) {
+    if (annotation.pocketId !== activePocketId) {
+      continue;
+    }
+    if (annotation.id.startsWith("auto-island-box")) {
+      staleInkIds.push(annotation.id);
+      continue;
+    }
+    ink.push({
       id: annotation.id,
       x: annotation.position.x,
       y: annotation.position.y,
       width: annotation.size.width,
       height: annotation.size.height,
-    }));
+    });
+  }
 
-  return { moves: arrangeBoard({ cards, wires, ink }), resetEdgeIds };
+  const arranged = arrangeBoard({ cards, wires, ink });
+  return {
+    moves: arranged.moves,
+    islands: arranged.islands,
+    wireRoutes: arranged.wireRoutes,
+    resetEdgeIds,
+    staleInkIds,
+  };
 }
 
 /**
