@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PROJECT_SCHEMA_VERSION, type FactoryProject, type FactoryStorage } from "@/lib/model/types";
 import { calculateThroughput } from "@/lib/solver/throughput";
 import { findDeathSpirals } from "./death-spiral";
-import { describeClogLock, findClogLocks } from "./clog-lock";
+import { describeClogLock, describeClogLockForNode, findClogLocks } from "./clog-lock";
 import { deriveNodeVerdict } from "./node-verdict";
 
 /**
@@ -107,6 +107,16 @@ describe("findClogLocks", () => {
     const story = describeClogLock(locks[0]!);
     expect(story.fix).toContain("thread");
     expect(story.fix).toContain("drawer");
+
+    // The culprit's card speaks in the first person; the victim's card says
+    // why it is frozen and names the machine to go fix, so twenty cards
+    // never share one generic sentence with no address in it.
+    const culprit = describeClogLockForNode(locks[0]!, "m2");
+    expect(culprit.title).toContain("nowhere to go");
+    expect(culprit.detail).toContain("drawer");
+    const victim = describeClogLockForNode(locks[0]!, "m1");
+    expect(victim.title).toBe("Frozen by a clog lock");
+    expect(victim.detail).toContain("unravel");
 
     // The card wears it as its verdict, so the strip and hover explain it.
     expect(deriveNodeVerdict(proj, result, "m1").kind).toBe("clog-lock");

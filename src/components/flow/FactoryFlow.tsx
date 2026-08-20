@@ -4928,6 +4928,7 @@ const ClogLockNotice = memo(function ClogLockNotice({
   const project = useFactoryStore((state) => state.project);
   const lastResult = useFactoryStore((state) => state.lastResult);
   const [dismissedId, setDismissedId] = useState<string | undefined>(undefined);
+  const [showIndex, setShowIndex] = useState(0);
   const locks = useMemo(
     () => findClogLocks(project, lastResult).locks,
     [project, lastResult],
@@ -4938,6 +4939,12 @@ const ClogLockNotice = memo(function ClogLockNotice({
     return null;
   }
   const story = describeClogLock(lock);
+  // "Show me" lands on the machine the notice is talking about - the worst
+  // surplus first - and each further click walks the rest of the vent sites,
+  // one card at a time. Never the whole jam: framing twenty frozen machines
+  // points at nothing.
+  const showTargets = lock.ventNodeIds.length > 0 ? lock.ventNodeIds : lock.machineIds;
+  const showAt = showIndex % showTargets.length;
 
   return (
     <div className="nodrag pointer-events-auto flex items-center gap-2 border-2 border-[#4c7ec3] bg-[#1a222b]/95 px-2 py-1.5 font-mono text-[12px] text-[#e4ecf2] shadow-[inset_2px_2px_0_#365d7a,inset_-2px_-2px_0_#10161a,4px_4px_0_rgba(0,0,0,0.35)]">
@@ -4950,12 +4957,13 @@ const ClogLockNotice = memo(function ClogLockNotice({
       ) : null}
       <button
         type="button"
-        // The vent sites, not the whole jam: "Show me" lands on the cards
-        // where the drawer goes, which on a big board is the entire point.
-        onClick={() => onShow(lock.ventNodeIds.length > 0 ? lock.ventNodeIds : lock.machineIds)}
+        onClick={() => {
+          onShow([showTargets[showAt]!]);
+          setShowIndex(showAt + 1);
+        }}
         className="shrink-0 border border-[#4c7ec3] bg-[#24384a] px-2 py-0.5 font-bold text-[#d0e6ff] hover:bg-[#2f4a63]"
       >
-        Show me
+        {showTargets.length > 1 ? `Show me (${showAt + 1}/${showTargets.length})` : "Show me"}
       </button>
       <button
         type="button"

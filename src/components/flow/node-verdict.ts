@@ -182,6 +182,9 @@ export interface NodeVerdict {
   spiral?: DeathSpiral;
   /** Clog-lock: the jam this card is frozen in, and the surpluses to home. */
   clogLock?: ClogLock;
+  /** Clog-lock only: whose card this verdict sits on, so the hover can tell
+   * a vent site's first-person story apart from a victim's. */
+  clogLockNodeId?: string;
 }
 
 /** Half a percent: below this, converged solver states are just float noise. */
@@ -461,7 +464,7 @@ export function deriveNodeVerdict(
   // each card would send the player pipe-chasing round the circle forever.
   const clogLock = findClogLocks(project, result).byNode.get(nodeId);
   if (clogLock) {
-    return { kind: "clog-lock", pct, clogLock };
+    return { kind: "clog-lock", pct, clogLock, clogLockNodeId: nodeId };
   }
 
   const deficit = findWorstOutputDeficit(project, result, nodeResult, nodeId, outgoing);

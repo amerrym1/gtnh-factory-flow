@@ -27,6 +27,9 @@ const REVIVED_EPSILON = 1e-3;
 
 export interface ClogLockVent {
   nodeId: string;
+  /** The culprit machine's display name, so a victim's card can say where
+   * to act without the player hunting the board. */
+  machineName: string;
   resourceKey: ResourceKey;
   resourceName: string;
   /** What must leave through this port per second for the group to run. */
@@ -41,7 +44,8 @@ export interface ClogLock {
   /** Machine members only - what the copy counts. */
   machineIds: string[];
   /**
-   * The machines whose surplus needs the drawer - the only cards that flash.
+   * The machines whose surplus needs the drawer - the only cards that flash,
+   * ordered WORST FIRST so the notice's "Show me" walks them by severity.
    * A jam can hold half a board; marking every member painted whole plans
    * blue and pointed nowhere. The victims keep the verdict and its story,
    * the vent sites carry the ring, exactly as the fix copy promises.
@@ -182,16 +186,20 @@ function build(project: FactoryProject, result: ThroughputResult | undefined): C
       }
     }
 
+    const nodeById = new Map(project.nodes.map((entry) => [entry.id, entry]));
+    const recipeById = new Map(project.recipes.map((entry) => [entry.id, entry]));
     const vents: ClogLockVent[] = [];
     for (const id of machineIds) {
       const byKey = vented.ventPerSecond?.get(id);
       if (!byKey) {
         continue;
       }
+      const recipe = recipeById.get(nodeById.get(id)?.recipeId ?? "");
+      const machineName = recipe?.name ?? recipe?.machineType ?? "a machine";
       for (const [resourceKey, perSecond] of byKey) {
         const resourceName =
           result.nodes[id]?.outputs[resourceKey]?.displayName ?? resourceKey.split(":").pop()!;
-        vents.push({ nodeId: id, resourceKey, resourceName, perSecond });
+        vents.push({ nodeId: id, machineName, resourceKey, resourceName, perSecond });
       }
     }
     vents.sort((left, right) => right.perSecond - left.perSecond);
@@ -205,8 +213,10 @@ function build(project: FactoryProject, result: ThroughputResult | undefined): C
     // Only the vent sites and their surplus wires get marked. A jam can hold
     // half a board, and flashing every member painted whole plans blue with
     // nothing to point at; the drawer goes on THESE wires, so these carry
-    // the light.
-    const ventNodeIds = [...new Set(vents.map((vent) => vent.nodeId))].sort();
+    // the light. Order follows the vents (worst surplus first), never the
+    // node ids - "Show me" walks this list, and it must land on the machine
+    // the notice is talking about.
+    const ventNodeIds = [...new Set(vents.map((vent) => vent.nodeId))];
     const ventPorts = new Set(vents.map((vent) => `${vent.nodeId}|${vent.resourceKey}`));
     const edgeIds: string[] = [];
     for (const edge of project.edges) {
@@ -234,6 +244,41 @@ function build(project: FactoryProject, result: ThroughputResult | undefined): C
 
   locks.sort((left, right) => right.machineIds.length - left.machineIds.length);
   return { byNode, byEdge, locks };
+}
+
+/**
+ * The card-level story, split by role. A vent site speaks in the first
+ * person: YOUR spare has nowhere to go, here is the rate, wire it to a
+ * drawer. A victim says why it is at 0% and names the machine to go fix,
+ * because "clog lock" on twenty cards with one generic sentence left the
+ * player knowing the disease but not the address.
+ */
+export function describeClogLockForNode(
+  lock: ClogLock,
+  nodeId: string,
+): { title: string; detail: string } {
+  const own = lock.vents.filter((vent) => vent.nodeId === nodeId);
+  if (own.length > 0) {
+    const list = own
+      .map((vent) => `${vent.resourceName} (about ${formatRate(vent.perSecond)}/s)`)
+      .join(" and ");
+    return {
+      title: `Spare ${own[0]!.resourceName} has nowhere to go`,
+      detail: `This machine makes more than the line drinks: ${list} needs a home. Wire it to a drawer or a trash can and the ${lock.machineIds.length} frozen machines run.`,
+    };
+  }
+  const vent = lock.vents[0]!;
+  return {
+    title: "Frozen by a clog lock",
+    detail: `This machine has what it needs. It sits at 0% because the line's spare ${vent.resourceName} has nowhere to go and the jam holds all ${lock.machineIds.length} machines. Fix it at ${vent.machineName}: wire ${vent.resourceName} to a drawer there and this machine runs.`,
+  };
+}
+
+function formatRate(perSecond: number): string {
+  if (perSecond >= 10) {
+    return Math.round(perSecond).toString();
+  }
+  return perSecond.toFixed(perSecond >= 1 ? 1 : 2);
 }
 
 /** One place turns numbers into copy, like describeDeathSpiral next door. */

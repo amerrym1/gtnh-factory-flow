@@ -118,7 +118,7 @@ import {
   type RailPort,
 } from "./node-verdict";
 import { describeDeathSpiral } from "./death-spiral";
-import { describeClogLock } from "./clog-lock";
+import { describeClogLockForNode } from "./clog-lock";
 import {
   edgeTouchesResource,
   explainPlug,
@@ -1925,7 +1925,9 @@ function verdictHoverTitle(verdict: NodeVerdict, isCustomRate: boolean): string 
     case "dead-loop":
       return verdict.spiral ? describeDeathSpiral(verdict.spiral).title : "Stuck in a loop";
     case "clog-lock":
-      return verdict.clogLock ? describeClogLock(verdict.clogLock).title : "Choking on a surplus";
+      return verdict.clogLock && verdict.clogLockNodeId
+        ? describeClogLockForNode(verdict.clogLock, verdict.clogLockNodeId).title
+        : "Choking on a surplus";
     case "demand-set":
       return verdict.pct <= 0.05 ? "Nothing draws from this yet" : "Downstream sets the speed";
     case "balanced":
@@ -2001,11 +2003,10 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
       return `${story.what} ${story.why}`;
     }
     case "clog-lock": {
-      if (!verdict.clogLock) {
+      if (!verdict.clogLock || !verdict.clogLockNodeId) {
         return undefined;
       }
-      const story = describeClogLock(verdict.clogLock);
-      return `${story.what} ${story.fix}`;
+      return describeClogLockForNode(verdict.clogLock, verdict.clogLockNodeId).detail;
     }
     case "demand-set":
       return verdict.headroomPct && verdict.headroomPct > 0
