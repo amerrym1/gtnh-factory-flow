@@ -150,7 +150,6 @@ import {
 import {
   arrangeBoard,
   type ArrangeCard,
-  type ArrangeInk,
   type ArrangeTaste,
   type ArrangeWire,
 } from "@/lib/board-arrange";
@@ -4018,20 +4017,22 @@ export function FactoryFlow() {
       state.project,
       state.activePocketId,
       state.lastResult,
-      // Tight spacing and normal island splitting, always: the two dials
-      // that existed for these were both ever set one way.
+      // Tight spacing and normal island splitting, always: the dials that
+      // existed for these were both ever set one way.
       {
         spacing: "compact",
         islands: "normal",
-        steerWires: view.autoArrangeLanes,
       },
     );
     if (moves.length === 0) {
       return;
     }
+    // An arranged board is read through three switches, so the arrange sets
+    // them: lines weighted by volume, wires docking freely, rate pills off.
+    writeBoardView({ lineThicknessMode: true, freeDockMode: true, lineLabelsMode: false });
     // Islands always wear a background: a quiet textured paper in the
-    // chosen theme. Stale grounds from an earlier arrange are cleared
-    // first. The shelf and interchange buffers stay bare.
+    // chosen theme. Every annotation on the level goes first - old notes
+    // point at a layout that no longer exists.
     state.applyBoardArrangement({
       moves,
       resetEdgeIds,
@@ -5304,44 +5305,6 @@ const RATE_UNIT_CHOICES: Array<{ unit: RateUnit; label: string; title: string }>
   { unit: "hour", label: "/h", title: "Show all rates per hour" },
 ];
 
-/** One row of the arrange settings: a label over its handful of choices. */
-function ArrangeDial<T extends string>({
-  label,
-  title,
-  value,
-  options,
-  onPick,
-}: {
-  label: string;
-  title?: string;
-  value: T;
-  options: Array<{ value: T; label: string }>;
-  onPick: (value: T) => void;
-}) {
-  return (
-    <div className="py-1" title={title}>
-      <div className="mb-1 text-[11px] font-bold text-[var(--mc-ink)]">{label}</div>
-      <div className="grid auto-cols-fr grid-flow-col gap-1">
-        {options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onPick(option.value)}
-            className={[
-              "border-2 border-[var(--mc-15)] px-1 py-1 font-mono text-[10px] font-bold",
-              value === option.value ? TOOL_FACE_ON : TOOL_FACE_OFF,
-            ].join(" ")}
-            aria-pressed={value === option.value}
-            aria-label={`${label}: ${option.label}`}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 const SourceToolbar = memo(function SourceToolbar({
   compact,
   openGroup,
@@ -5546,16 +5509,6 @@ const SourceToolbar = memo(function SourceToolbar({
           <div className="mb-1 text-[11px] font-black tracking-wide text-[var(--mc-ink)]">
             Auto layout
           </div>
-          <ArrangeDial
-            label="Steer long wires"
-            title="Long wires get stops placed in a clear lane, so they run around the cards instead of between them"
-            value={boardView.autoArrangeLanes ? "on" : "off"}
-            options={[
-              { value: "off", label: "Off" },
-              { value: "on", label: "On" },
-            ]}
-            onPick={(value) => writeBoardView({ autoArrangeLanes: value === "on" })}
-          />
           <div className="py-1" title="The paper each island's background is drawn on">
             <div className="mb-1 text-[11px] font-bold text-[var(--mc-ink)]">
               Island background
@@ -8952,27 +8905,14 @@ function computeAutoArrangement(
     }
   }
 
-  // Boxes a previous arrange drew are replaced, not dragged along.
-  const staleInkIds: string[] = [];
-  const ink: ArrangeInk[] = [];
-  for (const annotation of project.annotations ?? []) {
-    if (annotation.pocketId !== activePocketId) {
-      continue;
-    }
-    if (annotation.id.startsWith("auto-island-box")) {
-      staleInkIds.push(annotation.id);
-      continue;
-    }
-    ink.push({
-      id: annotation.id,
-      x: annotation.position.x,
-      y: annotation.position.y,
-      width: annotation.size.width,
-      height: annotation.size.height,
-    });
-  }
+  // The arrange owns the level's ink: every annotation goes - old notes and
+  // boxes point at a layout that no longer exists - and fresh island
+  // grounds come back with the new one.
+  const staleInkIds = (project.annotations ?? [])
+    .filter((annotation) => annotation.pocketId === activePocketId)
+    .map((annotation) => annotation.id);
 
-  const arranged = arrangeBoard({ cards, wires, ink, taste });
+  const arranged = arrangeBoard({ cards, wires, taste });
   return {
     moves: arranged.moves,
     islands: arranged.islands,

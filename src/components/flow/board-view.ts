@@ -95,8 +95,6 @@ export interface BoardView {
   calmMode: boolean;
   /** What the glance (zoomed-out) view shows. See GlanceMode. */
   glanceMode: GlanceMode;
-  /** Auto-arrange: author waypoint stops that guide long wires. */
-  autoArrangeLanes: boolean;
   /**
    * Auto-arrange: the paper each island's background is drawn on. Islands
    * always get a background when island splitting is on; this picks its
@@ -120,7 +118,6 @@ export const DEFAULT_BOARD_VIEW: BoardView = {
   linePulseMode: true,
   calmMode: false,
   glanceMode: "identity",
-  autoArrangeLanes: true,
   autoArrangeInkTheme: "slate",
 };
 
@@ -157,7 +154,6 @@ function readBoardView(): BoardView {
       linePulseMode: flag(parsed.linePulseMode, DEFAULT_BOARD_VIEW.linePulseMode),
       calmMode: flag(parsed.calmMode, DEFAULT_BOARD_VIEW.calmMode),
       glanceMode,
-      autoArrangeLanes: flag(parsed.autoArrangeLanes, DEFAULT_BOARD_VIEW.autoArrangeLanes),
       autoArrangeInkTheme: isCanvasThemeId(parsed.autoArrangeInkTheme)
         ? parsed.autoArrangeInkTheme
         : DEFAULT_BOARD_VIEW.autoArrangeInkTheme,

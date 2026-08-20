@@ -51,9 +51,9 @@ export interface ArrangeCard {
 /** A wire between two cards, source makes the resource, target drinks it. */
 export interface ArrangeWire {
   /**
-   * The project edge behind this wire, when the caller wants steering back:
-   * long-haul wires get waypoint routes named by this id. Absent wires
-   * still place cards, they just cannot be steered.
+   * The project edge behind this wire. A bridge between two islands that
+   * would cut through a third gets steering stops back under this id;
+   * wires without an id still place cards, they just cannot be steered.
    */
   id?: string;
   source: string;
@@ -91,9 +91,9 @@ export interface ArrangeMove {
 export interface ArrangeResult {
   moves: ArrangeMove[];
   /**
-   * The rectangle every island landed in (waypoint lanes included), in
-   * final board coordinates - what an island box is drawn around. The
-   * shelf of strays is the last entry when one exists.
+   * The rectangle every island landed in, in final board coordinates -
+   * what an island box is drawn around. The shelf of strays is the last
+   * entry when one exists.
    */
   islands: Array<{
     x: number;
@@ -108,11 +108,10 @@ export interface ArrangeResult {
     backdrop: boolean;
   }>;
   /**
-   * Steering for the wires that must travel: a long-haul wire gets two
-   * stops in a clear lane above or below its island, so it runs the
-   * outside of the board instead of weaving between cards. Ids are the
-   * ArrangeWire ids; wires without routes here should have their old
-   * steering cleared.
+   * Steering for the bridges: a wire between two islands that would cut
+   * through a third island's ground gets the same stops a player places by
+   * hand, walking it around that ground. Wires inside an island never get
+   * stops - routing there is the router's business.
    */
   wireRoutes: Array<{ id: string; waypoints: Array<{ x: number; y: number }> }>;
 }
@@ -131,8 +130,6 @@ export interface ArrangeTaste {
    * islands.
    */
   islands?: "off" | "normal" | "eager";
-  /** Author waypoint stops that guide long wires around the cards. */
-  steerWires?: boolean;
 }
 
 export interface ArrangeInput {
@@ -159,8 +156,6 @@ const COLUMN_GAP_MAX = cells(10);
 /** Island columns wrap to the next line past this width: plans read like
  * text, not like one endless ribbon. */
 const ISLAND_ROW_MAX_WIDTH = cells(240);
-/** A long-haul wire travels this many columns or more to earn a lane. */
-const LANE_MIN_SPAN = 3;
 /** Air between parked, unwired cards on the shelf. */
 const SHELF_GAP = cells(2);
 /** Ink counts as "written over" a card up to this far away from it. */
@@ -182,19 +177,16 @@ let ISLAND_GAP = cells(12);
 let ISLAND_CUT_MAX = 2;
 /** A split-off island must be at least this many cards, satellites included. */
 let ISLAND_MIN_CARDS = 4;
-/** Whether long wires get authored waypoint lanes. */
-let STEER_WIRES = true;
 
 function applyTaste(taste: ArrangeTaste | undefined): void {
   const spacing = taste?.spacing ?? "normal";
-  ROW_GAP = cells(spacing === "compact" ? 1 : spacing === "roomy" ? 3 : 2);
-  SECTION_GAP = cells(spacing === "compact" ? 2 : spacing === "roomy" ? 6 : 4);
-  COLUMN_GAP_MIN = cells(spacing === "compact" ? 2 : spacing === "roomy" ? 5 : 3);
+  ROW_GAP = cells(spacing === "compact" ? 2 : spacing === "roomy" ? 3 : 2);
+  SECTION_GAP = cells(spacing === "compact" ? 3 : spacing === "roomy" ? 6 : 4);
+  COLUMN_GAP_MIN = cells(spacing === "compact" ? 3 : spacing === "roomy" ? 5 : 3);
   ISLAND_GAP = cells(spacing === "compact" ? 8 : spacing === "roomy" ? 16 : 12);
   const islands = taste?.islands ?? "normal";
   ISLAND_CUT_MAX = islands === "off" ? -1 : islands === "eager" ? 3 : 2;
   ISLAND_MIN_CARDS = islands === "eager" ? 3 : 4;
-  STEER_WIRES = taste?.steerWires ?? true;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -241,8 +233,6 @@ interface SatellitePlan {
 interface Block {
   ids: string[];
   places: Placement[];
-  /** Waypoint lanes for the block's long-haul wires, block-relative. */
-  routes: Array<{ id: string; points: Placement[] }>;
   width: number;
   height: number;
   size: number;
@@ -554,7 +544,6 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
 
   const moves: ArrangeMove[] = [];
   const islands: ArrangeResult["islands"] = [];
-  const wireRoutes: ArrangeResult["wireRoutes"] = [];
   const newById = new Map<string, Placement>();
   blocks.forEach((block, blockIndex) => {
     const blockX = snapToGrid(originX + offsets[blockIndex].x);
@@ -567,15 +556,6 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
       moves.push({ id, position });
       newById.set(id, position);
     });
-    for (const route of block.routes) {
-      wireRoutes.push({
-        id: route.id,
-        waypoints: route.points.map((point) => ({
-          x: blockX + point.x,
-          y: blockY + point.y,
-        })),
-      });
-    }
     islands.push({
       x: blockX,
       y: blockY,
@@ -619,7 +599,156 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
     }
   }
 
+  // Bridges never cut through a foreign island. A wire between two islands
+  // that would pass through a third gets steering stops walking it around
+  // that island's ground - box padding and clearance included - because the
+  // router routes around CARDS, not around the ground an island stands on.
+  const wireRoutes: ArrangeResult["wireRoutes"] = [];
+  {
+    // The ground matches the DRAWN box exactly. Any fatter and the grounds
+    // of neighbouring islands start touching, at which point every bridge
+    // "hits" something and the board drowns in steering dots.
+    const margin = cells(2);
+    const grounds = islands.map((island) => ({
+      left: island.x - margin,
+      top: island.y - margin,
+      right: island.x + island.width + margin,
+      bottom: island.y + island.height + margin,
+    }));
+    for (const bridge of bridgeLinks) {
+      if (bridge.link.id === undefined) {
+        continue;
+      }
+      const fromPosition = newById.get(bridge.link.from.card.id);
+      const toPosition = newById.get(bridge.link.to.card.id);
+      if (!fromPosition || !toPosition) {
+        continue;
+      }
+      const stops = routeAroundGrounds(
+        {
+          x: fromPosition.x + bridge.link.from.card.width,
+          y: fromPosition.y + bridge.link.fromAnchor,
+        },
+        { x: toPosition.x, y: toPosition.y + bridge.link.toAnchor },
+        grounds.filter((_, index) => index !== bridge.from && index !== bridge.to),
+      );
+      if (stops.length > 0) {
+        wireRoutes.push({ id: bridge.link.id, waypoints: stops });
+      }
+    }
+  }
+
   return { moves, islands, wireRoutes };
+}
+
+interface Ground {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/** Whether the segment from a to b passes through the box (Liang-Barsky). */
+function segmentHitsGround(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  box: Ground,
+): boolean {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const clip = (p: number, q: number): boolean => {
+    if (p === 0) {
+      return q >= 0;
+    }
+    const r = q / p;
+    if (p < 0) {
+      if (r > t1) {
+        return false;
+      }
+      if (r > t0) {
+        t0 = r;
+      }
+    } else {
+      if (r < t0) {
+        return false;
+      }
+      if (r < t1) {
+        t1 = r;
+      }
+    }
+    return true;
+  };
+  // STRICT: a wire riding exactly along a ground's edge is not a hit -
+  // counting touches turns every bridge through a shared corridor into a
+  // detour for nothing.
+  return (
+    clip(-dx, a.x - box.left) &&
+    clip(dx, box.right - a.x) &&
+    clip(-dy, a.y - box.top) &&
+    clip(dy, box.bottom - a.y) &&
+    t0 < t1
+  );
+}
+
+/**
+ * Walk a straight run around every ground it would cut through: for each
+ * offender in travel order, two stops trace the nearer side of its box,
+ * then the walk continues toward the target. TWO detours at most, and a
+ * walk that still cannot get clear places NO stops at all - the router
+ * making its own way beats a trail of confused dots every time.
+ */
+function routeAroundGrounds(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  grounds: Ground[],
+): Array<{ x: number; y: number }> {
+  const stops: Array<{ x: number; y: number }> = [];
+  let current = start;
+  for (let guard = 0; guard <= 2; guard += 1) {
+    const blockers = grounds.filter((box) => segmentHitsGround(current, end, box));
+    if (blockers.length === 0) {
+      break;
+    }
+    if (guard === 2) {
+      // Still blocked after two detours: this walk is lost. No stops.
+      return [];
+    }
+    const horizontal = Math.abs(end.x - current.x) >= Math.abs(end.y - current.y);
+    if (horizontal) {
+      const rightward = end.x >= current.x;
+      blockers.sort((a, b) => (rightward ? a.left - b.left : b.right - a.right));
+      const box = blockers[0];
+      const midY = (current.y + end.y) / 2;
+      const laneY = snapToGrid(
+        Math.abs(midY - box.top) <= Math.abs(midY - box.bottom) ? box.top : box.bottom,
+      );
+      const enterX = snapToGrid(rightward ? box.left : box.right);
+      const exitX = snapToGrid(rightward ? box.right : box.left);
+      if (exitX === current.x && laneY === current.y) {
+        return [];
+      }
+      stops.push({ x: enterX, y: laneY }, { x: exitX, y: laneY });
+      current = { x: exitX, y: laneY };
+    } else {
+      const downward = end.y >= current.y;
+      blockers.sort((a, b) => (downward ? a.top - b.top : b.bottom - a.bottom));
+      const box = blockers[0];
+      const midX = (current.x + end.x) / 2;
+      const laneX = snapToGrid(
+        Math.abs(midX - box.left) <= Math.abs(midX - box.right) ? box.left : box.right,
+      );
+      const enterY = snapToGrid(downward ? box.top : box.bottom);
+      const exitY = snapToGrid(downward ? box.bottom : box.top);
+      if (laneX === current.x && exitY === current.y) {
+        return [];
+      }
+      stops.push({ x: laneX, y: enterY }, { x: laneX, y: exitY });
+      current = { x: laneX, y: exitY };
+    }
+  }
+  return stops;
 }
 
 function boundingTopLeft(cards: readonly ArrangeCard[]): { x: number; y: number } {
@@ -754,8 +883,6 @@ function findLooseBranch(
   const inGroup = new Set(group);
   const groupLinks = links.filter((link) => inGroup.has(link.from) && inGroup.has(link.to));
 
-  // The spanning tree, heaviest wires claimed first, exactly as the bands
-  // build theirs.
   const paired = new Map<CardSlot, Map<CardSlot, number>>();
   const add = (a: CardSlot, b: CardSlot, weight: number) => {
     let row = paired.get(a);
@@ -769,62 +896,70 @@ function findLooseBranch(
     add(link.from, link.to, link.weight);
     add(link.to, link.from, link.weight);
   }
-  const children = new Map<CardSlot, CardSlot[]>();
-  const root = group[0];
-  {
-    const visited = new Set<CardSlot>([root]);
-    const stack = [root];
-    while (stack.length > 0) {
-      const slot = stack.pop()!;
-      const near = [...(paired.get(slot) ?? [])]
-        .map(([other, weight]) => ({ other, weight }))
-        .sort((a, b) => b.weight - a.weight || a.other.index - b.other.index);
-      for (let i = near.length - 1; i >= 0; i -= 1) {
-        const { other } = near[i];
-        if (!visited.has(other)) {
-          visited.add(other);
-          push(children, slot, other);
-          stack.push(other);
+
+  // One spanning tree only offers the branches visible from its root, and
+  // the natural seam is often not among them - so trees are grown from
+  // three corners of the group, and every subtree of every tree is a
+  // candidate. The winner is the LOOSEST cut, then the SMALLEST branch
+  // that can stand alone: peeling the small clean cluster first leaves the
+  // recursion to find the rest, where grabbing the biggest used to tear
+  // straight through the middle of chains.
+  const roots = [...new Set([group[0], group[Math.floor(group.length / 2)], group[group.length - 1]])];
+  let best: { cut: number; size: number; minIndex: number; branch: CardSlot[] } | undefined;
+  for (const root of roots) {
+    const children = new Map<CardSlot, CardSlot[]>();
+    {
+      const visited = new Set<CardSlot>([root]);
+      const stack = [root];
+      while (stack.length > 0) {
+        const slot = stack.pop()!;
+        const near = [...(paired.get(slot) ?? [])]
+          .map(([other, weight]) => ({ other, weight }))
+          .sort((a, b) => b.weight - a.weight || a.other.index - b.other.index);
+        for (let i = near.length - 1; i >= 0; i -= 1) {
+          const { other } = near[i];
+          if (!visited.has(other)) {
+            visited.add(other);
+            push(children, slot, other);
+            stack.push(other);
+          }
         }
       }
     }
-  }
-
-  // Every subtree is a candidate island: count the wires it would leave
-  // dangling across the cut, and take the loosest one that can stand alone.
-  let best: { cut: number; size: number; branch: CardSlot[] } | undefined;
-  for (const start of group) {
-    if (start === root) {
-      continue;
-    }
-    const branch = [start];
-    for (let head = 0; head < branch.length; head += 1) {
-      for (const child of children.get(branch[head]) ?? []) {
-        branch.push(child);
+    for (const start of group) {
+      if (start === root) {
+        continue;
       }
-    }
-    const inBranch = new Set(branch);
-    const branchSize = effective(branch);
-    const restSize = effective(group) - branchSize;
-    if (branchSize < ISLAND_MIN_CARDS || restSize < ISLAND_MIN_CARDS) {
-      continue;
-    }
-    let cut = 0;
-    for (const link of groupLinks) {
-      if (inBranch.has(link.from) !== inBranch.has(link.to)) {
-        cut += 1;
+      const branch = [start];
+      for (let head = 0; head < branch.length; head += 1) {
+        for (const child of children.get(branch[head]) ?? []) {
+          branch.push(child);
+        }
       }
-    }
-    if (cut > ISLAND_CUT_MAX) {
-      continue;
-    }
-    if (
-      !best ||
-      cut < best.cut ||
-      (cut === best.cut && branchSize > best.size) ||
-      (cut === best.cut && branchSize === best.size && start.index < best.branch[0].index)
-    ) {
-      best = { cut, size: branchSize, branch };
+      const inBranch = new Set(branch);
+      const branchSize = effective(branch);
+      const restSize = effective(group) - branchSize;
+      if (branchSize < ISLAND_MIN_CARDS || restSize < ISLAND_MIN_CARDS) {
+        continue;
+      }
+      let cut = 0;
+      for (const link of groupLinks) {
+        if (inBranch.has(link.from) !== inBranch.has(link.to)) {
+          cut += 1;
+        }
+      }
+      if (cut > ISLAND_CUT_MAX) {
+        continue;
+      }
+      const minIndex = branch.reduce((min, slot) => Math.min(min, slot.index), Infinity);
+      if (
+        !best ||
+        cut < best.cut ||
+        (cut === best.cut && branchSize < best.size) ||
+        (cut === best.cut && branchSize === best.size && minIndex < best.minIndex)
+      ) {
+        best = { cut, size: branchSize, minIndex, branch };
+      }
     }
   }
   if (!best) {
@@ -954,6 +1089,26 @@ function layoutIsland(
     }
   }
 
+  // A pass-through buffer is its own little band: free to sit wherever its
+  // two partners pull it - squarely between them - never glued to whichever
+  // card the spanning tree happened to hang it on.
+  {
+    const wireDegree = new Map<CardSlot, number>();
+    for (const link of links) {
+      wireDegree.set(link.from, (wireDegree.get(link.from) ?? 0) + 1);
+      wireDegree.set(link.to, (wireDegree.get(link.to) ?? 0) + 1);
+    }
+    members.forEach((slot, index) => {
+      if (
+        slot.card.role === "storage" &&
+        (wireDegree.get(slot) ?? 0) === 2 &&
+        !topDeck.has(slot)
+      ) {
+        slot.section = -1000 - index;
+      }
+    });
+  }
+
   // A provisional vertical pass, then the anti-crossing polish: with real
   // positions on the board, cards are reordered WITHIN their column and
   // section to follow where their wires pull - a drawer whose feed leaves
@@ -1055,71 +1210,19 @@ function layoutIsland(
     }
   }
 
-  // Long-haul wires get a LANE: two stops in the clear above or below the
-  // island, so the wire runs along the outside instead of weaving between
-  // cards. The lane side is whichever half of the island the wire's ends
-  // sit in; every lane on a side steps one further out.
-  const routes: Block["routes"] = [];
-  {
-    let islandBottom = 0;
-    for (const [slot, place] of placeBySlot) {
-      islandBottom = Math.max(islandBottom, place.y + slot.card.height);
-    }
-    const longHaul = (STEER_WIRES ? links : [])
-      .filter(
-        (link) =>
-          link.id !== undefined &&
-          Math.abs(link.from.layer - link.to.layer) >= LANE_MIN_SPAN,
-      )
-      .sort((a, b) => a.from.index - b.from.index || a.to.index - b.to.index);
-    let topLanes = 0;
-    let bottomLanes = 0;
-    for (const link of longHaul) {
-      const from = placeBySlot.get(link.from)!;
-      const to = placeBySlot.get(link.to)!;
-      const wireMid = (from.y + link.fromAnchor + to.y + link.toAnchor) / 2;
-      const above = wireMid < islandBottom / 2;
-      topLanes += above ? 1 : 0;
-      bottomLanes += above ? 0 : 1;
-      const laneY = above ? -cells(2) * topLanes : islandBottom + cells(2) * bottomLanes;
-      routes.push({
-        id: link.id!,
-        points: [
-          { x: snapToGrid(from.x + link.from.card.width + cells(3)), y: snapToGrid(laneY) },
-          { x: snapToGrid(to.x - cells(3)), y: snapToGrid(laneY) },
-        ],
-      });
-    }
-  }
-
-  // Satellites and lanes can poke past the island's top or left edge; pull
-  // the whole block back to its own origin, then measure it around
-  // everything it owns.
+  // Satellites can poke past the island's top or left edge; pull the whole
+  // block back to its own origin, then measure it around everything it owns.
   let minX = 0;
   let minY = 0;
   for (const place of places) {
     minX = Math.min(minX, place.x);
     minY = Math.min(minY, place.y);
   }
-  for (const route of routes) {
-    for (const point of route.points) {
-      minX = Math.min(minX, point.x);
-      minY = Math.min(minY, point.y);
-    }
-  }
   let width = 0;
   let height = 0;
   for (const place of places) {
     place.x -= minX;
     place.y -= minY;
-  }
-  for (const route of routes) {
-    for (const point of route.points) {
-      point.x -= minX;
-      point.y -= minY;
-      width = Math.max(width, point.x);
-      height = Math.max(height, point.y);
-    }
   }
   const slotOf = new Map<string, CardSlot>();
   for (const slot of members) {
@@ -1136,7 +1239,6 @@ function layoutIsland(
   return {
     ids,
     places,
-    routes,
     width,
     height,
     size: members.length + satellites.size,
@@ -1555,6 +1657,13 @@ function topologicalOrder(
  * the middle of its factory rather than along an edge.
  */
 function buildBands(members: CardSlot[], links: WireLink[], forward: WireLink[]): void {
+  // How many wires actually touch each card. The spanning tree can leave a
+  // two-wire buffer as a tree LEAF, and leaf alone must not make it a bud.
+  const wireDegree = new Map<CardSlot, number>();
+  for (const link of links) {
+    wireDegree.set(link.from, (wireDegree.get(link.from) ?? 0) + 1);
+    wireDegree.set(link.to, (wireDegree.get(link.to) ?? 0) + 1);
+  }
   // Undirected adjacency, parallel wires merged, heaviest first.
   const adjacency = new Map<CardSlot, Array<{ other: CardSlot; weight: number }>>();
   {
@@ -1768,12 +1877,18 @@ function buildBands(members: CardSlot[], links: WireLink[], forward: WireLink[])
       const below: Visit[] = [];
       let aboveHeight = 0;
       let belowHeight = 0;
-      const buds = sides.filter((child) => (subtreeSize.get(child) ?? 1) === 1);
-      const branches = sides.filter((child) => (subtreeSize.get(child) ?? 1) > 1);
+      // A bud is a true one-wire leaf - a catch drawer, a lone supply. A
+      // pass-through buffer can be a TREE leaf while carrying two wires,
+      // and gluing it to this card would drag its other wire across the
+      // island; it becomes a section of its own instead.
+      const isLeafBud = (child: CardSlot) =>
+        (subtreeSize.get(child) ?? 1) === 1 && (wireDegree.get(child) ?? 0) <= 1;
+      const buds = sides.filter(isLeafBud);
+      const branches = sides.filter((child) => !isLeafBud(child));
       // Buds first, so they hold the positions nearest the trunk card while
       // the sections stack outward past them.
       for (const child of [...buds, ...branches]) {
-        const isBud = (subtreeSize.get(child) ?? 1) === 1;
+        const isBud = isLeafBud(child);
         let childSection = section;
         if (!isBud) {
           sectionCounter += 1;
@@ -2509,7 +2624,6 @@ function layoutShelf(parked: CardSlot[], mainWidth: number): Block {
   return {
     ids,
     places,
-    routes: [],
     width,
     height,
     size: sorted.length,

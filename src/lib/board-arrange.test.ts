@@ -566,7 +566,8 @@ describe("arrangeBoard", () => {
   });
 
   it("keeps a tightly coupled web as one island", () => {
-    // The same shape wired back with THREE bridges stays together.
+    // The same shape wired back so every big-enough split would cut three
+    // or more wires: it stays together.
     const cards = [
       card("a"),
       card("b"),
@@ -589,36 +590,85 @@ describe("arrangeBoard", () => {
         wire("g", "b"),
         wire("g", "c"),
         wire("e", "a"),
+        wire("e2", "d"),
       ],
       origin: { x: 0, y: 0 },
     });
     expect(result.islands).toHaveLength(1);
   });
 
-  it("hands long-haul wires a waypoint lane outside the cards", () => {
-    // A chain long enough that the closure from its head to its tail earns
-    // a lane: two grid-aligned stops, level with each other, clear of every
-    // card, on the wire named by its id.
-    const ids = ["h1", "h2", "h3", "h4", "h5"];
-    const cards = ids.map((id) => card(id));
-    const wires = ids.slice(0, -1).map((id, i) => wire(id, ids[i + 1]));
-    wires.push({ ...wire("h1", "h5"), id: "haul" });
-    const result = arrangeBoard({ cards, wires, origin: { x: 0, y: 0 } });
-    const route = result.wireRoutes.find((entry) => entry.id === "haul");
-    expect(route).toBeDefined();
-    expect(route!.waypoints).toHaveLength(2);
-    const p = positionsById(result.moves);
-    for (const point of route!.waypoints) {
+  it("steers a bridge around an island standing in its way", () => {
+    // Three narrow islands share one line, plus a direct bridge from the
+    // first to the third: the bridge would cut straight through the middle
+    // island, so it gets grid-aligned stops walking it around that
+    // island's ground. Bridges between neighbouring islands stay stop-free.
+    const hub = (prefix: string) => [1, 2, 3, 4].map((i) => card(`${prefix}${i}`));
+    const hubWires = (prefix: string) =>
+      [2, 3, 4].map((i) => wire(`${prefix}1`, `${prefix}${i}`));
+    const cards = [...hub("a"), ...hub("b"), ...hub("c")];
+    const result = arrangeBoard({
+      cards,
+      wires: [
+        ...hubWires("a"),
+        ...hubWires("b"),
+        ...hubWires("c"),
+        { ...wire("a2", "b1"), id: "near" },
+        { ...wire("b2", "c1"), id: "next" },
+        { ...wire("a3", "c3"), id: "haul" },
+      ],
+      origin: { x: 0, y: 0 },
+    });
+    expect(result.islands).toHaveLength(3);
+    const haul = result.wireRoutes.find((entry) => entry.id === "haul");
+    expect(haul).toBeDefined();
+    expect(haul!.waypoints.length).toBeGreaterThanOrEqual(2);
+    for (const point of haul!.waypoints) {
       expect(point.x % BOARD_GRID).toBe(0);
       expect(point.y % BOARD_GRID).toBe(0);
-      for (const id of ids) {
-        const pos = p.get(id)!;
+      for (const island of result.islands) {
         const inside =
-          point.x > pos.x && point.x < pos.x + 360 && point.y > pos.y && point.y < pos.y + 280;
-        expect(inside, `waypoint sits inside ${id}`).toBe(false);
+          point.x > island.x &&
+          point.x < island.x + island.width &&
+          point.y > island.y &&
+          point.y < island.y + island.height;
+        expect(inside, "a stop sits inside an island").toBe(false);
       }
     }
-    expect(route!.waypoints[0].y).toBe(route!.waypoints[1].y);
+    expect(result.wireRoutes.find((entry) => entry.id === "near")).toBeUndefined();
+    expect(result.wireRoutes.find((entry) => entry.id === "next")).toBeUndefined();
+  });
+
+  it("stands each bypass buffer between its own two machines", () => {
+    // Two buffers bypassing different spans of one trunk must each sit in
+    // their own span's column, not stacked together beside one machine.
+    const cards = [
+      card("t1"),
+      card("t2"),
+      card("t3"),
+      card("t4"),
+      card("b1", { width: 100, height: 80, role: "storage" }),
+      card("b2", { width: 100, height: 80, role: "storage" }),
+    ];
+    const { moves } = arrangeBoard({
+      cards,
+      wires: [
+        wire("t1", "t2"),
+        wire("t2", "t3"),
+        wire("t3", "t4"),
+        wire("t1", "b1"),
+        wire("b1", "t3"),
+        wire("t2", "b2"),
+        wire("b2", "t4"),
+      ],
+      origin: { x: 0, y: 0 },
+    });
+    const p = positionsById(moves);
+    expect(p.get("b1")!.x).toBeGreaterThan(p.get("t1")!.x + 360);
+    expect(p.get("b1")!.x + 100).toBeLessThan(p.get("t3")!.x);
+    expect(p.get("b2")!.x).toBeGreaterThan(p.get("t2")!.x + 360);
+    expect(p.get("b2")!.x + 100).toBeLessThan(p.get("t4")!.x);
+    expect(p.get("b1")!.x).not.toBe(p.get("b2")!.x);
+    expectNoOverlaps(cards, moves);
   });
 
   it("reports one rectangle per island, covering its cards", () => {
