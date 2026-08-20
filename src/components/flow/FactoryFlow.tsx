@@ -234,6 +234,7 @@ import {
 } from "./edge-detail";
 import { compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
 import { describeDeathSpiral, findDeathSpirals } from "./death-spiral";
+import { describeClogLock, findClogLocks } from "./clog-lock";
 import { findUnwiredNodeIds } from "./node-verdict";
 import { useBoardPulseSync } from "./animation-phase";
 import { getDockTabsRight, getDockTopInset } from "./dock-insets";
@@ -657,6 +658,8 @@ type ResourceEdgeData = {
   isFlowHighlighted?: boolean;
   /** This wire is part of a ring that has wound down and cannot restart. */
   isDeadLoop?: boolean;
+  /** This wire is part of a jam whose surplus has nowhere to go. */
+  isClogLock?: boolean;
   /**
    * Collapsed-pocket channels: convergence keeps several flat wires crossing
    * one boundary with the same resource, but the card advertises ONE channel
@@ -2230,6 +2233,7 @@ export function FactoryFlow() {
     // Built once for the whole edge pass, not once per edge: the index itself
     // is cached per solve, but the lookup below runs for every wire.
     const deathSpiralEdges = findDeathSpirals(project, result).byEdge;
+    const clogLockEdges = findClogLocks(project, result).byEdge;
     const ceilingFor = (sourceId: string) => {
       let ceiling = supplyCeilings.get(sourceId);
       if (ceiling === undefined) {
@@ -2611,6 +2615,7 @@ export function FactoryFlow() {
           // so the circle reads as one shape rather than as N red cards that
           // happen to sit near each other.
           isDeadLoop: deathSpiralEdges.has(edge.id),
+          isClogLock: clogLockEdges.has(edge.id),
           // Flow mode: how big this line is on its own kind's scale, 0 (the
           // quietest line on the board) to 1 (the busiest). The edge draws
           // marching dashes over itself when this is set.
@@ -4785,6 +4790,7 @@ export function FactoryFlow() {
       <div className="nodrag pointer-events-none absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 flex-col-reverse items-center gap-2">
         <UnwiredNotice onShow={handleShowNodes} />
         <DeathSpiralNotice onShow={handleShowNodes} />
+        <ClogLockNotice onShow={handleShowNodes} />
         <RecipeAddChips />
       </div>
       {isProjectImporting ? <FlowLoadingOverlay /> : null}
@@ -4898,6 +4904,63 @@ const DeathSpiralNotice = memo(function DeathSpiralNotice({
         title="Dismiss"
         aria-label="Dismiss this notice"
         className="flex h-5 w-5 shrink-0 items-center justify-center border border-[#7a3636] text-[#e0b3b3] hover:bg-[#4a2424]"
+      >
+        ×
+      </button>
+    </div>
+  );
+});
+
+/**
+ * The dead loop's mirror notice, in the clog family's blue: machines frozen
+ * because their own surplus has nowhere to go. It earns a board-level notice
+ * for the same reason the spiral does - the cause is nowhere in particular,
+ * every card in the jam can only point at the next one - but the story is
+ * the opposite (the line is stuffed, not starving) and so is the fix (a
+ * drawer, not a feeder). Dismissal keyed to the jam's identity, like the
+ * spiral's, so waving this one away does not silence the next.
+ */
+const ClogLockNotice = memo(function ClogLockNotice({
+  onShow,
+}: {
+  onShow: (nodeIds: string[]) => void;
+}) {
+  const project = useFactoryStore((state) => state.project);
+  const lastResult = useFactoryStore((state) => state.lastResult);
+  const [dismissedId, setDismissedId] = useState<string | undefined>(undefined);
+  const locks = useMemo(
+    () => findClogLocks(project, lastResult).locks,
+    [project, lastResult],
+  );
+
+  const lock = locks[0];
+  if (!lock || dismissedId === lock.id) {
+    return null;
+  }
+  const story = describeClogLock(lock);
+
+  return (
+    <div className="nodrag pointer-events-auto flex items-center gap-2 border-2 border-[#4c7ec3] bg-[#1a222b]/95 px-2 py-1.5 font-mono text-[12px] text-[#e4ecf2] shadow-[inset_2px_2px_0_#365d7a,inset_-2px_-2px_0_#10161a,4px_4px_0_rgba(0,0,0,0.35)]">
+      <span className="shrink-0 font-bold tracking-[0.5px] text-[#9cc9ff]">CLOG LOCK</span>
+      <span className="text-[#d2e0e6]">{story.short}</span>
+      {locks.length > 1 ? (
+        <span className="shrink-0 text-[#9aaab8]">
+          +{locks.length - 1} more
+        </span>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => onShow(lock.machineIds)}
+        className="shrink-0 border border-[#4c7ec3] bg-[#24384a] px-2 py-0.5 font-bold text-[#d0e6ff] hover:bg-[#2f4a63]"
+      >
+        Show me
+      </button>
+      <button
+        type="button"
+        onClick={() => setDismissedId(lock.id)}
+        title="Dismiss"
+        aria-label="Dismiss this notice"
+        className="flex h-5 w-5 shrink-0 items-center justify-center border border-[#365d7a] text-[#b3cbe0] hover:bg-[#24384a]"
       >
         ×
       </button>
@@ -7121,6 +7184,20 @@ function ResourceEdgeComponent({
           d={liveRoute.path}
           fill="none"
           stroke="#ff6b6b"
+          strokeWidth={coreStrokeWidth + 4}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ pointerEvents: "none" }}
+        />
+      ) : null}
+      {/* The clog lock's wires, same bargain in the clog family's blue: one
+          breathing overlay, opacity only, damage rect the size of the jam. */}
+      {data?.isClogLock ? (
+        <path
+          className="clog-lock-wire"
+          d={liveRoute.path}
+          fill="none"
+          stroke="#6fb2d6"
           strokeWidth={coreStrokeWidth + 4}
           strokeLinecap="round"
           strokeLinejoin="round"

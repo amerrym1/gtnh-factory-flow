@@ -39,6 +39,10 @@ export const BOARD_PULSE_ANIMATIONS = [
   // wires that close the loop.
   "dead-loop-breathe",
   "dead-loop-wire-breathe",
+  // Its mirror: machines frozen because their own surplus filled every
+  // escape route, and the wires the jam runs along.
+  "clog-lock-breathe",
+  "clog-lock-wire-breathe",
 ] as const;
 
 const BOARD_PULSE_SET: ReadonlySet<string> = new Set(BOARD_PULSE_ANIMATIONS);

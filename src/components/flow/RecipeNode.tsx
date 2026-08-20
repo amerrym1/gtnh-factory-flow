@@ -118,6 +118,7 @@ import {
   type RailPort,
 } from "./node-verdict";
 import { describeDeathSpiral } from "./death-spiral";
+import { describeClogLock } from "./clog-lock";
 import {
   edgeTouchesResource,
   explainPlug,
@@ -781,6 +782,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           everything except the eye. */}
       {verdict.kind === "dead-loop" ? (
         <div aria-hidden className="dead-loop-ring" />
+      ) : null}
+      {/* The clog lock wears the same ring in the clog family's blue: the
+          line is stuffed, not starving, and the drawer goes wherever the
+          notice points. */}
+      {verdict.kind === "clog-lock" ? (
+        <div aria-hidden className="clog-lock-ring" />
       ) : null}
       {/* The same trick for an unfinished card, and quiet on purpose: the
           slots are what you have to go and fix, so THEY carry the loud pulse
@@ -1645,6 +1652,10 @@ function verdictWord(
     // chain of blame STOPS. Any machine in the ring is a valid place to act.
     case "dead-loop":
       return { word: "dead loop", tone: "bottleneck" };
+    // Blue, the clog family's colour: nothing is broken or starving, the
+    // line is FULL. Its own word, because the fix is a drawer, not a feeder.
+    case "clog-lock":
+      return { word: "clog lock", tone: "clogged" };
     case "demand-set":
       return verdict.pct <= 0.05
         ? { word: "unused", tone: "fine" }
@@ -1910,6 +1921,8 @@ function verdictHoverTitle(verdict: NodeVerdict, isCustomRate: boolean): string 
       return `Nowhere to put the ${verdict.clog?.displayName ?? "spare output"}`;
     case "dead-loop":
       return verdict.spiral ? describeDeathSpiral(verdict.spiral).title : "Stuck in a loop";
+    case "clog-lock":
+      return verdict.clogLock ? describeClogLock(verdict.clogLock).title : "Choking on a surplus";
     case "demand-set":
       return verdict.pct <= 0.05 ? "Nothing draws from this yet" : "Downstream sets the speed";
     case "balanced":
@@ -1983,6 +1996,13 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
       }
       const story = describeDeathSpiral(verdict.spiral);
       return `${story.what} ${story.why}`;
+    }
+    case "clog-lock": {
+      if (!verdict.clogLock) {
+        return undefined;
+      }
+      const story = describeClogLock(verdict.clogLock);
+      return `${story.what} ${story.fix}`;
     }
     case "demand-set":
       return verdict.headroomPct && verdict.headroomPct > 0

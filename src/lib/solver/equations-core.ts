@@ -43,6 +43,25 @@ export interface EquationsCoreResult {
   utilization: Map<string, number>;
   /** Resource per second on each modeled wire. */
   edgeFlowPerSecond: Map<string, number>;
+  /**
+   * Vent-mode only: surplus per machine OUTPUT port that had to leave the
+   * board for the answer above to hold, node id -> resource key -> per
+   * second. A nonzero vent names a wire that needs a drawer or a trash can.
+   */
+  ventPerSecond?: Map<string, Map<ResourceKey, number>>;
+}
+
+export interface EquationsCoreOptions {
+  /**
+   * The clog-lock diagnostic: every wired machine output port may shed
+   * surplus through a penalized vent, so "what would run if the spare could
+   * leave" is solved instead of the books. Bare ports still pin their
+   * machine (an unwired slot is the unwired story, not a clog), and the
+   * equal-fill rows are off (in a vented world no intake chest ever fills).
+   * The books NEVER use this - it exists for the detector that explains
+   * boards the clog equality has dragged to zero.
+   */
+  ventOutputs?: boolean;
 }
 
 interface PortRef {
@@ -64,7 +83,9 @@ export function solveEquationsCore(
   nodes: Record<string, NodeThroughputResult>,
   solve: (lp: LinearProgram) => LpSolution = solveLp,
   diagnosis?: EquationsDiagnosis,
+  options?: EquationsCoreOptions,
 ): EquationsCoreResult {
+  const venting = options?.ventOutputs === true;
   const roles = getStorageRoles(project);
   const trashIds = collectTrashNodeIds(project);
   const storagesById = new Map((project.storages ?? []).map((s) => [s.id, s]));
@@ -157,9 +178,11 @@ export function solveEquationsCore(
     }
   }
   // One extra variable for the fairness stage's "worst-off level" t; it sits
-  // idle (free at zero) in every other stage.
+  // idle (free at zero) in every other stage. Vent mode allocates one more
+  // variable per wired output port below, before anything solves.
   const tVar = nextVar;
-  const totalVars = nextVar + 1;
+  let totalVars = nextVar + 1;
+  const vents: Array<{ nodeId: string; key: ResourceKey; varIndex: number; scale: number }> = [];
 
   const equalities: LinearProgram["equalities"] = [];
   const upperBounds: LinearProgram["upperBounds"] = [];
@@ -236,7 +259,7 @@ export function solveEquationsCore(
       }
     }
     for (const rows of [inputRows, outputRows]) {
-      for (const [, port] of rows) {
+      for (const [key, port] of rows) {
         if (port.vars.length === 0) {
           pinnedZero.add(id);
         }
@@ -246,6 +269,15 @@ export function solveEquationsCore(
           coefficients.set(v, scale);
         }
         coefficients.set(actVar.get(id)!, -port.rate * scale);
+        // Vent mode: a WIRED output port may shed surplus through its vent.
+        // A bare port gets none - an unwired slot still pins its machine,
+        // because that is the unwired story, not a clog.
+        if (venting && rows === outputRows && port.vars.length > 0) {
+          const varIndex = totalVars;
+          totalVars += 1;
+          vents.push({ nodeId: id, key, varIndex, scale });
+          coefficients.set(varIndex, scale);
+        }
         equalities.push({ coefficients, rhs: 0 });
       }
     }
@@ -263,8 +295,10 @@ export function solveEquationsCore(
   // the bound; one the diagnosis knows is throttled by its own outputs, a
   // bare port or a power stall is exempt - its intake chest fills and the
   // port legitimately serves the others). This is what makes a tapped
-  // break-even ring DIE instead of pretending its tap never pulls.
-  {
+  // break-even ring DIE instead of pretending its tap never pulls. Off in
+  // vent mode: in a vented world no intake chest ever fills, so round-robin
+  // never locks anyone.
+  if (!venting) {
     const clean = (consumerId: string): boolean =>
       !pinnedZero.has(consumerId) &&
       !nodes[consumerId]!.powerStalled &&
@@ -451,7 +485,8 @@ export function solveEquationsCore(
   // game's round-robin item split. Without it the simplex picks a lopsided
   // corner (one consumer full, its twin starved) no hopper line produces.
   // Best-effort: a round that fails to solve or to shrink the pool stops it.
-  {
+  // Skipped in vent mode: the diagnostic wants the vents, not a fair split.
+  if (!venting) {
     const pool = new Set(machineIds);
     for (let round = 0; pool.size > 0 && round < machineIds.length; round += 1) {
       const mark = upperBounds.length;
@@ -501,6 +536,19 @@ export function solveEquationsCore(
     }
   }
 
+  // Vent mode: after everything that CAN run is locked in, shed as little as
+  // possible. What survives this minimization is the honest answer to "which
+  // wires must a drawer rescue" - every remaining vent is necessary.
+  if (venting) {
+    const leastVents = new Map<number, number>();
+    for (const vent of vents) {
+      leastVents.set(vent.varIndex, -vent.scale);
+    }
+    if (!runLockedStage("least-vents", leastVents)) {
+      return failed();
+    }
+  }
+
   const leastImports = new Map<number, number>();
   for (const edge of usable) {
     if (storageKind(edge.source) === "source") {
@@ -540,5 +588,21 @@ export function solveEquationsCore(
   for (const edge of usable) {
     edgeFlowPerSecond.set(edge.id, Math.max(0, x[flowVar.get(edge.id)!] ?? 0));
   }
-  return { status: "optimal", utilization, edgeFlowPerSecond };
+  if (!venting) {
+    return { status: "optimal", utilization, edgeFlowPerSecond };
+  }
+  const ventPerSecond = new Map<string, Map<ResourceKey, number>>();
+  for (const vent of vents) {
+    const perSecond = x[vent.varIndex] ?? 0;
+    if (perSecond <= 1e-6) {
+      continue;
+    }
+    let byKey = ventPerSecond.get(vent.nodeId);
+    if (!byKey) {
+      byKey = new Map();
+      ventPerSecond.set(vent.nodeId, byKey);
+    }
+    byKey.set(vent.key, (byKey.get(vent.key) ?? 0) + perSecond);
+  }
+  return { status: "optimal", utilization, edgeFlowPerSecond, ventPerSecond };
 }

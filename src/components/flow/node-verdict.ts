@@ -9,6 +9,7 @@ import type {
 } from "@/lib/model/types";
 import { isRecipeInputConsumed, makeResourceKey } from "@/lib/model";
 import { findDeathSpirals, type DeathSpiral } from "./death-spiral";
+import { findClogLocks, type ClogLock } from "./clog-lock";
 import { isCustomRateRecipe } from "@/lib/model/custom-rate";
 import { collectTrashNodeIds } from "@/lib/model/trash";
 import { describeStorage, getStorageRole, getStorageRoles } from "@/lib/model/storage-role";
@@ -72,6 +73,7 @@ export type NodeVerdictKind =
   | "bottleneck"
   | "clogged"
   | "dead-loop"
+  | "clog-lock"
   | "demand-set"
   | "balanced";
 
@@ -178,6 +180,8 @@ export interface NodeVerdict {
   };
   /** Dead-loop: the ring this card is trapped in, and who else is in it. */
   spiral?: DeathSpiral;
+  /** Clog-lock: the jam this card is frozen in, and the surpluses to home. */
+  clogLock?: ClogLock;
 }
 
 /** Half a percent: below this, converged solver states are just float noise. */
@@ -449,6 +453,15 @@ export function deriveNodeVerdict(
   const spiral = findDeathSpirals(project, result).byNode.get(nodeId);
   if (spiral) {
     return { kind: "dead-loop", pct, spiral };
+  }
+
+  // Its mirror image: frozen not because the loop starves but because its
+  // own surplus has filled every escape route. The members read stuffed, not
+  // empty, and the fix is a drawer, so it needs its own name - CLOGGED on
+  // each card would send the player pipe-chasing round the circle forever.
+  const clogLock = findClogLocks(project, result).byNode.get(nodeId);
+  if (clogLock) {
+    return { kind: "clog-lock", pct, clogLock };
   }
 
   const deficit = findWorstOutputDeficit(project, result, nodeResult, nodeId, outgoing);

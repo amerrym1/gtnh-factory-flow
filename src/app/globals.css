@@ -1616,6 +1616,33 @@ img {
   animation: dead-loop-breathe var(--board-pulse) ease-in-out infinite;
 }
 
+/* The clog lock: the dead loop's mirror, in the clog family's blue. Same
+   constant-width bargain for the same zoom reason, same shared clock. */
+@keyframes clog-lock-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 var(--dead-loop-ring) #3d7291,
+      0 0 var(--dead-loop-halo) 1px rgba(111, 178, 214, 0.25);
+  }
+  50% {
+    box-shadow:
+      0 0 0 var(--dead-loop-ring) #6fb2d6,
+      0 0 var(--dead-loop-halo-lit) 6px rgba(120, 190, 230, 0.6);
+  }
+}
+
+.clog-lock-ring {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  --dead-loop-ring: 3px;
+  --dead-loop-halo: 10px;
+  --dead-loop-halo-lit: 24px;
+  animation: clog-lock-breathe var(--board-pulse) ease-in-out infinite;
+}
+
 /* Selection, the over-tier warning and a search hit: the same overlay trick,
    on the card's box rather than the shell's, so none of them draws a rectangle
    around the machine tabs. The rings themselves are written inline from
@@ -1698,14 +1725,38 @@ img {
   animation: dead-loop-wire-breathe var(--board-pulse) ease-in-out infinite;
 }
 
+@keyframes clog-lock-wire-breathe {
+  0%,
+  100% {
+    opacity: 0.22;
+  }
+  50% {
+    opacity: 0.75;
+  }
+}
+
+.clog-lock-wire {
+  animation: clog-lock-wire-breathe var(--board-pulse) ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .dead-loop-wire {
+    animation: none;
+    opacity: 0.6;
+  }
+  .clog-lock-wire {
     animation: none;
     opacity: 0.6;
   }
 }
 
 .factory-flow-board--calm .dead-loop-wire {
+  animation: none;
+  opacity: 0.35;
+  stroke: #7b8b9c;
+}
+
+.factory-flow-board--calm .clog-lock-wire {
   animation: none;
   opacity: 0.35;
   stroke: #7b8b9c;
