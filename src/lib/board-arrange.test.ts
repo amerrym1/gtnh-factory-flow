@@ -395,6 +395,43 @@ describe("arrangeBoard", () => {
     expectNoOverlaps(cards, result.moves);
   });
 
+  it("stands a feeding island to the left of the island it feeds, aligned", () => {
+    const cards = [
+      card("p1"),
+      card("p2"),
+      card("p3"),
+      card("p4"),
+      card("m1"),
+      card("m2"),
+      card("m3"),
+      card("m4"),
+    ];
+    const result = arrangeBoard({
+      cards,
+      wires: [
+        wire("p1", "p2"),
+        wire("p2", "p3"),
+        wire("p3", "p4"),
+        wire("m1", "m2"),
+        wire("m2", "m3"),
+        wire("m3", "m4"),
+        wire("p4", "m1"),
+      ],
+      origin: { x: 0, y: 0 },
+    });
+    expect(result.islands).toHaveLength(2);
+    const p = positionsById(result.moves);
+    const feeder = result.islands.find(
+      (island) => p.get("p1")!.x >= island.x && p.get("p1")!.y >= island.y,
+    )!;
+    const eater = result.islands.find((island) => island !== feeder)!;
+    // Left of, not above: the islands trade, so they sit side by side with
+    // vertical ranges that overlap.
+    expect(feeder.x + feeder.width).toBeLessThanOrEqual(eater.x);
+    expect(feeder.y).toBeLessThan(eater.y + eater.height);
+    expect(eater.y).toBeLessThan(feeder.y + feeder.height);
+  });
+
   it("keeps a tightly coupled web as one island", () => {
     // The same shape wired back with THREE bridges stays together.
     const cards = [

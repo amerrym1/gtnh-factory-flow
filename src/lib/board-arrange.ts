@@ -145,6 +145,9 @@ const ISLAND_GAP = cells(12);
 const ISLAND_CUT_MAX = 2;
 /** A split-off island must be at least this many cards, satellites included. */
 const ISLAND_MIN_CARDS = 4;
+/** Island columns wrap to the next line past this width: plans read like
+ * text, not like one endless ribbon. */
+const ISLAND_ROW_MAX_WIDTH = cells(240);
 /** A long-haul wire travels this many columns or more to earn a lane. */
 const LANE_MIN_SPAN = 3;
 /** Air between parked, unwired cards on the shelf. */
@@ -312,26 +315,41 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
   const originX = snapToGrid(origin.x);
   const originY = snapToGrid(origin.y);
 
+  // The islands trade with each other, so WHERE each island stands follows
+  // the same rule as the cards inside one: whoever feeds sits to the left
+  // of whoever drinks, and the bridge wires' own endpoints align.
+  const blockOfCard = new Map<string, number>();
+  const localPlaceOfCard = new Map<string, Placement>();
+  blocks.forEach((block, blockIndex) => {
+    block.ids.forEach((id, i) => {
+      blockOfCard.set(id, blockIndex);
+      localPlaceOfCard.set(id, block.places[i]);
+    });
+  });
+  const crossLinks: IslandLink[] = [];
+  for (const link of mainLinks) {
+    const fromBlock = blockOfCard.get(link.from.card.id);
+    const toBlock = blockOfCard.get(link.to.card.id);
+    if (fromBlock === undefined || toBlock === undefined || fromBlock === toBlock) {
+      continue;
+    }
+    crossLinks.push({
+      from: fromBlock,
+      to: toBlock,
+      weight: link.weight,
+      fromY: localPlaceOfCard.get(link.from.card.id)!.y + link.fromAnchor,
+      toY: localPlaceOfCard.get(link.to.card.id)!.y + link.toAnchor,
+    });
+  }
+  const offsets = placeIslands(blocks, crossLinks);
+
   const moves: ArrangeMove[] = [];
   const islands: ArrangeResult["islands"] = [];
   const wireRoutes: ArrangeResult["wireRoutes"] = [];
   const newById = new Map<string, Placement>();
-  const targetWidth = Math.max(blocks[0]?.width ?? 0, cells(80));
-  let rowX = 0;
-  let rowY = 0;
-  let rowHeight = 0;
   blocks.forEach((block, blockIndex) => {
-    // The main island owns its row; later islands share rows while they fit;
-    // the shelf of strays never rides beside an island.
-    const startsRow =
-      blockIndex === 0 || blockIndex === 1 || block.shelf || rowX + block.width > targetWidth;
-    if (startsRow) {
-      rowY += rowHeight + (blockIndex === 0 ? 0 : ISLAND_GAP);
-      rowX = 0;
-      rowHeight = 0;
-    }
-    const blockX = snapToGrid(originX + rowX);
-    const blockY = snapToGrid(originY + rowY);
+    const blockX = snapToGrid(originX + offsets[blockIndex].x);
+    const blockY = snapToGrid(originY + offsets[blockIndex].y);
     block.ids.forEach((id, i) => {
       const position = {
         x: blockX + block.places[i].x,
@@ -350,8 +368,6 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
       });
     }
     islands.push({ x: blockX, y: blockY, width: block.width, height: block.height });
-    rowX += block.width + ISLAND_GAP;
-    rowHeight = Math.max(rowHeight, block.height);
   });
 
   // Ink follows the cards it overlapped: a note pinned on a machine, a box
@@ -1759,19 +1775,39 @@ function settleColumn(
   if (layer.length === 0) {
     return;
   }
-  // Substitute out the card heights and gaps: z_i = y_i - offset_i must
-  // merely be non-decreasing.
-  const offsets: number[] = [];
-  let offset = 0;
+  const spacing = layer.map((slot, i) =>
+    i === 0 ? 0 : layer[i - 1].card.height + gapBetween(layer[i - 1], slot),
+  );
+  const ys = settleLine(wishes, spacing);
   layer.forEach((slot, i) => {
-    if (i > 0) {
-      offset += layer[i - 1].card.height + gapBetween(layer[i - 1], slot);
-    }
-    offsets.push(offset);
+    slot.y = ys[i];
   });
+}
+
+/**
+ * Weighted isotonic regression with fixed spacings (pool adjacent
+ * violators): place a line of items as close to their wishes as their
+ * order and least-distances allow, exactly. `spacing[i]` is the least
+ * distance from item i-1's top to item i's top; spacing[0] is ignored.
+ * The same settle serves the cards in a column and the islands in one.
+ */
+function settleLine(
+  wishes: Array<{ wish: number; weight: number }>,
+  spacing: number[],
+): number[] {
+  // Substitute out the spacings: z_i = y_i - start_i must merely be
+  // non-decreasing.
+  const starts: number[] = [];
+  let acc = 0;
+  for (let i = 0; i < wishes.length; i += 1) {
+    if (i > 0) {
+      acc += spacing[i];
+    }
+    starts.push(acc);
+  }
   const pools: Array<{ mean: number; weight: number; count: number }> = [];
   wishes.forEach((entry, i) => {
-    let mean = entry.wish - offsets[i];
+    let mean = entry.wish - starts[i];
     let weight = entry.weight;
     let count = 1;
     while (pools.length > 0 && pools[pools.length - 1].mean >= mean) {
@@ -1782,13 +1818,304 @@ function settleColumn(
     }
     pools.push({ mean, weight, count });
   });
+  const ys: number[] = [];
   let index = 0;
   for (const pool of pools) {
     for (let i = 0; i < pool.count; i += 1) {
-      layer[index].y = pool.mean + offsets[index];
+      ys.push(pool.mean + starts[index]);
       index += 1;
     }
   }
+  return ys;
+}
+
+/** A wire between two islands: which blocks, and where on each it lands. */
+interface IslandLink {
+  from: number;
+  to: number;
+  weight: number;
+  /** Bridge endpoints, each in its own block's coordinates. */
+  fromY: number;
+  toY: number;
+}
+
+/**
+ * Where each island stands. The islands form their own little factory -
+ * whoever feeds sits to the LEFT of whoever drinks - so they get their own
+ * layered layout: the net flow between two islands picks who is upstream,
+ * longest path deals the columns, and the vertical settle aligns the very
+ * cards the bridge wires connect, so a bridge crosses the gap level.
+ * Islands trading with nothing pack in rows below; the shelf of strays
+ * keeps the last row. Returns one offset per block, normalised to (0,0).
+ */
+function placeIslands(blocks: Block[], crossLinks: IslandLink[]): Placement[] {
+  const offsets: Placement[] = blocks.map(() => ({ x: 0, y: 0 }));
+  const connected = new Set<number>();
+  for (const link of crossLinks) {
+    connected.add(link.from);
+    connected.add(link.to);
+  }
+  const traders = blocks.map((_, index) => index).filter((index) => connected.has(index));
+
+  let tradedWidth = 0;
+  let tradedBottom = 0;
+  if (traders.length > 0) {
+    // Net direction per island pair: trading both ways leans the way the
+    // heavier flow goes.
+    const net = new Map<string, { from: number; to: number; weight: number }>();
+    for (const link of crossLinks) {
+      const key = `${Math.min(link.from, link.to)}:${Math.max(link.from, link.to)}`;
+      const entry = net.get(key);
+      if (!entry) {
+        net.set(key, { from: link.from, to: link.to, weight: link.weight });
+      } else {
+        entry.weight += entry.from === link.from ? link.weight : -link.weight;
+      }
+    }
+    const forward = [...net.values()]
+      .map((entry) =>
+        entry.weight >= 0 ? entry : { from: entry.to, to: entry.from, weight: -entry.weight },
+      )
+      .sort((a, b) => a.from - b.from || a.to - b.to);
+
+    // Rings of islands: a DFS in index order drops the closing edges.
+    const outgoing = new Map<number, Array<{ from: number; to: number; weight: number }>>();
+    for (const edge of forward) {
+      push(outgoing, edge.from, edge);
+    }
+    const VISITING = 1;
+    const DONE = 2;
+    const state = new Map<number, number>();
+    const kept: Array<{ from: number; to: number; weight: number }> = [];
+    for (const start of traders) {
+      if (state.has(start)) {
+        continue;
+      }
+      const stack = [{ island: start, next: 0 }];
+      state.set(start, VISITING);
+      while (stack.length > 0) {
+        const frame = stack[stack.length - 1];
+        const list = outgoing.get(frame.island) ?? [];
+        if (frame.next >= list.length) {
+          state.set(frame.island, DONE);
+          stack.pop();
+          continue;
+        }
+        const edge = list[frame.next];
+        frame.next += 1;
+        const seen = state.get(edge.to);
+        if (seen === undefined) {
+          state.set(edge.to, VISITING);
+          kept.push(edge);
+          stack.push({ island: edge.to, next: 0 });
+        } else if (seen === DONE) {
+          kept.push(edge);
+        }
+      }
+    }
+
+    // Columns: longest path, then slides toward the heavier side.
+    const layerOf = new Map<number, number>(traders.map((index) => [index, 0]));
+    {
+      const indegree = new Map<number, number>(traders.map((index) => [index, 0]));
+      for (const edge of kept) {
+        indegree.set(edge.to, (indegree.get(edge.to) ?? 0) + 1);
+      }
+      const queue = traders.filter((index) => (indegree.get(index) ?? 0) === 0);
+      for (let head = 0; head < queue.length; head += 1) {
+        for (const edge of kept) {
+          if (edge.from !== queue[head]) {
+            continue;
+          }
+          layerOf.set(edge.to, Math.max(layerOf.get(edge.to)!, layerOf.get(edge.from)! + 1));
+          const remaining = (indegree.get(edge.to) ?? 0) - 1;
+          indegree.set(edge.to, remaining);
+          if (remaining === 0) {
+            queue.push(edge.to);
+          }
+        }
+      }
+    }
+    for (let pass = 0; pass < 2; pass += 1) {
+      for (const island of traders) {
+        let lower = 0;
+        let upper = Number.POSITIVE_INFINITY;
+        let inWeight = 0;
+        let outWeight = 0;
+        for (const edge of kept) {
+          if (edge.to === island) {
+            lower = Math.max(lower, layerOf.get(edge.from)! + 1);
+            inWeight += edge.weight;
+          }
+          if (edge.from === island) {
+            upper = Math.min(upper, layerOf.get(edge.to)! - 1);
+            outWeight += edge.weight;
+          }
+        }
+        if (upper === Number.POSITIVE_INFINITY) {
+          upper = layerOf.get(island)!;
+        }
+        if (upper < lower) {
+          continue;
+        }
+        if (outWeight > inWeight) {
+          layerOf.set(island, upper);
+        } else if (inWeight > outWeight) {
+          layerOf.set(island, lower);
+        } else if (inWeight > 0 && outWeight > 0) {
+          layerOf.set(island, Math.round((lower + upper) / 2));
+        }
+      }
+    }
+    const used = [...new Set(traders.map((index) => layerOf.get(index)!))].sort((a, b) => a - b);
+    const packed = new Map(used.map((layer, i) => [layer, i]));
+    for (const index of traders) {
+      layerOf.set(index, packed.get(layerOf.get(index)!)!);
+    }
+
+    const columnWidth = new Array<number>(used.length).fill(0);
+    for (const index of traders) {
+      const layer = layerOf.get(index)!;
+      columnWidth[layer] = Math.max(columnWidth[layer], blocks[index].width);
+    }
+    // Island columns wrap to the next line past ISLAND_ROW_MAX_WIDTH: a
+    // plan reads like text, left to right and then the next line, instead
+    // of one endless ribbon. Bridges over a line break just travel.
+    const rowOfColumn: number[] = [];
+    const columnX: number[] = [];
+    {
+      let x = 0;
+      let row = 0;
+      for (let layer = 0; layer < used.length; layer += 1) {
+        if (x > 0 && x + columnWidth[layer] > ISLAND_ROW_MAX_WIDTH) {
+          row += 1;
+          x = 0;
+        }
+        rowOfColumn.push(row);
+        columnX.push(x);
+        x += columnWidth[layer] + ISLAND_GAP;
+        tradedWidth = Math.max(tradedWidth, x - ISLAND_GAP);
+      }
+    }
+    const columns: number[][] = Array.from({ length: used.length }, () => []);
+    for (const index of traders) {
+      columns[layerOf.get(index)!].push(index);
+    }
+    for (const column of columns) {
+      column.sort((a, b) => a - b);
+      let y = 0;
+      for (const index of column) {
+        offsets[index].y = y;
+        y += blocks[index].height + ISLAND_GAP;
+      }
+    }
+    for (const index of traders) {
+      const layer = layerOf.get(index)!;
+      offsets[index].x = columnX[layer] + (columnWidth[layer] - blocks[index].width) / 2;
+    }
+
+    // The settle: each island wants its bridge endpoints level with the
+    // other side's, weighted by flow, held apart by the island gap. Only
+    // islands on the same line align - a bridge across a line break has
+    // nothing to be level with.
+    const rowOfIsland = new Map<number, number>();
+    for (const index of traders) {
+      rowOfIsland.set(index, rowOfColumn[layerOf.get(index)!]);
+    }
+    for (let sweep = 0; sweep < 6; sweep += 1) {
+      const leftToRight = sweep % 2 === 0;
+      for (let c = 0; c < columns.length; c += 1) {
+        const column = columns[leftToRight ? c : columns.length - 1 - c];
+        if (column.length === 0) {
+          continue;
+        }
+        const wishes = column.map((index) => {
+          let sum = 0;
+          let total = 0;
+          for (const link of crossLinks) {
+            if (link.from === index && rowOfIsland.get(link.to) === rowOfIsland.get(index)) {
+              sum += (offsets[link.to].y + link.toY - link.fromY) * link.weight;
+              total += link.weight;
+            } else if (link.to === index && rowOfIsland.get(link.from) === rowOfIsland.get(index)) {
+              sum += (offsets[link.from].y + link.fromY - link.toY) * link.weight;
+              total += link.weight;
+            }
+          }
+          return total > 0
+            ? { wish: sum / total, weight: total }
+            : { wish: offsets[index].y, weight: 0.1 };
+        });
+        const spacing = column.map((index, k) =>
+          k === 0 ? 0 : blocks[column[k - 1]].height + ISLAND_GAP,
+        );
+        const ys = settleLine(wishes, spacing);
+        column.forEach((index, k) => {
+          offsets[index].y = ys[k];
+        });
+      }
+    }
+    // Stack the lines: each row normalised to its own top, then laid one
+    // under the other.
+    const rowCount = rowOfColumn.length > 0 ? rowOfColumn[rowOfColumn.length - 1] + 1 : 0;
+    let rowBase = 0;
+    for (let row = 0; row < rowCount; row += 1) {
+      const rowIslands = traders.filter((index) => rowOfIsland.get(index) === row);
+      if (rowIslands.length === 0) {
+        continue;
+      }
+      let top = Number.POSITIVE_INFINITY;
+      for (const index of rowIslands) {
+        top = Math.min(top, offsets[index].y);
+      }
+      let height = 0;
+      for (const index of rowIslands) {
+        offsets[index].y = offsets[index].y - top + rowBase;
+        height = Math.max(height, offsets[index].y + blocks[index].height - rowBase);
+      }
+      rowBase += height + ISLAND_GAP;
+    }
+    tradedBottom = Math.max(rowBase - ISLAND_GAP, 0);
+  }
+
+  // Islands trading with nothing: rows below whatever trades.
+  const loose = blocks
+    .map((_, index) => index)
+    .filter((index) => !connected.has(index) && !blocks[index].shelf);
+  const widestLoose = loose.reduce((max, index) => Math.max(max, blocks[index].width), 0);
+  const targetWidth = Math.max(tradedWidth, widestLoose, cells(80));
+  let rowX = 0;
+  let rowY = tradedBottom > 0 ? tradedBottom + ISLAND_GAP : 0;
+  let rowHeight = 0;
+  for (const index of loose) {
+    if (rowX > 0 && rowX + blocks[index].width > targetWidth) {
+      rowX = 0;
+      rowY += rowHeight + ISLAND_GAP;
+      rowHeight = 0;
+    }
+    offsets[index] = { x: rowX, y: rowY };
+    rowX += blocks[index].width + ISLAND_GAP;
+    rowHeight = Math.max(rowHeight, blocks[index].height);
+  }
+  const looseBottom = rowHeight > 0 ? rowY + rowHeight : tradedBottom;
+
+  // The shelf takes the last row.
+  blocks.forEach((block, index) => {
+    if (block.shelf) {
+      offsets[index] = { x: 0, y: looseBottom > 0 ? looseBottom + ISLAND_GAP : 0 };
+    }
+  });
+
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  for (const offset of offsets) {
+    minX = Math.min(minX, offset.x);
+    minY = Math.min(minY, offset.y);
+  }
+  for (const offset of offsets) {
+    offset.x -= minX;
+    offset.y -= minY;
+  }
+  return offsets;
 }
 
 /* ---------------------------------------------------------------------- */

@@ -4032,12 +4032,19 @@ export function FactoryFlow() {
       addAnnotations: drawInk
         ? islands.map((island) => ({
             kind: "box" as const,
+            // A quiet grey ground under each island - no border, just a
+            // faint steel wash that makes the station read as one place.
+            colorTag: "steel" as const,
             position: { x: island.x - BOARD_GRID * 2, y: island.y - BOARD_GRID * 2 },
             size: {
               width: island.width + BOARD_GRID * 4,
               height: island.height + BOARD_GRID * 4,
             },
-            style: { border: "dashed" as const, fill: "none" as const },
+            style: {
+              border: "none" as const,
+              fill: "tint" as const,
+              fillColor: "steel" as const,
+            },
           }))
         : undefined,
     });
