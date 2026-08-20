@@ -8690,6 +8690,7 @@ function computeAutoArrangement(
     id: string,
     position: { x: number; y: number },
     estimate: { width: number; height: number },
+    role: "machine" | "storage",
   ) => {
     const measured = publishedBoardGeometryById.get(id);
     cards.push({
@@ -8698,22 +8699,33 @@ function computeAutoArrangement(
       y: position.y,
       width: measured?.width ? snapSizeUpToGrid(measured.width) : estimate.width,
       height: measured?.height ? snapSizeUpToGrid(measured.height) : estimate.height,
+      role,
     });
   };
   for (const node of project.nodes) {
     if (node.pocketId !== activePocketId) {
       continue;
     }
-    pushCard(node.id, node.position, estimateNodeCardSize(node, recipesById.get(node.recipeId)));
+    const recipe = recipesById.get(node.recipeId);
+    // Trash cans are storage-shaped furniture: small tiles that want to ride
+    // beside the machine feeding them.
+    pushCard(
+      node.id,
+      node.position,
+      estimateNodeCardSize(node, recipe),
+      recipe && isTrashRecipe(recipe) ? "storage" : "machine",
+    );
   }
   for (const storage of project.storages ?? []) {
     if (storage.pocketId !== activePocketId) {
       continue;
     }
-    pushCard(storage.id, storage.position, {
-      width: STORAGE_NODE_WIDTH,
-      height: STORAGE_NODE_HEIGHT,
-    });
+    pushCard(
+      storage.id,
+      storage.position,
+      { width: STORAGE_NODE_WIDTH, height: STORAGE_NODE_HEIGHT },
+      "storage",
+    );
   }
   for (const pocket of pockets) {
     if (pocket.parentPocketId !== activePocketId) {
@@ -8724,10 +8736,12 @@ function computeAutoArrangement(
       listPocketPortResources(project, pocket.id, "input").length,
       listPocketPortResources(project, pocket.id, "output").length,
     );
-    pushCard(pocket.id, pocket.position, {
-      width: RECIPE_NODE_WIDTH,
-      height: cells(4) + cells(2) * rows + cells(2),
-    });
+    pushCard(
+      pocket.id,
+      pocket.position,
+      { width: RECIPE_NODE_WIDTH, height: cells(4) + cells(2) * rows + cells(2) },
+      "machine",
+    );
   }
 
   const cardIds = new Set(cards.map((card) => card.id));

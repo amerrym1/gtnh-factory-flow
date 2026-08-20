@@ -38,6 +38,14 @@ export interface ArrangeCard {
   y: number;
   width: number;
   height: number;
+  /**
+   * "storage" marks drawers, tanks and trash cans - the small tiles. A
+   * storage whose every wire meets one machine becomes a SATELLITE: it
+   * leaves the column system entirely and pins itself against that
+   * machine's edge at the port it serves - supplies on the left, catches
+   * on the right - the way players park them. Absent means machine.
+   */
+  role?: "machine" | "storage";
 }
 
 /** A wire between two cards, source makes the resource, target drinks it. */
@@ -138,6 +146,14 @@ interface Placement {
   y: number;
 }
 
+/** Where a satellite storage rides: which machine, which side, which port. */
+interface SatellitePlan {
+  anchor: CardSlot;
+  side: "left" | "right";
+  /** Satellite top relative to the anchor's top, ports aligned. */
+  offsetY: number;
+}
+
 /** One laid-out block (an island), positions relative to its own top-left. */
 interface Block {
   ids: string[];
@@ -178,10 +194,22 @@ export function arrangeBoard(input: ArrangeInput): ArrangeMove[] {
     });
   }
 
+  // Drawers that serve exactly one machine leave the graph here and come
+  // back at the very end, pinned against that machine's side. The layout
+  // then only has to solve the machines and the true multi-way buffers.
+  const satellitePlans = planSatellites(slotById, links);
+  const mainLinks = links.filter(
+    (link) => !satellitePlans.has(link.from) && !satellitePlans.has(link.to),
+  );
+  const anchors = new Set([...satellitePlans.values()].map((plan) => plan.anchor));
+
   // Split into islands: weakly-connected components of the wire graph.
-  const componentOf = unionComponents(cards.length, links);
+  const componentOf = unionComponents(cards.length, mainLinks);
   const componentSlots = new Map<number, CardSlot[]>();
   for (const slot of slotById.values()) {
+    if (satellitePlans.has(slot)) {
+      continue;
+    }
     const root = componentOf(slot.index);
     const members = componentSlots.get(root);
     if (members) {
@@ -194,14 +222,26 @@ export function arrangeBoard(input: ArrangeInput): ArrangeMove[] {
   const blocks: Block[] = [];
   const parked: CardSlot[] = [];
   for (const members of componentSlots.values()) {
-    if (members.length === 1 && !links.some((l) => l.from === members[0] || l.to === members[0])) {
+    // A card with no wires parks on the shelf - unless satellites ride on
+    // it, which makes it a one-card island that keeps its drawers.
+    if (
+      members.length === 1 &&
+      !mainLinks.some((l) => l.from === members[0] || l.to === members[0]) &&
+      !anchors.has(members[0])
+    ) {
       parked.push(members[0]);
       continue;
     }
     members.sort((a, b) => a.index - b.index);
     const memberSet = new Set(members);
-    const memberLinks = links.filter((link) => memberSet.has(link.from));
-    blocks.push(layoutIsland(members, memberLinks));
+    const memberLinks = mainLinks.filter((link) => memberSet.has(link.from));
+    const memberSatellites = new Map<CardSlot, SatellitePlan>();
+    for (const [sat, plan] of satellitePlans) {
+      if (memberSet.has(plan.anchor)) {
+        memberSatellites.set(sat, plan);
+      }
+    }
+    blocks.push(layoutIsland(members, memberLinks, memberSatellites));
   }
 
   // The biggest island is the main line and leads; the rest pack below it in
@@ -310,20 +350,130 @@ function unionComponents(count: number, links: WireLink[]): (index: number) => n
   return find;
 }
 
+/**
+ * Which storages ride as satellites. A drawer whose every wire meets one
+ * other card is furniture for that card, not a station of its own: a supply
+ * pins to the left edge, a catch to the right, each at the port row it
+ * serves. Two lone storages wired only to each other stay ordinary cards -
+ * a satellite needs solid ground to pin to.
+ */
+function planSatellites(
+  slotById: Map<string, CardSlot>,
+  links: WireLink[],
+): Map<CardSlot, SatellitePlan> {
+  const bySlot = new Map<CardSlot, WireLink[]>();
+  for (const link of links) {
+    push(bySlot, link.from, link);
+    push(bySlot, link.to, link);
+  }
+  const plans = new Map<CardSlot, SatellitePlan>();
+  for (const slot of slotById.values()) {
+    if (slot.card.role !== "storage") {
+      continue;
+    }
+    const myLinks = bySlot.get(slot) ?? [];
+    if (myLinks.length === 0) {
+      continue;
+    }
+    const partners = new Set(myLinks.map((l) => (l.from === slot ? l.to : l.from)));
+    if (partners.size !== 1) {
+      continue;
+    }
+    const anchor = [...partners][0];
+    const feeds = myLinks.some((l) => l.from === slot);
+    const fed = myLinks.some((l) => l.to === slot);
+    // Ports aligned: the satellite's port row meets the machine's port row.
+    let sum = 0;
+    let weight = 0;
+    for (const l of myLinks) {
+      const anchorPort = l.from === slot ? l.toAnchor : l.fromAnchor;
+      const ownPort = l.from === slot ? l.fromAnchor : l.toAnchor;
+      sum += (anchorPort - ownPort) * l.weight;
+      weight += l.weight;
+    }
+    plans.set(slot, {
+      anchor,
+      side: feeds && !fed ? "left" : "right",
+      offsetY: sum / weight,
+    });
+  }
+  for (const [slot, plan] of [...plans]) {
+    if (plans.has(plan.anchor)) {
+      plans.delete(slot);
+      plans.delete(plan.anchor);
+    }
+  }
+  return plans;
+}
+
+/**
+ * The wires of every two-card loop (A feeds B, B feeds A). Those pairs are
+ * drawn STACKED - same column, one above the other - the way players draw
+ * an electrolyzer trading with its reactor, so their wires stay off the
+ * column system entirely.
+ */
+function twoCycleLinks(links: WireLink[]): Set<WireLink> {
+  const directions = new Set<string>();
+  for (const link of links) {
+    directions.add(`${link.from.index}>${link.to.index}`);
+  }
+  const pairs = new Set<WireLink>();
+  for (const link of links) {
+    if (directions.has(`${link.to.index}>${link.from.index}`)) {
+      pairs.add(link);
+    }
+  }
+  return pairs;
+}
+
 /* ---------------------------------------------------------------------- */
 /* One island: trunk, sections, columns.                                   */
 /* ---------------------------------------------------------------------- */
 
-function layoutIsland(members: CardSlot[], links: WireLink[]): Block {
+function layoutIsland(
+  members: CardSlot[],
+  links: WireLink[],
+  satellites: Map<CardSlot, SatellitePlan>,
+): Block {
   // -- Cycles. A layered layout needs an acyclic graph to rank, so a DFS in
   // input order marks the wires that close each loop. Those wires still
   // exist for every later pass - they pull their ends together vertically -
   // they just do not constrain the columns, so the forward half of a
   // recycle reads left to right and the return wire doubles back beside it.
-  const forward = breakCycles(members, links);
+  // Two-card loops are lifted out before any of that: their wires never
+  // touch the column system, and the pair stacks in one column.
+  const pairs = twoCycleLinks(links);
+  const forward = breakCycles(members, links, pairs);
 
-  assignLayers(members, forward);
+  assignLayers(members, forward, pairs);
+
+  // -- The fold. A big recycle ring flattened into one line leaves its
+  // closure wire lassoing the whole board. Folding the ring's far half back
+  // over the top turns the line into the loop the player would draw: flow
+  // runs out along the bottom deck, back along the top, and every closure
+  // is a short vertical hop. Where the fold lands is chosen by arithmetic
+  // (least total wire span), so the arbitrary cycle break stops mattering.
+  const { topDeck, pinned } = foldBigCycles(members, links, pairs);
+  // The fold moved the ring; everything hanging off it re-slides to its new
+  // wires (the ring itself is pinned), pairs re-stack, and a drawer shared
+  // by several machines sits between them rather than to the right of all.
+  slideTowardWires(members, forward, pinned);
+  pullPairsTogether(pairs, forward);
+  relaxSharedStorages(members, links, pinned);
+  packLayers(members);
+
   buildBands(members, links, forward);
+  if (topDeck.size > 0) {
+    // The return deck rides ABOVE the line it feeds, as one band: its cards
+    // keep their relative order but outrank every bottom-deck seq.
+    const shift = members.length * 4;
+    for (const slot of members) {
+      if (topDeck.has(slot)) {
+        slot.seq -= shift;
+        slot.section = -1;
+      }
+    }
+  }
 
   // A provisional vertical pass, then the anti-crossing polish: with real
   // positions on the board, cards are reordered WITHIN their column and
@@ -353,11 +503,25 @@ function layoutIsland(members: CardSlot[], links: WireLink[]): Block {
       crossings[i] += 1;
     }
   }
+  // Corridors widen where satellites ride: a column whose machines carry
+  // supply drawers needs room on its left, catch drawers need it on the
+  // right.
+  const leftPad = new Array<number>(layers.length).fill(0);
+  const rightPad = new Array<number>(layers.length).fill(0);
+  for (const [sat, plan] of satellites) {
+    const need = sat.card.width + cells(2);
+    if (plan.side === "left") {
+      leftPad[plan.anchor.layer] = Math.max(leftPad[plan.anchor.layer], need);
+    } else {
+      rightPad[plan.anchor.layer] = Math.max(rightPad[plan.anchor.layer], need);
+    }
+  }
   const columnX: number[] = [];
   let x = 0;
   layers.forEach((_, i) => {
+    x += leftPad[i];
     columnX.push(x);
-    x += columnWidth[i];
+    x += columnWidth[i] + rightPad[i];
     if (i < layers.length - 1) {
       const gap = COLUMN_GAP_MIN + cells(Math.floor(crossings[i] / COLUMN_GAP_WIRES_PER_CELL));
       x += Math.min(gap, COLUMN_GAP_MAX);
@@ -373,8 +537,7 @@ function layoutIsland(members: CardSlot[], links: WireLink[]): Block {
   }
   const ids: string[] = [];
   const places: Placement[] = [];
-  let width = 0;
-  let height = 0;
+  const placeBySlot = new Map<CardSlot, Placement>();
   for (const slot of members) {
     const place = {
       x: snapToGrid(columnX[slot.layer] + (columnWidth[slot.layer] - slot.card.width) / 2),
@@ -382,20 +545,86 @@ function layoutIsland(members: CardSlot[], links: WireLink[]): Block {
     };
     ids.push(slot.card.id);
     places.push(place);
-    width = Math.max(width, place.x + slot.card.width);
-    height = Math.max(height, place.y + slot.card.height);
+    placeBySlot.set(slot, place);
   }
-  return { ids, places, width, height, size: members.length, minIndex: members[0].index };
+
+  // Satellites, pinned to their machine's side at the port row they serve
+  // and stacked apart when several share a side.
+  const satGroups = new Map<string, Array<{ sat: CardSlot; plan: SatellitePlan }>>();
+  for (const [sat, plan] of satellites) {
+    push(satGroups, `${plan.anchor.index}:${plan.side}`, { sat, plan });
+  }
+  for (const group of satGroups.values()) {
+    group.sort((a, b) => a.plan.offsetY - b.plan.offsetY || a.sat.index - b.sat.index);
+    let previousBottom = Number.NEGATIVE_INFINITY;
+    for (const { sat, plan } of group) {
+      const anchorPlace = placeBySlot.get(plan.anchor)!;
+      const place = {
+        x: snapToGrid(
+          plan.side === "left"
+            ? anchorPlace.x - cells(2) - sat.card.width
+            : anchorPlace.x + plan.anchor.card.width + cells(2),
+        ),
+        y: snapToGrid(
+          Math.max(anchorPlace.y + plan.offsetY, previousBottom + cells(1)),
+        ),
+      };
+      previousBottom = place.y + sat.card.height;
+      ids.push(sat.card.id);
+      places.push(place);
+    }
+  }
+
+  // Satellites can poke past the island's top or left edge; pull the whole
+  // block back to its own origin, then measure it.
+  let minX = 0;
+  let minY = 0;
+  for (const place of places) {
+    minX = Math.min(minX, place.x);
+    minY = Math.min(minY, place.y);
+  }
+  let width = 0;
+  let height = 0;
+  for (const place of places) {
+    place.x -= minX;
+    place.y -= minY;
+  }
+  const slotOf = new Map<string, CardSlot>();
+  for (const slot of members) {
+    slotOf.set(slot.card.id, slot);
+  }
+  for (const sat of satellites.keys()) {
+    slotOf.set(sat.card.id, sat);
+  }
+  ids.forEach((id, i) => {
+    const slot = slotOf.get(id)!;
+    width = Math.max(width, places[i].x + slot.card.width);
+    height = Math.max(height, places[i].y + slot.card.height);
+  });
+  return {
+    ids,
+    places,
+    width,
+    height,
+    size: members.length + satellites.size,
+    minIndex: members[0].index,
+  };
 }
 
 /**
  * Mark the links that close a cycle. Returns the FORWARD links (the DAG);
  * marked links simply do not constrain layering.
  */
-function breakCycles(members: CardSlot[], links: WireLink[]): WireLink[] {
+function breakCycles(
+  members: CardSlot[],
+  links: WireLink[],
+  pairs: ReadonlySet<WireLink>,
+): WireLink[] {
   const outgoing = new Map<CardSlot, WireLink[]>();
   for (const link of links) {
-    push(outgoing, link.from, link);
+    if (!pairs.has(link)) {
+      push(outgoing, link.from, link);
+    }
   }
   const VISITING = 1;
   const DONE = 2;
@@ -427,7 +656,7 @@ function breakCycles(members: CardSlot[], links: WireLink[]): WireLink[] {
       }
     }
   }
-  return links.filter((link) => !reversed.has(link));
+  return links.filter((link) => !pairs.has(link) && !reversed.has(link));
 }
 
 /**
@@ -437,7 +666,11 @@ function breakCycles(members: CardSlot[], links: WireLink[]): WireLink[] {
  * pulls a lone raw-material source right up beside its consumer instead of
  * leaving it stranded in column zero, and keeps a heavy line's ends adjacent.
  */
-function assignLayers(members: CardSlot[], forward: WireLink[]): void {
+function assignLayers(
+  members: CardSlot[],
+  forward: WireLink[],
+  pairs: ReadonlySet<WireLink>,
+): void {
   const incoming = new Map<CardSlot, WireLink[]>();
   const outgoing = new Map<CardSlot, WireLink[]>();
   for (const link of forward) {
@@ -454,8 +687,32 @@ function assignLayers(members: CardSlot[], forward: WireLink[]): void {
     slot.layer = layer;
   }
 
+  slideTowardWires(members, forward);
+  pullPairsTogether(pairs, forward);
+  packLayers(members);
+}
+
+/**
+ * Slide every card toward whichever side holds more of its wire weight,
+ * within what its wires allow. Pinned cards (a folded ring) hold still but
+ * still anchor their neighbours.
+ */
+function slideTowardWires(
+  members: CardSlot[],
+  forward: WireLink[],
+  pinned?: ReadonlySet<CardSlot>,
+): void {
+  const incoming = new Map<CardSlot, WireLink[]>();
+  const outgoing = new Map<CardSlot, WireLink[]>();
+  for (const link of forward) {
+    push(outgoing, link.from, link);
+    push(incoming, link.to, link);
+  }
   for (let pass = 0; pass < 3; pass += 1) {
     for (const slot of members) {
+      if (pinned?.has(slot)) {
+        continue;
+      }
       const ins = incoming.get(slot) ?? [];
       const outs = outgoing.get(slot) ?? [];
       let lower = 0;
@@ -484,13 +741,209 @@ function assignLayers(members: CardSlot[], forward: WireLink[]): void {
       }
     }
   }
+}
 
-  // Layers can come out sparse after tightening; close the holes.
+/**
+ * Two-card loops share a column, stacked, the way players draw an
+ * electrolyzer trading with its reactor: the member with fewer other
+ * wires adopts the better-anchored one's column.
+ */
+function pullPairsTogether(pairs: ReadonlySet<WireLink>, forward: WireLink[]): void {
+  const degree = new Map<CardSlot, number>();
+  for (const link of forward) {
+    degree.set(link.from, (degree.get(link.from) ?? 0) + 1);
+    degree.set(link.to, (degree.get(link.to) ?? 0) + 1);
+  }
+  for (const link of pairs) {
+    if (link.from.index < link.to.index) {
+      const a = link.from;
+      const b = link.to;
+      if ((degree.get(a) ?? 0) >= (degree.get(b) ?? 0)) {
+        b.layer = a.layer;
+      } else {
+        a.layer = b.layer;
+      }
+    }
+  }
+}
+
+/**
+ * A drawer serving several machines belongs BETWEEN them, not to the right
+ * of them all: left-to-right ranking only means something for cards that
+ * transform, and a shared chest just collects. Its column becomes the
+ * weighted middle of its partners'.
+ */
+function relaxSharedStorages(
+  members: CardSlot[],
+  links: WireLink[],
+  pinned: ReadonlySet<CardSlot>,
+): void {
+  const bySlot = new Map<CardSlot, WireLink[]>();
+  for (const link of links) {
+    push(bySlot, link.from, link);
+    push(bySlot, link.to, link);
+  }
+  for (const slot of members) {
+    if (slot.card.role !== "storage" || pinned.has(slot)) {
+      continue;
+    }
+    const myLinks = bySlot.get(slot) ?? [];
+    const partners = new Set(myLinks.map((l) => (l.from === slot ? l.to : l.from)));
+    if (partners.size < 2) {
+      continue;
+    }
+    let sum = 0;
+    let weight = 0;
+    for (const link of myLinks) {
+      const other = link.from === slot ? link.to : link.from;
+      sum += other.layer * link.weight;
+      weight += link.weight;
+    }
+    slot.layer = Math.round(sum / weight);
+  }
+}
+
+/** Layers come out sparse after tightening and folding; close the holes. */
+function packLayers(members: CardSlot[]): void {
   const used = [...new Set(members.map((slot) => slot.layer))].sort((a, b) => a - b);
   const packed = new Map(used.map((layer, i) => [layer, i]));
   for (const slot of members) {
     slot.layer = packed.get(slot.layer) ?? 0;
   }
+}
+
+/**
+ * Strongly connected components of the island, iterative Tarjan in input
+ * order: the cards that can all reach each other - a recycle ring and
+ * everything riding it.
+ */
+function strongComponents(members: CardSlot[], links: WireLink[]): Map<CardSlot, number> {
+  const outgoing = new Map<CardSlot, CardSlot[]>();
+  for (const link of links) {
+    push(outgoing, link.from, link.to);
+  }
+  const component = new Map<CardSlot, number>();
+  const indexOf = new Map<CardSlot, number>();
+  const low = new Map<CardSlot, number>();
+  const onStack = new Set<CardSlot>();
+  const tarjanStack: CardSlot[] = [];
+  let nextIndex = 0;
+  let nextComponent = 0;
+  for (const start of members) {
+    if (indexOf.has(start)) {
+      continue;
+    }
+    const work: Array<{ slot: CardSlot; next: number }> = [{ slot: start, next: 0 }];
+    indexOf.set(start, nextIndex);
+    low.set(start, nextIndex);
+    nextIndex += 1;
+    tarjanStack.push(start);
+    onStack.add(start);
+    while (work.length > 0) {
+      const frame = work[work.length - 1];
+      const near = outgoing.get(frame.slot) ?? [];
+      if (frame.next < near.length) {
+        const other = near[frame.next];
+        frame.next += 1;
+        if (!indexOf.has(other)) {
+          indexOf.set(other, nextIndex);
+          low.set(other, nextIndex);
+          nextIndex += 1;
+          tarjanStack.push(other);
+          onStack.add(other);
+          work.push({ slot: other, next: 0 });
+        } else if (onStack.has(other)) {
+          low.set(frame.slot, Math.min(low.get(frame.slot)!, indexOf.get(other)!));
+        }
+        continue;
+      }
+      work.pop();
+      if (work.length > 0) {
+        const parent = work[work.length - 1].slot;
+        low.set(parent, Math.min(low.get(parent)!, low.get(frame.slot)!));
+      }
+      if (low.get(frame.slot) === indexOf.get(frame.slot)) {
+        for (;;) {
+          const popped = tarjanStack.pop()!;
+          onStack.delete(popped);
+          component.set(popped, nextComponent);
+          if (popped === frame.slot) {
+            break;
+          }
+        }
+        nextComponent += 1;
+      }
+    }
+  }
+  return component;
+}
+
+/**
+ * Fold each big ring back over itself. For every strongly connected group
+ * of four or more cards, try each fold point: cards past it mirror onto a
+ * return deck heading back left. Keep the fold whose total wire span is
+ * smallest, if it beats the unfolded line. Returns the cards on top decks.
+ */
+function foldBigCycles(
+  members: CardSlot[],
+  links: WireLink[],
+  pairs: ReadonlySet<WireLink>,
+): { topDeck: Set<CardSlot>; pinned: Set<CardSlot> } {
+  const component = strongComponents(members, links);
+  const groups = new Map<number, CardSlot[]>();
+  for (const slot of members) {
+    push(groups, component.get(slot) ?? -1, slot);
+  }
+  const topDeck = new Set<CardSlot>();
+  const pinned = new Set<CardSlot>();
+  for (const group of groups.values()) {
+    if (group.length < 4) {
+      continue;
+    }
+    const inGroup = new Set(group);
+    const inner = links.filter(
+      (link) => inGroup.has(link.from) && inGroup.has(link.to) && !pairs.has(link),
+    );
+    const minLayer = group.reduce((min, slot) => Math.min(min, slot.layer), Infinity);
+    const flat = new Map(group.map((slot) => [slot, slot.layer - minLayer]));
+    const span = group.reduce((max, slot) => Math.max(max, flat.get(slot)!), 0);
+    // SQUARED span: one wire lassoing four columns is far worse than four
+    // wires each hopping one - long wires are the ugliness being priced.
+    const cost = (layerOf: (slot: CardSlot) => number) =>
+      inner.reduce((sum, link) => {
+        const d = Math.abs(layerOf(link.from) - layerOf(link.to));
+        return sum + d * d;
+      }, 0);
+    const baseCost = cost((slot) => flat.get(slot)!);
+    let bestM = -1;
+    let bestCost = baseCost;
+    for (let m = 0; m < span; m += 1) {
+      const layerOf = (slot: CardSlot) => {
+        const f = flat.get(slot)!;
+        return f <= m ? f : 2 * m + 1 - f;
+      };
+      if (group.some((slot) => layerOf(slot) < 0)) {
+        continue;
+      }
+      const folded = cost(layerOf);
+      if (folded < bestCost) {
+        bestCost = folded;
+        bestM = m;
+      }
+    }
+    if (bestM < 0) {
+      continue;
+    }
+    for (const slot of group) {
+      pinned.add(slot);
+      const f = flat.get(slot)!;
+      if (f > bestM) {
+        slot.layer = minLayer + 2 * bestM + 1 - f;
+        topDeck.add(slot);
+      }
+    }
+  }
+  return { topDeck, pinned };
 }
 
 function push<K, V>(map: Map<K, V[]>, key: K, value: V): void {

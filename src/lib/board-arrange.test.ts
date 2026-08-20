@@ -278,6 +278,75 @@ describe("arrangeBoard", () => {
     expectNoOverlaps(cards, moves);
   });
 
+  it("pins a lone supply drawer against its machine's left edge", () => {
+    const cards = [
+      card("machine"),
+      card("supply", { width: 100, height: 80, role: "storage" }),
+      card("next"),
+    ];
+    const moves = arrangeBoard({
+      cards,
+      wires: [wire("supply", "machine", { targetPortY: 140 }), wire("machine", "next")],
+    });
+    const p = positionsById(moves);
+    const gap = p.get("machine")!.x - (p.get("supply")!.x + 100);
+    expect(gap).toBeGreaterThanOrEqual(20);
+    expect(gap).toBeLessThanOrEqual(120);
+    // Vertically it sits at the port it feeds, inside the machine's height.
+    expect(p.get("supply")!.y).toBeGreaterThanOrEqual(p.get("machine")!.y);
+    expect(p.get("supply")!.y).toBeLessThan(p.get("machine")!.y + 280);
+  });
+
+  it("pins a catch drawer against its machine's right edge", () => {
+    const cards = [
+      card("prev"),
+      card("machine"),
+      card("catch", { width: 100, height: 80, role: "storage" }),
+    ];
+    const moves = arrangeBoard({
+      cards,
+      wires: [wire("prev", "machine"), wire("machine", "catch", { sourcePortY: 220 })],
+    });
+    const p = positionsById(moves);
+    const gap = p.get("catch")!.x - (p.get("machine")!.x + 360);
+    expect(gap).toBeGreaterThanOrEqual(20);
+    expect(gap).toBeLessThanOrEqual(120);
+  });
+
+  it("puts a drawer shared by two machines between them", () => {
+    const cards = [
+      card("a"),
+      card("mid"),
+      card("b"),
+      card("shared", { width: 100, height: 80, role: "storage" }),
+    ];
+    const moves = arrangeBoard({
+      cards,
+      wires: [wire("a", "mid"), wire("mid", "b"), wire("a", "shared"), wire("b", "shared")],
+    });
+    const p = positionsById(moves);
+    expect(p.get("shared")!.x).toBeGreaterThan(p.get("a")!.x);
+    expect(p.get("shared")!.x).toBeLessThan(p.get("b")!.x + 360);
+    expectNoOverlaps(cards, moves);
+  });
+
+  it("folds a long recycle ring into a loop instead of a line", () => {
+    const ids = ["r1", "r2", "r3", "r4", "r5", "r6"];
+    const cards = ids.map((id) => card(id));
+    const moves = arrangeBoard({
+      cards,
+      wires: ids.map((id, i) => wire(id, ids[(i + 1) % ids.length])),
+      origin: { x: 0, y: 0 },
+    });
+    const p = positionsById(moves);
+    const width = Math.max(...ids.map((id) => p.get(id)!.x + 360));
+    // A six-card chain would run ~2500px; the fold halves it.
+    expect(width).toBeLessThan(1800);
+    // The closure wire is a hop, not a lasso.
+    expect(Math.abs(p.get("r6")!.x - p.get("r1")!.x)).toBeLessThan(500);
+    expectNoOverlaps(cards, moves);
+  });
+
   it("handles an empty board and wires to missing cards", () => {
     expect(arrangeBoard({ cards: [], wires: [wire("x", "y")] })).toEqual([]);
     const moves = arrangeBoard({ cards: [card("a")], wires: [wire("a", "ghost")] });
