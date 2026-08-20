@@ -1,15 +1,14 @@
 import {
-  Activity,
   Anchor,
   Box,
   Cable,
   Download,
-  Ellipsis,
   Factory,
   Focus,
   Gauge,
   Grid3x3,
   Magnet,
+  Network,
   Paintbrush,
   Play,
   Presentation,
@@ -82,6 +81,16 @@ const RING_PAD = 5;
 const ARROW_HEAD = 12;
 /** Long enough to cross the gap from the button to the tours card. */
 const HIDE_GRACE_MS = 160;
+/**
+ * The smallest window the spread-out glance layout fits: below either of
+ * these its hand-placed cards overlap each other and spill off the screen,
+ * so hover falls back to the one-column panel instead. Checked against real
+ * screenshots with both columns open: 1440x920 holds; at 860 tall the left
+ * column's card has no band left between the build card and the stack, and
+ * 1280x800 is a pile-up.
+ */
+const GLANCE_MIN_VW = 1440;
+const GLANCE_MIN_VH = 920;
 
 /**
  * The sheet's own accent: one soft blue-grey.
@@ -102,6 +111,13 @@ const CALLOUTS: Array<{
   offset?: number;
   /** Slide along the anchor's edge, in px, after align. */
   shift?: number;
+  /**
+   * Skipped by the spread-out glance layer. The bottom-left corner already
+   * holds the moves-and-tours stack, and a card whose anchor lives under
+   * that stack has nowhere to point from; the sheet and the panel list it
+   * like any other.
+   */
+  glance?: false;
   title: string;
   rows: GlanceRow[];
 }> = [
@@ -113,8 +129,10 @@ const CALLOUTS: Array<{
     align: "center",
     // Lifted off centre into the one clear band on this side: the build tools
     // card takes the top of the board and the moves-and-tours stack takes the
-    // bottom, so dead centre would land on the stack.
-    shift: -120,
+    // bottom, so dead centre would land on the stack. (-75, not -120: the
+    // build tools card grew an auto-arrange row, and at the minimum window
+    // height the band between its tail and the stack is only just a card.)
+    shift: -60,
     title: "The left column",
     rows: [
       { icon: Search, text: "*Items*: search the whole pack" },
@@ -132,12 +150,12 @@ const CALLOUTS: Array<{
     align: "end",
     shift: 150,
     title: "This plan",
+    // Undo and redo left this bar for the build toolbar, and clean-board for
+    // the menu; the card lists what the ring actually holds.
     rows: [
-      { icon: Undo2, text: "Undo and redo" },
-      { icon: Trash2, text: "Clean the board" },
       { icon: Share2, text: "Share it with everyone" },
       { icon: Upload, text: "Import a plan" },
-      { icon: Download, text: "Export it out" },
+      { icon: Download, text: "*Export*: an image, JSON, diagnostics" },
     ],
   },
   {
@@ -147,13 +165,14 @@ const CALLOUTS: Array<{
     // Dropped below the designs card's band; the longer arrow reads better.
     offset: 50,
     title: "Build tools",
-    // Left to right as the plates sit: history, how the numbers read, then
-    // the plate that places cards.
+    // Left to right as the plates sit: history, how the numbers read, the
+    // plate that places cards, then the tidy-up.
     rows: [
       { icon: Undo2, text: "Undo and redo" },
       { chip: "/s", text: "Rates per tick, second, minute or hour" },
       { icon: Wand2, text: "*Sketch mode*: unwired slots come free" },
       { icon: Trash, text: "Place *farm*, *trash can*, *custom rate*" },
+      { icon: Network, text: "*Auto-arrange* the whole board" },
     ],
   },
   {
@@ -175,16 +194,17 @@ const CALLOUTS: Array<{
     side: "below",
     align: "end",
     title: "View options",
+    // Seven rows, not nine: at the minimum glance window this card's tail
+    // reached the Plan totals card, so the wire pair and the motion pair
+    // each share a line.
     rows: [
       { text: "View only, *never the plan*" },
       { icon: Grid3x3, text: "Background style and pattern" },
-      { icon: Cable, text: "Thicken lines by volume" },
-      { icon: Ellipsis, text: "Marching dashes" },
+      { icon: Cable, text: "Thicker lines and faster dashes, *by volume*" },
       { icon: Tag, text: "Rate labels on the lines" },
       { icon: Anchor, text: "Free or fixed wire ends" },
       { icon: Presentation, text: "Calm colours" },
-      { icon: Magnet, text: "Smooth movement" },
-      { icon: Activity, text: "Numbers ease into place" },
+      { icon: Magnet, text: "*Motion*: cards glide, numbers ease" },
     ],
   },
   {
@@ -205,6 +225,10 @@ const CALLOUTS: Array<{
     anchor: "plan-card",
     side: "above",
     align: "start",
+    // Its corner is the stack's corner: with the left column open the two sat
+    // on top of one another, and there is no static shift that clears both
+    // column states. The linear formats carry it instead.
+    glance: false,
     title: "Plan card",
     rows: [
       { text: "This plan's *icon, name and blurb*" },
@@ -230,10 +254,31 @@ const CALLOUTS: Array<{
 const MOVES: GlanceRow[] = [
   { mouse: "left", text: "Drag a slot to *wire it*" },
   { mouse: "left", text: "Drop on empty board for *a drawer*" },
-  { mouse: "right", text: "Right click for *what uses it*" },
+  { mouse: "left", text: "Click a port row: *what makes it*" },
+  { mouse: "right", text: "Right click: *what uses it*" },
   { chip: "Shift", text: "Box-select, or add one" },
   { chip: "Ctrl+G", text: "Pack it into *a pocket*" },
-  { chip: "Del", text: "Remove the selection" },
+];
+
+/** The same reminder for a finger: the compact world has no hover and no
+ * right button, and telling a phone to right click is worse than nothing. */
+const TOUCH_MOVES: GlanceRow[] = [
+  { text: "Drag from a slot to *wire it*" },
+  { text: "Hold a port row: *make it or use it*" },
+  { text: "Tap a card first, *then* drag to move it" },
+  { text: "Double tap to *zoom*; tap and slide to keep zooming" },
+  { text: "Swipe in from either side for the *panels*" },
+];
+
+/**
+ * The banners the board raises on its own, so their first sighting is not
+ * their first explanation. Sheet and panel only: on a healthy board there is
+ * nothing to ring, so the glance layer has nowhere to point an arrow.
+ */
+const NOTICES: GlanceRow[] = [
+  { chip: "NOT WIRED UP", tone: "fine", text: "Slots still to wire, with a *Show me*" },
+  { chip: "DEAD LOOP", tone: "bottleneck", text: "A ring losing material, starved to *0%*" },
+  { chip: "CLOG LOCK", tone: "clogged", text: "A ring jammed by its own spare: give it *a drawer*" },
 ];
 
 function toHelpRect(rect: DOMRect): HelpRect {
@@ -486,10 +531,62 @@ function HelpSheet({
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
         <ToursCard onStart={onStart} />
+        <GlanceCard title="Touch moves" rows={TOUCH_MOVES} />
         {CALLOUTS.map((callout) => (
           <GlanceCard key={callout.anchor} title={callout.title} rows={callout.rows} />
         ))}
+        <GlanceCard title="Bottom notices" rows={NOTICES} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The help, folded to fit: one scrollable column growing out of the "?".
+ *
+ * The glance layer needs a big window - eight cards spread over the screen,
+ * each beside the toolbar it names - and between the phone layout and that
+ * spread sits a band of small desktop windows where the spread collapses
+ * into a pile of overlapping cards. Those windows get this instead: every
+ * card in one column beside the button, scrollable, still opened by hover
+ * and closed by leaving. Same content, no pointing.
+ */
+function HelpHoverPanel({
+  measured,
+  onEnter,
+  onLeave,
+  onStart,
+}: {
+  measured: Measured;
+  onEnter: () => void;
+  onLeave: () => void;
+  onStart: (lessonId: string) => void;
+}) {
+  const { button, vw, vh } = measured;
+  const anchorTop = button ? button.top : vh - 12;
+  const anchorLeft = button ? button.left : 12;
+  return (
+    <div
+      className="pointer-events-none fixed inset-0 z-[120] font-mono"
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+    >
+      <div className="absolute inset-0 bg-black/60" />
+      <div
+        className="pointer-events-auto absolute flex flex-col gap-2 overflow-y-auto pr-1"
+        style={{
+          left: anchorLeft,
+          bottom: vh - anchorTop + 10,
+          width: Math.min(380, vw - anchorLeft - 12),
+          maxHeight: anchorTop - 22,
+        }}
+      >
+        <ToursCard onStart={onStart} />
         <GlanceCard title="Mouse and keys" rows={MOVES} />
+        {CALLOUTS.map((callout) => (
+          <GlanceCard key={callout.anchor} title={callout.title} rows={callout.rows} />
+        ))}
+        <GlanceCard title="Bottom notices" rows={NOTICES} />
       </div>
     </div>
   );
@@ -516,7 +613,7 @@ function HelpGlanceSheet({
       <div className="absolute inset-0 bg-black/60" />
       {CALLOUTS.map((callout) => {
         const rect = rects[callout.anchor];
-        if (!rect) {
+        if (!rect || callout.glance === false) {
           return null;
         }
         return (
@@ -562,7 +659,10 @@ function HelpGlanceSheet({
             ?
           </div>
           {/* Stacked over the button: the moves you cannot see, then the tours
-              you can press, nearest to the hand that opened this. */}
+              you can press, nearest to the hand that opened this. The notices
+              and plan-card cards stay off this stack - it shares its corner
+              with the plan card's own callout space, and three cards deep it
+              buried the left column's card too. */}
           <div
             className="absolute flex w-[360px] flex-col gap-2"
             style={{ left: button.left, bottom: vh - button.top + 10 }}
@@ -631,6 +731,12 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
     );
   }
 
+  // Between the phone layout and the full spread sits a band of small
+  // desktop windows; they hover the one-column panel instead. Decided per
+  // open, so resizing simply changes what the next hover shows.
+  const fitsGlance =
+    measured !== undefined && measured.vw >= GLANCE_MIN_VW && measured.vh >= GLANCE_MIN_VH;
+
   return (
     <div
       className="absolute bottom-3 left-3 z-30"
@@ -640,6 +746,10 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
       <button
         ref={buttonRef}
         type="button"
+        // Click too, not only hover: a pen, a touch screen above the phone
+        // breakpoint, or a keyboard's Enter all land here, and help must
+        // open for every one of them.
+        onClick={show}
         onFocus={show}
         onBlur={scheduleHide}
         data-tour-anchor="help"
@@ -651,12 +761,21 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
       </button>
       {measured
         ? createPortal(
-            <HelpGlanceSheet
-              measured={measured}
-              onEnter={show}
-              onLeave={scheduleHide}
-              onStart={startTour}
-            />,
+            fitsGlance ? (
+              <HelpGlanceSheet
+                measured={measured}
+                onEnter={show}
+                onLeave={scheduleHide}
+                onStart={startTour}
+              />
+            ) : (
+              <HelpHoverPanel
+                measured={measured}
+                onEnter={show}
+                onLeave={scheduleHide}
+                onStart={startTour}
+              />
+            ),
             document.body,
           )
         : null}
