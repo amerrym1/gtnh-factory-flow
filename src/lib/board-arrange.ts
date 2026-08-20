@@ -183,7 +183,9 @@ function applyTaste(taste: ArrangeTaste | undefined): void {
   ROW_GAP = cells(spacing === "compact" ? 2 : spacing === "roomy" ? 3 : 2);
   SECTION_GAP = cells(spacing === "compact" ? 3 : spacing === "roomy" ? 6 : 4);
   COLUMN_GAP_MIN = cells(spacing === "compact" ? 3 : spacing === "roomy" ? 5 : 3);
-  ISLAND_GAP = cells(spacing === "compact" ? 8 : spacing === "roomy" ? 16 : 12);
+  // Wide enough that two islands' grounds plus both their two-cell no-go
+  // collars fit between any pair with room left over.
+  ISLAND_GAP = cells(spacing === "compact" ? 10 : spacing === "roomy" ? 16 : 12);
   const islands = taste?.islands ?? "normal";
   ISLAND_CUT_MAX = islands === "off" ? -1 : islands === "eager" ? 3 : 2;
   ISLAND_MIN_CARDS = islands === "eager" ? 3 : 4;
@@ -525,7 +527,9 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
     for (const bridge of bridgeLinks) {
       const fromLocal = localPlaceOfCard.get(bridge.link.from.card.id)!;
       const toLocal = localPlaceOfCard.get(bridge.link.to.card.id)!;
-      const weight = bridge.weight * 3;
+      // Heavy on purpose: the exit card goes to the partner's level even
+      // when its own island's wires would rather keep it.
+      const weight = bridge.weight * 5;
       addPull(bridge.from, bridge.link.from.card.id, {
         y: offsets[bridge.to].y + toLocal.y + bridge.link.toAnchor - offsets[bridge.from].y,
         weight,
@@ -605,10 +609,11 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
   // router routes around CARDS, not around the ground an island stands on.
   const wireRoutes: ArrangeResult["wireRoutes"] = [];
   {
-    // The ground matches the DRAWN box exactly. Any fatter and the grounds
-    // of neighbouring islands start touching, at which point every bridge
-    // "hits" something and the board drowns in steering dots.
-    const margin = cells(2);
+    // The drawn box sits two cells past the cards, and the box itself wears
+    // a two-cell NO-GO collar: bridges keep that far off every foreign
+    // ground. The island gap is sized so two neighbouring collars never
+    // touch - overlapping collars once drowned a board in steering dots.
+    const margin = cells(4);
     const grounds = islands.map((island) => ({
       left: island.x - margin,
       top: island.y - margin,
@@ -1358,8 +1363,10 @@ function slideTowardWires(
       const outs = outgoing.get(slot) ?? [];
       // A card whose wire leaves for another island leans toward the edge
       // it exits from - a bridge should leave the FACING side of its
-      // island, not drag across it first.
-      const exitBias = exits?.get(slot.card.id) ?? 0;
+      // island, not drag across it first. The lean is deliberately heavy:
+      // where it argues with the card's own left-to-right preference, the
+      // exit wins - a clean hand-over beats tidy flow inside one island.
+      const exitBias = (exits?.get(slot.card.id) ?? 0) * 4;
       let lower = 0;
       for (const link of ins) {
         lower = Math.max(lower, link.from.layer + 1);
@@ -2457,28 +2464,45 @@ function placeIslands(
         if (column.length === 0) {
           continue;
         }
-        const wishOf = new Map<number, { wish: number; weight: number }>();
+        // ORDER by every bridge, cross-row ones included - an island whose
+        // partner sits in the row below belongs at the bottom of its own
+        // row. ALIGN only against the same row: a bridge over a line break
+        // has no level to match.
+        const orderWish = new Map<number, number>();
+        const alignWish = new Map<number, { wish: number; weight: number }>();
         for (const index of column) {
-          let sum = 0;
-          let total = 0;
+          let orderSum = 0;
+          let orderTotal = 0;
+          let alignSum = 0;
+          let alignTotal = 0;
           for (const link of crossLinks) {
-            if (link.from === index && rowOfIsland.get(link.to) === rowOfIsland.get(index)) {
-              sum += (offsets[link.to].y + link.toY - link.fromY) * link.weight;
-              total += link.weight;
-            } else if (link.to === index && rowOfIsland.get(link.from) === rowOfIsland.get(index)) {
-              sum += (offsets[link.from].y + link.fromY - link.toY) * link.weight;
-              total += link.weight;
+            let target: number | undefined;
+            if (link.from === index) {
+              target = offsets[link.to].y + link.toY - link.fromY;
+            } else if (link.to === index) {
+              target = offsets[link.from].y + link.fromY - link.toY;
+            }
+            if (target === undefined) {
+              continue;
+            }
+            orderSum += target * link.weight;
+            orderTotal += link.weight;
+            const other = link.from === index ? link.to : link.from;
+            if (rowOfIsland.get(other) === rowOfIsland.get(index)) {
+              alignSum += target * link.weight;
+              alignTotal += link.weight;
             }
           }
-          wishOf.set(
+          orderWish.set(index, orderTotal > 0 ? orderSum / orderTotal : offsets[index].y);
+          alignWish.set(
             index,
-            total > 0
-              ? { wish: sum / total, weight: total }
+            alignTotal > 0
+              ? { wish: alignSum / alignTotal, weight: alignTotal }
               : { wish: offsets[index].y, weight: 0.1 },
           );
         }
-        column.sort((a, b) => wishOf.get(a)!.wish - wishOf.get(b)!.wish || a - b);
-        const wishes = column.map((index) => wishOf.get(index)!);
+        column.sort((a, b) => orderWish.get(a)! - orderWish.get(b)! || a - b);
+        const wishes = column.map((index) => alignWish.get(index)!);
         const spacing = column.map((index, k) =>
           k === 0 ? 0 : blocks[column[k - 1]].height + ISLAND_GAP,
         );
@@ -2540,6 +2564,30 @@ function placeIslands(
           for (const index of rowIslands) {
             offsets[index].x += shift;
           }
+        }
+      }
+    }
+    // And within its own column's width, each island slides toward its
+    // partners - right next to its neighbours, not centred by default.
+    for (const index of traders) {
+      let sum = 0;
+      let total = 0;
+      for (const link of crossLinks) {
+        if (link.from === index) {
+          sum += (offsets[link.to].x + link.toX - link.fromX) * link.weight;
+          total += link.weight;
+        } else if (link.to === index) {
+          sum += (offsets[link.from].x + link.fromX - link.toX) * link.weight;
+          total += link.weight;
+        }
+      }
+      if (total > 0) {
+        const halfSlack = (columnWidth[layerOf.get(index)!] - blocks[index].width) / 2;
+        if (halfSlack > 0) {
+          offsets[index].x = Math.min(
+            offsets[index].x + halfSlack,
+            Math.max(offsets[index].x - halfSlack, sum / total),
+          );
         }
       }
     }
