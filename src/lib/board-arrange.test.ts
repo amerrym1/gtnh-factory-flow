@@ -358,6 +358,73 @@ describe("arrangeBoard", () => {
     expect(moves).toHaveLength(1);
   });
 
+  it("splits a loosely attached cluster into its own island", () => {
+    // A four-card cluster feeding the main chain through ONE wire is its
+    // own island, connected component or not.
+    const cards = [
+      card("a"),
+      card("b"),
+      card("c"),
+      card("d"),
+      card("e"),
+      card("e2"),
+      card("f"),
+      card("g"),
+    ];
+    const result = arrangeBoard({
+      cards,
+      wires: [
+        wire("a", "b"),
+        wire("b", "c"),
+        wire("c", "d"),
+        wire("e", "f"),
+        wire("e2", "f"),
+        wire("f", "g"),
+        wire("g", "b"),
+      ],
+      origin: { x: 0, y: 0 },
+    });
+    expect(result.islands).toHaveLength(2);
+    const p = positionsById(result.moves);
+    const inIsland = (id: string, island: { x: number; y: number; width: number; height: number }) =>
+      p.get(id)!.x >= island.x && p.get(id)!.y >= island.y;
+    const clusterIsland = result.islands.find((island) => inIsland("f", island))!;
+    for (const id of ["e", "e2", "g"]) {
+      expect(inIsland(id, clusterIsland)).toBe(true);
+    }
+    expectNoOverlaps(cards, result.moves);
+  });
+
+  it("keeps a tightly coupled web as one island", () => {
+    // The same shape wired back with THREE bridges stays together.
+    const cards = [
+      card("a"),
+      card("b"),
+      card("c"),
+      card("d"),
+      card("e"),
+      card("e2"),
+      card("f"),
+      card("g"),
+    ];
+    const result = arrangeBoard({
+      cards,
+      wires: [
+        wire("a", "b"),
+        wire("b", "c"),
+        wire("c", "d"),
+        wire("e", "f"),
+        wire("e2", "f"),
+        wire("f", "g"),
+        wire("g", "b"),
+        wire("g", "c"),
+        wire("e", "a"),
+      ],
+      origin: { x: 0, y: 0 },
+    });
+    expect(result.islands).toHaveLength(1);
+  });
+
   it("hands long-haul wires a waypoint lane outside the cards", () => {
     // A chain long enough that the closure from its head to its tail earns
     // a lane: two grid-aligned stops, level with each other, clear of every

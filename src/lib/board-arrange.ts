@@ -137,6 +137,14 @@ const SECTION_GAP = cells(4);
  * clearly separate places is the point of having them.
  */
 const ISLAND_GAP = cells(12);
+/**
+ * When a branch of the graph touches everything else through this many
+ * wires or fewer, it is not part of the main line - it is its own island
+ * that happens to trade with it.
+ */
+const ISLAND_CUT_MAX = 2;
+/** A split-off island must be at least this many cards, satellites included. */
+const ISLAND_MIN_CARDS = 4;
 /** A long-haul wire travels this many columns or more to earn a lane. */
 const LANE_MIN_SPAN = 3;
 /** Air between parked, unwired cards on the shelf. */
@@ -266,15 +274,31 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
       continue;
     }
     members.sort((a, b) => a.index - b.index);
-    const memberSet = new Set(members);
-    const memberLinks = mainLinks.filter((link) => memberSet.has(link.from));
-    const memberSatellites = new Map<CardSlot, SatellitePlan>();
-    for (const [sat, plan] of satellitePlans) {
-      if (memberSet.has(plan.anchor)) {
-        memberSatellites.set(sat, plan);
+    const componentSet = new Set(members);
+    const componentLinks = mainLinks.filter((link) => componentSet.has(link.from));
+    const satelliteCount = new Map<CardSlot, number>();
+    for (const plan of satellitePlans.values()) {
+      if (componentSet.has(plan.anchor)) {
+        satelliteCount.set(plan.anchor, (satelliteCount.get(plan.anchor) ?? 0) + 1);
       }
     }
-    blocks.push(layoutIsland(members, memberLinks, memberSatellites));
+    // One connected web is not one island. A branch that trades with the
+    // rest of the graph through a wire or two is its own island standing
+    // beside the main line, not a wing of it - so loose clusters split off,
+    // recursively, and only the wires between them travel.
+    for (const group of splitLooseClusters(members, componentLinks, satelliteCount)) {
+      const groupSet = new Set(group);
+      const groupLinks = componentLinks.filter(
+        (link) => groupSet.has(link.from) && groupSet.has(link.to),
+      );
+      const groupSatellites = new Map<CardSlot, SatellitePlan>();
+      for (const [sat, plan] of satellitePlans) {
+        if (groupSet.has(plan.anchor)) {
+          groupSatellites.set(sat, plan);
+        }
+      }
+      blocks.push(layoutIsland(group, groupLinks, groupSatellites));
+    }
   }
 
   // The biggest island is the main line and leads; the rest pack below it in
@@ -451,6 +475,128 @@ function planSatellites(
     }
   }
   return plans;
+}
+
+/**
+ * Split one connected component into visually separate islands wherever the
+ * graph is barely holding together. The spanning tree (heaviest wires
+ * claimed first) proposes every branch as a candidate; a branch big enough
+ * to stand alone, leaving enough behind, and touching the rest through at
+ * most ISLAND_CUT_MAX wires, is cut off - then both halves are offered the
+ * same treatment again. Card counts include the satellites riding along,
+ * so a crop farm wearing three drawers is a station, not a stray.
+ */
+function splitLooseClusters(
+  members: CardSlot[],
+  links: WireLink[],
+  satelliteCount: ReadonlyMap<CardSlot, number>,
+): CardSlot[][] {
+  const effective = (slots: readonly CardSlot[]) =>
+    slots.reduce((sum, slot) => sum + 1 + (satelliteCount.get(slot) ?? 0), 0);
+  const groups: CardSlot[][] = [];
+  const queue: CardSlot[][] = [members];
+  while (queue.length > 0) {
+    const group = queue.shift()!;
+    const branch = findLooseBranch(group, links, effective);
+    if (!branch) {
+      groups.push(group);
+      continue;
+    }
+    const inBranch = new Set(branch);
+    const rest = group.filter((slot) => !inBranch.has(slot));
+    queue.push(rest, branch);
+  }
+  return groups;
+}
+
+function findLooseBranch(
+  group: CardSlot[],
+  links: WireLink[],
+  effective: (slots: readonly CardSlot[]) => number,
+): CardSlot[] | undefined {
+  if (effective(group) < ISLAND_MIN_CARDS * 2) {
+    return undefined;
+  }
+  const inGroup = new Set(group);
+  const groupLinks = links.filter((link) => inGroup.has(link.from) && inGroup.has(link.to));
+
+  // The spanning tree, heaviest wires claimed first, exactly as the bands
+  // build theirs.
+  const paired = new Map<CardSlot, Map<CardSlot, number>>();
+  const add = (a: CardSlot, b: CardSlot, weight: number) => {
+    let row = paired.get(a);
+    if (!row) {
+      row = new Map();
+      paired.set(a, row);
+    }
+    row.set(b, (row.get(b) ?? 0) + weight);
+  };
+  for (const link of groupLinks) {
+    add(link.from, link.to, link.weight);
+    add(link.to, link.from, link.weight);
+  }
+  const children = new Map<CardSlot, CardSlot[]>();
+  const root = group[0];
+  {
+    const visited = new Set<CardSlot>([root]);
+    const stack = [root];
+    while (stack.length > 0) {
+      const slot = stack.pop()!;
+      const near = [...(paired.get(slot) ?? [])]
+        .map(([other, weight]) => ({ other, weight }))
+        .sort((a, b) => b.weight - a.weight || a.other.index - b.other.index);
+      for (let i = near.length - 1; i >= 0; i -= 1) {
+        const { other } = near[i];
+        if (!visited.has(other)) {
+          visited.add(other);
+          push(children, slot, other);
+          stack.push(other);
+        }
+      }
+    }
+  }
+
+  // Every subtree is a candidate island: count the wires it would leave
+  // dangling across the cut, and take the loosest one that can stand alone.
+  let best: { cut: number; size: number; branch: CardSlot[] } | undefined;
+  for (const start of group) {
+    if (start === root) {
+      continue;
+    }
+    const branch = [start];
+    for (let head = 0; head < branch.length; head += 1) {
+      for (const child of children.get(branch[head]) ?? []) {
+        branch.push(child);
+      }
+    }
+    const inBranch = new Set(branch);
+    const branchSize = effective(branch);
+    const restSize = effective(group) - branchSize;
+    if (branchSize < ISLAND_MIN_CARDS || restSize < ISLAND_MIN_CARDS) {
+      continue;
+    }
+    let cut = 0;
+    for (const link of groupLinks) {
+      if (inBranch.has(link.from) !== inBranch.has(link.to)) {
+        cut += 1;
+      }
+    }
+    if (cut > ISLAND_CUT_MAX) {
+      continue;
+    }
+    if (
+      !best ||
+      cut < best.cut ||
+      (cut === best.cut && branchSize > best.size) ||
+      (cut === best.cut && branchSize === best.size && start.index < best.branch[0].index)
+    ) {
+      best = { cut, size: branchSize, branch };
+    }
+  }
+  if (!best) {
+    return undefined;
+  }
+  return best.branch.sort((a, b) => a.index - b.index);
 }
 
 /**
