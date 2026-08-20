@@ -40,7 +40,15 @@ export interface ClogLock {
   nodeIds: string[];
   /** Machine members only - what the copy counts. */
   machineIds: string[];
-  /** The wires between members, for the board to mark. */
+  /**
+   * The machines whose surplus needs the drawer - the only cards that flash.
+   * A jam can hold half a board; marking every member painted whole plans
+   * blue and pointed nowhere. The victims keep the verdict and its story,
+   * the vent sites carry the ring, exactly as the fix copy promises.
+   */
+  ventNodeIds: string[];
+  /** The wires carrying a vented surplus out of a vent site - the ones the
+   * drawer tees into. Only these breathe, never the whole web. */
   edgeIds: string[];
   /** The surpluses that need a home, largest first. */
   vents: ClogLockVent[];
@@ -161,21 +169,16 @@ function build(project: FactoryProject, result: ThroughputResult | undefined): C
     if (machineIds.length === 0) {
       continue;
     }
-    // Drawers only count as members when they sit BETWEEN two members.
+    // Drawers count as members when they sit between two members, so the
+    // group and its "Show me" hold together across pass-through tanks.
     const memberSet = new Set(machineIds);
-    const edgeIds: string[] = [];
     const passThrough = new Set<string>();
     for (const edge of project.edges) {
-      const sourceIn = memberSet.has(edge.source) || passThrough.has(edge.source);
-      const targetIn = memberSet.has(edge.target) || passThrough.has(edge.target);
       if (memberSet.has(edge.source) && storageIds.has(edge.target) && component.has(edge.target)) {
         passThrough.add(edge.target);
       }
       if (memberSet.has(edge.target) && storageIds.has(edge.source) && component.has(edge.source)) {
         passThrough.add(edge.source);
-      }
-      if (sourceIn && targetIn) {
-        edgeIds.push(edge.id);
       }
     }
 
@@ -199,10 +202,24 @@ function build(project: FactoryProject, result: ThroughputResult | undefined): C
       continue;
     }
 
+    // Only the vent sites and their surplus wires get marked. A jam can hold
+    // half a board, and flashing every member painted whole plans blue with
+    // nothing to point at; the drawer goes on THESE wires, so these carry
+    // the light.
+    const ventNodeIds = [...new Set(vents.map((vent) => vent.nodeId))].sort();
+    const ventPorts = new Set(vents.map((vent) => `${vent.nodeId}|${vent.resourceKey}`));
+    const edgeIds: string[] = [];
+    for (const edge of project.edges) {
+      if (ventPorts.has(`${edge.source}|${edge.resourceKind}:${edge.resourceId}`)) {
+        edgeIds.push(edge.id);
+      }
+    }
+
     const lock: ClogLock = {
       id: machineIds[0]!,
       nodeIds: [...machineIds, ...passThrough].sort(),
       machineIds,
+      ventNodeIds,
       edgeIds,
       vents,
     };

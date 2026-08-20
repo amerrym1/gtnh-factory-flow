@@ -783,10 +783,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       {verdict.kind === "dead-loop" ? (
         <div aria-hidden className="dead-loop-ring" />
       ) : null}
-      {/* The clog lock wears the same ring in the clog family's blue: the
-          line is stuffed, not starving, and the drawer goes wherever the
-          notice points. */}
-      {verdict.kind === "clog-lock" ? (
+      {/* The clog lock's ring, in the clog family's blue - and only on the
+          VENT sites, the cards whose surplus needs the drawer. A jam can
+          hold half a board; every member keeps the verdict and its story,
+          but a ring on all of them painted whole plans blue and pointed
+          nowhere. */}
+      {verdict.kind === "clog-lock" &&
+      verdict.clogLock?.vents.some((vent) => vent.nodeId === projectNode.id) ? (
         <div aria-hidden className="clog-lock-ring" />
       ) : null}
       {/* The same trick for an unfinished card, and quiet on purpose: the

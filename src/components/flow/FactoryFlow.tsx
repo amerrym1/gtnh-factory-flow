@@ -4950,7 +4950,9 @@ const ClogLockNotice = memo(function ClogLockNotice({
       ) : null}
       <button
         type="button"
-        onClick={() => onShow(lock.machineIds)}
+        // The vent sites, not the whole jam: "Show me" lands on the cards
+        // where the drawer goes, which on a big board is the entire point.
+        onClick={() => onShow(lock.ventNodeIds.length > 0 ? lock.ventNodeIds : lock.machineIds)}
         className="shrink-0 border border-[#4c7ec3] bg-[#24384a] px-2 py-0.5 font-bold text-[#d0e6ff] hover:bg-[#2f4a63]"
       >
         Show me

@@ -88,7 +88,15 @@ describe("findClogLocks", () => {
     expect(locks).toHaveLength(1);
     expect(locks[0]!.machineIds).toEqual(["m1", "m2"]);
     expect(byNode.get("m1")).toBe(byNode.get("m2"));
-    expect(byEdge.size).toBeGreaterThan(0);
+
+    // Only the vent site and its surplus wire carry the light: the drawer
+    // goes on the thread line out of m2, so that is what flashes. m1 keeps
+    // the verdict and the story, never a ring.
+    expect(locks[0]!.ventNodeIds).toEqual(["m2"]);
+    const threadWire = proj.edges.find((edge) => edge.resourceId === "thread")!;
+    const clothWire = proj.edges.find((edge) => edge.resourceId === "cloth")!;
+    expect(byEdge.has(threadWire.id)).toBe(true);
+    expect(byEdge.has(clothWire.id)).toBe(false);
 
     // The vent names thread as the surplus with no home: the loop spends 1
     // and gets 2 back per lap, so about 1/s must leave for it to run.
