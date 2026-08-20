@@ -90,35 +90,46 @@ Constraints:
    producing flows (feasibility reported honestly when it cannot be met -
    that is the over-asked >100% story, kept).
 
-Objective, as a lexicographic chain (THE DOCTRINE PAGE - each stage needs
-Jack's sign-off, defaults proposed):
+Objective, as a lexicographic chain (RULED by Jack, 2026-08-19: "if it would
+fail in the game, it should fail in the planner" and "solve for the maximum";
+implemented in `src/lib/solver/equations-core.ts`):
 
-1. **Maximize what the factory is for**: total product-drawer inflow and
-   target satisfaction. (Byproduct drawers are absent from this stage - they
-   catch, they do not motivate. Today's doctrine, kept.)
-2. **Max-min machine levels** among ties: contended supply splits the way the
-   water-fill splits today - the small consumer saturates, nobody is crushed
-   to zero so another can round up. (This is the fairness rule the iterative
-   solver enforced by construction; here it is stage 2.)
-3. **Minimize source pulls**: recycle before importing - today's drain
-   priority ("ask everybody real before touching the infinite drawer"),
-   restated as a preference.
-4. **Canonicalize**: one more solve that fixes the remaining free variables
-   to a deterministic point, so the same board always renders the same
-   numbers (PlanNH's stage-3-and-canonicalize move).
+1. **Everything runs** (maximize total act): a fed machine with somewhere to
+   put its output runs, exactly as in game. A byproduct drawer is permission
+   to run, never a reason to idle; a balanced loop reads its highest
+   sustainable level. (This replaced both a proposed "least machinery"
+   minimization - it idled machines the game would run - and a proposed
+   product-purpose stage - it starved real machines to fatten an export
+   drawer. The game has no product preference; pipes round-robin.)
+2. **Fairness** (progressive max-min on acts, within the locked total):
+   lift the worst-off machine as high as it goes, floor the bottleneck
+   there, repeat. This is the LP form of the game's round-robin item split -
+   contended supply splits evenly-with-saturation, a 2000/s ask cannot crush
+   a 10/s asker, and the simplex cannot hand one twin everything. Only the
+   machines leaving the pool each round get floor rows, keeping the model
+   linear in board size.
+3. **Minimize source pulls**: recycle before importing, as a tie-break only.
+4. **Ship before banking** (minimize pool fill): a buffer relays stock to
+   whatever downstream will take it and banks only what nothing wants.
+5. **Canonicalize** (minimize total flow): one deterministic point per board.
 
-Open doctrine questions for the session (answers change stage order or
-content, nothing else):
+Alongside the stages, EQUAL-FILL rows state the game's round-robin as hard
+physics: machine co-consumers of one output port fill at the same per-pull
+rate (a sibling's share of its pull never exceeds a clean co-consumer's act;
+consumers the diagnosis marks output-throttled, power-stalled or bare-ported
+are exempt). This is what makes a TAPPED break-even ring die instead of
+pretending its tap never pulls - the LP contains that fantasy point, and
+these rows exclude it. Power stalls are pinned to act 0 inside the LP so the
+outage propagates by conservation. Stage locks clamp provably-signed
+objectives and re-cut with wider slack if a later stage reports infeasible,
+because locks built from solver dust once poisoned whole boards.
 
-- When two PRODUCT drawers compete for one scarce input, is the split
-  max-min (default), or should a target-rated product outrank an untargeted
-  one?
-- A perfectly balanced loop admits any level; stage 1/2 select the highest.
-  Confirm in AGENTS.md that "highest sustainable" is the planner's chosen
-  answer to a question the game leaves open (it matches the balanced-ring
-  rescue's intent today).
-- Steam/EU reporting is unaffected (reads act), but fuel estimates read
-  totals - confirm no doctrine hides there.
+Settled alongside (same ruling): an overspilling drawer is an OUTPUT - GTNH
+drawers void their overflow, so a producer behind a plain buffer drawer runs
+full and the drawer banks the surplus; `bufferMode: "strict"` is the player's
+opt-out that pins the fill at zero and surfaces the imbalance on the machine.
+Targets are floors a maximizing board usually clears anyway, kept only for
+compatibility with the existing dial.
 
 ## What the current solver becomes
 

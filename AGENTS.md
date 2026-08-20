@@ -349,6 +349,56 @@ gh run watch <run-id> --exit-status
 - Perf-sensitive changes need a before/after check with the stress workflow,
   not just green tests.
 
+## The Equation Books (solver rebuild, branch solver-equations)
+
+- The BOOKS - every act, edge flow and eaten total - come from ONE direct LP
+  solve in `src/lib/solver/equations-core.ts`, wired into `throughput.ts`
+  behind `const EQUATION_BOOKS = true` (one-line revert). The iterative
+  engine in `equilibrium.ts` still runs and keeps the DIAGNOSIS: capability,
+  clog names, "one wire fixes it". If the core returns non-optimal the old
+  books stand, so a solve failure degrades, never crashes.
+- The doctrine (Jack, 2026-08-19): if it would fail in the game it fails in
+  the planner, and otherwise EVERYTHING RUNS - a fed machine with somewhere
+  to put its output never idles. Sources are inputs; products, byproducts
+  and OVERSPILLING drawers are outputs. A plain buffer banks its surplus
+  (visible +N/s); `bufferMode: "strict"` opts back into the clog. A
+  byproduct pill changes bookkeeping, never pace. Targets are display
+  arithmetic, not rows - a target-driven >100% figure survives in finalize,
+  a demand-driven one does not.
+- Stage chain, each optimum locked as a row before the next: max total act;
+  progressive max-min FAIRNESS over acts (the game's round-robin split - a
+  big asker cannot crush a small one); recycle-before-import; ship-before-
+  banking (min pool fill); min total flow (canonical determinism). There is
+  deliberately NO product-purpose stage - it starved real machines to fatten
+  export drawers - and no "least machinery" stage - it idled machines the
+  game would run.
+- EQUAL-FILL rows encode round-robin as physics: machine co-consumers of one
+  output port fill at the same per-pull rate (a sibling's share of its pull
+  never exceeds a clean co-consumer's act). This is what makes a TAPPED
+  break-even ring die instead of pretending its tap never pulls - the LP
+  contains that fantasy point and these rows exclude it. Consumers the
+  diagnosis marks output-throttled (disposal < 1), power-stalled or
+  bare-ported are exempt (their chest fills; the port serves the others).
+  Only OUTPUT-side figures may drive the exemption - using supply-aware
+  capability exempted the starving tap itself.
+- The LP engine is the homegrown two-phase dense simplex in
+  `src/lib/solver/simplex.ts` (Dantzig entering rule, permanent Bland
+  fallback after a 60-pivot degenerate stall, row equilibration,
+  deterministic). Its one historical bug - degenerate artificials surviving
+  phase 1 through slack columns, then silently regrowing in phase 2 - is
+  fixed and pinned by the doctrine exam. Known straggler: ONE community
+  board ("Total Oil Products", 73 machines of heavily degenerate oil
+  chains) exhausts the iteration cap and falls back to the old books; the
+  other 153/154 solve, and HiGHS solved it in the lab if a second-opinion
+  engine is ever wanted in production.
+  `src/lib/solver/equations-doctrine.test.ts` is the exam;
+  `docs/solver-equations.md` is the design page. The solver-lab copies
+  (`equations.ts`, HiGHS A/B, the tick simulator) are research scaffolding,
+  excluded from the suite via the `*.local.test.*` vitest exclude.
+- Power stalls are pinned to act 0 INSIDE the LP so the outage propagates by
+  conservation. Balance dust snaps at 1e-5 relative (`balances.ts`) because
+  LP flows carry solver-precision dust proportional to board scale.
+
 ## Verification
 
 - For code changes:

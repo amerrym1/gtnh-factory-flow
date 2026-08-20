@@ -49,8 +49,14 @@ import {
   selectRuntimeCalculationVariant,
 } from "./runtime-calculation";
 import { closeBoundaries } from "./close-boundaries";
+import { solveEquationsCore } from "./equations-core";
 
 const EPSILON = 0.000001;
+
+/** The books switch: actual levels and wire flows from the direct
+ * conservation solve, diagnosis still from the iterative engine. One line
+ * to turn back if a board misbehaves in the field. */
+const EQUATION_BOOKS = true;
 
 interface SolverOptions {
   generatedAt?: string;
@@ -202,6 +208,39 @@ export function calculateThroughput(
   // starved gridlocks ("no apples because no bananas because no apples")
   // are unreachable by construction. See equilibrium.ts for the mechanics.
   const equilibrium = solveEquilibrium(project, nodes, storagesById);
+
+  // THE BOOKS COME FROM THE EQUATIONS. The iterative engine above keeps the
+  // diagnosis - capability, demand, disposal, the clog names, "one wire
+  // fixes it" - but the actual levels and wire flows are a direct solve of
+  // the conservation constraints (equations-core.ts): nothing from nowhere,
+  // nothing into nowhere, except at the player's drawers. If the solve does
+  // not come back optimal (two known heavy boards strain the simplex), the
+  // iterative books above stand - yesterday's behavior as the safety net.
+  if (EQUATION_BOOKS) {
+    const equationBooks = solveEquationsCore(project, nodes, undefined, {
+      disposalByNode: equilibrium.disposalByNode,
+    });
+    if (equationBooks.status === "optimal") {
+      equilibrium.equationSolvedNodes = new Set(equationBooks.utilization.keys());
+      for (const [id, level] of equationBooks.utilization) {
+        equilibrium.actualByNode.set(id, level);
+      }
+      const eatenByNeed = new Map<string, number>();
+      for (const [edgeId, allocation] of equilibrium.edgeAllocations) {
+        const flow = equationBooks.edgeFlowPerSecond.get(edgeId);
+        if (flow !== undefined) {
+          allocation.transferredPerSecond = flow;
+        }
+        if (allocation.needKey) {
+          eatenByNeed.set(
+            allocation.needKey,
+            (eatenByNeed.get(allocation.needKey) ?? 0) + allocation.transferredPerSecond,
+          );
+        }
+      }
+      equilibrium.eatenByNeed = eatenByNeed;
+    }
+  }
   const edgeResults: Record<string, EdgeThroughput> = {};
   writeEdgeResultsFromEquilibrium(project, nodes, edgeResults, equilibrium);
   finalizeNodeReports(project, recipesById, nodes, edgeResults, storagesById, equilibrium);
@@ -618,6 +657,16 @@ function finalizeNodeReports(
   }
   applyProjectTarget(project, nodes, requiredByNodeAndResource);
 
+  // Nodes a plan-level target dial holds on the hook: their >100% over-asked
+  // display is the dial talking and survives the equation books' act.
+  const planTargetNodes = new Set<string>();
+  if (project.targetRate) {
+    const targetKey = makeResourceKey(project.targetRate.kind, project.targetRate.resourceId);
+    for (const targetNode of selectProjectTargetNodes(project, nodes, targetKey)) {
+      planTargetNodes.add(targetNode.id);
+    }
+  }
+
   for (const node of project.nodes) {
     const nodeResult = nodes[node.id];
     const recipe = recipesById.get(node.recipeId);
@@ -717,7 +766,21 @@ function finalizeNodeReports(
       actualLimit !== undefined &&
       utilizationReport.utilization <= 1 + EPSILON &&
       actualLimit > utilizationReport.utilization + EPSILON;
-    if (actualBound || actualRaise) {
+    // A node the equation books solved takes its act outright - including
+    // over a legacy >100% over-asked figure, which the equations never emit
+    // (a machine cannot physically run past nameplate; "wants more" lives in
+    // demandUtilization and the diagnosis, not the run level). The one
+    // survivor is a TARGET dial's over-ask: "you owe the dial 5x" is display
+    // arithmetic the player set, not a claim about the machine.
+    const targetOverAsk =
+      utilizationReport.utilization > 1 + EPSILON &&
+      (node.targetOutput !== undefined || planTargetNodes.has(node.id));
+    const actualSolved =
+      !targetOverAsk &&
+      actualLimit !== undefined &&
+      equilibrium.equationSolvedNodes?.has(node.id) === true &&
+      Math.abs(actualLimit - utilizationReport.utilization) > EPSILON;
+    if (actualBound || actualRaise || actualSolved) {
       utilizationReport.utilization = actualLimit;
       utilizationReport.requiredRatePerSecond = utilizationReport.maxRatePerSecond * actualLimit;
       utilizationReport.theoreticalMachinesRequired = node.machineCount * actualLimit;

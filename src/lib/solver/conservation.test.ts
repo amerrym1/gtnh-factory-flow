@@ -379,7 +379,7 @@ describe("conservation: a product pulls, a byproduct catches", () => {
     expect(result.edges["o"].transferredPerSecond).toBeCloseTo(10);
   });
 
-  it("a BYPRODUCT drawer asks for nothing, so the target sets the pace", () => {
+  it("a BYPRODUCT drawer asks for nothing, but the machine still runs full", () => {
     const result = calculateThroughput(
       project({
         ...TARGETED,
@@ -389,12 +389,13 @@ describe("conservation: a product pulls, a byproduct catches", () => {
       { generatedAt: "fixed" },
     );
 
-    // The same board, one pill flipped: the only thing still asking is the
-    // 2/s target, so the machine runs at a fifth and the drawer just catches
-    // what that produces.
-    expect(result.nodes["m"].utilization).toBeCloseTo(0.2);
+    // The same board, one pill flipped: the drawer stops ASKING, but in game
+    // a fed machine with somewhere to put its output runs, and a drawer is
+    // somewhere. The pill changes the bookkeeping (no demand on the wire),
+    // never the pace; the 2/s target is a floor the machine clears anyway.
+    expect(result.nodes["m"].utilization).toBeCloseTo(1);
     expect(result.edges["o"].demandPerSecond).toBeCloseTo(0);
-    expect(result.edges["o"].transferredPerSecond).toBeCloseTo(2);
+    expect(result.edges["o"].transferredPerSecond).toBeCloseTo(10);
   });
 
   it("a byproduct drawer still counts as somewhere to go, so nothing clogs", () => {
@@ -649,7 +650,13 @@ describe("conservation: drawers", () => {
     expect(buffered.nodes["cons"].capableUtilization).toBeCloseTo(1);
     expect(buffered.nodes["cons"].utilization).toBeCloseTo(direct.nodes["cons"].utilization);
     expect(buffered.nodes["cons"].clogOutputKey).toBe(direct.nodes["cons"].clogOutputKey);
-    expect(buffered.nodes["prod"].utilization).toBeCloseTo(direct.nodes["prod"].utilization);
+    // The PRODUCER's answer legitimately differs: wired straight into the
+    // consumer it may only make what the consumer eats, but a drawer voids
+    // its overflow in game, so an overspilling drawer is an output and the
+    // producer behind one runs full. (Jack's ruling: sources are inputs;
+    // products, byproducts and overspilling drawers are outputs.)
+    expect(direct.nodes["prod"].utilization).toBeCloseTo(0.005);
+    expect(buffered.nodes["prod"].utilization).toBeCloseTo(1);
   });
 
   it("each drawer reports its own wires, not every drawer of that item", () => {

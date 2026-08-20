@@ -4,8 +4,24 @@ import { getStorageRoles } from "@/lib/model/storage-role";
 import { collectTrashNodeIds } from "@/lib/model/trash";
 import { calculateThroughput } from "@/lib/solver/throughput";
 import { getCompatibleOutputFlow, getEdgeTargetDemandKey } from "@/lib/solver/equilibrium";
-import type { LinearProgram } from "./simplex";
+import { solveLp, type LinearProgram } from "@/lib/solver/simplex";
 import { solveLpHighs } from "./highs-lp";
+
+const useSimplex = () => typeof process !== "undefined" && process.env?.EQ_ENGINE === "simplex";
+/** Two engines, mutual fallback: each has boards the other conquers (the
+ * homegrown simplex stalls on two heavy corpus boards, HiGHS reports
+ * numerical Unknown on one), and a fallback pass covers both failure sets. */
+async function solveEngine(lp: LinearProgram) {
+  const first = useSimplex() ? solveLp(lp) : await solveLpHighs(lp);
+  if (first.status === "optimal") {
+    return first;
+  }
+  // True infeasibility is impossible here before the stage locks (all-zero
+  // satisfies every row), so ANY non-optimal verdict is numerics and gets a
+  // second opinion from the other engine.
+  const second = useSimplex() ? await solveLpHighs(lp) : solveLp(lp);
+  return second.status === "optimal" ? second : first;
+}
 
 /**
  * The equations prototype: a board's steady state solved directly as a
@@ -177,9 +193,48 @@ export async function solveEquations(
   }
   const totalVars = nextVar;
 
+  // Pools with a SOURCE up their feed chain: material in them is imported,
+  // not made, so the purpose stage must not count it as production (a wire
+  // from a source drawer through a buffer into a product drawer is a
+  // teleporter, not a factory). BFS over drawer-to-drawer wires.
+  const sourceBacked = new Set<string>();
+  {
+    const queue: string[] = [];
+    for (const storage of project.storages ?? []) {
+      if (storageKind(storage.id) === "source") {
+        queue.push(storage.id);
+      }
+    }
+    while (queue.length > 0) {
+      const id = queue.pop()!;
+      for (const edge of usable) {
+        if (edge.source !== id) {
+          continue;
+        }
+        const kind = storageKind(edge.target);
+        if ((kind === "buffer" || kind === "strict-buffer") && !sourceBacked.has(edge.target)) {
+          sourceBacked.add(edge.target);
+          queue.push(edge.target);
+        }
+      }
+    }
+  }
+
   const unwiredPorts: string[] = [];
   const equalities: LinearProgram["equalities"] = [];
   const upperBounds: LinearProgram["upperBounds"] = [];
+
+  // No flow is infinite. Machine-touching wires are already bounded by
+  // their port rows; only drawer-to-drawer wires (a source feeding a buffer,
+  // a buffer stocking a buffer) need a finite roof so a teleporter chain
+  // cannot read as unbounded. Kept narrow on purpose: blanket roof rows
+  // wrecked HiGHS's conditioning on large boards.
+  const FLOW_ROOF = 1e6;
+  for (const edge of usable) {
+    if (!actVar.has(edge.source) && !actVar.has(edge.target)) {
+      upperBounds.push({ coefficients: new Map([[flowVar.get(edge.id)!, 1]]), rhs: FLOW_ROOF });
+    }
+  }
   /** Output-port rows, labeled: equalities in the real model (production is
    * TAKEN, the clog as algebra), individually relaxable by the choke probe. */
   const outputRows: Array<{ label: string; coefficients: Map<number, number> }> = [];
@@ -187,6 +242,25 @@ export async function solveEquations(
   // act stays a fraction of nameplate.
   for (const id of machineIds) {
     upperBounds.push({ coefficients: new Map([[actVar.get(id)!, 1]]), rhs: 1 });
+  }
+
+  // A player-dialled target is a FLOOR: run at least fast enough to make
+  // this much, capped at nameplate so an over-ambitious dial reads as the
+  // machine flat out (the >100% story is display arithmetic, not a solve).
+  for (const node of project.nodes) {
+    if (!node.targetOutput || !actVar.has(node.id)) {
+      continue;
+    }
+    const key = makeResourceKey(node.targetOutput.kind, node.targetOutput.resourceId);
+    const rate = nameplates.nodes[node.id]!.outputs[key]?.amountPerSecond ?? 0;
+    if (rate <= 0) {
+      continue;
+    }
+    const floor = Math.min(1, node.targetOutput.amountPerSecond / rate);
+    upperBounds.push({
+      coefficients: new Map([[actVar.get(node.id)!, -1]]),
+      rhs: -floor,
+    });
   }
 
   // Machine port rows: flows on the port balance act x rate exactly. A port
@@ -339,7 +413,7 @@ export async function solveEquations(
     const maxAct = async (rows: ReturnType<typeof withOutputRows>): Promise<number> => {
       const maximize = new Array<number>(totalVars).fill(0);
       for (const id of machineIds) maximize[actVar.get(id)!] = 1;
-      const r = await solveLpHighs({ maximize, equalities: rows.eq, upperBounds: rows.ub });
+      const r = await solveEngine({ maximize, equalities: rows.eq, upperBounds: rows.ub });
       return r.status === "optimal" ? r.objective : Number.NaN;
     };
     const open = await maxAct(withOutputRows("none"));
@@ -376,6 +450,15 @@ export async function solveEquations(
     if (role !== "product") {
       continue;
     }
+    // Imported material teleported into a product drawer is not production:
+    // only machine-made flow (directly, or via a pool no source feeds)
+    // counts toward the factory's purpose.
+    if (!actVar.has(edge.source) && sourceBacked.has(edge.source)) {
+      continue;
+    }
+    if (storageKind(edge.source) === "source") {
+      continue;
+    }
     const port = outPort(edge);
     const weight = 1 / Math.max(1, port?.ratePerSecond ?? 1);
     productPull.set(flowVar.get(edge.id)!, (productPull.get(flowVar.get(edge.id)!) ?? 0) + weight);
@@ -392,11 +475,11 @@ export async function solveEquations(
   }
   stages.push(productPull);
 
-  const leastMachinery = new Map<number, number>();
+  const everythingRuns = new Map<number, number>();
   for (const id of machineIds) {
-    leastMachinery.set(actVar.get(id)!, -1);
+    everythingRuns.set(actVar.get(id)!, 1);
   }
-  stages.push(leastMachinery);
+  stages.push(everythingRuns);
 
   const leastImports = new Map<number, number>();
   for (const edge of usable) {
@@ -418,7 +501,7 @@ export async function solveEquations(
   const model = withOutputRows(
     typeof process !== "undefined" && process.env?.EQ_RELAX_OUTPUTS ? "none" : "all",
   );
-  let solution: Awaited<ReturnType<typeof solveLpHighs>> | undefined;
+  let solution: Awaited<ReturnType<typeof solveEngine>> | undefined;
   for (const stage of stages) {
     if (stage.size === 0) {
       continue;
@@ -427,7 +510,7 @@ export async function solveEquations(
     for (const [v, weight] of stage) {
       maximize[v] = weight;
     }
-    solution = await solveLpHighs({ maximize, equalities: model.eq, upperBounds: model.ub });
+    solution = await solveEngine({ maximize, equalities: model.eq, upperBounds: model.ub });
     if (typeof process !== "undefined" && process.env?.EQ_DEBUG) {
       console.log(
         `stage ${stages.indexOf(stage)}: ${solution.status} objective=${solution.objective?.toFixed(6)} terms=${stage.size}`,

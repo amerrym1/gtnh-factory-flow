@@ -127,12 +127,16 @@ describe("drain priority: loops with makeup run instead of collapsing", () => {
 
     expect(result.nodes["c"].utilization).toBeCloseTo(1);
     expect(result.nodes["d"].utilization).toBeCloseTo(1);
-    expect(result.nodes["a"].utilization).toBeCloseTo(0.2);
-    expect(result.nodes["b"].utilization).toBeCloseTo(0.2);
-    // The tank is a pass-through here: 8/s in, 8/s out, holding steady.
+    // With the tank willing to bank the return (an overspilling drawer is an
+    // output), C's intake is no longer half-claimed by the loop: the supply
+    // lines run as hard as the 12/s leaves room for, 0.6 each, and the tank
+    // visibly fills with the 8/s nobody needs anymore. Machines outrank the
+    // relay: the planner runs A and B before it ships stored surplus.
+    expect(result.nodes["a"].utilization).toBeCloseTo(0.6);
+    expect(result.nodes["b"].utilization).toBeCloseTo(0.6);
     expect(result.edges["e-loop-in"].transferredPerSecond).toBeCloseTo(8);
-    expect(result.edges["e-loop-out"].transferredPerSecond).toBeCloseTo(8);
-    expect(result.storages["pocket"].netPerSecond).toBeCloseTo(0);
+    expect(result.edges["e-loop-out"].transferredPerSecond).toBeCloseTo(0);
+    expect(result.storages["pocket"].netPerSecond).toBeCloseTo(8);
   });
 
   it("supplements a deficit loop from a source drawer (buffer and source share one input)", () => {
@@ -240,10 +244,12 @@ describe("overflow buffers: a tank catches surplus and never invents supply", ()
     expect(result.storages["tank"].netPerSecond).toBeCloseTo(6);
   });
 
-  it("never drives production: with nothing else pinning it, the feeder paces to its takers", () => {
-    // Same board minus the w drawer wire: m's only outlet that asks is the
-    // tank's taker, so m slows to 40% and the tank holds level. A buffer is
-    // not a product drawer.
+  it("catches the spare of a feeder that runs full even with no product drawer", () => {
+    // Same board minus the w drawer wire: nothing asks past the eater's 4/s,
+    // but in game a fed machine with a tank to fill RUNS, so m stays at 100%
+    // and the tank banks the 6/s spare. An overspilling drawer is an output
+    // (Jack's ruling); strict mode remains the opt-out that hands the
+    // surplus back as a clog.
     const result = calculateThroughput(
       project({
         recipes: [recipe("mono", [], [["z", 10]]), recipe("eat", [["z", 4]], [["out", 1]])],
@@ -258,9 +264,9 @@ describe("overflow buffers: a tank catches surplus and never invents supply", ()
       { generatedAt: "fixed" },
     );
 
-    expect(result.nodes["m"].utilization).toBeCloseTo(0.4);
+    expect(result.nodes["m"].utilization).toBeCloseTo(1);
     expect(result.nodes["eater"].utilization).toBeCloseTo(1);
-    expect(result.storages["tank"].netPerSecond).toBeCloseTo(0);
+    expect(result.storages["tank"].netPerSecond).toBeCloseTo(6);
   });
 
   it("strict mode opts back into the clog: the surplus is handed back, not stored", () => {

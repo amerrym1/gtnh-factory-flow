@@ -150,6 +150,13 @@ export interface EquilibriumSolution {
   unmetDesireByNeed: Map<string, number>;
   needEdgeCounts: Map<string, number>;
   rounds: number;
+  /**
+   * Node ids whose `actualByNode` entry came from the equation books
+   * (solveEquationsCore, stamped in throughput.ts). For these the act is the
+   * solved steady state and finalize adopts it unconditionally - including
+   * over a legacy >100% over-asked figure, which the equations never emit.
+   */
+  equationSolvedNodes?: Set<string>;
 }
 
 interface PreparedEdge {
@@ -2701,7 +2708,7 @@ export function selectProjectTargetNodes(
   );
 }
 
-function calculateProjectTargetShares(
+export function calculateProjectTargetShares(
   project: FactoryProject,
   nodes: Record<string, NodeThroughputResult>,
 ): Map<string, { key: ResourceKey; amountPerSecond: number }> {

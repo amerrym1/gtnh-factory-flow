@@ -10,5 +10,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx", "tools/**/*.test.mjs"],
+    // .local.test files are untracked scratch harnesses (corpus sweeps,
+    // one-off probes); they run by explicit path only, never with the suite.
+    exclude: ["**/node_modules/**", "**/*.local.test.*"],
   },
 });

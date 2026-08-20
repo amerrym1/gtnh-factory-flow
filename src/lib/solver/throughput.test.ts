@@ -743,27 +743,22 @@ describe("calculateThroughput", () => {
 
     const result = solveClosed(project);
 
-    // The tank is a BUFFER: fed by two sources and drawn from by the tower, so
-    // it is neither end of the plan and may not swallow the other 25,100 L/s.
-    // It relays the 1,000 L/s the tower actually pulls, split between its two
-    // feeders, and both sources clog on what they cannot pass through it.
+    // The tank relays the 1,000 L/s the tower pulls - the demand LABEL on
+    // the out-wire is the consumer's ask, not the mountain of supply behind
+    // the tank. Both sources run full (a fed machine with a tank to fill
+    // runs) and the tank visibly banks the 25,100 L/s nobody drinks: an
+    // overspilling drawer is an output, not a jam.
     expect(result.edges["tank-to-consumer"].demandPerSecond).toBeCloseTo(1_000);
     expect(result.edges["tank-to-consumer"].transferredPerSecond).toBeCloseTo(1_000);
-    expect(result.storages["woodtar-tank"].producedPerSecond).toBeCloseTo(1_000);
+    expect(result.storages["woodtar-tank"].producedPerSecond).toBeCloseTo(26_100);
     expect(result.storages["woodtar-tank"].consumedPerSecond).toBeCloseTo(1_000);
-    expect(result.storages["woodtar-tank"].netPerSecond).toBeCloseTo(0);
-    // Paced, not clogged. Each source has ONE output and it is the one the
-    // tank relays, so nothing piles up anywhere: they simply idle at what the
-    // tower asks for, which is what "demand set the speed" has always meant.
-    // CLOGGED is for a machine held below what something else is still asking
-    // of it, and neither of these is.
+    expect(result.storages["woodtar-tank"].netPerSecond).toBeCloseTo(25_100);
+    // Absorbed, not clogged: the tank takes everything, so nothing is held
+    // below what something else is asking of it.
     expect(result.nodes["small-source"].clogOutputKey).toBeUndefined();
     expect(result.nodes["large-source"].clogOutputKey).toBeUndefined();
-    // The 1,000 L/s the tank relays is split max-min between the two feeders,
-    // so the small one empties itself covering its 500 and the big one barely
-    // ticks over. The small asker is not crushed out by the 25,600 next to it.
     expect(result.nodes["small-source"].utilization).toBeCloseTo(1);
-    expect(result.nodes["large-source"].utilization).toBeLessThan(0.05);
+    expect(result.nodes["large-source"].utilization).toBeCloseTo(1);
     // The tower is fed exactly what it asked for, so it is not short of anything.
     expect(result.nodes.consumer.utilization).toBeCloseTo(1);
   });
@@ -926,18 +921,17 @@ describe("calculateThroughput", () => {
 
     const result = solveClosed(project);
 
-    // A buffer never drives production. The tower pulls 1,000 L/s of the
-    // extractor's 4,000, and the tank relays exactly that pull as demand, so
-    // the extractor idles at a quarter speed instead of running flat out into
-    // a tank that fills forever. This is DEMAND, not disposal: an overflow
-    // buffer can always catch more, so nothing bounds the machine from the
-    // disposal side and nothing reads as a clog.
-    expect(result.nodes.extractor.utilization).toBeCloseTo(0.25);
+    // The tower pulls 1,000 L/s of the extractor's 4,000, and nothing else
+    // asks - but in game a fed machine with a tank to fill RUNS. The
+    // extractor stays at 100% and the tank visibly banks the 3,000 L/s
+    // spare: an overspilling drawer is an output. The DEMAND figure still
+    // says only a quarter was ever asked for, and nothing reads as a clog.
+    expect(result.nodes.extractor.utilization).toBeCloseTo(1);
     expect(result.nodes.extractor.demandUtilization).toBeCloseTo(0.25);
     expect(result.nodes.extractor.disposalUtilization).toBeCloseTo(1);
     expect(result.nodes.extractor.clogOutputKey).toBeUndefined();
-    expect(result.edges["extractor-to-tank"].transferredPerSecond).toBeCloseTo(1_000);
-    expect(result.storages["woodtar-tank"].netPerSecond).toBeCloseTo(0);
+    expect(result.edges["extractor-to-tank"].transferredPerSecond).toBeCloseTo(4_000);
+    expect(result.storages["woodtar-tank"].netPerSecond).toBeCloseTo(3_000);
   });
 
   // Was pinned with it.fails: the mega consumer's own product is drained, so

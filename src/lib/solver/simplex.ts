@@ -29,12 +29,32 @@ export function solveLp(lp: LinearProgram): LpSolution {
   const n = lp.maximize.length;
 
   // Normalize every row to rhs >= 0 so phase 1 can seed artificials.
+  // Equilibrate: divide each row by its largest |coefficient| so wildly
+  // scaled recipes (a litre in, a millibucket out) cannot leave the tableau
+  // with entries five orders apart - tiny pivots amplify float error until
+  // the walk stops terminating. Row scaling never changes the solution.
+  const equilibrate = (coefficients: Map<number, number>, rhs: number) => {
+    let scale = 0;
+    for (const value of coefficients.values()) {
+      scale = Math.max(scale, Math.abs(value));
+    }
+    if (scale <= 0 || (scale > 0.5 && scale < 2)) {
+      return { coefficients: new Map(coefficients), rhs };
+    }
+    const scaled = new Map<number, number>();
+    for (const [c, value] of coefficients) {
+      scaled.set(c, value / scale);
+    }
+    return { coefficients: scaled, rhs: rhs / scale };
+  };
   const rows: Array<{ coefficients: Map<number, number>; rhs: number; eq: boolean }> = [];
   for (const row of lp.equalities) {
-    rows.push(normalizeRow(row.coefficients, row.rhs, true));
+    const scaled = equilibrate(row.coefficients, row.rhs);
+    rows.push(normalizeRow(scaled.coefficients, scaled.rhs, true));
   }
   for (const row of lp.upperBounds) {
-    rows.push({ coefficients: new Map(row.coefficients), rhs: row.rhs, eq: false });
+    const scaled = equilibrate(row.coefficients, row.rhs);
+    rows.push({ coefficients: scaled.coefficients, rhs: scaled.rhs, eq: false });
   }
 
   const m = rows.length;
@@ -62,6 +82,7 @@ export function solveLp(lp: LinearProgram): LpSolution {
     }
   }
 
+  const artificialStart = columns;
   const artificialOf = new Array<number>(m).fill(-1);
   for (let r = 0; r < m; r += 1) {
     if (rows[r]!.eq || surplusOf[r] >= 0) {
@@ -102,6 +123,9 @@ export function solveLp(lp: LinearProgram): LpSolution {
       }
     }
     const feasible = runSimplex(tableau, basis, phase1, columns);
+    if (typeof process !== "undefined" && process.env?.SIMPLEX_DEBUG) {
+      console.log(`phase1 feasible=${feasible} basis=${basis.join(",")} rhs=${tableau.map((t) => t[columns]!.toFixed(4)).join(",")} art=${artificialOf.join(",")}`);
+    }
     if (!feasible) {
       return { status: "unbounded", x: [], objective: Number.NaN };
     }
@@ -114,12 +138,17 @@ export function solveLp(lp: LinearProgram): LpSolution {
     if (infeasibility > 1e-7) {
       return { status: "infeasible", x: [], objective: Number.NaN };
     }
-    // Drive lingering degenerate artificials out of the basis when possible.
+    // Drive lingering degenerate artificials out of the basis through ANY
+    // non-artificial column - slack and surplus columns included. Trying only
+    // structural columns once left an artificial basic whose row had gone
+    // structurally zero; phase 2 then regrew it from 0 and silently violated
+    // the row it stood for. A row with no non-artificial column at all is
+    // redundant, and phase 2 can never touch it, so it may stay.
     for (let r = 0; r < m; r += 1) {
-      if (!artificialOf.includes(basis[r]!)) {
+      if (basis[r]! < artificialStart) {
         continue;
       }
-      for (let c = 0; c < n; c += 1) {
+      for (let c = 0; c < artificialStart; c += 1) {
         if (Math.abs(tableau[r]![c]!) > EPS) {
           pivot(tableau, basis, r, c, columns);
           break;
@@ -164,9 +193,12 @@ function normalizeRow(coefficients: Map<number, number>, rhs: number, eq: boolea
 }
 
 /**
- * Maximizes `objective` over the tableau in place. Bland's rule on both the
- * entering and leaving choice: slower than steepest-edge, immune to cycling,
- * and fully deterministic - the same model always walks the same pivots.
+ * Maximizes `objective` over the tableau in place. Entering column by
+ * Dantzig's rule (most positive reduced cost - typically several times fewer
+ * pivots than Bland's), falling back to Bland's rule permanently once the
+ * objective stalls through a run of degenerate pivots, which is what makes
+ * cycling impossible. Fully deterministic either way - the same model always
+ * walks the same pivots.
  */
 function runSimplex(
   tableau: number[][],
@@ -176,9 +208,12 @@ function runSimplex(
   banned?: Set<number>,
 ): boolean {
   const m = tableau.length;
+  let blandMode = false;
+  let stalled = 0;
+  let previousValue = Number.NEGATIVE_INFINITY;
   // Reduced costs live in their own row, rebuilt from the basis each pivot -
   // simple and O(mn), fine at lab sizes.
-  for (let iteration = 0; iteration < 20000; iteration += 1) {
+  for (let iteration = 0; iteration < 100000; iteration += 1) {
     const reduced = new Array<number>(columns).fill(0);
     for (let c = 0; c < columns; c += 1) {
       reduced[c] = objective[c] ?? 0;
@@ -193,13 +228,26 @@ function runSimplex(
       }
     }
     let entering = -1;
-    for (let c = 0; c < columns; c += 1) {
-      if (banned?.has(c)) {
-        continue;
+    if (blandMode) {
+      for (let c = 0; c < columns; c += 1) {
+        if (banned?.has(c)) {
+          continue;
+        }
+        if (reduced[c]! > 1e-9) {
+          entering = c;
+          break;
+        }
       }
-      if (reduced[c]! > 1e-9) {
-        entering = c;
-        break;
+    } else {
+      let best = 1e-9;
+      for (let c = 0; c < columns; c += 1) {
+        if (banned?.has(c)) {
+          continue;
+        }
+        if (reduced[c]! > best) {
+          best = reduced[c]!;
+          entering = c;
+        }
       }
     }
     if (entering < 0) {
@@ -218,9 +266,33 @@ function runSimplex(
       }
     }
     if (leaving < 0) {
+      if (typeof process !== "undefined" && process.env?.SIMPLEX_DEBUG) {
+        console.log(`simplex: ray at iteration ${iteration}, entering ${entering}, bland=${blandMode}`);
+      }
       return false;
     }
     pivot(tableau, basis, leaving, entering, columns);
+    if (!blandMode) {
+      let value = 0;
+      for (let r = 0; r < m; r += 1) {
+        const cost = objective[basis[r]!] ?? 0;
+        if (cost !== 0) {
+          value += cost * tableau[r]![columns]!;
+        }
+      }
+      if (value <= previousValue + 1e-12) {
+        stalled += 1;
+        if (stalled > 60) {
+          blandMode = true;
+        }
+      } else {
+        stalled = 0;
+        previousValue = value;
+      }
+    }
+  }
+  if (typeof process !== "undefined" && process.env?.SIMPLEX_DEBUG) {
+    console.log("simplex: iteration cap hit");
   }
   return false;
 }

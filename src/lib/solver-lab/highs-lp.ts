@@ -1,4 +1,4 @@
-import type { LinearProgram, LpSolution } from "./simplex";
+import type { LinearProgram, LpSolution } from "@/lib/solver/simplex";
 
 /**
  * The lab's production-grade engine: HiGHS (MIT-licensed, WASM) behind the
@@ -64,6 +64,9 @@ export async function solveLpHighs(lp: LinearProgram): Promise<LpSolution> {
 
   const solved = highs.solve(lines.join("\n"));
   if (solved.Status !== "Optimal") {
+    if (typeof process !== "undefined" && process.env?.EQ_DEBUG) {
+      console.log(`highs raw status: ${solved.Status}`);
+    }
     const status = solved.Status === "Infeasible" ? "infeasible" : "unbounded";
     return { status, x: [], objective: Number.NaN };
   }

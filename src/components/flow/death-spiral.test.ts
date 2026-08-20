@@ -144,15 +144,15 @@ describe("findDeathSpirals", () => {
     expect(findDeathSpirals(proj, result).spirals).toHaveLength(1);
   });
 
-  it("does not call a ring dead when it is merely idle for lack of takers", () => {
-    // The trap: fed, perfectly capable, and still 0% across the board because
-    // nothing outside wants the product. Usage alone cannot tell this from a
-    // spiral, so the detector tests capability. Calling this one a death
-    // spiral would send the player priming a ring that needs a customer.
+  it("does not call a fed ring dead just because nothing outside wants it", () => {
+    // Fed and perfectly capable: under solve-for-the-maximum a fed machine
+    // runs, so the whole ring spins at 100% burning its 1/s of make-up, no
+    // customer required. Whatever the run level, it must not read as a death
+    // spiral - that advice would send the player priming a healthy wheel.
     const proj = ring(9, { source: true });
     const result = calculateThroughput(proj);
 
-    expect(result.nodes.A!.utilization).toBeLessThan(1e-4);
+    expect(result.nodes.A!.utilization).toBeCloseTo(1, 4);
     expect(result.nodes.A!.capableUtilization).toBeCloseTo(1, 3);
     expect(findDeathSpirals(proj, result).spirals).toHaveLength(0);
   });

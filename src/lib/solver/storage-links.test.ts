@@ -205,9 +205,10 @@ describe("a drawer wired into a drain drawer", () => {
     expect(result.resources["item:z"]?.productPerSecond).toBeCloseTo(6);
   });
 
-  it("catches nothing when the feeder is free to pace down", () => {
-    // No pin anywhere: the machine only makes what the eater pulls, so there
-    // is no stock for the drain to catch. A drain catches; it does not ask.
+  it("catches the full-speed feeder's surplus even with no product drawer", () => {
+    // No pin anywhere, and none needed: a fed machine with a tank to fill
+    // runs, the eater takes its 4, and ship-before-banking sends the other 6
+    // on to the drain drawer so the tank itself holds level.
     const result = calculateThroughput(
       project({
         recipes: [recipe("mono", [], [["z", 10]]), recipe("eat", [["z", 4]], [["out", 1]])],
@@ -223,9 +224,9 @@ describe("a drawer wired into a drain drawer", () => {
       { generatedAt: "fixed" },
     );
 
-    expect(result.nodes["m"].utilization).toBeCloseTo(0.4);
+    expect(result.nodes["m"].utilization).toBeCloseTo(1);
     expect(result.nodes["eater"].utilization).toBeCloseTo(1);
-    expect(result.edges["e-export"].transferredPerSecond).toBeCloseTo(0);
+    expect(result.edges["e-export"].transferredPerSecond).toBeCloseTo(6);
     expect(result.storages["tank"].netPerSecond).toBeCloseTo(0);
   });
 });
@@ -248,9 +249,10 @@ describe("what a drawer wire must not change", () => {
     expect(result.nodes["c"].capableUtilization).toBeCloseTo(0);
   });
 
-  it("a source feeding a buffer never drives production", () => {
-    // The tank's feeder machine has no other pin and its taker wants 4 of
-    // its 10: the source behind the tank must not push it past 40%.
+  it("a source feeding a buffer stays shut when the board covers the need", () => {
+    // The machine runs full on its own (the tank banks its spare 6/s); the
+    // source behind the tank imports nothing, because recycle-before-import
+    // buys from the infinite drawer only what the board cannot make.
     const result = calculateThroughput(
       project({
         recipes: [recipe("mono", [], [["z", 10]]), recipe("eat", [["z", 4]], [["out", 1]])],
@@ -266,8 +268,9 @@ describe("what a drawer wire must not change", () => {
       { generatedAt: "fixed" },
     );
 
-    expect(result.nodes["m"].utilization).toBeCloseTo(0.4);
+    expect(result.nodes["m"].utilization).toBeCloseTo(1);
     expect(result.nodes["eater"].utilization).toBeCloseTo(1);
     expect(result.edges["e-feed"].transferredPerSecond).toBeCloseTo(0);
+    expect(result.storages["tank"].netPerSecond).toBeCloseTo(6);
   });
 });

@@ -106,13 +106,15 @@ function updateBalanceNet(balance: ResourceBalance): void {
  * surfaced as a resource sitting in Need at "-0.0000012/s" with nothing
  * actually wrong.
  *
- * 1e-9 of throughput is roughly ten million ULPs of headroom - room for the
- * residue to accumulate across a large board - while still being far below any
- * imbalance a player could create on purpose. Being short by one part in a
- * billion is not being short.
+ * The equation books raised the floor: an LP solve leaves dust proportional
+ * to its pivot tolerance times the flow scale, observed at ~1e-6 of
+ * throughput on a 12,000/s board. 1e-5 sits an order above that while any
+ * imbalance a player could create on purpose - a recipe ratio being off -
+ * is percents, four orders louder. Being short by one part in a hundred
+ * thousand is not being short.
  */
 const ABSOLUTE_SETTLE_EPSILON = 0.000001;
-const RELATIVE_SETTLE_EPSILON = 1e-9;
+const RELATIVE_SETTLE_EPSILON = 1e-5;
 
 function settleTolerance(balance: ResourceBalance): number {
   const scale = Math.max(balance.producedPerSecond, balance.consumedPerSecond);
