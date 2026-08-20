@@ -99,7 +99,7 @@ const COLUMN_GAP_MAX = cells(10);
 /** Vertical air between stacked cards of one section. */
 const ROW_GAP = cells(2);
 /** Vertical air between two different sections sharing a column. */
-const SECTION_GAP = cells(6);
+const SECTION_GAP = cells(4);
 /** Air around a whole island. */
 const ISLAND_GAP = cells(6);
 /** Air between parked, unwired cards on the shelf. */
@@ -120,6 +120,8 @@ interface CardSlot {
   seq: number;
   /** The band this card belongs to; a boundary between bands adds air. */
   section: number;
+  /** On the main line. Trunk-to-trunk wires get the straightest runs. */
+  trunk: boolean;
   y: number;
 }
 
@@ -144,6 +146,8 @@ interface Block {
   height: number;
   size: number;
   minIndex: number;
+  /** The parked-strays shelf: always takes the bottom row of the page. */
+  shelf?: boolean;
 }
 
 export function arrangeBoard(input: ArrangeInput): ArrangeMove[] {
@@ -154,7 +158,7 @@ export function arrangeBoard(input: ArrangeInput): ArrangeMove[] {
 
   const slotById = new Map<string, CardSlot>();
   cards.forEach((card, index) => {
-    slotById.set(card.id, { card, index, layer: 0, seq: 0, section: 0, y: 0 });
+    slotById.set(card.id, { card, index, layer: 0, seq: 0, section: 0, trunk: false, y: 0 });
   });
 
   // Wires with a missing end or both ends on one card place nothing.
@@ -218,8 +222,10 @@ export function arrangeBoard(input: ArrangeInput): ArrangeMove[] {
   let rowY = 0;
   let rowHeight = 0;
   blocks.forEach((block, blockIndex) => {
-    // The main island owns its row; later islands share rows while they fit.
-    const startsRow = blockIndex === 0 || blockIndex === 1 || rowX + block.width > targetWidth;
+    // The main island owns its row; later islands share rows while they fit;
+    // the shelf of strays never rides beside an island.
+    const startsRow =
+      blockIndex === 0 || blockIndex === 1 || block.shelf || rowX + block.width > targetWidth;
     if (startsRow) {
       rowY += rowHeight + (blockIndex === 0 ? 0 : ISLAND_GAP);
       rowX = 0;
@@ -319,8 +325,19 @@ function layoutIsland(members: CardSlot[], links: WireLink[]): Block {
   assignLayers(members, forward);
   buildBands(members, links, forward);
 
+  // A provisional vertical pass, then the anti-crossing polish: with real
+  // positions on the board, cards are reordered WITHIN their column and
+  // section to follow where their wires pull - a drawer whose feed leaves
+  // the bottom of its machine belongs below it, not above, and two wires
+  // that would cross between columns uncross by swapping their ends. Bands
+  // survive: the polish permutes order only among cards already sharing a
+  // column and a section. Then the column settles again.
+  placeRows(collectLayers(members), links);
+  for (let pass = 0; pass < 2; pass += 1) {
+    polishSectionOrder(collectLayers(members), links);
+    placeRows(collectLayers(members), links);
+  }
   const layers = collectLayers(members);
-  placeRows(layers, links);
 
   // -- Columns. Every column is as wide as its widest card; the corridor
   // between two columns grows with the number of wires that must cross it,
@@ -606,9 +623,11 @@ function buildBands(members: CardSlot[], links: WireLink[], forward: WireLink[])
     }
   }
 
-  // Subtree sizes, accumulated bottom-up without recursion (the tree can be
-  // deep), then the trunk: follow the biggest child down.
+  // Subtree sizes and rough band heights, accumulated bottom-up without
+  // recursion (the tree can be deep), then the trunk: follow the biggest
+  // child down.
   const subtreeSize = new Map<CardSlot, number>();
+  const subtreeHeight = new Map<CardSlot, number>();
   {
     const order: CardSlot[] = [];
     const stack = [root];
@@ -621,10 +640,13 @@ function buildBands(members: CardSlot[], links: WireLink[], forward: WireLink[])
     }
     for (let i = order.length - 1; i >= 0; i -= 1) {
       let size = 1;
+      let height = order[i].card.height + ROW_GAP;
       for (const child of children.get(order[i]) ?? []) {
         size += subtreeSize.get(child) ?? 1;
+        height += subtreeHeight.get(child) ?? 0;
       }
       subtreeSize.set(order[i], size);
+      subtreeHeight.set(order[i], height);
     }
   }
   const onTrunk = new Set<CardSlot>([root]);
@@ -642,6 +664,44 @@ function buildBands(members: CardSlot[], links: WireLink[], forward: WireLink[])
         onTrunk.add(next);
       }
       slot = next;
+    }
+  }
+  for (const slot of onTrunk) {
+    slot.trunk = true;
+  }
+
+  // Which trunk-child subtree each off-trunk card hangs from, and how hard
+  // that whole branch holds onto the trunk: every wire between the branch
+  // and ANY trunk card counts. This is what puts each branch where its
+  // wires want it - a recycle loop (a wire out AND a wire back) hugs the
+  // line, a heavy feed sits closer than a trickle, and a big-but-loose
+  // branch drifts outward instead of shouldering in on card count alone.
+  const branchRoot = new Map<CardSlot, CardSlot>();
+  for (const trunkSlot of onTrunk) {
+    for (const child of children.get(trunkSlot) ?? []) {
+      if (onTrunk.has(child)) {
+        continue;
+      }
+      const queue = [child];
+      branchRoot.set(child, child);
+      for (let head = 0; head < queue.length; head += 1) {
+        for (const grand of children.get(queue[head]) ?? []) {
+          branchRoot.set(grand, child);
+          queue.push(grand);
+        }
+      }
+    }
+  }
+  const coupling = new Map<CardSlot, number>();
+  for (const link of links) {
+    const fromTrunk = onTrunk.has(link.from);
+    const toTrunk = onTrunk.has(link.to);
+    if (fromTrunk === toTrunk) {
+      continue;
+    }
+    const branch = branchRoot.get(fromTrunk ? link.to : link.from);
+    if (branch) {
+      coupling.set(branch, (coupling.get(branch) ?? 0) + link.weight);
     }
   }
 
@@ -675,37 +735,59 @@ function buildBands(members: CardSlot[], links: WireLink[], forward: WireLink[])
         }
         continue;
       }
-      // A trunk card: balance its side sections around the line, biggest
-      // hugging it, and push the trunk continuation through the middle.
+      // A trunk card: hang its branches around the line and push the trunk
+      // continuation through the middle. BUDS - single stray cards, a
+      // byproduct drawer, a lone supply - are not sections at all: they keep
+      // the trunk's band and nestle right against their machine. Real
+      // branches become sections, placed in coupling order (the branch with
+      // the most wire into the trunk sits nearest, which is what keeps a
+      // recycle loop or a heavy feed snug), and dealt above or below
+      // whichever side is currently shorter, so the main line stays
+      // vertically centred in its own factory.
       const trunkChild = kids.find((child) => onTrunk.has(child));
       const sides = kids
         .filter((child) => child !== trunkChild)
         .sort(
           (a, b) =>
-            (subtreeSize.get(b) ?? 1) - (subtreeSize.get(a) ?? 1) || a.index - b.index,
+            (coupling.get(b) ?? 0) - (coupling.get(a) ?? 0) ||
+            (subtreeSize.get(b) ?? 1) - (subtreeSize.get(a) ?? 1) ||
+            a.index - b.index,
         );
-      const above: CardSlot[] = [];
-      const below: CardSlot[] = [];
-      sides.forEach((child, i) => {
-        if (i % 2 === 0) {
-          above.unshift(child);
-        } else {
-          below.push(child);
+      const above: Visit[] = [];
+      const below: Visit[] = [];
+      let aboveHeight = 0;
+      let belowHeight = 0;
+      const buds = sides.filter((child) => (subtreeSize.get(child) ?? 1) === 1);
+      const branches = sides.filter((child) => (subtreeSize.get(child) ?? 1) > 1);
+      // Buds first, so they hold the positions nearest the trunk card while
+      // the sections stack outward past them.
+      for (const child of [...buds, ...branches]) {
+        const isBud = (subtreeSize.get(child) ?? 1) === 1;
+        let childSection = section;
+        if (!isBud) {
+          sectionCounter += 1;
+          childSection = sectionCounter;
         }
-      });
+        const height = subtreeHeight.get(child) ?? 0;
+        if (aboveHeight <= belowHeight) {
+          above.unshift({ slot: child, section: childSection });
+          aboveHeight += height;
+        } else {
+          below.push({ slot: child, section: childSection });
+          belowHeight += height;
+        }
+      }
       // Pushed in reverse of the wanted visit order (it is a stack): below
-      // sections, then the trunk continuation, then this card, then above.
+      // branches, then the trunk continuation, then this card, then above.
       for (let i = below.length - 1; i >= 0; i -= 1) {
-        sectionCounter += 1;
-        stack.push({ slot: below[i], section: sectionCounter, phase: 0 });
+        stack.push({ ...below[i], phase: 0 });
       }
       if (trunkChild) {
         stack.push({ slot: trunkChild, section, phase: 0 });
       }
       stack.push({ slot, section, phase: 1 });
       for (let i = above.length - 1; i >= 0; i -= 1) {
-        sectionCounter += 1;
-        stack.push({ slot: above[i], section: sectionCounter, phase: 0 });
+        stack.push({ ...above[i], phase: 0 });
       }
     }
   };
@@ -737,25 +819,88 @@ function collectLayers(members: CardSlot[]): CardSlot[][] {
  * linear time. Busy cards carry more weight, so a hub holds its line and
  * stragglers come to it.
  */
-function placeRows(layers: CardSlot[][], links: WireLink[]): void {
-  const partners = new Map<
-    CardSlot,
-    Array<{ other: CardSlot; own: number; their: number; weight: number }>
-  >();
+interface PartnerEntry {
+  other: CardSlot;
+  own: number;
+  their: number;
+  weight: number;
+}
+type PartnerMap = Map<CardSlot, PartnerEntry[]>;
+
+function buildPartners(links: WireLink[]): PartnerMap {
+  const partners: PartnerMap = new Map();
   for (const link of links) {
+    // The main line is the one wire run that must read ruler-straight, so a
+    // trunk-to-trunk wire pulls several times harder than its flow alone.
+    const emphasis = link.from.trunk && link.to.trunk ? 3 : 1;
     push(partners, link.from, {
       other: link.to,
       own: link.fromAnchor,
       their: link.toAnchor,
-      weight: link.weight,
+      weight: link.weight * emphasis,
     });
     push(partners, link.to, {
       other: link.from,
       own: link.toAnchor,
       their: link.fromAnchor,
-      weight: link.weight,
+      weight: link.weight * emphasis,
     });
   }
+  return partners;
+}
+
+/** Where a card's wires would put it, port to port, weighted by flow. */
+function wishFor(
+  slot: CardSlot,
+  list: PartnerEntry[] | undefined,
+): { wish: number; weight: number } {
+  if (!list || list.length === 0) {
+    return { wish: slot.y, weight: 0.1 };
+  }
+  let sum = 0;
+  let total = 0;
+  for (const p of list) {
+    sum += (p.other.y + p.their - p.own) * p.weight;
+    total += p.weight;
+  }
+  return { wish: sum / total, weight: total };
+}
+
+/**
+ * The anti-crossing pass. Within one column, cards of one section are
+ * reordered by where their wires wish them - the seq numbers the group
+ * already holds are dealt back out in wish order. Reusing exactly those
+ * seq values is what keeps the polish local: nothing changes hands between
+ * sections or columns, so bands stay bands.
+ */
+function polishSectionOrder(layers: CardSlot[][], links: WireLink[]): void {
+  const partners = buildPartners(links);
+  for (const layer of layers) {
+    const groups = new Map<number, CardSlot[]>();
+    for (const slot of layer) {
+      push(groups, slot.section, slot);
+    }
+    for (const group of groups.values()) {
+      if (group.length < 2) {
+        continue;
+      }
+      const desired = new Map<CardSlot, number>();
+      for (const slot of group) {
+        desired.set(slot, wishFor(slot, partners.get(slot)).wish);
+      }
+      const seqs = group.map((slot) => slot.seq).sort((a, b) => a - b);
+      const sorted = [...group].sort(
+        (a, b) => desired.get(a)! - desired.get(b)! || a.seq - b.seq,
+      );
+      sorted.forEach((slot, i) => {
+        slot.seq = seqs[i];
+      });
+    }
+  }
+}
+
+function placeRows(layers: CardSlot[][], links: WireLink[]): void {
+  const partners = buildPartners(links);
 
   // First stacking: straight down in order, so every wish below starts from
   // a legal picture.
@@ -776,19 +921,7 @@ function placeRows(layers: CardSlot[][], links: WireLink[]): void {
     const downward = sweep % 2 === 0;
     for (let i = 0; i < layers.length; i += 1) {
       const layer = layers[downward ? i : layers.length - 1 - i];
-      const wishes = layer.map((slot) => {
-        const list = partners.get(slot) ?? [];
-        if (list.length === 0) {
-          return { wish: slot.y, weight: 0.1 };
-        }
-        let total = 0;
-        let sum = 0;
-        for (const p of list) {
-          sum += (p.other.y + p.their - p.own) * p.weight;
-          total += p.weight;
-        }
-        return { wish: sum / total, weight: total };
-      });
+      const wishes = layer.map((slot) => wishFor(slot, partners.get(slot)));
       settleColumn(layer, wishes);
     }
   }
@@ -897,5 +1030,6 @@ function layoutShelf(parked: CardSlot[], mainWidth: number): Block {
     height,
     size: sorted.length,
     minIndex: sorted.reduce((min, slot) => Math.min(min, slot.index), Number.POSITIVE_INFINITY),
+    shelf: true,
   };
 }

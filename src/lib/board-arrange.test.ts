@@ -183,19 +183,55 @@ describe("arrangeBoard", () => {
   });
 
   it("separates feeder sections with extra air around the trunk", () => {
-    // A and two feeders share the column before B; each is its own section,
-    // so the gaps between them must be section-sized, not row-sized.
-    const cards = [card("a"), card("x"), card("y"), card("b"), card("c")];
+    // Three two-card feeder chains join B: one becomes the trunk, the other
+    // two are sections, so where they share a column the gaps must be
+    // section-sized, not row-sized.
+    const cards = [
+      card("a1"),
+      card("a2"),
+      card("x1"),
+      card("x2"),
+      card("y1"),
+      card("y2"),
+      card("b"),
+      card("c"),
+    ];
     const moves = arrangeBoard({
       cards,
-      wires: [wire("a", "b"), wire("x", "b"), wire("y", "b"), wire("b", "c")],
+      wires: [
+        wire("a1", "a2"),
+        wire("a2", "b"),
+        wire("x1", "x2"),
+        wire("x2", "b"),
+        wire("y1", "y2"),
+        wire("y2", "b"),
+        wire("b", "c"),
+      ],
     });
     const p = positionsById(moves);
-    const columnYs = ["a", "x", "y"]
+    const columnYs = ["a2", "x2", "y2"]
       .map((id) => p.get(id)!.y)
       .sort((left, right) => left - right);
-    expect(columnYs[1] - (columnYs[0] + 280)).toBeGreaterThanOrEqual(100);
-    expect(columnYs[2] - (columnYs[1] + 280)).toBeGreaterThanOrEqual(100);
+    expect(columnYs[1] - (columnYs[0] + 280)).toBeGreaterThanOrEqual(60);
+    expect(columnYs[2] - (columnYs[1] + 280)).toBeGreaterThanOrEqual(60);
+    expectNoOverlaps(cards, moves);
+  });
+
+  it("tucks a lone byproduct drawer in beside its machine as a bud", () => {
+    const cards = [
+      card("a"),
+      card("b"),
+      card("c"),
+      card("slag-drawer", { width: 100, height: 80 }),
+    ];
+    const moves = arrangeBoard({
+      cards,
+      wires: [wire("a", "b"), wire("b", "c"), wire("b", "slag-drawer")],
+    });
+    const p = positionsById(moves);
+    const centreB = p.get("b")!.y + 140;
+    const centreDrawer = p.get("slag-drawer")!.y + 40;
+    expect(Math.abs(centreDrawer - centreB)).toBeLessThan(300);
     expectNoOverlaps(cards, moves);
   });
 
@@ -222,6 +258,24 @@ describe("arrangeBoard", () => {
     expect(Math.abs(centre("hub") - centre("heavy"))).toBeLessThanOrEqual(
       Math.abs(centre("hub") - centre("light")),
     );
+  });
+
+  it("puts a bud on the side its wire leaves from, instead of crossing the trunk", () => {
+    // The drawer is fed from a port at the BOTTOM of t1 while the trunk wire
+    // leaves the middle, so the drawer belongs below the trunk line: leaving
+    // it above would drag its wire across the t1-to-t2 run.
+    const cards = [card("t1"), card("t2"), card("t3"), card("d", { width: 100, height: 80 })];
+    const moves = arrangeBoard({
+      cards,
+      wires: [
+        wire("t1", "t2", { sourcePortY: 140, targetPortY: 140 }),
+        wire("t2", "t3", { sourcePortY: 140, targetPortY: 140 }),
+        wire("t1", "d", { sourcePortY: 260, targetPortY: 40 }),
+      ],
+    });
+    const p = positionsById(moves);
+    expect(p.get("d")!.y).toBeGreaterThan(p.get("t2")!.y);
+    expectNoOverlaps(cards, moves);
   });
 
   it("handles an empty board and wires to missing cards", () => {
