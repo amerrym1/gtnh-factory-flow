@@ -97,11 +97,13 @@ describe("arrangeBoard", () => {
       origin: { x: 0, y: 0 },
     });
     const p = positionsById(moves);
-    const mainBottom = Math.max(
-      ...["a1", "a2", "a3"].map((id) => p.get(id)!.y + 280),
-    );
-    const islandTop = Math.min(...["b1", "b2"].map((id) => p.get(id)!.y));
-    expect(islandTop).toBeGreaterThanOrEqual(mainBottom + 100);
+    // Apart on SOME axis by a clear island gap - side by side or stacked,
+    // never interleaved.
+    const aRight = Math.max(...["a1", "a2", "a3"].map((id) => p.get(id)!.x + 360));
+    const aBottom = Math.max(...["a1", "a2", "a3"].map((id) => p.get(id)!.y + 280));
+    const bLeft = Math.min(...["b1", "b2"].map((id) => p.get(id)!.x));
+    const bTop = Math.min(...["b1", "b2"].map((id) => p.get(id)!.y));
+    expect(bLeft - aRight >= 100 || bTop - aBottom >= 100).toBe(true);
     expectNoOverlaps(cards, moves);
   });
 
