@@ -32,9 +32,9 @@ import { solveLp, type LinearProgram, type LpSolution } from "./simplex";
  * starved real machines to fatten an export drawer, and the game has no such
  * preference - pipes round-robin. Targets are display arithmetic, not rows.
  *
- * Validated against the tick simulator (exact agreement on real player
- * boards at the doctrine prime) and the full community corpus; see the
- * solver-lab for the research harnesses.
+ * Validated against the tick simulator (src/lib/solver-lab/simulate.ts -
+ * exact agreement on real player boards at the doctrine prime) and the full
+ * community corpus.
  */
 
 export interface EquationsCoreResult {

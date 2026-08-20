@@ -391,10 +391,14 @@ gh run watch <run-id> --exit-status
   chains) exhausts the iteration cap and falls back to the old books; the
   other 153/154 solve, and HiGHS solved it in the lab if a second-opinion
   engine is ever wanted in production.
-  `src/lib/solver/equations-doctrine.test.ts` is the exam;
-  `docs/solver-equations.md` is the design page. The solver-lab copies
-  (`equations.ts`, HiGHS A/B, the tick simulator) are research scaffolding,
-  excluded from the suite via the `*.local.test.*` vitest exclude.
+  `src/lib/solver/equations-doctrine.test.ts` is the exam,
+  `src/lib/solver/simplex.test.ts` pins the engine itself, and
+  `docs/solver-equations.md` is the design page. The one surviving lab tool
+  is the tick simulator (`src/lib/solver-lab/simulate.ts`), the independent
+  "what does the game literally do" oracle; the lab's duplicate model
+  builder and its HiGHS adapter were deleted with the `highs` dependency
+  once the production core existed. Scratch harnesses belong in
+  `*.local.test.*` files, which the vitest config excludes from the suite.
 - Power stalls are pinned to act 0 INSIDE the LP so the outage propagates by
   conservation. Balance dust snaps at 1e-5 relative (`balances.ts`) because
   LP flows carry solver-precision dust proportional to board scale.

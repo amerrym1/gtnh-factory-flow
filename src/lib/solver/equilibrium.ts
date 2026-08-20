@@ -2708,7 +2708,7 @@ export function selectProjectTargetNodes(
   );
 }
 
-export function calculateProjectTargetShares(
+function calculateProjectTargetShares(
   project: FactoryProject,
   nodes: Record<string, NodeThroughputResult>,
 ): Map<string, { key: ResourceKey; amountPerSecond: number }> {

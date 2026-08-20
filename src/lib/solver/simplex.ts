@@ -123,9 +123,6 @@ export function solveLp(lp: LinearProgram): LpSolution {
       }
     }
     const feasible = runSimplex(tableau, basis, phase1, columns);
-    if (typeof process !== "undefined" && process.env?.SIMPLEX_DEBUG) {
-      console.log(`phase1 feasible=${feasible} basis=${basis.join(",")} rhs=${tableau.map((t) => t[columns]!.toFixed(4)).join(",")} art=${artificialOf.join(",")}`);
-    }
     if (!feasible) {
       return { status: "unbounded", x: [], objective: Number.NaN };
     }
