@@ -354,11 +354,11 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
       islandGroups.push({ members: group, links: groupLinks, satellites: groupSatellites });
     }
   }
-  // A buffer standing between two islands belongs to neither. A storage
-  // whose wires reach into another island, and barely into its own, steps
-  // out and stands alone in the gap - the island graph then places it
-  // between the two the way it places any trader, and both sides' wires
-  // meet it halfway.
+  // A buffer SHARED ACROSS islands belongs to none of them. Only a storage
+  // that two or more OTHER islands trade through steps out to stand alone
+  // in the gap - a simple pass-through between two islands stays where the
+  // split put it, part of that island's own chain. The island graph then
+  // places the shared one between its users like any trader.
   {
     const prelim = new Map<CardSlot, number>();
     islandGroups.forEach((group, index) => {
@@ -371,24 +371,19 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
         if (group.members.length < 2 || slot.card.role !== "storage") {
           continue;
         }
-        let inside = 0;
-        let outside = 0;
+        const ownGroup = prelim.get(slot);
+        const otherGroups = new Set<number>();
         for (const link of mainLinks) {
           const other = link.from === slot ? link.to : link.to === slot ? link.from : undefined;
           if (!other) {
             continue;
           }
           const otherGroup = prelim.get(other);
-          if (otherGroup === undefined) {
-            continue;
-          }
-          if (otherGroup === prelim.get(slot)) {
-            inside += 1;
-          } else {
-            outside += 1;
+          if (otherGroup !== undefined && otherGroup !== ownGroup) {
+            otherGroups.add(otherGroup);
           }
         }
-        if (outside >= 1 && inside <= 2) {
+        if (otherGroups.size >= 2) {
           group.members = group.members.filter((member) => member !== slot);
           group.links = group.links.filter((link) => link.from !== slot && link.to !== slot);
           const ownSatellites = new Map<CardSlot, SatellitePlan>();
@@ -2219,7 +2214,9 @@ function placeIslands(
     // The settle: each island wants its bridge endpoints level with the
     // other side's, weighted by flow, held apart by the island gap. Only
     // islands on the same line align - a bridge across a line break has
-    // nothing to be level with.
+    // nothing to be level with. Each pass the column REORDERS by that same
+    // pull before it settles: two islands whose bridges point past each
+    // other swap, which is what uncrosses the wires between islands.
     const rowOfIsland = new Map<number, number>();
     for (const index of traders) {
       rowOfIsland.set(index, rowOfColumn[layerOf.get(index)!]);
@@ -2231,7 +2228,8 @@ function placeIslands(
         if (column.length === 0) {
           continue;
         }
-        const wishes = column.map((index) => {
+        const wishOf = new Map<number, { wish: number; weight: number }>();
+        for (const index of column) {
           let sum = 0;
           let total = 0;
           for (const link of crossLinks) {
@@ -2243,10 +2241,15 @@ function placeIslands(
               total += link.weight;
             }
           }
-          return total > 0
-            ? { wish: sum / total, weight: total }
-            : { wish: offsets[index].y, weight: 0.1 };
-        });
+          wishOf.set(
+            index,
+            total > 0
+              ? { wish: sum / total, weight: total }
+              : { wish: offsets[index].y, weight: 0.1 },
+          );
+        }
+        column.sort((a, b) => wishOf.get(a)!.wish - wishOf.get(b)!.wish || a - b);
+        const wishes = column.map((index) => wishOf.get(index)!);
         const spacing = column.map((index, k) =>
           k === 0 ? 0 : blocks[column[k - 1]].height + ISLAND_GAP,
         );

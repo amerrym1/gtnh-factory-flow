@@ -352,7 +352,40 @@ describe("arrangeBoard", () => {
     expectNoOverlaps(cards, moves);
   });
 
-  it("stands a shared buffer between the two islands it serves", () => {
+  it("stands a buffer shared by several islands between them", () => {
+    // One filler island and two drinker islands share the buffer, so it
+    // steps out and stands bare in the gap. A buffer passing between just
+    // two islands stays inside one of them (see the next test).
+    const chain = (prefix: string) => [1, 2, 3, 4].map((i) => card(`${prefix}${i}`));
+    const chainWires = (prefix: string) =>
+      [1, 2, 3].map((i) => wire(`${prefix}${i}`, `${prefix}${i + 1}`));
+    const cards = [
+      ...chain("a"),
+      card("pool", { width: 100, height: 80, role: "storage" }),
+      ...chain("b"),
+      ...chain("c"),
+    ];
+    const result = arrangeBoard({
+      cards,
+      wires: [
+        ...chainWires("a"),
+        wire("a4", "pool"),
+        wire("pool", "b1"),
+        wire("pool", "c1"),
+        ...chainWires("b"),
+        ...chainWires("c"),
+      ],
+      origin: { x: 0, y: 0 },
+    });
+    expect(result.islands).toHaveLength(4);
+    expect(result.islands.filter((island) => !island.backdrop)).toHaveLength(1);
+    const p = positionsById(result.moves);
+    expect(p.get("pool")!.x).toBeGreaterThan(p.get("a4")!.x);
+    expect(p.get("pool")!.x).toBeLessThan(p.get("b1")!.x);
+    expect(p.get("pool")!.x).toBeLessThan(p.get("c1")!.x);
+  });
+
+  it("keeps a pass-through buffer inside its island", () => {
     const cards = [
       card("a1"),
       card("a2"),
@@ -378,12 +411,36 @@ describe("arrangeBoard", () => {
       ],
       origin: { x: 0, y: 0 },
     });
-    // Two real islands plus the buffer standing bare between them.
-    expect(result.islands).toHaveLength(3);
-    expect(result.islands.filter((island) => !island.backdrop)).toHaveLength(1);
+    // Two islands only: the buffer serves ONE other island, so it stays in.
+    expect(result.islands.filter((island) => !island.backdrop)).toHaveLength(0);
+  });
+
+  it("orders islands within a column so their bridges do not cross", () => {
+    // Feeder island 1 serves consumer island 2 and vice versa - stacked in
+    // index order their bridges would make an X between the columns.
+    const chain = (prefix: string) => [1, 2, 3, 4].map((i) => card(`${prefix}${i}`));
+    const chainWires = (prefix: string) =>
+      [1, 2, 3].map((i) => wire(`${prefix}${i}`, `${prefix}${i + 1}`));
+    const cards = [...chain("f"), ...chain("g"), ...chain("x"), ...chain("y")];
+    const result = arrangeBoard({
+      cards,
+      wires: [
+        ...chainWires("f"),
+        ...chainWires("g"),
+        ...chainWires("x"),
+        ...chainWires("y"),
+        wire("f4", "y1"),
+        wire("g4", "x1"),
+      ],
+      origin: { x: 0, y: 0 },
+    });
+    expect(result.islands).toHaveLength(4);
     const p = positionsById(result.moves);
-    expect(p.get("pass")!.x).toBeGreaterThan(p.get("a4")!.x);
-    expect(p.get("pass")!.x).toBeLessThan(p.get("b1")!.x);
+    // Uncrossed means the vertical order of the feeders matches the order
+    // of the islands they feed.
+    const fAboveG = p.get("f4")!.y < p.get("g4")!.y;
+    const yAboveX = p.get("y1")!.y < p.get("x1")!.y;
+    expect(yAboveX).toBe(fAboveG);
   });
 
   it("taste: islands off keeps a loose web whole", () => {
