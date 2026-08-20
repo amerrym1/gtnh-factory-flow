@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.20.0",
+    date: "2026-08-20",
+    headline: "The clog lock",
+    notes: [
+      "Machines run as hard as their supplies and room allow, exactly as in game.",
+      "A drawer or tank in the middle of a line catches the spare instead of slowing its maker.",
+      "A line frozen by its own surplus shows a blue clog lock naming what needs a drawer.",
+      "Show me on the clog lock notice walks you to each machine to fix, worst first.",
+    ],
+  },
+  {
     version: "2.19.0",
     date: "2026-08-20",
     headline: "The board arranges itself",
