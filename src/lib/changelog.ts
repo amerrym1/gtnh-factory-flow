@@ -73,6 +73,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.21.0",
+    date: "2026-08-20",
+    headline: "The tours catch up with the board",
+    notes: [
+      "Both tours are rewritten to match how the board really runs.",
+      "The loop lesson shows example dead loop and clog lock notices before you ever meet one.",
+      "Board help fits small windows, opens on a click, and names today's buttons.",
+      "On a phone the help teaches touch moves instead of mouse clicks.",
+    ],
+    actions: [{ label: "Take the tour", lessonId: "read-the-board" }],
+  },
+  {
     version: "2.20.2",
     date: "2026-08-20",
     headline: "Plainer words on every card",
