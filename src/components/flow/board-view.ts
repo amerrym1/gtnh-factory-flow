@@ -101,8 +101,12 @@ export interface BoardView {
   autoArrangeIslands: "off" | "normal" | "eager";
   /** Auto-arrange: author waypoint stops that guide long wires. */
   autoArrangeLanes: boolean;
-  /** Auto-arrange: the ink drawn under each island. */
-  autoArrangeBackdrop: "none" | "wash" | "outline";
+  /**
+   * Auto-arrange: the paper each island's background is drawn on. Islands
+   * always get a background when island splitting is on; this picks its
+   * texture.
+   */
+  autoArrangeInkTheme: CanvasThemeId;
 }
 
 const BOARD_VIEW_STORAGE_KEY = "gtnh-factory-flow-board-view";
@@ -123,7 +127,7 @@ export const DEFAULT_BOARD_VIEW: BoardView = {
   autoArrangeSpacing: "normal",
   autoArrangeIslands: "normal",
   autoArrangeLanes: true,
-  autoArrangeBackdrop: "wash",
+  autoArrangeInkTheme: "slate",
 };
 
 let boardViewState: BoardView = DEFAULT_BOARD_VIEW;
@@ -172,15 +176,9 @@ function readBoardView(): BoardView {
         DEFAULT_BOARD_VIEW.autoArrangeIslands,
       ),
       autoArrangeLanes: flag(parsed.autoArrangeLanes, DEFAULT_BOARD_VIEW.autoArrangeLanes),
-      // A blob from when the setting was one on/off checkbox: false meant
-      // "no island ink at all".
-      autoArrangeBackdrop: pick(
-        parsed.autoArrangeBackdrop,
-        ["none", "wash", "outline"] as const,
-        (parsed as { autoArrangeInk?: unknown }).autoArrangeInk === false
-          ? "none"
-          : DEFAULT_BOARD_VIEW.autoArrangeBackdrop,
-      ),
+      autoArrangeInkTheme: isCanvasThemeId(parsed.autoArrangeInkTheme)
+        ? parsed.autoArrangeInkTheme
+        : DEFAULT_BOARD_VIEW.autoArrangeInkTheme,
     };
   } catch {
     // Corrupt or unreadable storage is not worth breaking the board over.

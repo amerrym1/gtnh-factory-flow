@@ -352,6 +352,40 @@ describe("arrangeBoard", () => {
     expectNoOverlaps(cards, moves);
   });
 
+  it("stands a shared buffer between the two islands it serves", () => {
+    const cards = [
+      card("a1"),
+      card("a2"),
+      card("a3"),
+      card("a4"),
+      card("pass", { width: 100, height: 80, role: "storage" }),
+      card("b1"),
+      card("b2"),
+      card("b3"),
+      card("b4"),
+    ];
+    const result = arrangeBoard({
+      cards,
+      wires: [
+        wire("a1", "a2"),
+        wire("a2", "a3"),
+        wire("a3", "a4"),
+        wire("a4", "pass"),
+        wire("pass", "b1"),
+        wire("b1", "b2"),
+        wire("b2", "b3"),
+        wire("b3", "b4"),
+      ],
+      origin: { x: 0, y: 0 },
+    });
+    // Two real islands plus the buffer standing bare between them.
+    expect(result.islands).toHaveLength(3);
+    expect(result.islands.filter((island) => !island.backdrop)).toHaveLength(1);
+    const p = positionsById(result.moves);
+    expect(p.get("pass")!.x).toBeGreaterThan(p.get("a4")!.x);
+    expect(p.get("pass")!.x).toBeLessThan(p.get("b1")!.x);
+  });
+
   it("taste: islands off keeps a loose web whole", () => {
     const cards = [
       card("a"),

@@ -4027,17 +4027,20 @@ export function FactoryFlow() {
     if (moves.length === 0) {
       return;
     }
-    // Island ink per the arrange settings: a quiet steel wash, a plain
-    // outline, or nothing. Stale boxes from an earlier arrange go either way.
-    const backdrop = view.autoArrangeBackdrop;
+    // Islands always wear a background while island splitting is on: a
+    // quiet textured paper in the chosen theme. Stale grounds from an
+    // earlier arrange go either way. The shelf and interchange buffers
+    // stay bare.
+    const drawInk = view.autoArrangeIslands !== "off";
     state.applyBoardArrangement({
       moves,
       resetEdgeIds,
       setWaypoints: wireRoutes,
       removeAnnotationIds: staleInkIds,
-      addAnnotations:
-        backdrop !== "none"
-          ? islands.map((island) => ({
+      addAnnotations: drawInk
+        ? islands
+            .filter((island) => island.backdrop)
+            .map((island) => ({
               kind: "box" as const,
               colorTag: "steel" as const,
               position: { x: island.x - BOARD_GRID * 2, y: island.y - BOARD_GRID * 2 },
@@ -4045,20 +4048,13 @@ export function FactoryFlow() {
                 width: island.width + BOARD_GRID * 4,
                 height: island.height + BOARD_GRID * 4,
               },
-              style:
-                backdrop === "wash"
-                  ? {
-                      border: "none" as const,
-                      fill: "tint" as const,
-                      fillColor: "steel" as const,
-                    }
-                  : {
-                      border: "dashed" as const,
-                      borderColor: "steel" as const,
-                      fill: "none" as const,
-                    },
+              style: {
+                border: "none" as const,
+                fill: "tint" as const,
+                fillTheme: view.autoArrangeInkTheme,
+              },
             }))
-          : undefined,
+        : undefined,
     });
     useFactoryStore.getState().frameBoardNodes();
   }, []);
@@ -5543,35 +5539,39 @@ const SourceToolbar = memo(function SourceToolbar({
         </button>
         <div
           className={[
-            "absolute left-0 top-full mt-2 w-[248px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-2 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
+            "absolute left-0 top-full mt-2 w-[264px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-2 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
             arrangeOpen
               ? "pointer-events-auto translate-y-0 opacity-100"
               : "pointer-events-none -translate-y-1 opacity-0",
           ].join(" ")}
         >
+          <div className="mb-1 text-[11px] font-black tracking-wide text-[var(--mc-ink)]">
+            Auto layout
+          </div>
           <ArrangeDial
             label="Spacing"
+            title="How much room everything gets"
             value={boardView.autoArrangeSpacing}
             options={[
-              { value: "compact", label: "Snug" },
+              { value: "compact", label: "Tight" },
               { value: "normal", label: "Normal" },
-              { value: "roomy", label: "Airy" },
+              { value: "roomy", label: "Wide" },
             ]}
             onPick={(value) => writeBoardView({ autoArrangeSpacing: value })}
           />
           <ArrangeDial
             label="Islands"
-            title="A cluster hanging onto the rest by a wire or two becomes its own island. Eager splits smaller and looser clusters; off keeps every connected group together"
+            title="A group holding onto the rest by one or two wires becomes its own island with a background. More splits smaller and looser groups; off keeps every connected group together"
             value={boardView.autoArrangeIslands}
             options={[
               { value: "off", label: "Off" },
               { value: "normal", label: "Normal" },
-              { value: "eager", label: "Eager" },
+              { value: "eager", label: "More" },
             ]}
             onPick={(value) => writeBoardView({ autoArrangeIslands: value })}
           />
           <ArrangeDial
-            label="Guide wires"
+            label="Steer long wires"
             title="Long wires get stops placed in a clear lane, so they run around the cards instead of between them"
             value={boardView.autoArrangeLanes ? "on" : "off"}
             options={[
@@ -5580,24 +5580,40 @@ const SourceToolbar = memo(function SourceToolbar({
             ]}
             onPick={(value) => writeBoardView({ autoArrangeLanes: value === "on" })}
           />
-          <ArrangeDial
-            label="Island ink"
-            title="What is drawn under each island: a faint grey shade, a plain outline, or nothing"
-            value={boardView.autoArrangeBackdrop}
-            options={[
-              { value: "none", label: "None" },
-              { value: "wash", label: "Shade" },
-              { value: "outline", label: "Line" },
-            ]}
-            onPick={(value) => writeBoardView({ autoArrangeBackdrop: value })}
-          />
+          {boardView.autoArrangeIslands !== "off" ? (
+            <div className="py-1" title="The paper each island's background is drawn on">
+              <div className="mb-1 text-[11px] font-bold text-[var(--mc-ink)]">
+                Island background
+              </div>
+              <div className="grid grid-cols-5 gap-1">
+                {CANVAS_THEMES.map((theme) => (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    onClick={() => writeBoardView({ autoArrangeInkTheme: theme.id })}
+                    className={[
+                      "flex items-center justify-center border-2 p-0.5",
+                      boardView.autoArrangeInkTheme === theme.id
+                        ? "border-white ring-1 ring-cyan-300"
+                        : "border-[var(--mc-15)]",
+                    ].join(" ")}
+                    title={theme.name}
+                    aria-label={`Island background: ${theme.name}`}
+                    aria-pressed={boardView.autoArrangeInkTheme === theme.id}
+                  >
+                    <ThemeSwatch theme={theme} />
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={() => {
               setArrangeOpen(false);
               onAutoArrange();
             }}
-            className="mt-2 w-full border-2 border-[var(--mc-15)] bg-[var(--mc-49)] py-1.5 font-mono text-[12px] font-black text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+            className="mt-2 w-full border-2 border-[var(--mc-15)] bg-cyan-700 py-2 font-mono text-[13px] font-black text-white shadow-[inset_2px_2px_0_rgba(255,255,255,0.25),inset_-2px_-2px_0_rgba(0,0,0,0.4)] hover:brightness-110"
             title="Lay every card out left to right by what feeds what. Undo puts the old layout back"
             aria-label="Auto-arrange the board"
           >
@@ -8833,7 +8849,7 @@ function computeAutoArrangement(
   taste: ArrangeTaste,
 ): {
   moves: Array<{ id: string; position: { x: number; y: number } }>;
-  islands: Array<{ x: number; y: number; width: number; height: number }>;
+  islands: Array<{ x: number; y: number; width: number; height: number; backdrop: boolean }>;
   wireRoutes: Array<{ id: string; waypoints: Array<{ x: number; y: number }> }>;
   resetEdgeIds: string[];
   staleInkIds: string[];

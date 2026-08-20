@@ -95,7 +95,18 @@ export interface ArrangeResult {
    * final board coordinates - what an island box is drawn around. The
    * shelf of strays is the last entry when one exists.
    */
-  islands: Array<{ x: number; y: number; width: number; height: number }>;
+  islands: Array<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    /**
+     * Whether this island wants a drawn background. The shelf of strays and
+     * an interchange buffer standing between two islands do not - a wash
+     * under a lone drawer reads as clutter, not grouping.
+     */
+    backdrop: boolean;
+  }>;
   /**
    * Steering for the wires that must travel: a long-haul wire gets two
    * stops in a clear lane above or below its island, so it runs the
@@ -238,6 +249,8 @@ interface Block {
   minIndex: number;
   /** The parked-strays shelf: always takes the bottom row of the page. */
   shelf?: boolean;
+  /** No background wanted: an interchange buffer standing between islands. */
+  plain?: boolean;
 }
 
 export function arrangeBoard(input: ArrangeInput): ArrangeResult {
@@ -300,6 +313,8 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
     members: CardSlot[];
     links: WireLink[];
     satellites: Map<CardSlot, SatellitePlan>;
+    /** A buffer standing alone between islands; drawn without a ground. */
+    interchange?: boolean;
   }> = [];
   for (const members of componentSlots.values()) {
     // A card with no wires parks on the shelf - unless satellites ride on
@@ -339,6 +354,62 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
       islandGroups.push({ members: group, links: groupLinks, satellites: groupSatellites });
     }
   }
+  // A buffer standing between two islands belongs to neither. A storage
+  // whose wires reach into another island, and barely into its own, steps
+  // out and stands alone in the gap - the island graph then places it
+  // between the two the way it places any trader, and both sides' wires
+  // meet it halfway.
+  {
+    const prelim = new Map<CardSlot, number>();
+    islandGroups.forEach((group, index) => {
+      for (const slot of group.members) {
+        prelim.set(slot, index);
+      }
+    });
+    for (const group of [...islandGroups]) {
+      for (const slot of [...group.members]) {
+        if (group.members.length < 2 || slot.card.role !== "storage") {
+          continue;
+        }
+        let inside = 0;
+        let outside = 0;
+        for (const link of mainLinks) {
+          const other = link.from === slot ? link.to : link.to === slot ? link.from : undefined;
+          if (!other) {
+            continue;
+          }
+          const otherGroup = prelim.get(other);
+          if (otherGroup === undefined) {
+            continue;
+          }
+          if (otherGroup === prelim.get(slot)) {
+            inside += 1;
+          } else {
+            outside += 1;
+          }
+        }
+        if (outside >= 1 && inside <= 2) {
+          group.members = group.members.filter((member) => member !== slot);
+          group.links = group.links.filter((link) => link.from !== slot && link.to !== slot);
+          const ownSatellites = new Map<CardSlot, SatellitePlan>();
+          for (const [sat, plan] of group.satellites) {
+            if (plan.anchor === slot) {
+              ownSatellites.set(sat, plan);
+              group.satellites.delete(sat);
+            }
+          }
+          islandGroups.push({
+            members: [slot],
+            links: [],
+            satellites: ownSatellites,
+            interchange: true,
+          });
+          prelim.set(slot, islandGroups.length - 1);
+        }
+      }
+    }
+  }
+
   islandGroups.sort(
     (a, b) =>
       b.members.length + b.satellites.size - (a.members.length + a.satellites.size) ||
@@ -387,9 +458,13 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
     toExits.set(toId, (toExits.get(toId) ?? 0) - direction * bridge.weight);
   }
 
-  const blocks: Block[] = islandGroups.map((group, index) =>
-    layoutIsland(group.members, group.links, group.satellites, exitsByGroup[index]),
-  );
+  const blocks: Block[] = islandGroups.map((group, index) => {
+    const block = layoutIsland(group.members, group.links, group.satellites, exitsByGroup[index]);
+    if (group.interchange) {
+      block.plain = true;
+    }
+    return block;
+  });
   if (parked.length > 0) {
     blocks.push(layoutShelf(parked, blocks[0]?.width ?? 0));
   }
@@ -446,7 +521,13 @@ export function arrangeBoard(input: ArrangeInput): ArrangeResult {
         })),
       });
     }
-    islands.push({ x: blockX, y: blockY, width: block.width, height: block.height });
+    islands.push({
+      x: blockX,
+      y: blockY,
+      width: block.width,
+      height: block.height,
+      backdrop: !block.shelf && !block.plain,
+    });
   });
 
   // Ink follows the cards it overlapped: a note pinned on a machine, a box
