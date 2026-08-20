@@ -77,8 +77,9 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-08-20",
     headline: "Plainer words on every card",
     notes: [
-      "A card slowed by fair sharing now says the line sets the pace instead of inventing a shortage.",
-      "Hover stories are shorter everywhere: the word, the numbers, the one fix.",
+      "A card slowed by fair sharing now says the machines around it set its speed, not that it is short.",
+      "Hover words are plainer everywhere: what it is, the numbers you can see, the one fix.",
+      "Percentages that pointed at nothing are gone.",
     ],
   },
   {

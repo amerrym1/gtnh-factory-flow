@@ -477,7 +477,7 @@ function explainInputPort(
       stateWord: "COVERED",
       tone: "steel",
       lines: [
-        `Fully supplied${from}. The machine runs at ${formatPct(verdict.pct)}% because that is all anything downstream asks for.`,
+        `Fully supplied${from}. The machine runs at ${formatPct(verdict.pct)}% because that is all the machines it feeds are taking.`,
       ],
     };
   }

@@ -443,7 +443,7 @@ describe("deriveNodeVerdict", () => {
     expect(deriveNodeVerdict(proj, result, "N").kind).toBe("balanced");
   });
 
-  it("reads demand-set with headroom when downstream asks for less", () => {
+  it("reads demand-set when the machines it feeds take less", () => {
     const proj = project({
       recipes: [
         { id: "r", name: "M", machineType: "M", minimumTier: "ULV", durationTicks: 20, eut: 1, inputs: [], outputs: [] },
@@ -465,7 +465,8 @@ describe("deriveNodeVerdict", () => {
 
     const verdict = deriveNodeVerdict(proj, result, "N");
     expect(verdict.kind).toBe("demand-set");
-    expect(verdict.headroomPct).toBeCloseTo(38, 1);
+    // No headroom figure any more: it mixed old-engine capability with the
+    // books' utilization, a percentage of nothing a player can see.
   });
 
   it("treats a capability/demand tie below full speed as starved", () => {
@@ -489,6 +490,35 @@ describe("deriveNodeVerdict", () => {
     );
 
     expect(deriveNodeVerdict(proj, result, "N").kind).toBe("starved");
+  });
+
+  it("refuses the shortage story when every input is covered: PACED, not starved", () => {
+    // The reported bug: a card getting 2,000/s of an input it eats 100/s of
+    // still read "short on it", because the shortage path crowned the least
+    // oversupplied input. The solver can honestly hold a machine below full
+    // speed with all inputs covered (a fair split, a loop's level); the card
+    // must say the line paces it, not invent a shortage.
+    const proj = project({
+      recipes: [
+        { id: "r", name: "M", machineType: "M", minimumTier: "ULV", durationTicks: 20, eut: 1, inputs: [], outputs: [] },
+      ] as unknown as FactoryProject["recipes"],
+      nodes: [machineNode("N"), machineNode("S")],
+      edges: [edge("eIn", "S", "N", "res")],
+    });
+    const result = throughput(
+      {
+        N: nodeResult({
+          utilization: 0.3,
+          capableUtilization: 0.3,
+          demandUtilization: 0.3,
+          inputs: { "item:res": flow("item", "res", 100) },
+        }),
+      },
+      { eIn: edgeResult({ transferredPerSecond: 30, availablePerSecond: 2000 }) },
+    );
+
+    const verdict = deriveNodeVerdict(proj, result, "N");
+    expect(verdict.kind).toBe("paced");
   });
 
   // The starved/blocked split: the SAME supply shortage, told twice. What

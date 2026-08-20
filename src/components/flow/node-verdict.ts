@@ -155,8 +155,6 @@ export interface NodeVerdict {
     /** How many outputs have anything plugged in at all. */
     pluggedOutputs: number;
   };
-  /** Demand-set: percentage points the node could climb if asked. */
-  headroomPct?: number;
   /**
    * Unwired: every slot with no wire on it, both ends, so the card can mark
    * them all rather than crowning one. These are the things to go and connect.
@@ -504,8 +502,9 @@ export function deriveNodeVerdict(
     if (deficit) {
       return { kind: "bottleneck", pct, deficit };
     }
-    const headroomPct = Math.max(0, Math.round((Math.min(capable, 1) - utilization) * 1000) / 10);
-    return { kind: "demand-set", pct, headroomPct };
+    // No headroom figure: it was old-engine capability minus the books'
+    // utilization, a percentage of nothing a player can see on the card.
+    return { kind: "demand-set", pct };
   }
 
   // Supply-limited. Whether that MATTERS is a separate question, and the

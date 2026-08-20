@@ -1933,9 +1933,9 @@ function verdictHoverTitle(verdict: NodeVerdict, isCustomRate: boolean): string 
         ? describeClogLockForNode(verdict.clogLock, verdict.clogLockNodeId).title
         : "Choking on a surplus";
     case "demand-set":
-      return verdict.pct <= 0.05 ? "Nothing draws from this yet" : "Downstream sets the speed";
+      return verdict.pct <= 0.05 ? "Nothing draws from this yet" : "Makes only what gets taken";
     case "paced":
-      return "The line sets the pace";
+      return "Runs at the speed of the machines around it";
     case "balanced":
       return isCustomRate ? "Dialed rate met exactly" : "Full speed, all asks met";
     case "unwired":
@@ -1965,8 +1965,8 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
         : "";
       const cost =
         verdict.kind === "starved"
-          ? " Nothing downstream goes short."
-          : " Downstream goes short because of it.";
+          ? " Nothing it feeds goes short."
+          : " The machines it feeds go short because of it.";
       return `Gets ${supplied} of the ${needed} it could eat.${cost}${tied}`;
     }
     case "bottleneck": {
@@ -2002,11 +2002,9 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
       return describeClogLockForNode(verdict.clogLock, verdict.clogLockNodeId).detail;
     }
     case "demand-set":
-      return verdict.headroomPct && verdict.headroomPct > 0
-        ? `Nothing downstream wants the other ${formatPct(verdict.headroomPct)}%.`
-        : undefined;
+      return "The machines it feeds are not taking more, so it does not make more. Nothing here needs fixing.";
     case "paced":
-      return "Inputs covered, nothing jammed. The machines around it set how fast it goes.";
+      return "Its ingredients arrive and its outputs move. Nothing here needs fixing.";
     case "balanced":
       return isCustomRate ? undefined : "Fed, full, and everything it makes gets taken.";
     case "unwired":

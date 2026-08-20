@@ -358,9 +358,7 @@ function explainVerdict(verdict: NodeVerdict, refs: Map<string, string>): string
             .join(", ")} has nowhere to go, and the jam holds every member at 0`
         : undefined;
     case "demand-set":
-      return verdict.headroomPct
-        ? `nothing asks for more; it could climb ${round(verdict.headroomPct, 1)} points if asked`
-        : "nothing asks for more";
+      return "nothing asks for more";
     case "paced":
       return "inputs covered, nothing jammed; the machines around it set the speed";
     case "balanced":
