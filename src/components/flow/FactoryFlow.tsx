@@ -48,6 +48,7 @@ import {
   LoaderCircle,
   Magnet,
   MoveUpRight,
+  Network,
   Paintbrush,
   Plus,
   Presentation,
@@ -104,11 +105,13 @@ import type {
   EdgeThroughput,
   FactoryAnnotationKind,
   FactoryEdge,
+  FactoryNode,
   FactoryNodeColorTag,
   FactoryProject,
   Recipe,
   ResourceAmount,
   ResourceKind,
+  ThroughputResult,
 } from "@/lib/model/types";
 import {
   captureBoardSelection,
@@ -136,9 +139,20 @@ import {
   ANNOTATION_MIN_BOX,
   ANNOTATION_MIN_TEXT,
   BOARD_GRID,
+  RECIPE_NODE_WIDTH,
   STORAGE_NODE_HEIGHT,
   STORAGE_NODE_WIDTH,
+  TRASH_NODE_HEIGHT,
+  TRASH_NODE_WIDTH,
+  cells,
+  snapSizeUpToGrid,
 } from "@/lib/board-grid";
+import {
+  arrangeBoard,
+  type ArrangeCard,
+  type ArrangeInk,
+  type ArrangeWire,
+} from "@/lib/board-arrange";
 import {
   BOARD_CAMERA_DURATION,
   BOARD_CAMERA_MAX_ZOOM,
@@ -3993,6 +4007,23 @@ export function FactoryFlow() {
     setOpenToolGroup((current) => (current === group ? undefined : group));
   }, []);
 
+  // Auto-arrange: lay the visible level out left to right and reframe. Reads
+  // the store at click time so the callback stays stable — the toolbar it
+  // lives on must not re-render per project edit.
+  const handleAutoArrange = useCallback(() => {
+    const state = useFactoryStore.getState();
+    const { moves, resetEdgeIds } = computeAutoArrangement(
+      state.project,
+      state.activePocketId,
+      state.lastResult,
+    );
+    if (moves.length === 0) {
+      return;
+    }
+    state.applyBoardArrangement({ moves, resetEdgeIds });
+    useFactoryStore.getState().frameBoardNodes();
+  }, []);
+
   // Stable references keep the memoized PaintToolbar from re-rendering on the
   // per-frame FactoryFlow renders a node drag produces.
   const handlePaintModeChange = useCallback(
@@ -4636,6 +4667,7 @@ export function FactoryFlow() {
         openGroup={openToolGroup}
         onToggleGroup={handleToolGroupToggle}
         shiftedDown={toolsStepAside}
+        onAutoArrange={handleAutoArrange}
       />
       <BoardHelp compact={isCompact} />
       {overwritePicking ? (
@@ -5244,12 +5276,15 @@ const SourceToolbar = memo(function SourceToolbar({
   openGroup,
   onToggleGroup,
   shiftedDown,
+  onAutoArrange,
 }: {
   compact: boolean;
   openGroup?: ToolGroupId;
   onToggleGroup: (group: ToolGroupId | undefined) => void;
   /** A banner has the top line: step down one. */
   shiftedDown: boolean;
+  /** One press lays the whole visible level out left to right. */
+  onAutoArrange: () => void;
 }) {
   const addCropFarmNode = useFactoryStore((state) => state.addCropFarmNode);
   const addTrashNode = useFactoryStore((state) => state.addTrashNode);
@@ -5381,6 +5416,19 @@ const SourceToolbar = memo(function SourceToolbar({
           aria-label="Add custom rate node"
         >
           <Gauge className="h-4 w-4" />
+        </button>
+      </ToolTray>
+      {/* The tidy-up stands on its own plate: unlike its neighbours it puts
+          nothing down, it moves everything already there. */}
+      <ToolTray>
+        <button
+          type="button"
+          onClick={onAutoArrange}
+          className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+          title="Auto-arrange: lay every card out left to right by what feeds what. Undo puts the old layout back"
+          aria-label="Auto-arrange the board"
+        >
+          <Network className="h-4 w-4" />
         </button>
       </ToolTray>
       </ToolGroup>
@@ -8552,6 +8600,182 @@ function getMeasuredSlotEndpoint({
     );
   }
   return undefined;
+}
+
+/**
+ * A port row's centre measured from its card's TOP edge, when the board has
+ * ever rendered the card. Feeds auto-arrange's straightening pass; a miss
+ * (culled, never-painted card) means the pass falls back to card centres.
+ */
+function measuredPortOffsetY(
+  nodeId: string,
+  handleId: string | undefined,
+  edgeSide: Position,
+): number | undefined {
+  const geometry = publishedBoardGeometryById.get(nodeId);
+  if (!geometry) {
+    return undefined;
+  }
+  const measured = getMeasuredSlotEndpoint({ nodeId, handleId, edgeSide });
+  return measured ? measured.y - geometry.y : undefined;
+}
+
+/**
+ * What a card most likely measures when the board has never painted it. Only
+ * auto-arrange on a freshly loaded plan sees these; measured sizes win
+ * whenever they exist. Estimates run a row GENEROUS on purpose - a too-tall
+ * guess costs a little air, a too-short one overlaps two cards.
+ */
+function estimateNodeCardSize(
+  node: FactoryNode,
+  recipe: Recipe | undefined,
+): { width: number; height: number } {
+  if (recipe && isTrashRecipe(recipe)) {
+    return { width: TRASH_NODE_WIDTH, height: TRASH_NODE_HEIGHT };
+  }
+  if (!recipe) {
+    return { width: RECIPE_NODE_WIDTH, height: cells(14) };
+  }
+  const effective = getEffectiveNodeRecipe(recipe, node);
+  const rows = Math.max(1, effective.inputs.length, effective.outputs.length);
+  // Title row + machine strip + the port rails + footer, plus one spare row
+  // of slack for a config panel.
+  return { width: RECIPE_NODE_WIDTH, height: cells(4) + cells(2) * rows + cells(4) };
+}
+
+/**
+ * Gather the level the board is showing into auto-arrange's terms and lay it
+ * out: every visible card with its best-known size, every wire mapped onto
+ * the cards that stand for its ends here (an edge into a collapsed pocket
+ * pulls on the pocket card), and the level's ink. Also names the wires whose
+ * hand-pinned steering should be reset - waypoints aimed at the old layout
+ * would only fight the router on the new one.
+ */
+function computeAutoArrangement(
+  project: FactoryProject,
+  activePocketId: string | undefined,
+  result: ThroughputResult | undefined,
+): { moves: Array<{ id: string; position: { x: number; y: number } }>; resetEdgeIds: string[] } {
+  const pockets = project.pockets ?? [];
+  const parentById = new Map(pockets.map((pocket) => [pocket.id, pocket.parentPocketId]));
+  const itemPocketById = new Map<string, string | undefined>();
+  for (const node of project.nodes) {
+    itemPocketById.set(node.id, node.pocketId);
+  }
+  for (const storage of project.storages ?? []) {
+    itemPocketById.set(storage.id, storage.pocketId);
+  }
+  // The same walk the board's pocket view does: the card that stands for an
+  // item at this level, or undefined when the item is outside the view.
+  const representativeOf = (itemId: string): string | undefined => {
+    let level = itemPocketById.get(itemId);
+    if (level === activePocketId) {
+      return itemId;
+    }
+    const seen = new Set<string>();
+    while (level !== undefined && !seen.has(level)) {
+      seen.add(level);
+      const parent = parentById.get(level);
+      if (parent === activePocketId) {
+        return level;
+      }
+      level = parent;
+    }
+    return undefined;
+  };
+
+  const recipesById = new Map(project.recipes.map((recipe) => [recipe.id, recipe]));
+  const cards: ArrangeCard[] = [];
+  const pushCard = (
+    id: string,
+    position: { x: number; y: number },
+    estimate: { width: number; height: number },
+  ) => {
+    const measured = publishedBoardGeometryById.get(id);
+    cards.push({
+      id,
+      x: position.x,
+      y: position.y,
+      width: measured?.width ? snapSizeUpToGrid(measured.width) : estimate.width,
+      height: measured?.height ? snapSizeUpToGrid(measured.height) : estimate.height,
+    });
+  };
+  for (const node of project.nodes) {
+    if (node.pocketId !== activePocketId) {
+      continue;
+    }
+    pushCard(node.id, node.position, estimateNodeCardSize(node, recipesById.get(node.recipeId)));
+  }
+  for (const storage of project.storages ?? []) {
+    if (storage.pocketId !== activePocketId) {
+      continue;
+    }
+    pushCard(storage.id, storage.position, {
+      width: STORAGE_NODE_WIDTH,
+      height: STORAGE_NODE_HEIGHT,
+    });
+  }
+  for (const pocket of pockets) {
+    if (pocket.parentPocketId !== activePocketId) {
+      continue;
+    }
+    const rows = Math.max(
+      1,
+      listPocketPortResources(project, pocket.id, "input").length,
+      listPocketPortResources(project, pocket.id, "output").length,
+    );
+    pushCard(pocket.id, pocket.position, {
+      width: RECIPE_NODE_WIDTH,
+      height: cells(4) + cells(2) * rows + cells(2),
+    });
+  }
+
+  const cardIds = new Set(cards.map((card) => card.id));
+  const wires: ArrangeWire[] = [];
+  const resetEdgeIds: string[] = [];
+  for (const edge of project.edges) {
+    const sourceRep = representativeOf(edge.source);
+    const targetRep = representativeOf(edge.target);
+    if (!sourceRep || !targetRep || sourceRep === targetRep) {
+      continue;
+    }
+    if (!cardIds.has(sourceRep) || !cardIds.has(targetRep)) {
+      continue;
+    }
+    // The live flow, log-compressed so a 10,000 L/s trunk outranks a 2/s
+    // side feed without flattening every other distinction.
+    const transferred = result?.edges[edge.id]?.transferredPerSecond ?? edge.ratePerSecond ?? 0;
+    wires.push({
+      source: sourceRep,
+      target: targetRep,
+      // Port rows are only meaningful on the endpoint's own card; a pocket
+      // representative remaps handles, so it aligns by its centre instead.
+      sourcePortY:
+        sourceRep === edge.source
+          ? measuredPortOffsetY(edge.source, edge.sourceHandle, Position.Right)
+          : undefined,
+      targetPortY:
+        targetRep === edge.target
+          ? measuredPortOffsetY(edge.target, edge.targetHandle, Position.Left)
+          : undefined,
+      weight: 1 + Math.log10(1 + Math.max(transferred, 0)),
+    });
+    if (edge.waypoints?.length || edge.labelOffset) {
+      resetEdgeIds.push(edge.id);
+    }
+  }
+
+  const ink: ArrangeInk[] = (project.annotations ?? [])
+    .filter((annotation) => annotation.pocketId === activePocketId)
+    .map((annotation) => ({
+      id: annotation.id,
+      x: annotation.position.x,
+      y: annotation.position.y,
+      width: annotation.size.width,
+      height: annotation.size.height,
+    }));
+
+  return { moves: arrangeBoard({ cards, wires, ink }), resetEdgeIds };
 }
 
 /**

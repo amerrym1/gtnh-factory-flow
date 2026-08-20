@@ -317,6 +317,16 @@ interface FactoryStore {
    */
   moveBoardItems: (moves: Array<{ id: string; position: FactoryNode["position"] }>) => void;
   /**
+   * Land an auto-arrange as ONE undo entry: every card's new position, plus
+   * a reset of hand-pinned waypoints and dragged rate labels on the wires the
+   * rearranged level shows - steering aimed at the old positions would only
+   * fight the router on the new ones. Undo restores layout and steering both.
+   */
+  applyBoardArrangement: (arrangement: {
+    moves: Array<{ id: string; position: FactoryNode["position"] }>;
+    resetEdgeIds?: string[];
+  }) => void;
+  /**
    * Delete a whole selection as a single undo entry. `nodeIds` may hold any
    * mix of machine, storage and annotation ids; wires touching deleted cards
    * go with them, exactly as the one-at-a-time deletes do.
@@ -1652,6 +1662,55 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       }
 
       const project = touchProject({ ...state.project, nodes, storages, annotations, pockets });
+      return withProjectHistory(state, { project });
+    });
+  },
+  applyBoardArrangement: ({ moves, resetEdgeIds }) => {
+    set((state) => {
+      const positionById = new Map(moves.map((move) => [move.id, move.position] as const));
+      let changed = false;
+      const applyMoves = <T extends { id: string; position: { x: number; y: number } }>(
+        items: T[],
+      ): T[] =>
+        items.map((item) => {
+          const position = positionById.get(item.id);
+          if (!position || (position.x === item.position.x && position.y === item.position.y)) {
+            return item;
+          }
+          changed = true;
+          return { ...item, position };
+        });
+
+      const nodes = applyMoves(state.project.nodes);
+      const storages = state.project.storages ? applyMoves(state.project.storages) : undefined;
+      const annotations = state.project.annotations
+        ? applyMoves(state.project.annotations)
+        : undefined;
+      const pockets = state.project.pockets ? applyMoves(state.project.pockets) : undefined;
+
+      const reset = new Set(resetEdgeIds ?? []);
+      const edges = state.project.edges.map((edge) => {
+        if (!reset.has(edge.id) || (!edge.waypoints && !edge.labelOffset)) {
+          return edge;
+        }
+        changed = true;
+        const { waypoints: _waypoints, labelOffset: _labelOffset, ...rest } = edge;
+        return rest;
+      });
+
+      // Arranging an already-arranged board is not an edit.
+      if (!changed) {
+        return state;
+      }
+
+      const project = touchProject({
+        ...state.project,
+        nodes,
+        storages,
+        annotations,
+        pockets,
+        edges,
+      });
       return withProjectHistory(state, { project });
     });
   },
