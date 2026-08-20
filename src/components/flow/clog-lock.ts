@@ -107,7 +107,7 @@ function build(project: FactoryProject, result: ThroughputResult | undefined): C
     return EMPTY_INDEX;
   }
 
-  const vented = solveEquationsCore(project, result.nodes, undefined, undefined, {
+  let vented = solveEquationsCore(project, result.nodes, undefined, undefined, {
     ventOutputs: true,
   });
   if (vented.status !== "optimal") {
@@ -124,6 +124,49 @@ function build(project: FactoryProject, result: ThroughputResult | undefined): C
   }
   if (revived.size === 0) {
     return EMPTY_INDEX;
+  }
+
+  // The full-throttle solve vents EVERY ratio mismatch on the line, but most
+  // of those are consequences, not causes: once the true jam has its drawer
+  // the machine behind them just throttles, an ordinary clog. So each
+  // candidate is withheld in turn (smallest first) and the board re-solved
+  // with every revived machine required to keep running; a candidate the
+  // board runs without is not part of the lock and is dropped. What survives
+  // is the minimal set of wires that genuinely need a drawer.
+  {
+    const candidates = [...(vented.ventPerSecond?.entries() ?? [])]
+      .filter(([nodeId]) => revived.has(nodeId))
+      .flatMap(([nodeId, byKey]) => [...byKey.entries()].map(([key, perSecond]) => ({
+        port: `${nodeId}|${key}`,
+        perSecond,
+      })))
+      .sort((left, right) => left.perSecond - right.perSecond);
+    const keep = new Set(candidates.map((candidate) => candidate.port));
+    const mustRun = [...revived];
+    for (const candidate of candidates) {
+      if (keep.size <= 1) {
+        break;
+      }
+      keep.delete(candidate.port);
+      const probe = solveEquationsCore(project, result.nodes, undefined, undefined, {
+        ventOutputs: true,
+        ventPorts: keep,
+        requireRunning: mustRun,
+      });
+      if (probe.status !== "optimal") {
+        keep.add(candidate.port);
+      }
+    }
+    // Re-solve on the minimal set so the reported rates belong to the fix
+    // the copy actually recommends.
+    const minimal = solveEquationsCore(project, result.nodes, undefined, undefined, {
+      ventOutputs: true,
+      ventPorts: keep,
+      requireRunning: mustRun,
+    });
+    if (minimal.status === "optimal") {
+      vented = minimal;
+    }
   }
 
   // One lock per connected group of revived machines, drawers riding along
@@ -292,20 +335,22 @@ export function describeClogLock(lock: ClogLock): {
 } {
   const count = lock.machineIds.length;
   const vent = lock.vents[0]!;
-  const rate =
-    vent.perSecond >= 10
-      ? Math.round(vent.perSecond).toString()
-      : vent.perSecond.toFixed(vent.perSecond >= 1 ? 1 : 2);
-  const more = lock.vents.length > 1 ? ` (${lock.vents.length - 1} more like it)` : "";
+  // Every surplus in THIS lock, by name and rate - these are the necessary
+  // ones, proven by the necessity probes, so the list is the whole fix.
+  const list = lock.vents
+    .map((entry) => `${entry.resourceName} (about ${formatRate(entry.perSecond)}/s)`)
+    .join(", ");
+  const spares =
+    lock.vents.length === 1 ? `spare ${vent.resourceName}` : `spare ${vent.resourceName} and ${lock.vents.length - 1} more`;
 
   return {
     title: count === 1 ? "This machine is choking on its own surplus" : "These machines are choking on a surplus",
     short:
       count === 1
-        ? `A machine stopped because its spare ${vent.resourceName} has nowhere to go. Wire it to a drawer and it runs.`
-        : `${count} machines stopped because spare ${vent.resourceName} has nowhere to go. Give it a drawer and they all run.`,
+        ? `A machine stopped because its ${spares} has nowhere to go. Wire it to a drawer and it runs.`
+        : `${count} machines stopped because ${spares} has nowhere to go. Give it a drawer and they all run.`,
     what: `${count === 1 ? "One machine" : `${count} machines`} sit at 0% with everything they need. The line makes more ${vent.resourceName} than it uses, and the spare has no drawer, no trash can and no consumer with room.`,
     why: "In game the spare piles up until every chest and slot on the line is full, and then nothing can run because nothing has room. Full inputs, full outputs, no progress: the opposite of starving. Taking a stack out by hand restarts it for a few seconds before it jams the same way again.",
-    fix: `Give ${vent.resourceName} somewhere to go${more}: a drawer or a trash can on the marked wire. About ${rate}/s needs to leave for the line to run at the speed shown.`,
+    fix: `Give ${list} somewhere to go: a drawer or a trash can on each blue wire. That is the whole list for this jam; any other clogged card just paces down once these can leave.`,
   };
 }

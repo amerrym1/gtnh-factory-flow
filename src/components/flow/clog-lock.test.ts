@@ -125,6 +125,40 @@ describe("findClogLocks", () => {
     expect(findDeathSpirals(proj, result).spirals).toHaveLength(0);
   });
 
+  it("keeps only the vents the lock truly needs, not every full-throttle spill", () => {
+    // The thread lock again, but unravel also makes sawdust for a sander
+    // that can only chew a third of it. At full throttle sawdust overflows
+    // too - but the board RUNS with just a thread drawer (the line settles
+    // at a third and the sander keeps up), so sawdust is an ordinary clog,
+    // not part of the lock. The fix list must say thread and only thread.
+    const proj = project({
+      recipes: [
+        recipe("weave", [["thread", 1]], [["cloth", 2]]),
+        recipe("unravel2", [["cloth", 2]], [["thread", 2], ["sawdust", 3]]),
+        recipe("sand", [["sawdust", 1]], [["grit", 1]]),
+      ],
+      nodes: [node("m1", "weave"), node("m2", "unravel2"), node("s", "sand")],
+      storages: [drawer("d-grit", "grit")],
+      edges: [
+        wire("m1", "m2", "cloth"),
+        wire("m2", "m1", "thread"),
+        wire("m2", "s", "sawdust"),
+        wire("s", "d-grit", "grit"),
+      ],
+    });
+    const result = calculateThroughput(proj, { generatedAt: "fixed" });
+
+    expect(result.nodes["m1"]!.utilization).toBeCloseTo(0, 4);
+    expect(result.nodes["s"]!.utilization).toBeCloseTo(0, 4);
+
+    const { locks } = findClogLocks(proj, result);
+    expect(locks).toHaveLength(1);
+    expect(locks[0]!.machineIds).toEqual(["m1", "m2", "s"]);
+    expect(locks[0]!.vents).toHaveLength(1);
+    expect(locks[0]!.vents[0]!.resourceKey).toBe("item:thread");
+    expect(locks[0]!.ventNodeIds).toEqual(["m2"]);
+  });
+
   it("says nothing once the surplus has a drawer", () => {
     const proj = loopProject({
       storages: [drawer("d", "thread", { drainMode: "byproduct" })],

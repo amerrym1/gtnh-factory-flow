@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.20.1",
+    date: "2026-08-20",
+    headline: "The clog lock points truer",
+    notes: [
+      "The clog lock now names only the spares that truly freeze the line, often just one drawer.",
+      "A surplus that only slows its machine is an ordinary clog again, not part of the lock.",
+    ],
+  },
+  {
     version: "2.20.0",
     date: "2026-08-20",
     headline: "The clog lock",

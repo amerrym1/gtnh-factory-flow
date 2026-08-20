@@ -62,6 +62,19 @@ export interface EquationsCoreOptions {
    * boards the clog equality has dragged to zero.
    */
   ventOutputs?: boolean;
+  /**
+   * Restrict vents to these ports, as "nodeId|resourceKey" strings. The
+   * detector's necessity probes use this to ask "does the board still run
+   * without a drawer HERE" - which is what separates the lock's true causes
+   * from surpluses that only appear at full throttle.
+   */
+  ventPorts?: ReadonlySet<string>;
+  /**
+   * Machines that must run at least a hair above zero for the solve to
+   * count as feasible - the frozen set a necessity probe insists stays
+   * revived while a candidate vent is withheld.
+   */
+  requireRunning?: readonly string[];
 }
 
 interface PortRef {
@@ -196,6 +209,14 @@ export function solveEquationsCore(
       rhs: nodes[id]!.powerStalled ? 0 : 1,
     });
   }
+  // Necessity probes: these machines must run at least a hair, or the solve
+  // reports infeasible - which is the probe's whole answer.
+  for (const id of options?.requireRunning ?? []) {
+    const act = actVar.get(id);
+    if (act !== undefined) {
+      upperBounds.push({ coefficients: new Map([[act, -1]]), rhs: -5e-4 });
+    }
+  }
 
   // Target dials are NOT rows. Under maximize-everything a floor below the
   // ceiling never binds and a floor above it would poison the whole solve
@@ -272,7 +293,12 @@ export function solveEquationsCore(
         // Vent mode: a WIRED output port may shed surplus through its vent.
         // A bare port gets none - an unwired slot still pins its machine,
         // because that is the unwired story, not a clog.
-        if (venting && rows === outputRows && port.vars.length > 0) {
+        if (
+          venting &&
+          rows === outputRows &&
+          port.vars.length > 0 &&
+          (options?.ventPorts === undefined || options.ventPorts.has(`${id}|${key}`))
+        ) {
           const varIndex = totalVars;
           totalVars += 1;
           vents.push({ nodeId: id, key, varIndex, scale });
