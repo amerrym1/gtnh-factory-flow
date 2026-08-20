@@ -249,6 +249,18 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <div className="space-y-3">
+            {/* A board that never met the auto-arrange goes out exactly as
+                messy as it looks right now, and the post wears it forever.
+                One quiet nudge, only while the board looks untouched. */}
+            {!(project.annotations ?? []).some((annotation) =>
+              annotation.id.startsWith("auto-island-box"),
+            ) && project.nodes.length >= 6 ? (
+              <div className="rounded border border-cyan-700/60 bg-cyan-950/30 p-2 text-xs text-fg-subtle">
+                Tip: the post shows your board exactly as it is. The auto-arrange
+                button on the board lays it out cleanly in one press, and an icon
+                gives the post a face.
+              </div>
+            ) : null}
             {/* What the board carries: the headline numbers with the tier
                 in its GT colour, then the real resource lists side by
                 side. No sentence needed — the dialog IS the open tab. */}

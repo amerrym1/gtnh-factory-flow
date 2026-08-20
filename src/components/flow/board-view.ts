@@ -118,7 +118,7 @@ export const DEFAULT_BOARD_VIEW: BoardView = {
   linePulseMode: true,
   calmMode: false,
   glanceMode: "identity",
-  autoArrangeInkTheme: "slate",
+  autoArrangeInkTheme: "blueprint",
 };
 
 let boardViewState: BoardView = DEFAULT_BOARD_VIEW;

@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.19.0",
+    date: "2026-08-20",
+    headline: "The board arranges itself",
+    notes: [
+      "One button lays the whole board out: flow runs left to right, and groups of machines become islands with backgrounds.",
+      "Islands stand next to the islands they trade with, drawers ride beside their machines, and long wires walk around anything in their way.",
+      "The arrange button opens a small panel where you pick the island background paper.",
+      "One undo puts everything back the way it was.",
+    ],
+  },
+  {
     version: "2.18.1",
     date: "2026-08-19",
     headline: "Seeds are not machines",
