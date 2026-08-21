@@ -9560,13 +9560,10 @@ function computeAutoArrangement(
       return undefined;
     };
 
-    const minimizedCardSize = (pocketId: string) => {
-      const crossings = countPocketCrossings(project, pocketId);
-      return {
-        width: RECIPE_NODE_WIDTH,
-        height: pocketCardHeight(crossings.incoming, crossings.outgoing),
-      };
-    };
+    const minimizedCardSize = (pocketId: string) => ({
+      width: RECIPE_NODE_WIDTH,
+      height: pocketCardHeight(countPocketCrossings(project, pocketId)),
+    });
 
     const gatherLevel = (level: string | undefined) => {
       const cards: ArrangeCard[] = [];

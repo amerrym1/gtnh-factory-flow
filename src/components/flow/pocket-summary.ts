@@ -1,5 +1,6 @@
 import { BOARD_GRID } from "@/lib/board-grid";
 import { getNodeMachineBuildCount } from "@/lib/model/passive-production";
+import { makeResourceKey } from "@/lib/model/resources";
 import type {
   FactoryPocket,
   FactoryProject,
@@ -36,16 +37,28 @@ export interface PocketCrossing {
   iconPath?: string;
   iconAtlas?: ResourceAmount["iconAtlas"];
   dominantColor?: string;
-  /** What is really moving across the border, summed over its wires. */
+  /** What is really moving, summed over the wires or over the machines. */
   ratePerSecond: number;
-  /** How many wires carry it. */
+  /** How many wires carry it. Zero on a need or an offer: those are not wires. */
   wireCount: number;
 }
 
+const RATE_EPSILON = 1e-6;
+
 export interface PocketSummary {
-  /** Resources arriving from outside, busiest first. */
+  /**
+   * What the contents ASK FOR that nothing inside makes: the board read as
+   * a little factory, wires ignored. Red, like the plan's own Inputs.
+   */
+  needs: PocketCrossing[];
+  /**
+   * What the contents MAKE that nothing inside drinks. Green, like the
+   * plan's own Outputs.
+   */
+  offers: PocketCrossing[];
+  /** Resources arriving from outside on a wire, busiest first. */
   incoming: PocketCrossing[];
-  /** Resources leaving for outside, busiest first. */
+  /** Resources leaving for outside on a wire, busiest first. */
   outgoing: PocketCrossing[];
   /** Machines inside, nested boards included. */
   machineCount: number;
@@ -55,26 +68,40 @@ export interface PocketSummary {
   euPerTick: number;
 }
 
-/** Crossing lines the card draws per side before it says "and N more". */
-export const POCKET_CARD_MAX_ROWS = 5;
+/*
+ * No cap. A board with forty crossings draws forty lines and stands
+ * forty lines tall: a summary that hides half of itself behind "and 12
+ * more" is not a summary, and the card is read at whatever zoom the
+ * board is read at anyway.
+ */
+
+/** The four lists a minimized card stacks, by length. */
+export interface PocketCardLines {
+  needs: number;
+  offers: number;
+  incoming: number;
+  outgoing: number;
+}
+
+/** Cells one two-column section costs, its label row included; 0 when empty. */
+export function sectionCells(left: number, right: number): number {
+  const rows = Math.max(left, right);
+  return rows === 0 ? 0 : 1 + 2 * rows;
+}
 
 /**
- * How tall a minimized card stands, from the number of crossings alone.
+ * How tall a minimized card stands, from its list lengths alone.
  *
  * The card and the auto-arranger both call this, so the layout can size a
  * minimized board before it has ever been measured on screen: head row,
- * the two column labels, a row per crossing line, and the stat footer.
+ * the board's own needs and offers, what crosses its border, and the stat
+ * footer.
  */
-export function pocketCardHeight(incoming: number, outgoing: number): number {
-  const crossings = Math.max(incoming, outgoing);
-  if (crossings === 0) {
-    // Head, one line saying nothing crosses, footer.
-    return BOARD_GRID * 6;
-  }
-  const shown = Math.min(crossings, POCKET_CARD_MAX_ROWS);
-  const overflow =
-    incoming > POCKET_CARD_MAX_ROWS || outgoing > POCKET_CARD_MAX_ROWS ? 1 : 0;
-  return BOARD_GRID * (2 + 1 + 2 * (shown + overflow) + 2);
+export function pocketCardHeight(lines: PocketCardLines): number {
+  const body =
+    sectionCells(lines.needs, lines.offers) + sectionCells(lines.incoming, lines.outgoing);
+  // A board with nothing to say still gets a line saying so.
+  return BOARD_GRID * (2 + (body === 0 ? 2 : body) + 2);
 }
 
 /** Every board nested under `pocketId`, itself included. */
@@ -124,7 +151,7 @@ function pocketMemberIds(project: FactoryProject, pocketId: string): Set<string>
 export function countPocketCrossings(
   project: FactoryProject,
   pocketId: string,
-): { incoming: number; outgoing: number } {
+): PocketCardLines {
   const members = pocketMemberIds(project, pocketId);
   const incoming = new Set<string>();
   const outgoing = new Set<string>();
@@ -136,7 +163,118 @@ export function countPocketCrossings(
     }
     (targetInside ? incoming : outgoing).add(`${edge.resourceKind}:${edge.resourceId}`);
   }
-  return { incoming: incoming.size, outgoing: outgoing.size };
+  const balance = computeBoardBalance(project, members, new Map(), undefined);
+  return {
+    needs: balance.needs.length,
+    offers: balance.offers.length,
+    incoming: incoming.size,
+    outgoing: outgoing.size,
+  };
+}
+
+/**
+ * What a board's CONTENTS want and what they make, wires ignored.
+ *
+ * Netting is the whole point: a board whose own mine feeds its own macerator
+ * asks the world for no ore, because the ore never leaves the family. What
+ * survives the netting is what the board would need brought in and what it
+ * would have to give away - the question the right-hand panel answers for the
+ * whole plan, asked of one board.
+ *
+ * Rates are FULL SPEED - what the board would move with everything fed -
+ * because a stalled board still needs what it is missing. What is really
+ * moving is the other half of the card, the border crossings. With no solve
+ * in hand the recipe amounts stand in: the arranger only needs the number of
+ * lines, and the signs come out the same in every ordinary case.
+ *
+ * Drawers are deliberately not counted. A drawer inside is a bank, not a
+ * source or a sink, exactly as the plan's own panel treats one.
+ */
+function computeBoardBalance(
+  project: FactoryProject,
+  memberIds: ReadonlySet<string>,
+  icons: Map<string, ResourceIconMeta>,
+  result: ThroughputResult | undefined,
+): { needs: PocketCrossing[]; offers: PocketCrossing[] } {
+  const net = new Map<
+    string,
+    { kind: ResourceBalance["kind"]; resourceId: string; net: number }
+  >();
+  const add = (kind: ResourceBalance["kind"], resourceId: string, perSecond: number) => {
+    const key = makeResourceKey(kind, resourceId);
+    const entry = net.get(key);
+    if (entry) {
+      entry.net += perSecond;
+    } else {
+      net.set(key, { kind, resourceId, net: perSecond });
+    }
+  };
+
+  for (const node of project.nodes) {
+    if (!memberIds.has(node.id)) {
+      continue;
+    }
+    const nodeResult = result?.nodes[node.id];
+    if (nodeResult) {
+      // FULL SPEED here, deliberately, unlike everything else on this card.
+      // This list answers "what does this board need to run", which is a
+      // property of what is built, not of how it happens to be doing right
+      // now. Scaling by utilization would erase the needs of a board that is
+      // stalled BECAUSE those needs are unmet - the one board that most
+      // needs a red line.
+      for (const flow of Object.values(nodeResult.outputs)) {
+        add(flow.kind, flow.resourceId, flow.amountPerSecond);
+      }
+      for (const flow of Object.values(nodeResult.inputs)) {
+        add(flow.kind, flow.resourceId, -flow.amountPerSecond);
+      }
+      continue;
+    }
+    // No solve: the recipe's own amounts, which is enough for the signs and
+    // the number of lines.
+    const recipe = project.recipes.find((entry) => entry.id === node.recipeId);
+    if (!recipe) {
+      continue;
+    }
+    for (const output of recipe.outputs) {
+      add(output.kind, output.id, output.amount * node.machineCount);
+    }
+    for (const input of recipe.inputs) {
+      add(input.kind, input.id, -input.amount * node.machineCount);
+    }
+  }
+
+  const line = (
+    kind: ResourceBalance["kind"],
+    resourceId: string,
+    ratePerSecond: number,
+  ): PocketCrossing => {
+    const key = makeResourceKey(kind, resourceId);
+    const icon = icons.get(key);
+    return {
+      key,
+      kind,
+      resourceId,
+      displayName: icon?.displayName,
+      iconPath: icon?.iconPath,
+      iconAtlas: icon?.iconAtlas,
+      dominantColor: icon?.dominantColor,
+      ratePerSecond,
+      wireCount: 0,
+    };
+  };
+
+  const needs = new Map<string, PocketCrossing>();
+  const offers = new Map<string, PocketCrossing>();
+  for (const entry of net.values()) {
+    const key = makeResourceKey(entry.kind, entry.resourceId);
+    if (entry.net < -RATE_EPSILON) {
+      needs.set(key, line(entry.kind, entry.resourceId, -entry.net));
+    } else if (entry.net > RATE_EPSILON) {
+      offers.set(key, line(entry.kind, entry.resourceId, entry.net));
+    }
+  }
+  return { needs: sortCrossings(needs), offers: sortCrossings(offers) };
 }
 
 export function computePocketSummaries(
@@ -203,7 +341,10 @@ export function computePocketSummaries(
       }
     }
 
+    const balance = computeBoardBalance(project, memberIds, icons, result);
     summaries.set(pocket.id, {
+      needs: balance.needs,
+      offers: balance.offers,
       incoming: sortCrossings(incoming),
       outgoing: sortCrossings(outgoing),
       machineCount,

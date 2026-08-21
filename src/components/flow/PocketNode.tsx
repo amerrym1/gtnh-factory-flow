@@ -13,7 +13,7 @@ import { formatSlotRateOrNull } from "./flow-explainers";
 import { isWiringConnection, wasRecentWireDrop } from "./connection-drag";
 import { useBoardView } from "./board-view";
 import { NodeGlanceText } from "./NodeGlance";
-import { POCKET_CARD_MAX_ROWS, type PocketCrossing, type PocketSummary } from "./pocket-summary";
+import { type PocketCrossing, type PocketSummary } from "./pocket-summary";
 import { GT_NODE_RAMPS } from "./node-colors";
 
 export interface PocketNodeData extends Record<string, unknown> {
@@ -56,6 +56,19 @@ export const POCKET_CARD_SOURCE_HANDLE = "board-card-out";
 /** The purple ink pair: names in white, figures a step down. */
 const INK_MUTED = "text-[#c9b8ec]";
 
+/*
+ * Red in, green out, faint enough to sit under icons and figures without
+ * turning the card into a stack of colour. The chips are the same hue a
+ * step up, so a title reads as a label on its list rather than as another
+ * line of it.
+ */
+const IN_GROUND = "bg-red-500/18";
+const IN_CHIP = "bg-red-500/25 text-red-100";
+const IN_TONE = "text-red-200";
+const OUT_GROUND = "bg-emerald-400/22";
+const OUT_CHIP = "bg-emerald-400/30 text-emerald-50";
+const OUT_TONE = "text-emerald-200";
+
 const INERT_HANDLE =
   "nodrag !pointer-events-none !h-0 !w-0 !min-h-0 !min-w-0 !border-0 !bg-transparent !opacity-0";
 
@@ -72,12 +85,11 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
   const { calmMode } = useBoardView();
   const isRenaming = draftName !== undefined && !calmMode;
 
+  const needs = summary?.needs ?? [];
+  const offers = summary?.offers ?? [];
   const incoming = summary?.incoming ?? [];
   const outgoing = summary?.outgoing ?? [];
-  const shownIncoming = incoming.slice(0, POCKET_CARD_MAX_ROWS);
-  const shownOutgoing = outgoing.slice(0, POCKET_CARD_MAX_ROWS);
-  const hiddenIncoming = incoming.length - shownIncoming.length;
-  const hiddenOutgoing = outgoing.length - shownOutgoing.length;
+  const hasNeeds = needs.length > 0 || offers.length > 0;
   const hasCrossings = incoming.length > 0 || outgoing.length > 0;
 
   // Pointing at a resource in the right-hand panel lights every card that
@@ -300,38 +312,29 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
             ) : null}
           </div>
 
-          {/* What crosses the border, and which way. Reading only: no ports,
-              nothing to grab, nothing to drop a wire on. */}
-          {!hasCrossings ? (
+          {/* Two readings, stacked. First what this board IS as a factory:
+              what its contents need brought in, and what they make that
+              nothing inside drinks — red in, green out, the same pair the
+              right-hand panel uses for the whole plan. Then what actually
+              crosses the border on wires. Reading only: no ports, nothing to
+              grab, nothing to drop a wire on. */}
+          {!hasNeeds && !hasCrossings ? (
             <div
               className={`flex h-[80px] items-center justify-center text-center text-[11px] leading-4 ${INK_MUTED}`}
             >
-              Nothing crosses the border.
+              Nothing goes in or out.
               <br />
               Open the window to work on it.
             </div>
           ) : (
             <>
-              <div
-                className={`grid h-[20px] grid-cols-2 items-center gap-2 text-[10px] leading-3 ${INK_MUTED}`}
-              >
-                <span>{incoming.length > 0 ? "COMING IN" : ""}</span>
-                <span className="text-right">{outgoing.length > 0 ? "GOING OUT" : ""}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex min-w-0 flex-col">
-                  {shownIncoming.map((crossing) => (
-                    <CrossingRow key={crossing.key} crossing={crossing} side="in" />
-                  ))}
-                  {hiddenIncoming > 0 ? <MoreRow count={hiddenIncoming} side="in" /> : null}
-                </div>
-                <div className="flex min-w-0 flex-col">
-                  {shownOutgoing.map((crossing) => (
-                    <CrossingRow key={crossing.key} crossing={crossing} side="out" />
-                  ))}
-                  {hiddenOutgoing > 0 ? <MoreRow count={hiddenOutgoing} side="out" /> : null}
-                </div>
-              </div>
+              <CardSection leftLabel="NEEDS" rightLabel="MAKES" left={needs} right={offers} />
+              <CardSection
+                leftLabel="COMING IN"
+                rightLabel="GOING OUT"
+                left={incoming}
+                right={outgoing}
+              />
             </>
           )}
 
@@ -360,11 +363,98 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
 }
 
 /**
- * One resource crossing the border: its icon, its name, and what is really
- * moving. Two cells tall, like a machine card's port row, so the card stays
- * on the grid — but it is a line of text, not a port.
+ * One two-column block: what comes in on the left, what goes out on the
+ * right, each half on its own faint ground - red in, green out, the pair
+ * the right-hand panel has always used. A 20px label line carries a chip
+ * over each column so the two halves read as two lists rather than one
+ * wide table. An empty section draws nothing at all, which is what keeps
+ * `pocketCardHeight` and the DOM agreeing on the card's height.
  */
-function CrossingRow({ crossing, side }: { crossing: PocketCrossing; side: "in" | "out" }) {
+function CardSection({
+  leftLabel,
+  rightLabel,
+  left,
+  right,
+}: {
+  leftLabel: string;
+  rightLabel: string;
+  left: PocketCrossing[];
+  right: PocketCrossing[];
+}) {
+  if (left.length === 0 && right.length === 0) {
+    return null;
+  }
+  return (
+    <div className="grid grid-cols-2 gap-1">
+      <SectionColumn
+        label={leftLabel}
+        lines={left}
+        side="in"
+        ground={IN_GROUND}
+        chip={IN_CHIP}
+        tone={IN_TONE}
+      />
+      <SectionColumn
+        label={rightLabel}
+        lines={right}
+        side="out"
+        ground={OUT_GROUND}
+        chip={OUT_CHIP}
+        tone={OUT_TONE}
+      />
+    </div>
+  );
+}
+
+/** One half of a section: a centred title chip on a faint ground. */
+function SectionColumn({
+  label,
+  lines,
+  side,
+  ground,
+  chip,
+  tone,
+}: {
+  label: string;
+  lines: PocketCrossing[];
+  side: "in" | "out";
+  ground: string;
+  chip: string;
+  tone: string;
+}) {
+  if (lines.length === 0) {
+    return <div />;
+  }
+  return (
+    <div className={`flex min-w-0 flex-col ${ground}`}>
+      <div className="flex h-[20px] items-center justify-center">
+        <span
+          className={`px-1.5 text-[10px] font-bold leading-[14px] tracking-wide ${chip}`}
+        >
+          {label}
+        </span>
+      </div>
+      {lines.map((line) => (
+        <CrossingRow key={line.key} crossing={line} side={side} tone={tone} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * One resource line: its icon, its name, and what is really moving. Two
+ * cells tall, like a machine card's port row, so the card stays on the grid
+ * — but it is a line of text, not a port.
+ */
+function CrossingRow({
+  crossing,
+  side,
+  tone,
+}: {
+  crossing: PocketCrossing;
+  side: "in" | "out";
+  tone: string;
+}) {
   const rate = formatSlotRateOrNull(crossing.ratePerSecond, crossing.kind);
   const icon = (
     <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden">
@@ -389,7 +479,7 @@ function CrossingRow({ crossing, side }: { crossing: PocketCrossing; side: "in" 
       <span className="truncate text-[11px] font-bold leading-[14px] text-white">
         {crossing.displayName ?? crossing.resourceId}
       </span>
-      <span className={`truncate text-[10px] leading-[12px] tabular-nums ${INK_MUTED}`}>
+      <span className={`truncate text-[10px] leading-[12px] tabular-nums ${tone}`}>
         {rate ?? "0/s"}
         {crossing.wireCount > 1 ? ` · ${crossing.wireCount} wires` : ""}
       </span>
@@ -415,20 +505,6 @@ function CrossingRow({ crossing, side }: { crossing: PocketCrossing; side: "in" 
   );
 }
 
-/** The overflow line: a long border list stops rather than growing forever. */
-function MoreRow({ count, side }: { count: number; side: "in" | "out" }) {
-  return (
-    <span
-      className={[
-        "flex h-[40px] min-w-0 items-center text-[10px] leading-3",
-        INK_MUTED,
-        side === "out" ? "justify-end" : "",
-      ].join(" ")}
-    >
-      and {count} more
-    </span>
-  );
-}
 
 // Position props change every drag frame; the component only reads `data` and
 // `selected`, so comparing exactly those keeps the card from re-rendering while

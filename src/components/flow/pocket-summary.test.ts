@@ -5,7 +5,6 @@ import {
   computePocketSummaries,
   countPocketCrossings,
   pocketCardHeight,
-  POCKET_CARD_MAX_ROWS,
 } from "./pocket-summary";
 
 /**
@@ -161,8 +160,61 @@ describe("computePocketSummaries", () => {
     expect(summary!.outgoing[0]!.wireCount).toBe(2);
   });
 
-  it("counts crossings without a solve, for the arranger", () => {
+  it("says what the contents need and make, wires ignored", () => {
+    const project = makeSelfFedBoard();
+    const summary = computePocketSummaries(
+      project,
+      project.pockets ?? [],
+      calculateThroughput(project),
+    ).get("board-1");
+
+    // The mine covers the ore, so the board asks the world for nothing:
+    // this is the case the old scoped solve called starving.
+    expect(summary!.needs).toEqual([]);
+    expect(summary!.offers.map((line) => line.resourceId)).toEqual(["iron_plate"]);
+    expect(summary!.offers[0]!.ratePerSecond).toBeGreaterThan(0);
+  });
+
+  it("nets a part-covered ingredient down to what is really missing", () => {
+    const project = makeSelfFedBoard();
+    // A second smelter inside eats more ore than the one mine makes.
+    project.nodes.push({
+      id: "smelter-2",
+      recipeId: "smelt",
+      machineCount: 1,
+      parallel: 1,
+      overclockTier: "LV",
+      enabled: true,
+      position: { x: 300, y: 400 },
+      pocketId: "board-1",
+    });
+
+    const lines = countPocketCrossings(project, "board-1");
+    expect(lines.needs).toBe(1);
+    expect(lines.offers).toBe(1);
+  });
+
+  it("still names what a stalled board needs", () => {
+    const project = makeSelfFedBoard();
+    // Take the mine away: the smelter inside now has nothing to eat and
+    // stops. Its need is exactly what the card has to say out loud.
+    project.nodes = project.nodes.filter((node) => node.id !== "mine-1");
+    project.edges = project.edges.filter((edge) => edge.id !== "e-ore");
+
+    const summary = computePocketSummaries(
+      project,
+      project.pockets ?? [],
+      calculateThroughput(project),
+    ).get("board-1");
+
+    expect(summary!.needs.map((line) => line.resourceId)).toEqual(["iron_ore"]);
+    expect(summary!.needs[0]!.ratePerSecond).toBeGreaterThan(0);
+  });
+
+  it("counts every list without a solve, for the arranger", () => {
     expect(countPocketCrossings(makeSelfFedBoard(), "board-1")).toEqual({
+      needs: 0,
+      offers: 1,
       incoming: 0,
       outgoing: 1,
     });
@@ -170,22 +222,40 @@ describe("computePocketSummaries", () => {
 });
 
 describe("pocketCardHeight", () => {
+  const lines = (
+    needs: number,
+    offers: number,
+    incoming: number,
+    outgoing: number,
+  ) => ({ needs, offers, incoming, outgoing });
+
   it("stands on whole grid cells", () => {
-    for (const [incoming, outgoing] of [
-      [0, 0],
-      [1, 0],
-      [3, 2],
-      [9, 9],
-    ] as const) {
-      expect(pocketCardHeight(incoming, outgoing) % 20).toBe(0);
+    for (const shape of [
+      lines(0, 0, 0, 0),
+      lines(1, 0, 0, 0),
+      lines(0, 0, 3, 2),
+      lines(2, 3, 4, 1),
+      lines(9, 9, 9, 9),
+    ]) {
+      expect(pocketCardHeight(shape) % 20).toBe(0);
     }
   });
 
-  it("grows with the busier side, then stops", () => {
-    expect(pocketCardHeight(2, 1)).toBeGreaterThan(pocketCardHeight(1, 1));
-    // Past the cap the card gains one line for "and N more" and no more.
-    const capped = pocketCardHeight(POCKET_CARD_MAX_ROWS, 0);
-    expect(pocketCardHeight(POCKET_CARD_MAX_ROWS + 4, 0)).toBe(capped + 40);
-    expect(pocketCardHeight(POCKET_CARD_MAX_ROWS + 40, 0)).toBe(capped + 40);
+  it("charges for each section only when it has something to say", () => {
+    const empty = pocketCardHeight(lines(0, 0, 0, 0));
+    const oneSection = pocketCardHeight(lines(0, 0, 1, 0));
+    const twoSections = pocketCardHeight(lines(1, 0, 1, 0));
+    expect(twoSections).toBeGreaterThan(oneSection);
+    expect(oneSection).toBeGreaterThanOrEqual(empty);
+  });
+
+  it("grows with the busier side, and hides nothing", () => {
+    expect(pocketCardHeight(lines(0, 0, 2, 1))).toBeGreaterThan(
+      pocketCardHeight(lines(0, 0, 1, 1)),
+    );
+    // Every line is drawn, however many there are: one row each, forever.
+    const one = pocketCardHeight(lines(0, 0, 1, 0));
+    expect(pocketCardHeight(lines(0, 0, 9, 0))).toBe(one + 8 * 40);
+    expect(pocketCardHeight(lines(0, 0, 40, 0))).toBe(one + 39 * 40);
   });
 });

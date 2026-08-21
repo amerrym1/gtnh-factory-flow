@@ -259,11 +259,24 @@ gh run watch <run-id> --exit-status
 - A MINIMIZED BOARD IS A SUMMARY, NOT A MACHINE. It has NO PORTS: you
   cannot drop a wire on it (`findNodeDropTarget` returns undefined, so it
   washes red like any card refusing a resource), no drag starts on it, and
-  `connectResourceEdges` refuses any end that names one. It reports what
-  crosses its border (one line per resource per direction, capped at
-  `POCKET_CARD_MAX_ROWS` with an "and N more") and what is inside
-  (machines, cards, EU/t), and every figure comes from the PLAN-WIDE solve
-  (`computePocketSummaries`). To change anything you open the window.
+  `connectResourceEdges` refuses any end that names one. It stacks two
+  readings and a stat line, and every figure comes from the PLAN-WIDE
+  solve (`computePocketSummaries`). To change anything you open the
+  window.
+  - NEEDS / MAKES: the board read as a little factory, WIRES IGNORED -
+    the members' flows netted against each other, so a board whose own
+    mine feeds its own macerator asks the world for no ore. These are
+    FULL SPEED figures on purpose: a board stalled because a need is
+    unmet must still say what it is missing, and scaling by utilization
+    erases exactly that line.
+  - COMING IN / GOING OUT: what actually crosses the border on wires
+    right now, one line per resource per direction with its wire count.
+  - Red for what goes in, green for what comes out, in both sections: a
+    faint ground behind each column and a centred title chip on it. NO
+    CAP and no "and N more" - a summary that hides half of itself is not
+    one - so the card grows a row per line and `sectionCells` charges for
+    every one of them.
+  - The footer is what is inside: machines, cards, EU/t.
   - The card used to run a SCOPED solve over its members with the outside
     world unhooked and wear the result as input/output rails. It read like
     a machine and lied like one: a board holding its own source was told it
