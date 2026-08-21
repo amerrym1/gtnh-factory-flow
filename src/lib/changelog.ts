@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.23.1",
+    date: "2026-08-21",
+    headline: "Selection is blue",
+    notes: [
+      "Everything you select is blue now, the same blue as the rest of the site.",
+      "A box drawn inside a board no longer picks up the board itself.",
+      "To select a board with a box, start the box outside it.",
+      "Drawing a new board shows a plain outline instead of a purple one.",
+    ],
+  },
+  {
     version: "2.23.0",
     date: "2026-08-21",
     headline: "Setup rules, on the gear",
