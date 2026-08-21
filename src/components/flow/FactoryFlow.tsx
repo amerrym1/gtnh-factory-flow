@@ -2451,6 +2451,19 @@ export function FactoryFlow() {
   const handleNodesChange = useCallback(
     (incoming: NodeChange<BoardFlowNode>[]) => {
       let changes = incoming;
+      // A marquee that STARTED inside a board may not select that board. The
+      // band is drawn on partial contact, so a drag begun on a board's own
+      // floor touches its frame before it touches anything in it, and every
+      // rubber-band inside a room came back holding the room. Dropped here
+      // rather than by unsetting `selectable`, so the frame never flickers
+      // selected and the store never hears about it.
+      const shielded = marqueeShieldRef.current;
+      if (shielded.size > 0) {
+        changes = changes.filter(
+          (change) =>
+            !(change.type === "select" && change.selected && shielded.has(change.id)),
+        );
+      }
       // The placement magnet, live: a held card is never ALLOWED onto a spot
       // it cannot have, so it slides along whatever it meets instead of
       // being tidied up after the fact. The pointer runs ahead of the card
@@ -4087,6 +4100,52 @@ export function FactoryFlow() {
     wrapSelectedBoardItems,
   ]);
 
+  /**
+   * Boards the marquee currently being dragged is not allowed to select: the
+   * ones whose frame the drag STARTED inside.
+   *
+   * To pick a board up with the band you start outside it, which is the
+   * gesture anyone would make anyway. Starting inside means you are reaching
+   * for what is IN the room, and the room itself coming along was the whole
+   * complaint - with partial contact the frame is hit before any member is.
+   * Nested frames need no special case: a point inside a child is inside its
+   * parents too, so a plain containment test shields the whole chain, while a
+   * sibling board further in is still fair game.
+   */
+  const marqueeShieldRef = useRef<Set<string>>(new Set());
+  const handleSelectionStart = useCallback((event: ReactMouseEvent) => {
+    const instance = flowInstanceRef.current;
+    if (!instance) {
+      return;
+    }
+    const start = instance.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    // Refilled in place rather than replaced: the set is read synchronously by
+    // handleNodesChange and held by nobody else, so one allocation does for
+    // the life of the board.
+    const shielded = marqueeShieldRef.current;
+    shielded.clear();
+    for (const { id, bounds } of publishedBoardFrameBounds) {
+      if (
+        start.x >= bounds.left &&
+        start.x <= bounds.right &&
+        start.y >= bounds.top &&
+        start.y <= bounds.bottom
+      ) {
+        shielded.add(id);
+      }
+    }
+  }, []);
+  const handleSelectionEnd = useCallback(() => {
+    // Next frame, not this one: React Flow can still emit the band's last
+    // select changes after this fires, and a shield dropped a beat early
+    // would let the frame in on the closing frame of the gesture. Anything
+    // that selects by CLICK needs a fresh pointer press, which is later
+    // still, so nothing else is held back by the wait.
+    requestAnimationFrame(() => {
+      marqueeShieldRef.current.clear();
+    });
+  }, []);
+
   const handleSelectionChange = useCallback(
     ({ nodes: selectedNodes, edges: selectedEdges }: OnSelectionChangeParams) => {
       const ids = selectedNodes.map((node) => node.id);
@@ -5211,6 +5270,10 @@ export function FactoryFlow() {
         onEdgeClick={handleEdgeClick}
         onNodesChange={handleNodesChange}
         onSelectionChange={handleSelectionChange}
+        // Where the band STARTED decides whether it may pick up a board; see
+        // marqueeShieldRef.
+        onSelectionStart={handleSelectionStart}
+        onSelectionEnd={handleSelectionEnd}
         onPaneClick={handlePaneClick}
         onNodeDragStart={handleNodeDragStart}
         onNodeDragStop={handleNodeDragStop}
