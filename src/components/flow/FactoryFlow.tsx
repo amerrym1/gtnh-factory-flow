@@ -116,11 +116,9 @@ import type {
 } from "@/lib/model/types";
 import {
   captureBoardSelection,
-  collectPocketConvergenceWarnings,
   useFactoryStore,
   type BoardClipboardPayload,
   type BoardFraming,
-  type PocketConvergenceWarning,
 } from "@/store/factory-store";
 import { useBlueprintStore } from "@/store/blueprint-store";
 import { useDesignStore } from "@/store/design-store";
@@ -364,10 +362,9 @@ const connectionLineStyle = {
 const DEFAULT_ITEM_EDGE_COLOR = "#8b8f98";
 const DEFAULT_FLUID_EDGE_COLOR = "#2f89c5";
 
-// The base colour and pattern ink now come from the active canvas theme
+// The base colour and pattern ink come from the active canvas theme
 // (canvas-themes.ts); the Slate theme carries the old --canvas / --canvas-dot
-// values. Inside a pocket dimension the dots go faintly violet with the room.
-const POCKET_CANVAS_DOT_COLOR = "#5b4c7a";
+// values.
 
 /**
  * Snap step, and the background gap — same number so nodes land on marks.
@@ -1479,14 +1476,11 @@ export function FactoryFlow() {
   const moveBoardItems = useFactoryStore((state) => state.moveBoardItems);
   const deleteBoardSelection = useFactoryStore((state) => state.deleteBoardSelection);
   const pasteBoardItems = useFactoryStore((state) => state.pasteBoardItems);
-  const activePocketId = useFactoryStore((state) => state.activePocketId);
-  const enterPocket = useFactoryStore((state) => state.enterPocket);
   // Blueprint overwrite picker mode: a shelf row is waiting for the user to
   // click a pocket. The board wears it — banner up top, pockets ringed.
   const overwritePicking = useBlueprintStore((state) => state.overwritePicking);
-  const compactSelectionIntoPocket = useFactoryStore(
-    (state) => state.compactSelectionIntoPocket,
-  );
+  const wrapSelectionInBoard = useFactoryStore((state) => state.wrapSelectionInBoard);
+  const expandPocket = useFactoryStore((state) => state.expandPocket);
   const setPendingBoardSelection = useFactoryStore((state) => state.setPendingBoardSelection);
   const setSelectedBoardIds = useFactoryStore((state) => state.setSelectedBoardIds);
   const updateNode = useFactoryStore((state) => state.updateNode);
@@ -1539,24 +1533,21 @@ export function FactoryFlow() {
     [project.storages],
   );
 
-  // The pocket dimension view. The graph is always the whole flat project;
-  // the board SHOWS the active level, plus — new with boards — the contents
-  // of every pocket standing OPEN as a window on it, recursively.
-  // `representativeOf` maps any project item to what stands for it here: the
-  // item itself when its level is in view, the collapsed ancestor card that
-  // swallowed it, or undefined when it is outside this view entirely (which
-  // is what hides the rest of the plan while zoomed into a pocket). See
-  // board-windows.ts; the auto-arrange adapter keeps its own strict
-  // one-level walk so an open board arranges as a single block.
+  // The board view. The graph is always the whole flat project; the canvas
+  // shows the root plus the contents of every board standing open,
+  // recursively. `representativeOf` maps any project item to what stands
+  // for it here: the item itself when its owner chain is open, or the
+  // minimized card hiding it. See board-windows.ts; the auto-arrange
+  // adapter keeps its own root walk so a board arranges as a single block.
   const pocketView = useMemo(() => {
-    const view = computeBoardLevelView(project, activePocketId);
+    const view = computeBoardLevelView(project);
     return {
       isLevelShown: view.isLevelShown,
       representativeOf: view.representativeOf,
-      visiblePockets: view.pocketCards,
+      visiblePockets: view.collapsedBoards,
       openBoards: view.openBoards,
     };
-  }, [activePocketId, project]);
+  }, [project]);
 
   // Scoped solves are small (a pocket's members only) and run once per
   // project commit, not per hover — see pocket-summary.ts.
@@ -1584,11 +1575,9 @@ export function FactoryFlow() {
     // An item inside an open board is a React Flow CHILD of the frame: its
     // stored position is already frame-relative, so handing the owner over
     // as `parentId` is the whole mechanism that makes a dragged title bar
-    // carry the household. Items on the active level stay parentless.
+    // carry the household. Root items stay parentless.
     const childOf = (levelId: string | undefined) =>
-      levelId !== undefined && levelId !== activePocketId
-        ? { parentId: levelId }
-        : undefined;
+      levelId !== undefined ? { parentId: levelId } : undefined;
     const memberCounts = new Map<string, number>();
     const countMember = (levelId: string | undefined) => {
       if (levelId !== undefined) {
@@ -1755,7 +1744,6 @@ export function FactoryFlow() {
   }, [
     activeFlowResourceKey,
     activeNodeBottlenecks,
-    activePocketId,
     hoveredUsageNodeId,
     pocketRails,
     pocketSummaries,
@@ -1781,16 +1769,11 @@ export function FactoryFlow() {
   const [annotationDraft, setAnnotationDraft] = useState<AnnotationDraft | undefined>(undefined);
   const annotationDraftRef = useRef<AnnotationDraft | undefined>(undefined);
   const [layoutVersion, setLayoutVersion] = useState(0);
-  // Bumped whenever a paste/compact/blueprint-load hands the selection to
+  // Bumped whenever a paste/wrap/blueprint-load hands the selection to
   // fresh cards. React Flow keeps its band-selection GROUP RECTANGLE up
   // through that handoff, parked over the new card and eating every click —
   // the controller below watches this counter and dismisses the rect.
   const [selectionHandoffCount, setSelectionHandoffCount] = useState(0);
-  // Compacting would pool same-resource supplies from different places:
-  // the selection waits here while the player reads what would happen.
-  const [compactWarning, setCompactWarning] = useState<
-    { ids: string[]; warnings: PocketConvergenceWarning[] } | undefined
-  >(undefined);
   const draggingNodeRef = useRef(false);
   const draggedResourceRef = useRef<DraggedResourceConnection | undefined>(undefined);
   const lastConnectionPointerRef = useRef<{ x: number; y: number } | undefined>(undefined);
@@ -3406,9 +3389,7 @@ export function FactoryFlow() {
       if (event) {
         settleDesignCamera();
       }
-      // Inside a pocket the coordinates belong to that dimension, and a plan
-      // always loads at the top level, so there is nothing here worth keeping.
-      if (!isDesignCameraSettled() || activePocketId) {
+      if (!isDesignCameraSettled()) {
         return;
       }
 
@@ -3417,7 +3398,7 @@ export function FactoryFlow() {
         writeDesignCamera(designId, viewport);
       }
     },
-    [activePocketId, updateFlowViewportCenter],
+    [updateFlowViewportCenter],
   );
 
   const handleInit = useCallback(
@@ -3732,41 +3713,21 @@ export function FactoryFlow() {
     return true;
   }, [deleteBoardSelection, selectNode, selectedEdgeIds, selectedNodeIds]);
 
-  const runCompact = useCallback(
-    (ids: string[]): boolean => {
-      const pocketId = compactSelectionIntoPocket(ids);
-      if (!pocketId) {
-        return false;
-      }
-
-      // The new pocket card takes the selection, ready to drag or dive into.
-      setPendingBoardSelection([pocketId]);
-      setSelectedNodeIds([pocketId]);
-      setSelectedEdgeIds([]);
-      return true;
-    },
-    [compactSelectionIntoPocket, setPendingBoardSelection],
-  );
-
-  const compactSelectedBoardItems = useCallback((): boolean => {
+  const wrapSelectedBoardItems = useCallback((): boolean => {
     if (selectedNodeIds.length === 0) {
       return false;
     }
 
-    // Two cards taking the same resource from DIFFERENT places: compacting
-    // pools those supplies behind one port. Real change, so the player gets
-    // to say no first; single-source fan-outs converge silently.
-    const warnings = collectPocketConvergenceWarnings(
-      useFactoryStore.getState().project,
-      selectedNodeIds,
-    );
-    if (warnings.length > 0) {
-      setCompactWarning({ ids: selectedNodeIds, warnings });
+    // The frame appears around the cards where they stand; nothing moves
+    // and no wire changes, so there is nothing to confirm first.
+    const boardId = wrapSelectionInBoard(selectedNodeIds);
+    if (!boardId) {
       return false;
     }
-
-    return runCompact(selectedNodeIds);
-  }, [runCompact, selectedNodeIds]);
+    setSelectedNodeIds([]);
+    setSelectedEdgeIds([]);
+    return true;
+  }, [selectedNodeIds, wrapSelectionInBoard]);
 
   const pasteBoardClipboard = useCallback(() => {
     if (!boardClipboard) {
@@ -3824,7 +3785,7 @@ export function FactoryFlow() {
             return;
           }
 
-          if (compactSelectedBoardItems()) {
+          if (wrapSelectedBoardItems()) {
             event.preventDefault();
           }
         }
@@ -3890,50 +3851,34 @@ export function FactoryFlow() {
           return;
         }
 
-        // Escape means "back out of whatever I'm in": first any active tool
-        // or half-made wire, and with nothing else to cancel, one level out
-        // of the pocket dimension being viewed.
-        const hadTool =
-          nodeColorPaintMode !== undefined ||
-          annotationTool !== undefined ||
-          isDeleteMode ||
-          Boolean(useFactoryStore.getState().pendingResourceConnection);
+        // Escape backs out of whatever tool or half-made wire is active.
         cancelResourceConnection();
         setNodeColorPaintMode(undefined);
         setAnnotationTool(undefined);
         setDeleteMode(false);
-        if (!hadTool && activePocketId) {
-          enterPocket(
-            (project.pockets ?? []).find((pocket) => pocket.id === activePocketId)
-              ?.parentPocketId,
-          );
-        }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
-    activePocketId,
     annotationTool,
     cancelResourceConnection,
-    compactSelectedBoardItems,
     copyBoardSelection,
     deleteAnnotation,
     deleteNode,
     deleteSelectedBoardItems,
     deleteStorage,
-    enterPocket,
     isDeleteMode,
     nodeColorPaintMode,
     pasteBoardClipboard,
     project.annotations,
     project.nodes,
-    project.pockets,
     project.storages,
     selectNode,
     selectedNodeId,
     setNodeColorPaintMode,
+    wrapSelectedBoardItems,
   ]);
 
   const handleSelectionChange = useCallback(
@@ -4008,14 +3953,15 @@ export function FactoryFlow() {
   // React Flow's own double-click plumbing, not a handler on the card: the
   // node wrapper's drag machinery can swallow a hand-rolled dblclick, and
   // this path is guaranteed to coexist with it. The name field's rename
-  // double-click stops propagation before this fires.
+  // double-click stops propagation before this fires. Double-clicking a
+  // minimized board restores the window, the way a taskbar does.
   const handleNodeDoubleClick = useCallback(
     (_: unknown, node: Node) => {
       if (node.type === "pocketNode" && !isWiringConnection() && !wasRecentWireDrop()) {
-        enterPocket(node.id);
+        expandPocket(node.id);
       }
     },
-    [enterPocket],
+    [expandPocket],
   );
 
   const handleEdgeClick = useCallback(
@@ -4040,29 +3986,11 @@ export function FactoryFlow() {
     cancelResourceConnection();
   }, [cancelResourceConnection, selectNode]);
 
-  // Crossing into or out of a pocket dimension swaps what the board shows
-  // wholesale; the camera follows so the traveller lands looking at the new
-  // level, not at empty space where the old one was.
-  const previousPocketRef = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    if (previousPocketRef.current === activePocketId) {
-      return;
-    }
-    previousPocketRef.current = activePocketId;
-    const frame = requestAnimationFrame(() => frameBoardCards());
-    return () => cancelAnimationFrame(frame);
-  }, [activePocketId, frameBoardCards]);
-
   const handleShowNodes = useCallback(
     (nodeIds: string[]) => frameBoardCards(nodeIds),
     [frameBoardCards],
   );
   const handleFitView = useCallback(() => frameBoardCards(), [frameBoardCards]);
-
-  // On a phone the pocket breadcrumb takes the board's top line, because where you
-  // are is the first thing to know and it was previously stranded a fifth of the
-  // way down the screen keeping clear of these. They step down a line instead.
-  const toolsStepAside = isCompact && Boolean(activePocketId);
 
   // Whatever just landed says so, twice. Done to the DOM rather than through the
   // node objects on purpose: a transient outline is not state the board should
@@ -4143,7 +4071,6 @@ export function FactoryFlow() {
     const view = readBoardViewSnapshot();
     const { moves, islands, wireRoutes, resetEdgeIds, staleInkIds } = computeAutoArrangement(
       state.project,
-      state.activePocketId,
       state.lastResult,
       // Tight spacing and normal island splitting, always: the dials that
       // existed for these were both ever set one way.
@@ -4266,13 +4193,12 @@ export function FactoryFlow() {
       const dropped = draggedNodes.length > 0 ? draggedNodes : [node];
 
       // Where did each land? A drop whose centre sits inside an open board's
-      // body joins that board; one outside every frame surfaces on the level
-      // in view. Read fresh from the store so the callback stays stable.
+      // body joins that board; one outside every frame surfaces on the
+      // canvas. Read fresh from the store so the callback stays stable.
       const state = useFactoryStore.getState();
       const project = state.project;
-      const activeLevel = state.activePocketId;
-      const view = computeBoardLevelView(project, activeLevel);
-      const frames = computeOpenBoardRects(view.openBoards, activeLevel);
+      const view = computeBoardLevelView(project);
+      const frames = computeOpenBoardRects(view.openBoards);
       const frameById = new Map(frames.map((frame) => [frame.id, frame]));
       const pockets = project.pockets ?? [];
       const pocketIdSet = new Set(pockets.map((pocket) => pocket.id));
@@ -4310,12 +4236,12 @@ export function FactoryFlow() {
         const height = internal?.measured?.height ?? 0;
         const centre = { x: absolute.x + width / 2, y: absolute.y + height / 2 };
         const currentOwner = ownerOf(entry.id);
-        const landing = pickBoardOwnerAt(frames, centre, excluded) ?? activeLevel;
+        const landing = pickBoardOwnerAt(frames, centre, excluded);
         if (landing === currentOwner) {
           // Home stands; React Flow's own position is already in its space.
           return { id: entry.id, position: entry.position };
         }
-        const origin = landing !== activeLevel ? frameById.get(landing ?? "") : undefined;
+        const origin = landing !== undefined ? frameById.get(landing) : undefined;
         return {
           id: entry.id,
           position: snapPositionToGrid({
@@ -4331,7 +4257,7 @@ export function FactoryFlow() {
       const grownSizes = new Map<string, { width: number; height: number }>();
       for (const move of moves) {
         const landing = "owner" in move && move.owner ? move.owner.pocketId : ownerOf(move.id);
-        if (landing === undefined || landing === activeLevel) {
+        if (landing === undefined) {
           continue;
         }
         const board = pockets.find((pocket) => pocket.id === landing);
@@ -4420,7 +4346,6 @@ export function FactoryFlow() {
               height: Math.max(BOARD_WINDOW_MIN_HEIGHT, snapSizeUpToGrid(height)),
             };
         const state = useFactoryStore.getState();
-        const level = state.activePocketId;
         const body = {
           left: position.x,
           top: position.y + BOARD_WINDOW_TITLE_HEIGHT,
@@ -4443,16 +4368,16 @@ export function FactoryFlow() {
         };
         const memberIds = [
           ...state.project.nodes
-            .filter((node) => node.pocketId === level && covers(node.id))
+            .filter((node) => node.pocketId === undefined && covers(node.id))
             .map((node) => node.id),
           ...(state.project.storages ?? [])
-            .filter((storage) => storage.pocketId === level && covers(storage.id))
+            .filter((storage) => storage.pocketId === undefined && covers(storage.id))
             .map((storage) => storage.id),
           ...(state.project.annotations ?? [])
-            .filter((annotation) => annotation.pocketId === level && covers(annotation.id))
+            .filter((annotation) => annotation.pocketId === undefined && covers(annotation.id))
             .map((annotation) => annotation.id),
           ...(state.project.pockets ?? [])
-            .filter((pocket) => pocket.parentPocketId === level && covers(pocket.id))
+            .filter((pocket) => pocket.parentPocketId === undefined && covers(pocket.id))
             .map((pocket) => pocket.id),
         ];
         createBoard({ position, size, memberIds });
@@ -4774,7 +4699,6 @@ export function FactoryFlow() {
         boardMotion.valueMotion ? "factory-flow-board--value-motion" : "",
         // Inside a pocket dimension the room itself says where you are:
         // purple canvas, purple dots, purple window frame (globals.css).
-        activePocketId ? "factory-flow-board--pocket-view" : "",
         overwritePicking ? "factory-flow-board--blueprint-picking" : "",
       ].join(" ")}
       style={
@@ -4784,16 +4708,11 @@ export function FactoryFlow() {
           // The theme paints the room: base colour, the screen-space edge
           // vignette (grain moved into the viewport — see GrainBackground),
           // and the --canvas var every canvas-matching surface (edge label
-          // backgrounds) reads. Inside a pocket the violet room always wins -
-          // the pocket look is a landmark, not a taste.
-          ...(activePocketId
-            ? undefined
-            : {
-                backgroundColor: canvasTheme.base,
-                backgroundImage: canvasTheme.vignette,
-                "--canvas": canvasTheme.base,
-                "--canvas-dot": canvasTheme.patternColor,
-              }),
+          // backgrounds) reads.
+          backgroundColor: canvasTheme.base,
+          backgroundImage: canvasTheme.vignette,
+          "--canvas": canvasTheme.base,
+          "--canvas-dot": canvasTheme.patternColor,
         } as CSSProperties
       }
       onPointerDownCapture={handleAnnotationPointerDown}
@@ -4907,19 +4826,19 @@ export function FactoryFlow() {
       >
         <NodeDetailController boardRef={boardRef} />
         <HopMapController boardRef={boardRef} />
-        <SelectionHandoffController signal={selectionHandoffCount} activePocketId={activePocketId} />
+        <SelectionHandoffController signal={selectionHandoffCount} />
         {linePulseMode ? <EdgePulseCanvas edgesUnderNodes={lineThicknessMode} /> : null}
         {/* The paper's tooth, in board space so it pans and zooms with the
             factory. Mounted before the pattern so dots ink OVER the grain.
             A pocket keeps its flat violet room. */}
-        {!activePocketId && canvasTheme.grain ? (
+        {canvasTheme.grain ? (
           <GrainBackground layers={canvasTheme.grain} />
         ) : null}
         {boardView.canvasPattern === "none" ? null : boardView.canvasPattern === "ruled" ||
           boardView.canvasPattern === "graph" ? (
           <RuledBackground
             mode={boardView.canvasPattern}
-            color={activePocketId ? POCKET_CANVAS_DOT_COLOR : canvasTheme.patternColor}
+            color={canvasTheme.patternColor}
           />
         ) : (
           <Background
@@ -4928,7 +4847,7 @@ export function FactoryFlow() {
             // Lines tile edge to edge, so they need to be thinner than a dot
             // to read as a background instead of as graph paper.
             size={boardView.canvasPattern === "lines" ? 1 : 2}
-            color={activePocketId ? POCKET_CANVAS_DOT_COLOR : canvasTheme.patternColor}
+            color={canvasTheme.patternColor}
             // Like the wrapper: the pattern SVG must not lay its own dark
             // paper over the themed board div underneath.
             bgColor="transparent"
@@ -4955,7 +4874,7 @@ export function FactoryFlow() {
         compact={isCompact}
         openGroup={openToolGroup}
         onToggleGroup={handleToolGroupToggle}
-        shiftedDown={toolsStepAside}
+        shiftedDown={false}
       />
       <BoardViewToolbar
         view={boardView}
@@ -4964,13 +4883,13 @@ export function FactoryFlow() {
         compact={isCompact}
         openGroup={openToolGroup}
         onToggleGroup={handleToolGroupToggle}
-        shiftedDown={toolsStepAside}
+        shiftedDown={false}
       />
       <SourceToolbar
         compact={isCompact}
         openGroup={openToolGroup}
         onToggleGroup={handleToolGroupToggle}
-        shiftedDown={toolsStepAside}
+        shiftedDown={false}
         onAutoArrange={handleAutoArrange}
       />
       <BoardHelp compact={isCompact} />
@@ -4993,54 +4912,9 @@ export function FactoryFlow() {
           )}
         </div>
       ) : null}
-      {compactWarning ? (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/55">
-          <div className="max-w-[560px] border-2 border-amber-500 bg-[#1b1d21] p-5 font-mono text-neutral-100 shadow-[8px_8px_0_rgba(0,0,0,0.55)]">
-            <p className="text-[17px] font-bold text-amber-300">One port per resource</p>
-            <p className="mt-3 text-[14px] leading-relaxed text-neutral-300">
-              Pockets allow one connection per resource. This selection has more:
-            </p>
-            <ul className="mt-2 flex flex-col gap-1 text-[15px] font-bold text-amber-200">
-              {compactWarning.warnings.map((warning) => (
-                <li key={`${warning.side}:${warning.kind}:${warning.resourceId}`}>
-                  {warning.side === "input"
-                    ? `${warning.label} will be shared between all ${warning.memberCount} machines`
-                    : `${warning.label} will be collected from all ${warning.memberCount} machines`}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-3 text-[14px] leading-relaxed text-neutral-300">
-              Making the pocket merges these wires: every machine that asks gets a share, and the
-              planner decides the split. Unpacking keeps this wiring.
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setCompactWarning(undefined)}
-                className="h-9 rounded-[4px] border border-neutral-700 bg-[#17191d] px-3 text-[14px] text-neutral-300 hover:text-neutral-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                autoFocus
-                onClick={() => {
-                  const ids = compactWarning.ids;
-                  setCompactWarning(undefined);
-                  runCompact(ids);
-                }}
-                className="h-9 rounded-[4px] border border-amber-600 bg-amber-950 px-3 text-[14px] font-medium text-amber-200 hover:bg-amber-900"
-              >
-                Make the pocket
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-      <PocketBreadcrumbs />
       <SelectionActionsBar
         selectionCount={selectedNodeIds.length}
-        onCompact={compactSelectedBoardItems}
+        onWrap={wrapSelectedBoardItems}
       />
       <SmartViewToolbar
         glanceMode={boardView.glanceMode}
@@ -5335,17 +5209,11 @@ const TourLoopNoticeExample = memo(function TourLoopNoticeExample() {
  * selection to freshly created cards, that rectangle would sit over the new
  * card and swallow every click. Any handoff or level change dismisses it.
  */
-function SelectionHandoffController({
-  signal,
-  activePocketId,
-}: {
-  signal: number;
-  activePocketId?: string;
-}) {
+function SelectionHandoffController({ signal }: { signal: number }) {
   const storeApi = useStoreApi();
   useEffect(() => {
     storeApi.setState({ nodesSelectionActive: false });
-  }, [signal, activePocketId, storeApi]);
+  }, [signal, storeApi]);
   return null;
 }
 
@@ -5384,87 +5252,17 @@ function actionBarPosition(compact: boolean, second: boolean): string {
 }
 
 /**
- * Where in the multiverse the board is: "Board ▸ Pocket ▸ Inner pocket",
- * top-centre, every segment a jump. Hidden entirely on the root board — the
- * common case pays nothing for the feature.
- */
-const PocketBreadcrumbs = memo(function PocketBreadcrumbs() {
-  const activePocketId = useFactoryStore((state) => state.activePocketId);
-  const pockets = useFactoryStore((state) => state.project.pockets);
-  const enterPocket = useFactoryStore((state) => state.enterPocket);
-  const isCompact = useIsCompactViewport();
-  if (!activePocketId) {
-    return null;
-  }
-
-  const byId = new Map((pockets ?? []).map((pocket) => [pocket.id, pocket]));
-  const trail: { id: string | undefined; name: string }[] = [];
-  let cursor: string | undefined = activePocketId;
-  const seen = new Set<string>();
-  while (cursor !== undefined && !seen.has(cursor)) {
-    seen.add(cursor);
-    const pocket = byId.get(cursor);
-    if (!pocket) {
-      break;
-    }
-    trail.unshift({ id: pocket.id, name: pocket.name });
-    cursor = pocket.parentPocketId;
-  }
-  trail.unshift({ id: undefined, name: "Board" });
-
-  return (
-    <div
-      data-board-toolbar
-      className={[
-        "nodrag pointer-events-auto absolute left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 border-2 border-[#8d6fd1] bg-[#241b33]/95 px-2 py-1.5 font-mono text-[12px] text-white shadow-[inset_2px_2px_0_#3b2d52,inset_-2px_-2px_0_#1a1326]",
-        centredBannerTop(isCompact, false),
-      ].join(" ")}
-    >
-      <button
-        type="button"
-        onClick={() => {
-          const parent = byId.get(activePocketId)?.parentPocketId;
-          enterPocket(parent);
-        }}
-        title="Back out one level (Esc)"
-        aria-label="Exit this pocket dimension"
-        className="mr-1 flex h-6 w-6 items-center justify-center border border-[#8d6fd1] bg-[#3b2d52] hover:bg-[#5e4a85]"
-      >
-        ↩
-      </button>
-      {trail.map((segment, index) => (
-        <span key={segment.id ?? "root"} className="flex items-center gap-1">
-          {index > 0 ? <span className="text-[#8d7ab0]">▸</span> : null}
-          {index === trail.length - 1 ? (
-            <span className="font-bold text-[#e6dcff]">✦ {segment.name}</span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => enterPocket(segment.id)}
-              className="text-[#c9b8ec] underline-offset-2 hover:underline"
-            >
-              {segment.name}
-            </button>
-          )}
-        </span>
-      ))}
-    </div>
-  );
-});
-
-/**
- * Appears only while several cards are selected: the one gesture that turns
- * a selection into a pocket dimension. Lives on the board (not a toolbar
- * dock) so it reads as acting on the selection under it.
+ * Appears only while several cards are selected: the one gesture that wraps
+ * a selection in a board. Lives on the board (not a toolbar dock) so it
+ * reads as acting on the selection under it.
  */
 const SelectionActionsBar = memo(function SelectionActionsBar({
   selectionCount,
-  onCompact,
+  onWrap,
 }: {
   selectionCount: number;
-  onCompact: () => boolean;
+  onWrap: () => boolean;
 }) {
-  const activePocketId = useFactoryStore((state) => state.activePocketId);
   const isCompact = useIsCompactViewport();
   if (selectionCount < 2) {
     return null;
@@ -5473,21 +5271,21 @@ const SelectionActionsBar = memo(function SelectionActionsBar({
   return (
     <div
       data-board-toolbar
-      // A button, so on a phone it sits at the bottom in reach of a thumb; on a
-      // desktop it stays at the top, below the breadcrumb strip when both are up.
+      // A button, so on a phone it sits at the bottom in reach of a thumb;
+      // on a desktop it stays at the top.
       className={[
         "nodrag pointer-events-auto absolute left-1/2 z-30 flex -translate-x-1/2 items-center gap-2",
-        actionBarPosition(isCompact, Boolean(activePocketId)),
+        actionBarPosition(isCompact, false),
       ].join(" ")}
     >
       <button
         type="button"
-        onClick={onCompact}
-        title="Compact the selected cards into a pocket dimension (Ctrl+G): they become one card with the group's inputs and outputs. Double-click it to step inside"
+        onClick={onWrap}
+        title="Wrap the selected cards in a board (Ctrl+G): a window appears around them and moves them together"
         className="flex h-9 items-center gap-1.5 whitespace-nowrap border-2 border-[#8d6fd1] bg-[#3b2d52] px-3 font-mono text-[12px] font-bold text-white shadow-[inset_2px_2px_0_#5e4a85,inset_-2px_-2px_0_#241b33] hover:brightness-110"
       >
         <Box className="h-4 w-4" />
-        Compact {selectionCount} into pocket
+        Wrap {selectionCount} in a board
       </button>
     </div>
   );
@@ -9218,7 +9016,6 @@ function estimateNodeCardSize(
  */
 function computeAutoArrangement(
   project: FactoryProject,
-  activePocketId: string | undefined,
   result: ThroughputResult | undefined,
   taste: ArrangeTaste,
 ): {
@@ -9241,14 +9038,14 @@ function computeAutoArrangement(
   // item at this level, or undefined when the item is outside the view.
   const representativeOf = (itemId: string): string | undefined => {
     let level = itemPocketById.get(itemId);
-    if (level === activePocketId) {
+    if (level === undefined) {
       return itemId;
     }
     const seen = new Set<string>();
     while (level !== undefined && !seen.has(level)) {
       seen.add(level);
       const parent = parentById.get(level);
-      if (parent === activePocketId) {
+      if (parent === undefined) {
         return level;
       }
       level = parent;
@@ -9275,7 +9072,7 @@ function computeAutoArrangement(
     });
   };
   for (const node of project.nodes) {
-    if (node.pocketId !== activePocketId) {
+    if (node.pocketId !== undefined) {
       continue;
     }
     const recipe = recipesById.get(node.recipeId);
@@ -9289,7 +9086,7 @@ function computeAutoArrangement(
     );
   }
   for (const storage of project.storages ?? []) {
-    if (storage.pocketId !== activePocketId) {
+    if (storage.pocketId !== undefined) {
       continue;
     }
     pushCard(
@@ -9300,7 +9097,7 @@ function computeAutoArrangement(
     );
   }
   for (const pocket of pockets) {
-    if (pocket.parentPocketId !== activePocketId) {
+    if (pocket.parentPocketId !== undefined) {
       continue;
     }
     // A pocket standing OPEN arranges as one block the size of its window;
@@ -9326,7 +9123,7 @@ function computeAutoArrangement(
   const cardIds = new Set(cards.map((card) => card.id));
   const wires: ArrangeWire[] = [];
   const resetEdgeIds: string[] = [];
-  const view = computeBoardLevelView(project, activePocketId);
+  const view = computeBoardLevelView(project);
   for (const edge of project.edges) {
     const sourceRep = representativeOf(edge.source);
     const targetRep = representativeOf(edge.target);
@@ -9378,7 +9175,7 @@ function computeAutoArrangement(
   // boxes point at a layout that no longer exists - and fresh island
   // grounds come back with the new one.
   const staleInkIds = (project.annotations ?? [])
-    .filter((annotation) => annotation.pocketId === activePocketId)
+    .filter((annotation) => annotation.pocketId === undefined)
     .map((annotation) => annotation.id);
 
   const arranged = arrangeBoard({ cards, wires, taste });

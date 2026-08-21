@@ -72,12 +72,7 @@ import type {
   ThroughputResult,
 } from "@/lib/model/types";
 import { planContentFingerprint } from "@/lib/community/plan-fingerprint";
-import {
-  collectPocketMembers,
-  expandPocketSelection,
-  resolveMemberIdsForResource,
-  resolvePocketMemberIds,
-} from "@/lib/model/pocket-connections";
+import { collectPocketMembers, expandPocketSelection } from "@/lib/model/pocket-connections";
 import type { BoardCamera } from "@/lib/designs/design-camera";
 
 export const LOCAL_STORAGE_KEY = "gtnh-factory-flow.project.v2";
@@ -370,30 +365,25 @@ interface FactoryStore {
   /**
    * Paste a copied selection: fresh ids, wires remapped onto the copies,
    * per-node recipes cloned, everything offset and snapped to the grid - one
-   * undo entry. Root-level items land in the pocket the board is currently
-   * showing. Returns the new ids visible at that level so the caller can
-   * select them.
+   * undo entry. Returns the new root-level ids so the caller can select them
+   * (members of a pasted board ride inside it).
    */
   pasteBoardItems: (payload: BoardClipboardPayload, offset: { x: number; y: number }) => string[];
-  /** The pocket dimension the board is currently zoomed into; absent = root. */
-  activePocketId?: string;
-  /** Zoom the board into a pocket, or back to the root with undefined. */
-  enterPocket: (pocketId?: string) => void;
   /**
-   * Collapse a selection into a new pocket dimension: members keep their
-   * positions and wires, the parent board shows one pocket card in their
-   * place. Selected pocket cards nest whole. Returns the new pocket id, or
+   * Wrap a selection in a new OPEN board fitted around it: members keep
+   * their screen positions and every wire, the frame simply appears around
+   * them. Selected boards nest whole. Returns the new board id, or
    * undefined when the selection held nothing.
    */
-  compactSelectionIntoPocket: (ids: string[], name?: string) => string | undefined;
-  /** Unpack a pocket: members surface on the pocket's parent board. */
+  wrapSelectionInBoard: (ids: string[], name?: string) => string | undefined;
+  /** Unwrap a board: members surface where they stand, the frame goes. */
   dissolvePocket: (pocketId: string) => void;
   renamePocket: (pocketId: string, name: string) => void;
   /**
-   * Place a new BOARD: a pocket standing open as a window on the level in
-   * view. Items in `memberIds` (already on that level, covered by the drawn
-   * frame) become members without moving on screen — their positions are
-   * re-measured from the frame's corner. Returns the new pocket id.
+   * Place a new board: an open window on the canvas. Items in `memberIds`
+   * (root items covered by the drawn frame) become members without moving
+   * on screen — their positions are re-measured from the frame's corner.
+   * Returns the new board id.
    */
   createBoard: (input: {
     position: { x: number; y: number };
@@ -402,13 +392,18 @@ interface FactoryStore {
     memberIds?: string[];
   }) => string | undefined;
   /**
-   * Open a pocket as a board on its parent board. Members are rebased to
-   * fit inside the frame (their dive-in coordinates were their own space),
-   * and hand-pinned waypoints on wires touching them are dropped — they
-   * steered through a space the wires no longer travel.
+   * Open a collapsed board. Members of a board that has never stood open
+   * (a legacy pocket) are rebased to fit inside the frame — their old
+   * dive-in coordinates were their own space — and hand-pinned waypoints on
+   * wires touching them are dropped: they steered through a space the wires
+   * no longer travel.
    */
   expandPocket: (pocketId: string) => void;
-  /** Fold a board back into the classic pocket card, at the frame's corner. */
+  /**
+   * Fold a board down to its minimized card — the one that shows the
+   * contents' inputs and outputs with the crossing wires docked on it.
+   * Members hide until it reopens.
+   */
   minimizePocket: (pocketId: string) => void;
   /** Resize a board's window frame; snapped up to whole cells. */
   setPocketSize: (pocketId: string, size: { width: number; height: number }) => void;
@@ -631,7 +626,6 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   hoveredUsageNodeId: undefined,
   selectedNodeId: undefined,
   selectedRecipeId: undefined,
-  activePocketId: undefined,
   pendingBoardSelectionIds: undefined,
   placedBoardIds: undefined,
   placedBoardToken: 0,
@@ -652,7 +646,6 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       project: nextProject,
       selectedNodeId: nextProject.nodes[0]?.id,
       selectedRecipeId: nextProject.nodes[0]?.recipeId ?? nextProject.recipes[0]?.id,
-      activePocketId: undefined,
       pendingBoardSelectionIds: undefined,
       selectedBoardIds: [],
       lastResult: calculateThroughput(nextProject),
@@ -666,7 +659,6 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       project: nextProject,
       selectedNodeId: nextProject.nodes[0]?.id,
       selectedRecipeId: nextProject.nodes[0]?.recipeId ?? nextProject.recipes[0]?.id,
-      activePocketId: undefined,
       pendingBoardSelectionIds: undefined,
       selectedBoardIds: [],
       lastResult: calculateThroughput(nextProject),
@@ -1312,7 +1304,6 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
           x: 180 + (state.project.storages?.length ?? 0) * 80,
           y: 180 + (state.project.storages?.length ?? 0) * 60,
         }),
-        pocketId: state.activePocketId,
       };
       const project = touchProject({
         ...state.project,
@@ -1333,6 +1324,19 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       // makes a drawer of cells, counted in cells; it used to be rewritten into
       // its fluid, which is why an item output reported litres.
       const storageResource = resource;
+      // The drawer joins the board of the port it came off: a port you can
+      // drag from belongs to a visible card, and a drawer spawned beside a
+      // board member should ride that board's title bar with it. `position`
+      // arrives in flow space, so it converts to the frame's own.
+      const anchorId = nodeIds[0];
+      const anchorOwner =
+        state.project.nodes.find((node) => node.id === anchorId)?.pocketId ??
+        (state.project.storages ?? []).find((entry) => entry.id === anchorId)?.pocketId;
+      const anchorFrame = anchorOwner
+        ? computeOpenBoardRects(
+            computeBoardLevelView(state.project).openBoards,
+          ).find((frame) => frame.id === anchorOwner)
+        : undefined;
       const storage: FactoryStorage = {
         id: createId("storage"),
         kind: storageResource.kind,
@@ -1341,12 +1345,12 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         iconPath: storageResource.iconPath,
         iconAtlas: storageResource.iconAtlas,
         dominantColor: storageResource.dominantColor ?? storageResource.iconAtlas?.dominantColor,
-        position: snapPositionToGrid(position),
-        // A new card belongs to the level you are LOOKING at, not the level of
-        // whatever it wired itself to. Dragging from a collapsed pocket's port
-        // hands over members inside that pocket; inheriting from them would
-        // bury the drawer in a pocket you are standing outside of.
-        pocketId: state.activePocketId,
+        position: snapPositionToGrid(
+          anchorFrame
+            ? { x: position.x - anchorFrame.x, y: position.y - anchorFrame.y }
+            : position,
+        ),
+        pocketId: anchorFrame ? anchorOwner : undefined,
       };
       let project: FactoryProject = {
         ...state.project,
@@ -1633,7 +1637,6 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
             ...annotation,
             ...snapAnnotationToGrid(annotation),
             id: createId("annotation"),
-            pocketId: state.activePocketId,
           },
         ],
       });
@@ -1822,7 +1825,6 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
           ...addAnnotations.map((annotation) => ({
             ...annotation,
             id: createId("auto-island-box"),
-            pocketId: state.activePocketId,
           })),
         ];
       }
@@ -1911,10 +1913,6 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
           state.selectedNodeId && doomedItems.has(state.selectedNodeId)
             ? undefined
             : state.selectedNodeId,
-        activePocketId:
-          state.activePocketId && doomedPockets.has(state.activePocketId)
-            ? undefined
-            : state.activePocketId,
         lastResult: calculateThroughput(project),
       });
     });
@@ -1929,24 +1927,22 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       const addedRecipes: Recipe[] = [];
       const idMap = new Map<string, string>();
 
-      // Pockets first: items need the new pocket ids to re-home into. A
-      // payload item at the payload's root lands in whatever pocket the
-      // board is currently showing.
+      // Boards first: items need the new board ids to re-home into. A
+      // payload item at the payload's root lands on the canvas.
       const pastePockets = payload.pockets ?? [];
       for (const pocket of pastePockets) {
         idMap.set(pocket.id, createId("pocket"));
       }
       const rehome = (pocketId: string | undefined): string | undefined =>
-        (pocketId !== undefined ? idMap.get(pocketId) : undefined) ?? state.activePocketId;
-      // Positions inside a pasted pocket are that pocket's own space (frame-
-      // relative when it stands open as a board), so only items surfacing at
-      // the level in view move by the paste offset — shifting members too
-      // would carry an open board's contents twice.
+        pocketId !== undefined ? idMap.get(pocketId) : undefined;
+      // Positions inside a pasted board are frame-relative, so only items
+      // surfacing at the root move by the paste offset — shifting members
+      // too would carry a board's contents twice.
       const placeAt = (
         position: { x: number; y: number },
         home: string | undefined,
       ): { x: number; y: number } =>
-        home === state.activePocketId ? shift(position) : snapPositionToGrid(position);
+        home === undefined ? shift(position) : snapPositionToGrid(position);
       const pockets = pastePockets.map((pocket) => {
         const clone = structuredClone(pocket);
         clone.id = idMap.get(pocket.id) as string;
@@ -2002,11 +1998,11 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       // Only wires interior to the copied selection can come along - a wire
       // with one foot outside has nothing on the pasted side to stand on.
       // Waypoints are corners in the space the wire renders in; they ride
-      // the paste offset only when an endpoint surfaced at the level in
-      // view — a wire wholly inside a pasted pocket kept its own space.
+      // the paste offset only when an endpoint surfaced at the root — a wire
+      // wholly inside a pasted board kept the board's own space.
       const surfaced = new Set([
-        ...nodes.filter((entry) => entry.pocketId === state.activePocketId).map((n) => n.id),
-        ...storages.filter((entry) => entry.pocketId === state.activePocketId).map((s) => s.id),
+        ...nodes.filter((entry) => entry.pocketId === undefined).map((n) => n.id),
+        ...storages.filter((entry) => entry.pocketId === undefined).map((s) => s.id),
       ]);
       const edges: FactoryEdge[] = [];
       for (const edge of payload.edges) {
@@ -2050,15 +2046,15 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       // selected; cards pasted deeper inside a pocket are reachable by
       // entering it.
       pastedIds.push(
-        ...nodes.filter((node) => node.pocketId === state.activePocketId).map((node) => node.id),
+        ...nodes.filter((node) => node.pocketId === undefined).map((node) => node.id),
         ...storages
-          .filter((storage) => storage.pocketId === state.activePocketId)
+          .filter((storage) => storage.pocketId === undefined)
           .map((storage) => storage.id),
         ...annotations
-          .filter((annotation) => annotation.pocketId === state.activePocketId)
+          .filter((annotation) => annotation.pocketId === undefined)
           .map((annotation) => annotation.id),
         ...pockets
-          .filter((pocket) => pocket.parentPocketId === state.activePocketId)
+          .filter((pocket) => pocket.parentPocketId === undefined)
           .map((pocket) => pocket.id),
       );
       const lastPastedNode = nodes.at(-1);
@@ -2071,19 +2067,8 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
     });
     return pastedIds;
   },
-  enterPocket: (pocketId) => {
-    set((state) => {
-      if (
-        pocketId !== undefined &&
-        !(state.project.pockets ?? []).some((pocket) => pocket.id === pocketId)
-      ) {
-        return state;
-      }
-      return { activePocketId: pocketId };
-    });
-  },
-  compactSelectionIntoPocket: (ids, name) => {
-    let createdPocketId: string | undefined;
+  wrapSelectionInBoard: (ids, name) => {
+    let createdBoardId: string | undefined;
     set((state) => {
       const selected = new Set(ids);
       const memberNodes = state.project.nodes.filter((node) => selected.has(node.id));
@@ -2105,89 +2090,113 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         return state;
       }
 
-      // A selected member may sit inside an open board, whose positions are
-      // frame-relative; the new pocket keeps ONE space, so everything is
-      // converted to the viewed level's own coordinates first.
-      const view = computeBoardLevelView(state.project, state.activePocketId);
+      // A selected member may already sit inside another open board; the new
+      // frame keeps ONE space, so everything converts to canvas coordinates
+      // first, and the frame fits around where things STAND — wrapping never
+      // moves a card on screen and never touches a wire.
+      const view = computeBoardLevelView(state.project);
       const frameOrigins = new Map(
-        computeOpenBoardRects(view.openBoards, state.activePocketId).map(
-          (rect) => [rect.id, rect] as const,
-        ),
+        computeOpenBoardRects(view.openBoards).map((rect) => [rect.id, rect] as const),
       );
       const absolutize = (
         position: { x: number; y: number },
         home: string | undefined,
       ): { x: number; y: number } => {
-        const origin = home !== state.activePocketId ? frameOrigins.get(home ?? "") : undefined;
+        const origin = home !== undefined ? frameOrigins.get(home) : undefined;
         return origin ? { x: position.x + origin.x, y: position.y + origin.y } : position;
       };
 
-      // The card spawns at the centre of the cards it swallows, so the board
-      // reads "that cluster became this" rather than teleporting the work.
-      const positions = [
-        ...memberNodes.map((node) => absolutize(node.position, node.pocketId)),
-        ...memberStorages.map((storage) => absolutize(storage.position, storage.pocketId)),
-        ...memberAnnotations.map((annotation) =>
-          absolutize(annotation.position, annotation.pocketId),
-        ),
-        ...memberPockets.map((pocket) => absolutize(pocket.position, pocket.parentPocketId)),
+      // Footprints are estimated exactly as expandPocket estimates them;
+      // overshooting only makes the frame roomy.
+      const footprints = [
+        ...memberNodes.map((node) => ({
+          ...absolutize(node.position, node.pocketId),
+          width: RECIPE_NODE_WIDTH,
+          height: BOARD_GRID * 14,
+        })),
+        ...memberStorages.map((storage) => ({
+          ...absolutize(storage.position, storage.pocketId),
+          width: STORAGE_NODE_WIDTH,
+          height: STORAGE_NODE_HEIGHT,
+        })),
+        ...memberAnnotations.map((annotation) => ({
+          ...absolutize(annotation.position, annotation.pocketId),
+          width: annotation.size.width,
+          height: annotation.size.height,
+        })),
+        ...memberPockets.map((entry) => ({
+          ...absolutize(entry.position, entry.parentPocketId),
+          width: boardWindowSize(entry).width,
+          height: entry.expanded ? boardWindowSize(entry).height : BOARD_WINDOW_TITLE_HEIGHT,
+        })),
       ];
-      const centroid = snapPositionToGrid({
-        x: positions.reduce((sum, position) => sum + position.x, 0) / positions.length,
-        y: positions.reduce((sum, position) => sum + position.y, 0) / positions.length,
+      const minX = Math.min(...footprints.map((rect) => rect.x));
+      const minY = Math.min(...footprints.map((rect) => rect.y));
+      const maxX = Math.max(...footprints.map((rect) => rect.x + rect.width));
+      const maxY = Math.max(...footprints.map((rect) => rect.y + rect.height));
+      const corner = snapPositionToGrid({
+        x: minX - BOARD_WINDOW_FIT_PAD,
+        y: minY - BOARD_WINDOW_TITLE_HEIGHT - BOARD_WINDOW_FIT_PAD,
       });
 
-      const pocket: FactoryPocket = {
+      const board: FactoryPocket = {
         id: createId("pocket"),
-        name: name?.trim() || `Pocket ${(state.project.pockets ?? []).length + 1}`,
-        parentPocketId: state.activePocketId,
-        position: centroid,
+        name: name?.trim() || `Board ${(state.project.pockets ?? []).length + 1}`,
+        position: corner,
+        expanded: true,
+        size: {
+          width: Math.max(
+            BOARD_WINDOW_MIN_WIDTH,
+            snapSizeUpToGrid(maxX - corner.x + BOARD_WINDOW_FIT_PAD),
+          ),
+          height: Math.max(
+            BOARD_WINDOW_MIN_HEIGHT,
+            snapSizeUpToGrid(maxY - corner.y + BOARD_WINDOW_FIT_PAD),
+          ),
+        },
       };
-      createdPocketId = pocket.id;
+      createdBoardId = board.id;
 
-      const intoPocket = <
+      const intoBoard = <
         T extends { id: string; pocketId?: string; position: { x: number; y: number } },
       >(
         items: T[],
       ): T[] =>
-        items.map((item) =>
-          selected.has(item.id)
-            ? {
-                ...item,
-                pocketId: pocket.id,
-                position: absolutize(item.position, item.pocketId),
-              }
-            : item,
-        );
+        items.map((item) => {
+          if (!selected.has(item.id)) {
+            return item;
+          }
+          const absolute = absolutize(item.position, item.pocketId);
+          return {
+            ...item,
+            pocketId: board.id,
+            position: { x: absolute.x - corner.x, y: absolute.y - corner.y },
+          };
+        });
 
-      const assembled: FactoryProject = {
+      const project = touchProject({
         ...state.project,
-        nodes: intoPocket(state.project.nodes),
-        storages: state.project.storages ? intoPocket(state.project.storages) : undefined,
-        annotations: state.project.annotations ? intoPocket(state.project.annotations) : undefined,
+        nodes: intoBoard(state.project.nodes),
+        storages: state.project.storages ? intoBoard(state.project.storages) : undefined,
+        annotations: state.project.annotations ? intoBoard(state.project.annotations) : undefined,
         pockets: [
-          ...(state.project.pockets ?? []).map((entry) =>
-            selected.has(entry.id)
-              ? {
-                  ...entry,
-                  parentPocketId: pocket.id,
-                  position: absolutize(entry.position, entry.parentPocketId),
-                }
-              : entry,
-          ),
-          pocket,
+          ...(state.project.pockets ?? []).map((entry) => {
+            if (!selected.has(entry.id)) {
+              return entry;
+            }
+            const absolute = absolutize(entry.position, entry.parentPocketId);
+            return {
+              ...entry,
+              parentPocketId: board.id,
+              position: { x: absolute.x - corner.x, y: absolute.y - corner.y },
+            };
+          }),
+          board,
         ],
-      };
-      // The boundary convergence rule may add wires (see
-      // convergePocketBoundaryEdges); membership itself never rewires.
-      const converged = convergePocketBoundaryEdges(assembled, pocket.id);
-      const project = touchProject(converged);
-      return withProjectHistory(state, {
-        project,
-        ...(converged !== assembled ? { lastResult: calculateThroughput(project) } : undefined),
       });
+      return withProjectHistory(state, { project });
     });
-    return createdPocketId;
+    return createdBoardId;
   },
   dissolvePocket: (pocketId) => {
     set((state) => {
@@ -2196,20 +2205,13 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         return state;
       }
 
-      // Converge FIRST, while the pocket still exists: a wire that fed the
-      // pocket's port must spill as a wire to everything behind that port,
-      // even when the wiring drifted (an import, members added inside).
-      // An OPEN board skips this: its wires were always direct member wires,
-      // so there is no one-port-per-resource story to spill.
-      const converged = pocket.expanded
-        ? state.project
-        : convergePocketBoundaryEdges(state.project, pocketId);
-
-      // Members surface on the pocket's parent board. A collapsed pocket's
-      // members stand exactly where they always were - positions never
-      // changed, only visibility. An OPEN board's members were measured from
-      // the frame's corner, so the frame's own position is added back and
-      // everything stays put on screen while the frame vanishes around it.
+      // Members surface where the frame stood. A board that has ever been
+      // fitted (it carries a `size`) holds frame-relative member positions,
+      // so the frame's own corner is added back and everything stays put on
+      // screen while the frame vanishes around it. A legacy pocket that
+      // never stood open kept its members' old dive-in coordinates, which
+      // surface verbatim — exactly what unpacking always did.
+      const fitted = pocket.size !== undefined;
       const surface = <T extends { pocketId?: string; position: { x: number; y: number } }>(
         items: T[],
       ): T[] =>
@@ -2218,7 +2220,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
             ? {
                 ...item,
                 pocketId: pocket.parentPocketId,
-                ...(pocket.expanded
+                ...(fitted
                   ? {
                       position: {
                         x: item.position.x + pocket.position.x,
@@ -2247,18 +2249,20 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       ];
 
       const project = touchProject({
-        ...converged,
-        nodes: surface(converged.nodes),
-        storages: converged.storages ? surface(converged.storages) : undefined,
-        annotations: converged.annotations ? surface(converged.annotations) : undefined,
-        pockets: (converged.pockets ?? [])
+        ...state.project,
+        nodes: surface(state.project.nodes),
+        storages: state.project.storages ? surface(state.project.storages) : undefined,
+        annotations: state.project.annotations
+          ? surface(state.project.annotations)
+          : undefined,
+        pockets: (state.project.pockets ?? [])
           .filter((entry) => entry.id !== pocketId)
           .map((entry) =>
             entry.parentPocketId === pocketId
               ? {
                   ...entry,
                   parentPocketId: pocket.parentPocketId,
-                  ...(pocket.expanded
+                  ...(fitted
                     ? {
                         position: {
                           x: entry.position.x + pocket.position.x,
@@ -2272,10 +2276,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       });
       return withProjectHistory(state, {
         project,
-        activePocketId:
-          state.activePocketId === pocketId ? pocket.parentPocketId : state.activePocketId,
         pendingBoardSelectionIds: surfacedIds.length > 0 ? surfacedIds : undefined,
-        ...(converged !== state.project ? { lastResult: calculateThroughput(project) } : undefined),
       });
     });
   },
@@ -2311,7 +2312,6 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       const board: FactoryPocket = {
         id: createId("pocket"),
         name: name?.trim() || `Board ${(state.project.pockets ?? []).length + 1}`,
-        parentPocketId: state.activePocketId,
         position: corner,
         expanded: true,
         size: frame,
@@ -2328,7 +2328,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         items: T[],
       ): T[] =>
         items.map((item) =>
-          selected.has(item.id) && item.pocketId === state.activePocketId
+          selected.has(item.id) && item.pocketId === undefined
             ? {
                 ...item,
                 pocketId: board.id,
@@ -2344,7 +2344,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         annotations: state.project.annotations ? adopt(state.project.annotations) : undefined,
         pockets: [
           ...(state.project.pockets ?? []).map((entry) =>
-            selected.has(entry.id) && entry.parentPocketId === state.activePocketId
+            selected.has(entry.id) && entry.parentPocketId === undefined
               ? {
                   ...entry,
                   parentPocketId: board.id,
@@ -2932,10 +2932,7 @@ function pushProjectHistory(history: FactoryProject[], project: FactoryProject):
 function restoreProjectState(
   state: FactoryStore,
   project: FactoryProject,
-): Pick<
-  FactoryStore,
-  "project" | "selectedNodeId" | "selectedRecipeId" | "activePocketId" | "lastResult"
-> {
+): Pick<FactoryStore, "project" | "selectedNodeId" | "selectedRecipeId" | "lastResult"> {
   const selectedNode = state.selectedNodeId
     ? project.nodes.find((node) => node.id === state.selectedNodeId)
     : undefined;
@@ -2951,13 +2948,6 @@ function restoreProjectState(
       selectedRecipe?.id ??
       project.nodes[0]?.recipeId ??
       project.recipes[0]?.id,
-    // Undoing past a pocket's creation while zoomed into it would leave the
-    // board showing a dimension that no longer exists.
-    activePocketId:
-      state.activePocketId &&
-      (project.pockets ?? []).some((pocket) => pocket.id === state.activePocketId)
-        ? state.activePocketId
-        : undefined,
     lastResult: calculateThroughput(project),
   };
 }
@@ -3034,7 +3024,6 @@ function addRecipeNodeToState(
         x: 100 + index * 80,
         y: 120 + (index % 4) * 80,
       }),
-    pocketId: state.activePocketId,
   };
   const recipeAlreadyInProject = state.project.recipes.some((entry) => entry.id === recipe.id);
   const project = touchProject({
@@ -3084,7 +3073,9 @@ function addConnectedRecipeNodeToState(
         ? { x: anchorNode.position.x - 440, y: anchorNode.position.y }
         : { x: anchorNode.position.x + 440, y: anchorNode.position.y },
     ),
-    pocketId: state.activePocketId,
+    // Spawned beside its anchor, in the anchor's own coordinates - so it
+    // joins the anchor's board and the relative placement stays true.
+    pocketId: anchorNode.pocketId,
   };
 
   const projectWithNode: FactoryProject = {
@@ -3455,213 +3446,6 @@ function isFactoryEdgeStillValid(project: FactoryProject, edge: FactoryEdge): bo
         resourceMatchesInput({ kind: edge.resourceKind, id: edge.resourceId }, input),
     )
   );
-}
-
-/** One line of the pre-compact warning: a port whose wiring would change. */
-export interface PocketConvergenceWarning {
-  side: "input" | "output";
-  kind: ResourceKind;
-  resourceId: string;
-  /** Best-effort display name, the raw id as fallback. */
-  label: string;
-  /** Distinct far-end cards involved (sources in, destinations out). */
-  farEndCount: number;
-  /** Members that take/offer this resource inside the prospective pocket. */
-  memberCount: number;
-  /** Members any crossing wire already reaches. */
-  wiredMemberCount: number;
-}
-
-/**
- * What compacting THIS selection would rewire, before it happens. The rule
- * is simple: warn whenever convergence would ADD a wire — several sources
- * pooling behind one port, or one source stretching to takers it never fed
- * (splitting its output and un-hand-feeding them), and both mirrored on
- * the output side. The only silent compact is one whose boundary wiring
- * already matches the pocket's one-port-per-resource story.
- */
-export function collectPocketConvergenceWarnings(
-  project: FactoryProject,
-  selectedIds: string[],
-): PocketConvergenceWarning[] {
-  const { itemIds } = expandPocketSelection(project, selectedIds);
-  if (itemIds.size === 0) {
-    return [];
-  }
-
-  interface PortGroup {
-    side: "input" | "output";
-    kind: ResourceKind;
-    resourceId: string;
-    label: string;
-    farEnds: Set<string>;
-    /** farEndId -> member endpoints it already reaches. */
-    pairings: Map<string, Set<string>>;
-  }
-  const groups = new Map<string, PortGroup>();
-  for (const edge of project.edges) {
-    const sourceInside = itemIds.has(edge.source);
-    const targetInside = itemIds.has(edge.target);
-    if (sourceInside === targetInside) {
-      continue;
-    }
-    const inbound = targetInside;
-    const portHandle = parseResourceHandleId(inbound ? edge.targetHandle : edge.sourceHandle);
-    const kind = portHandle?.kind ?? edge.resourceKind;
-    const resourceId = portHandle?.resourceId ?? edge.resourceId;
-    const farEnd = inbound ? edge.source : edge.target;
-    const memberEnd = inbound ? edge.target : edge.source;
-    const key = [inbound ? "in" : "out", kind, resourceId].join("|");
-    let group = groups.get(key);
-    if (!group) {
-      group = {
-        side: inbound ? "input" : "output",
-        kind,
-        resourceId,
-        label: edge.label ?? resourceId,
-        farEnds: new Set(),
-        pairings: new Map(),
-      };
-      groups.set(key, group);
-    }
-    group.farEnds.add(farEnd);
-    const wired = group.pairings.get(farEnd) ?? new Set<string>();
-    wired.add(memberEnd);
-    group.pairings.set(farEnd, wired);
-  }
-
-  const warnings: PocketConvergenceWarning[] = [];
-  for (const group of groups.values()) {
-    const memberEndpoints = resolveMemberIdsForResource(project, itemIds, group.side, {
-      kind: group.kind,
-      id: group.resourceId,
-    });
-    const wouldRewire = [...group.farEnds].some((farEnd) => {
-      const wired = group.pairings.get(farEnd);
-      return memberEndpoints.some((memberId) => !wired?.has(memberId));
-    });
-    if (wouldRewire) {
-      const wiredMembers = new Set<string>();
-      for (const wired of group.pairings.values()) {
-        for (const memberId of wired) {
-          wiredMembers.add(memberId);
-        }
-      }
-      warnings.push({
-        side: group.side,
-        kind: group.kind,
-        resourceId: group.resourceId,
-        label: group.label,
-        farEndCount: group.farEnds.size,
-        memberCount: memberEndpoints.length,
-        wiredMemberCount: wiredMembers.size,
-      });
-    }
-  }
-  return warnings;
-}
-
-/**
- * The pocket boundary convergence rule. The collapsed card presents ONE
- * port per resource, so the wiring underneath must match that story:
- * whatever feeds a pocket's input feeds EVERY member that takes the
- * resource, and whatever drinks an output drinks from every member that
- * offers it. Applied when a pocket forms and again when it unpacks, so
- * surgical per-machine wiring across the boundary is deliberately
- * levelled — while wiring wholly inside (or wholly outside) is untouched.
- * Additive only: existing wires keep their ids, waypoints and overrides;
- * the rule just completes the fan-out. Returns the project unchanged (same
- * reference) when nothing was missing.
- */
-function convergePocketBoundaryEdges(project: FactoryProject, pocketId: string): FactoryProject {
-  const members = collectPocketMembers(project, pocketId);
-  const memberIds = new Set<string>([
-    ...members.nodes.map((node) => node.id),
-    ...members.storages.map((storage) => storage.id),
-  ]);
-
-  interface PortGroup {
-    sample: FactoryEdge;
-    inbound: boolean;
-    portKind: ResourceKind;
-    portResourceId: string;
-    /** Member endpoints this far-end already reaches for this port. */
-    wired: Set<string>;
-  }
-  const groups = new Map<string, PortGroup>();
-  for (const edge of project.edges) {
-    const sourceInside = memberIds.has(edge.source);
-    const targetInside = memberIds.has(edge.target);
-    if (sourceInside === targetInside) {
-      continue;
-    }
-    const inbound = targetInside;
-    // The pocket port this wire docks on: the stored member-side handle's
-    // identity, the wire's resource as the legacy fallback — the same
-    // derivation the card uses to render its port rows.
-    const portHandle = parseResourceHandleId(inbound ? edge.targetHandle : edge.sourceHandle);
-    const portKind = portHandle?.kind ?? edge.resourceKind;
-    const portResourceId = portHandle?.resourceId ?? edge.resourceId;
-    const key = [
-      inbound ? "in" : "out",
-      inbound ? edge.source : edge.target,
-      edge.resourceKind,
-      edge.resourceId,
-      portKind,
-      portResourceId,
-    ].join("|");
-    const memberEnd = inbound ? edge.target : edge.source;
-    const group = groups.get(key);
-    if (group) {
-      group.wired.add(memberEnd);
-    } else {
-      groups.set(key, {
-        sample: edge,
-        inbound,
-        portKind,
-        portResourceId,
-        wired: new Set([memberEnd]),
-      });
-    }
-  }
-
-  const additions: FactoryEdge[] = [];
-  for (const group of groups.values()) {
-    const { sample, inbound, portKind, portResourceId, wired } = group;
-    const memberEndpoints = resolvePocketMemberIds(
-      project,
-      pocketId,
-      inbound ? "input" : "output",
-      { kind: portKind, id: portResourceId },
-    );
-    for (const memberId of memberEndpoints) {
-      if (wired.has(memberId)) {
-        continue;
-      }
-      const resource = {
-        kind: sample.resourceKind,
-        id: sample.resourceId,
-        displayName: sample.label,
-        sourceHandle: inbound
-          ? sample.sourceHandle
-          : makeResourceHandleId("output", { kind: portKind, id: portResourceId }),
-        targetHandle: inbound
-          ? makeResourceHandleId("input", { kind: portKind, id: portResourceId })
-          : sample.targetHandle,
-      };
-      const edge = inbound
-        ? buildEdgeBetweenNodes(project, sample.source, memberId, resource)
-        : buildEdgeBetweenNodes(project, memberId, sample.target, resource);
-      if (edge && !hasStorageEndpointConflict(project, edge)) {
-        additions.push(edge);
-      }
-    }
-  }
-
-  if (additions.length === 0) {
-    return project;
-  }
-  return { ...project, edges: [...project.edges, ...additions] };
 }
 
 function buildEdgeBetweenNodes(

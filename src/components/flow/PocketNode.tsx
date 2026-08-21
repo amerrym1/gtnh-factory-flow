@@ -2,7 +2,7 @@
 
 import { type Node, type NodeProps } from "@xyflow/react";
 import { memo, useState, type CSSProperties } from "react";
-import { Copy, Expand, Maximize2, PackageOpen, Save } from "lucide-react";
+import { Copy, Maximize2, Save } from "lucide-react";
 import type { FactoryPocket } from "@/lib/model/types";
 import { RECIPE_NODE_WIDTH } from "@/lib/board-grid";
 import { fluidArtPixels, isSwatchFluid, ResourceIcon } from "@/components/nei/ResourceIcon";
@@ -29,11 +29,13 @@ export interface PocketNodeData extends Record<string, unknown> {
 export type PocketFlowNode = Node<PocketNodeData, "pocketNode">;
 
 /**
- * A pocket card is a recipe card that happens to hold a whole sub-factory:
- * same 18-cell width, same 40px head row, same 40px port rows with the icon,
- * the name and the rate — inputs on the left rail, outputs on the right —
- * and the same drag-to-wire ports. Only the paint says "pocket universe":
- * star-field purple, so it can never pass for one machine.
+ * A MINIMIZED BOARD: the collapsed state of a board window, nothing more.
+ * It reads like a recipe card that happens to hold a whole sub-factory —
+ * same 18-cell width, same 40px head row, same 40px port rows with the
+ * icon, the name and the rate (inputs on the left rail, outputs on the
+ * right), and the same drag-to-wire ports; every wire crossing the hidden
+ * contents docks here. Star-field purple so it can never pass for one
+ * machine. Double-click (or the restore button) opens the window back up.
  *
  * Head 40 + rows of 40 + footer 40 keeps the whole card on the grid and
  * every port row's centre exactly on a grid line (60, 100, 140, … from the
@@ -47,9 +49,7 @@ const INK_MUTED = "text-[#c9b8ec]";
 function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
   const { pocket, summary, railPorts } = data;
   const pendingResourceConnection = useFactoryStore((state) => state.pendingResourceConnection);
-  const enterPocket = useFactoryStore((state) => state.enterPocket);
   const expandPocket = useFactoryStore((state) => state.expandPocket);
-  const dissolvePocket = useFactoryStore((state) => state.dissolvePocket);
   const renamePocket = useFactoryStore((state) => state.renamePocket);
   const deleteBoardSelection = useFactoryStore((state) => state.deleteBoardSelection);
   const [draftName, setDraftName] = useState<string | undefined>(undefined);
@@ -89,7 +89,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
     setDraftName(undefined);
   };
 
-  // Clone the whole dimension — the pocket, every member, every internal
+  // Clone the whole board — the frame, every member, every internal
   // wire — through the same capture/paste path Ctrl+C/Ctrl+V uses, so the
   // copy lands beside the original, selected and ready to drag.
   const duplicatePocket = () => {
@@ -104,8 +104,8 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
     }
   };
 
-  // Shelve the whole dimension: the save dialog opens
-  // prefilled with the pocket's name and stat card, plus an icon to pick.
+  // Shelve the whole board: the save dialog opens
+  // prefilled with the board's name and stat card, plus an icon to pick.
   const saveAsBlueprint = () => {
     const payload = captureBoardSelection(useFactoryStore.getState().project, [pocket.id]);
     if (payload) {
@@ -126,13 +126,13 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
       onDoubleClick={(event) => {
         // The name field manages its own double-click; the buttons and the
         // port handles are their own controls; and the mouseup that lands a
-        // wire must never read as "dive into the dimension".
+        // wire must never read as "open the window".
         if (isWiringConnection() || wasRecentWireDrop()) {
           return;
         }
         const target = event.target as HTMLElement;
         if (!target.closest("input, button, .react-flow__handle")) {
-          enterPocket(pocket.id);
+          expandPocket(pocket.id);
         }
       }}
     >
@@ -156,18 +156,18 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
         <PocketGlanceReveal name={pocket.name} inputs={inputs} outputs={outputs} />
         <div className="px-2">
           {/* One head row, exactly two cells tall, like every machine card:
-              delete/clone/open on the left like every card's edit chrome, the
-              name in the middle, and the two "send it away" actions — shelve
-              to the shelf, unpack — on the right. Calm mode drops all six and
-              gives the whole row to the name, the same trade a machine card
-              makes; the row stays 40px either way, so the ports below keep
-              their grid lines. */}
+              delete/clone on the left like every card's edit chrome, the
+              name in the middle, shelve and restore on the right — restore
+              rightmost, where a window keeps it. Calm mode drops all four
+              and gives the whole row to the name, the same trade a machine
+              card makes; the row stays 40px either way, so the ports below
+              keep their grid lines. */}
           <div
             className={[
               "grid h-[40px] min-w-0 items-center gap-1",
               calmMode
                 ? "grid-cols-[minmax(0,1fr)]"
-                : "grid-cols-[24px_24px_24px_minmax(0,1fr)_24px_24px_24px]",
+                : "grid-cols-[24px_24px_minmax(0,1fr)_24px_24px]",
             ].join(" ")}
           >
             {!calmMode ? (
@@ -179,8 +179,8 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                     deleteBoardSelection({ nodeIds: [pocket.id] });
                   }}
                   className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-red-700"
-                  title="Delete this pocket (everything inside goes with it)"
-                  aria-label={`Delete pocket ${pocket.name}`}
+                  title="Delete this board (everything inside goes with it)"
+                  aria-label={`Delete board ${pocket.name}`}
                 >
                   {/* Drawn rather than a "-" glyph: at this size Monocraft's
                       metrics baseline-align the hyphen low instead of centring. */}
@@ -193,22 +193,10 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                     duplicatePocket();
                   }}
                   className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
-                  title="Clone this pocket dimension (everything inside comes along)"
-                  aria-label={`Clone pocket ${pocket.name}`}
+                  title="Clone this board (everything inside comes along)"
+                  aria-label={`Clone board ${pocket.name}`}
                 >
                   <Copy aria-hidden className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    enterPocket(pocket.id);
-                  }}
-                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
-                  title="Open this pocket dimension (or double-click the card)"
-                  aria-label={`Open pocket ${pocket.name}`}
-                >
-                  <Expand aria-hidden className="h-3.5 w-3.5" />
                 </button>
               </>
             ) : null}
@@ -217,12 +205,12 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                 className="minecraft-title flex h-6 min-w-0 items-center border-2 border-[#241b33] bg-[#5e4a85] px-2 text-[13px] leading-[18px] shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140]"
                 title={
                   calmMode
-                    ? `${pocket.name} (double-click the card to open)`
-                    : `${pocket.name} (double-click the name to rename, double-click the card to open)`
+                    ? `${pocket.name} (double-click the card to open the window)`
+                    : `${pocket.name} (double-click the name to rename, double-click the card to open the window)`
                 }
                 onDoubleClick={
                   // Renaming is editing, so calm mode lets the double-click
-                  // fall through to the card and just open the dimension.
+                  // fall through to the card and just open the window.
                   calmMode
                     ? undefined
                     : (event) => {
@@ -257,23 +245,11 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
-                    expandPocket(pocket.id);
-                  }}
-                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
-                  title="Stand this pocket open as a board: a window with its cards inside"
-                  aria-label={`Open pocket ${pocket.name} as a board`}
-                >
-                  <Maximize2 aria-hidden className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
                     saveAsBlueprint();
                   }}
                   className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
-                  title={`Save "${pocket.name}" to my pocket shelf (sign in required)`}
-                  aria-label={`Save pocket ${pocket.name} to my shelf`}
+                  title={`Save "${pocket.name}" to my shelf (sign in required)`}
+                  aria-label={`Save board ${pocket.name} to my shelf`}
                 >
                   <Save aria-hidden className="h-3.5 w-3.5" />
                 </button>
@@ -281,13 +257,13 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
-                    dissolvePocket(pocket.id);
+                    expandPocket(pocket.id);
                   }}
                   className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
-                  title="Unpack: put everything back on this board"
-                  aria-label={`Unpack pocket ${pocket.name}`}
+                  title="Open the window (or double-click the card)"
+                  aria-label={`Open board ${pocket.name}`}
                 >
-                  <PackageOpen aria-hidden className="h-3.5 w-3.5" />
+                  <Maximize2 aria-hidden className="h-3.5 w-3.5" />
                 </button>
               </>
             ) : null}
@@ -345,7 +321,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
             <span className="truncate">
               {summary
                 ? `${summary.machineCount}× ${summary.machineCount === 1 ? "machine" : "machines"} · ${summary.memberCount} ${summary.memberCount === 1 ? "card" : "cards"} inside`
-                : "pocket dimension"}
+                : "minimized board"}
             </span>
           </div>
         </div>

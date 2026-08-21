@@ -28,15 +28,15 @@ function makeNode(id: string, pocketId?: string): FactoryNode {
 }
 
 describe("computeBoardLevelView", () => {
-  it("matches the classic one-level view when nothing stands open", () => {
+  it("hides members behind collapsed bars, the way pockets always did", () => {
     const pockets = [makePocket("p1"), makePocket("p2", { parentPocketId: "p1" })];
     const nodes = [makeNode("root-card"), makeNode("inner", "p1"), makeNode("deep", "p2")];
-    const view = computeBoardLevelView({ nodes, pockets }, undefined);
+    const view = computeBoardLevelView({ nodes, pockets });
 
     expect(view.representativeOf("root-card")).toBe("root-card");
     expect(view.representativeOf("inner")).toBe("p1");
     expect(view.representativeOf("deep")).toBe("p1");
-    expect(view.pocketCards.map((pocket) => pocket.id)).toEqual(["p1"]);
+    expect(view.collapsedBoards.map((pocket) => pocket.id)).toEqual(["p1"]);
     expect(view.openBoards).toHaveLength(0);
   });
 
@@ -51,37 +51,30 @@ describe("computeBoardLevelView", () => {
       makeNode("in-mid", "mid"),
       makeNode("in-closed", "closed"),
     ];
-    const view = computeBoardLevelView({ nodes, pockets }, undefined);
+    const view = computeBoardLevelView({ nodes, pockets });
 
-    // Members of open boards stand for themselves; the collapsed pocket
-    // nested inside still swallows its own.
+    // Members of open boards stand for themselves; the collapsed board
+    // nested inside still hides its own behind its bar.
     expect(view.representativeOf("in-outer")).toBe("in-outer");
     expect(view.representativeOf("in-mid")).toBe("in-mid");
     expect(view.representativeOf("in-closed")).toBe("closed");
     expect(view.openBoards.map((pocket) => pocket.id)).toEqual(["outer", "mid"]);
-    expect(view.pocketCards.map((pocket) => pocket.id)).toEqual(["closed"]);
+    expect(view.collapsedBoards.map((pocket) => pocket.id)).toEqual(["closed"]);
   });
 
-  it("keeps the dive view whole: nothing outside the entered pocket shows", () => {
+  it("a collapsed ancestor hides its open descendants entirely", () => {
     const pockets = [
-      makePocket("entered"),
-      makePocket("open-sibling", { expanded: true }),
-      makePocket("open-child", { parentPocketId: "entered", expanded: true }),
+      makePocket("shut"),
+      makePocket("open-inside", { parentPocketId: "shut", expanded: true }),
     ];
-    const nodes = [
-      makeNode("root-card"),
-      makeNode("inside", "entered"),
-      makeNode("sibling-member", "open-sibling"),
-      makeNode("child-member", "open-child"),
-    ];
-    const view = computeBoardLevelView({ nodes, pockets }, "entered");
+    const nodes = [makeNode("member", "open-inside")];
+    const view = computeBoardLevelView({ nodes, pockets });
 
-    expect(view.representativeOf("inside")).toBe("inside");
-    expect(view.representativeOf("root-card")).toBeUndefined();
-    expect(view.representativeOf("sibling-member")).toBeUndefined();
-    // An open board INSIDE the entered pocket still stands open.
-    expect(view.representativeOf("child-member")).toBe("child-member");
-    expect(view.openBoards.map((pocket) => pocket.id)).toEqual(["open-child"]);
+    // The open board inside a shut one is not in view; the shut bar stands
+    // for everything beneath it.
+    expect(view.openBoards).toHaveLength(0);
+    expect(view.collapsedBoards.map((pocket) => pocket.id)).toEqual(["shut"]);
+    expect(view.representativeOf("member")).toBe("shut");
   });
 
   it("orders open boards parents before children for React Flow", () => {
@@ -90,7 +83,7 @@ describe("computeBoardLevelView", () => {
       makePocket("inner", { parentPocketId: "outer", expanded: true }),
       makePocket("outer", { expanded: true }),
     ];
-    const view = computeBoardLevelView({ nodes: [], pockets }, undefined);
+    const view = computeBoardLevelView({ nodes: [], pockets });
     expect(view.openBoards.map((pocket) => pocket.id)).toEqual(["outer", "inner"]);
   });
 
@@ -99,7 +92,7 @@ describe("computeBoardLevelView", () => {
       makePocket("a", { parentPocketId: "b", expanded: true }),
       makePocket("b", { parentPocketId: "a", expanded: true }),
     ];
-    const view = computeBoardLevelView({ nodes: [makeNode("x", "a")], pockets }, undefined);
+    const view = computeBoardLevelView({ nodes: [makeNode("x", "a")], pockets });
     expect(view.representativeOf("x")).toBeUndefined();
     expect(view.openBoards).toHaveLength(0);
   });
@@ -116,8 +109,8 @@ describe("computeOpenBoardRects", () => {
         size: { width: 300, height: 200 },
       }),
     ];
-    const view = computeBoardLevelView({ nodes: [], pockets }, undefined);
-    const rects = computeOpenBoardRects(view.openBoards, undefined);
+    const view = computeBoardLevelView({ nodes: [], pockets });
+    const rects = computeOpenBoardRects(view.openBoards);
 
     expect(rects).toContainEqual({ id: "outer", depth: 1, x: 100, y: 200, width: 800, height: 600 });
     expect(rects).toContainEqual({ id: "inner", depth: 2, x: 140, y: 260, width: 300, height: 200 });

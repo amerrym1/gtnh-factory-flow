@@ -4,17 +4,18 @@ import { BOARD_WINDOW_DEFAULT_SIZE, BOARD_WINDOW_TITLE_HEIGHT } from "@/lib/boar
 /**
  * The board-window view of the pocket tree.
  *
- * A pocket has two states: collapsed (the classic card) and OPEN (`expanded`),
- * a window frame whose members render inside it on the parent board. The view
- * therefore no longer shows exactly one level — it shows the active level plus
- * the contents of every open board whose whole chain of ancestors down to the
- * active level is open too. Everything here is pure derivation from the
- * project; nothing is stored beyond the `expanded` flag and the frame size.
+ * Every `FactoryPocket` IS a board: open (`expanded`) it is a window frame
+ * whose members render inside it; collapsed it is the same window shaded down
+ * to its title bar, members hidden behind the bar. There is no other pocket
+ * representation and no separate "dive-in" level — the canvas always shows
+ * the root, plus the contents of every board whose whole chain of ancestors
+ * is open. Everything here is pure derivation from the project; the only
+ * stored state is the `expanded` flag and the frame size.
  *
  * Coordinate spaces: an item's stored position is relative to its OWNER's
- * frame origin (the window's top-left corner), and an item owned by the level
- * being viewed is in plain flow space. That is exactly React Flow's parent/
- * child contract, which is what lets a dragged frame carry its members.
+ * frame origin (the window's top-left corner), and a root item is in plain
+ * flow space. That is exactly React Flow's parent/child contract, which is
+ * what lets a dragged frame carry its members.
  */
 
 /** The slice of a project the view derives from. */
@@ -27,36 +28,30 @@ export interface BoardLevelInput {
 
 export interface BoardLevelView {
   /**
-   * Whether a level's CONTENTS are in view: the active level itself, or an
-   * open board whose ancestors up to the active level are all open.
+   * Whether a board's CONTENTS are in view: the root always is, and a board
+   * shows its members when it and every ancestor above it stand open.
    */
   isLevelShown: (levelId: string | undefined) => boolean;
   /**
-   * What stands for an item in this view: the item itself when its level is
-   * shown, the outermost collapsed ancestor card otherwise, undefined when
-   * nothing in this view shows it (the rest of the plan while dived in).
+   * What stands for an item in this view: the item itself when its owner
+   * chain is open, otherwise the outermost collapsed board bar hiding it.
+   * Undefined only for dangling owners (repaired on load).
    */
   representativeOf: (itemId: string) => string | undefined;
-  /** Pockets drawn as collapsed cards in this view. */
-  pocketCards: FactoryPocket[];
-  /** Pockets standing open as window frames, parents always before children. */
+  /** Boards drawn as collapsed title bars in this view. */
+  collapsedBoards: FactoryPocket[];
+  /** Boards standing open as window frames, parents always before children. */
   openBoards: FactoryPocket[];
 }
 
-export function computeBoardLevelView(
-  input: BoardLevelInput,
-  activePocketId: string | undefined,
-): BoardLevelView {
+export function computeBoardLevelView(input: BoardLevelInput): BoardLevelView {
   const pockets = input.pockets ?? [];
   const pocketById = new Map(pockets.map((pocket) => [pocket.id, pocket]));
 
   const shownMemo = new Map<string, boolean>();
   const isLevelShown = (levelId: string | undefined): boolean => {
-    if (levelId === activePocketId) {
-      return true;
-    }
     if (levelId === undefined) {
-      return false;
+      return true;
     }
     const cached = shownMemo.get(levelId);
     if (cached !== undefined) {
@@ -87,7 +82,7 @@ export function computeBoardLevelView(
     if (isLevelShown(level)) {
       return itemId;
     }
-    // Climb to the outermost collapsed ancestor whose own card is in view.
+    // Climb to the outermost collapsed board whose own bar is in view.
     const seen = new Set<string>();
     while (level !== undefined && !seen.has(level)) {
       seen.add(level);
@@ -96,8 +91,8 @@ export function computeBoardLevelView(
         return undefined;
       }
       if (isLevelShown(pocket.parentPocketId)) {
-        // This ancestor sits in view; were it open its level would have been
-        // shown above, so it is a collapsed card standing in for the item.
+        // This ancestor's bar is in view; were it open its level would have
+        // been shown above, so it is the collapsed bar hiding the item.
         return pocket.id;
       }
       level = pocket.parentPocketId;
@@ -105,16 +100,16 @@ export function computeBoardLevelView(
     return undefined;
   };
 
-  const pocketCards = pockets.filter(
+  const collapsedBoards = pockets.filter(
     (pocket) => !isLevelShown(pocket.id) && isLevelShown(pocket.parentPocketId),
   );
   // Parents before children — React Flow requires a parent node to appear
   // before every node that names it in `parentId`.
   const openBoards = pockets
-    .filter((pocket) => isLevelShown(pocket.id) && pocket.id !== activePocketId)
+    .filter((pocket) => isLevelShown(pocket.id))
     .sort((left, right) => boardDepth(pocketById, left) - boardDepth(pocketById, right));
 
-  return { isLevelShown, representativeOf, pocketCards, openBoards };
+  return { isLevelShown, representativeOf, collapsedBoards, openBoards };
 }
 
 function boardDepth(pocketById: Map<string, FactoryPocket>, pocket: FactoryPocket): number {
@@ -129,10 +124,10 @@ function boardDepth(pocketById: Map<string, FactoryPocket>, pocket: FactoryPocke
   return depth;
 }
 
-/** An open board's frame in flow space (the active level's coordinates). */
+/** An open board's frame in flow space. */
 export interface OpenBoardRect {
   id: string;
-  /** Nesting depth below the active level; deeper wins a containment tie. */
+  /** Nesting depth; deeper wins a containment tie. */
   depth: number;
   x: number;
   y: number;
@@ -149,16 +144,11 @@ export function boardWindowSize(pocket: FactoryPocket): { width: number; height:
  * relative to their parent frame, so the rects accumulate down the tree —
  * `openBoards` already comes parents-first from `computeBoardLevelView`.
  */
-export function computeOpenBoardRects(
-  openBoards: FactoryPocket[],
-  activePocketId: string | undefined,
-): OpenBoardRect[] {
+export function computeOpenBoardRects(openBoards: FactoryPocket[]): OpenBoardRect[] {
   const rects = new Map<string, OpenBoardRect>();
   for (const board of openBoards) {
     const parent =
-      board.parentPocketId !== undefined && board.parentPocketId !== activePocketId
-        ? rects.get(board.parentPocketId)
-        : undefined;
+      board.parentPocketId !== undefined ? rects.get(board.parentPocketId) : undefined;
     const size = boardWindowSize(board);
     rects.set(board.id, {
       id: board.id,
@@ -176,7 +166,7 @@ export function computeOpenBoardRects(
  * Which open board a dropped point lands in: the deepest frame whose BODY
  * (everything under the title bar) contains the point, skipping excluded
  * boards (the dragged board itself and its descendants — nothing may become
- * its own ancestor). Undefined = the point lands on the active level.
+ * its own ancestor). Undefined = the point lands on the root canvas.
  */
 export function pickBoardOwnerAt(
   rects: OpenBoardRect[],
@@ -200,7 +190,7 @@ export function pickBoardOwnerAt(
   return winner?.id;
 }
 
-/** Every pocket nested anywhere under `rootId`, transitively. */
+/** Every board nested anywhere under `rootId`, transitively. */
 export function collectPocketDescendantIds(pockets: FactoryPocket[], rootId: string): Set<string> {
   const childrenByParent = new Map<string | undefined, FactoryPocket[]>();
   for (const pocket of pockets) {
