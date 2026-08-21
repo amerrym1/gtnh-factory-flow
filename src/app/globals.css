@@ -1073,6 +1073,13 @@ img {
   z-index: -5 !important;
 }
 
+/* A board window is chrome under its members: dragging its title bar must
+   not lift the frame's wash over the cards riding along inside it. */
+.factory-flow-board .react-flow__node.board-window.selected,
+.factory-flow-board .react-flow__node.board-window.dragging {
+  z-index: -4 !important;
+}
+
 /* While a drag is live the NODES layer rides above the wires: the card in
    hand must visibly pass over them (wires hold still for the whole drag and
    reroute on drop). This used to be the other way around — the edge layer

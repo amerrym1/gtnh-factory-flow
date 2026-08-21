@@ -397,6 +397,14 @@ export const factoryPocketSchema = z.object({
     x: z.number(),
     y: z.number(),
   }),
+  // Standing open as a board window; absent = the classic collapsed card.
+  expanded: z.boolean().optional(),
+  size: z
+    .object({
+      width: z.number().positive(),
+      height: z.number().positive(),
+    })
+    .optional(),
 });
 
 export const factoryEdgeSchema = z.object({

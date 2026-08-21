@@ -248,6 +248,41 @@ gh run watch <run-id> --exit-status
   that puts cards on the board (design store, plan import, blueprint paste,
   tours); do not add the prop back.
 
+## Boards (Pockets Standing Open)
+
+- A board IS a pocket: same `FactoryPocket`, two states. `expanded: true`
+  plus a `size` renders it as a window frame (`BoardNode`) on its parent
+  board with its members inside; minimizing gives back the classic pocket
+  card. Plans saved before boards existed carry no flag and render exactly
+  as they always did.
+- While open, member positions are FRAME-RELATIVE and members are React
+  Flow children (`parentId`), which is what makes a dragged title bar carry
+  the household. Everything downstream speaks flow space:
+  `publishBoardGeometry` and `cameraCards` resolve the parent chain once.
+- Wires know NOTHING about boards. An open board's members wire directly -
+  no convergence, no proxy ports, and the frame is ink to the router and to
+  wire gestures (its members are the obstacles). The collapsed card keeps
+  the whole channel/convergence machinery unchanged, and dissolving an OPEN
+  board skips convergence on purpose.
+- Membership changes by drop (`handleNodeDragStop`): a card whose centre
+  lands in a frame's body joins that board, one dropped outside surfaces on
+  the level in view - coordinates convert so nothing moves on screen, and
+  the frame grows to keep a dropped member inside. Drawing a board with the
+  toolbar tool adopts the cards it covers the same way.
+- `src/lib/model/board-windows.ts` owns the level view: shown levels,
+  representatives, frame rects, drop-owner picking, descendant sets. The
+  auto-arrange adapter deliberately keeps its strict one-level walk so an
+  open board arranges as a single block sized by its frame.
+- Expanding a legacy pocket rebases members to fit the frame (their dive-in
+  coordinates were their own space) and drops waypoints on wires touching
+  members; minimize mirrors the waypoint rule. Frames are never obstacles,
+  but they ARE in the obstacle fingerprint - moving one moves real
+  obstacles (the children).
+- Board frames are `selectable: false`: marquee over the floor collects the
+  cards, and a frame inside a dragged selection would move its members
+  twice. The title bar drags it without selection; deletion is the delete
+  tool or minimize-then-delete.
+
 ## Compact Mode (Phones And Small Windows)
 
 - `src/lib/compact-view.ts` owns the switch: `useIsCompactViewport()` /

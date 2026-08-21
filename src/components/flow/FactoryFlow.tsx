@@ -30,6 +30,7 @@ import { toBlob, toSvg } from "html-to-image";
 import {
   Activity,
   AlignJustify,
+  AppWindow,
   Ban,
   Box,
   Cable,
@@ -139,12 +140,17 @@ import {
   ANNOTATION_MIN_BOX,
   ANNOTATION_MIN_TEXT,
   BOARD_GRID,
+  BOARD_WINDOW_DEFAULT_SIZE,
+  BOARD_WINDOW_MIN_HEIGHT,
+  BOARD_WINDOW_MIN_WIDTH,
+  BOARD_WINDOW_TITLE_HEIGHT,
   RECIPE_NODE_WIDTH,
   STORAGE_NODE_HEIGHT,
   STORAGE_NODE_WIDTH,
   TRASH_NODE_HEIGHT,
   TRASH_NODE_WIDTH,
   cells,
+  snapPositionToGrid,
   snapSizeUpToGrid,
 } from "@/lib/board-grid";
 import {
@@ -286,6 +292,19 @@ import { StorageNode, type StorageFlowNode } from "./StorageNode";
 import { TrashNode, type TrashFlowNode } from "./TrashNode";
 import { PocketNode, type PocketFlowNode } from "./PocketNode";
 import {
+  BOARD_DRAG_HANDLE_CLASS,
+  BoardNode,
+  type BoardNodeData,
+  type BoardWindowFlowNode,
+} from "./BoardNode";
+import {
+  boardWindowSize,
+  collectPocketDescendantIds,
+  computeBoardLevelView,
+  computeOpenBoardRects,
+  pickBoardOwnerAt,
+} from "@/lib/model/board-windows";
+import {
   buildPocketRailPorts,
   computePocketSummaries,
   resolvePocketPortHandleId,
@@ -303,6 +322,7 @@ const nodeTypes = {
   trashNode: TrashNode,
   annotationNode: AnnotationNode,
   pocketNode: PocketNode,
+  boardNode: BoardNode,
 } satisfies NodeTypes;
 
 type BoardFlowNode =
@@ -310,7 +330,8 @@ type BoardFlowNode =
   | StorageFlowNode
   | TrashFlowNode
   | AnnotationFlowNode
-  | PocketFlowNode;
+  | PocketFlowNode
+  | BoardWindowFlowNode;
 
 interface AnnotationDraft {
   start: { x: number; y: number };
@@ -318,6 +339,13 @@ interface AnnotationDraft {
   /** Every point the pointer passed through; the zone tool settles it. */
   trail: Array<{ x: number; y: number }>;
 }
+
+/**
+ * What the draw-a-shape pipeline can be armed with: the annotation kinds,
+ * plus the board window — drawn exactly like a box, but it lands as a pocket
+ * standing open, adopting whatever cards its frame covers.
+ */
+type BoardDrawTool = FactoryAnnotationKind | "board";
 
 const ResourceEdge = memo(ResourceEdgeComponent);
 
@@ -444,8 +472,11 @@ function withTouchDragRule(nodes: BoardFlowNode[], compact: boolean): BoardFlowN
   let changed = false;
   const next = nodes.map((node) => {
     // Off compact nothing carries the flag, so a window that grows back into a
-    // desktop hands every card its drag back.
-    const draggable = compact && node.selected ? true : undefined;
+    // desktop hands every card its drag back. A board window is never
+    // selectable, so the select-first rule would strand it; its title bar is
+    // a deliberate enough target to keep the drag on a finger.
+    const draggable =
+      node.type === "boardNode" ? (compact ? true : undefined) : compact && node.selected ? true : undefined;
     if (node.draggable === draggable) {
       return node;
     }
@@ -1206,6 +1237,7 @@ const storageNodeDataCache = new Map<string, StorageFlowNode["data"]>();
 const trashNodeDataCache = new Map<string, TrashFlowNode["data"]>();
 const annotationNodeDataCache = new Map<string, AnnotationFlowNode["data"]>();
 const pocketNodeDataCache = new Map<string, PocketFlowNode["data"]>();
+const boardNodeDataCache = new Map<string, BoardNodeData>();
 // Same idea for edges, but with structural comparison: an edge object nests
 // fresh data/style objects on every rebuild, and handing React Flow an equal-
 // but-new identity re-renders the edge — which re-runs the route solver. Most
@@ -1256,6 +1288,13 @@ function pruneNodeDataCaches(
   for (const id of pocketNodeDataCache.keys()) {
     if (!pocketIds.has(id)) {
       pocketNodeDataCache.delete(id);
+    }
+  }
+
+  // Same id space as the pocket cards: a pocket standing open caches here.
+  for (const id of boardNodeDataCache.keys()) {
+    if (!pocketIds.has(id)) {
+      boardNodeDataCache.delete(id);
     }
   }
 
@@ -1461,6 +1500,7 @@ export function FactoryFlow() {
   const deleteStorage = useFactoryStore((state) => state.deleteStorage);
   const deleteEdge = useFactoryStore((state) => state.deleteEdge);
   const addAnnotation = useFactoryStore((state) => state.addAnnotation);
+  const createBoard = useFactoryStore((state) => state.createBoard);
   const updateAnnotation = useFactoryStore((state) => state.updateAnnotation);
   const deleteAnnotation = useFactoryStore((state) => state.deleteAnnotation);
   const cancelResourceConnection = useFactoryStore((state) => state.cancelResourceConnection);
@@ -1500,45 +1540,23 @@ export function FactoryFlow() {
   );
 
   // The pocket dimension view. The graph is always the whole flat project;
-  // the board only ever SHOWS one level of it — cards whose pocketId is the
-  // active level, plus one collapsed card per pocket that sits on this level.
+  // the board SHOWS the active level, plus — new with boards — the contents
+  // of every pocket standing OPEN as a window on it, recursively.
   // `representativeOf` maps any project item to what stands for it here: the
-  // item itself when it is on this level, the ancestor pocket card that
+  // item itself when its level is in view, the collapsed ancestor card that
   // swallowed it, or undefined when it is outside this view entirely (which
-  // is what hides the rest of the plan while zoomed into a pocket).
+  // is what hides the rest of the plan while zoomed into a pocket). See
+  // board-windows.ts; the auto-arrange adapter keeps its own strict
+  // one-level walk so an open board arranges as a single block.
   const pocketView = useMemo(() => {
-    const pockets = project.pockets ?? [];
-    const parentById = new Map(pockets.map((pocket) => [pocket.id, pocket.parentPocketId]));
-    const itemPocketById = new Map<string, string | undefined>();
-    for (const node of project.nodes) {
-      itemPocketById.set(node.id, node.pocketId);
-    }
-    for (const storage of project.storages ?? []) {
-      itemPocketById.set(storage.id, storage.pocketId);
-    }
-
-    const representativeOf = (itemId: string): string | undefined => {
-      let level = itemPocketById.get(itemId);
-      if (level === activePocketId) {
-        return itemId;
-      }
-      const seen = new Set<string>();
-      while (level !== undefined && !seen.has(level)) {
-        seen.add(level);
-        const parent = parentById.get(level);
-        if (parent === activePocketId) {
-          return level;
-        }
-        level = parent;
-      }
-      return undefined;
-    };
-
+    const view = computeBoardLevelView(project, activePocketId);
     return {
-      representativeOf,
-      visiblePockets: pockets.filter((pocket) => pocket.parentPocketId === activePocketId),
+      isLevelShown: view.isLevelShown,
+      representativeOf: view.representativeOf,
+      visiblePockets: view.pocketCards,
+      openBoards: view.openBoards,
     };
-  }, [activePocketId, project.nodes, project.storages, project.pockets]);
+  }, [activePocketId, project]);
 
   // Scoped solves are small (a pocket's members only) and run once per
   // project commit, not per hover — see pocket-summary.ts.
@@ -1562,10 +1580,67 @@ export function FactoryFlow() {
     return rails;
   }, [project, result, pocketSummaries, pocketView.visiblePockets]);
 
-  const nodesFromProject = useMemo<BoardFlowNode[]>(
-    () => [
+  const nodesFromProject = useMemo<BoardFlowNode[]>(() => {
+    // An item inside an open board is a React Flow CHILD of the frame: its
+    // stored position is already frame-relative, so handing the owner over
+    // as `parentId` is the whole mechanism that makes a dragged title bar
+    // carry the household. Items on the active level stay parentless.
+    const childOf = (levelId: string | undefined) =>
+      levelId !== undefined && levelId !== activePocketId
+        ? { parentId: levelId }
+        : undefined;
+    const memberCounts = new Map<string, number>();
+    const countMember = (levelId: string | undefined) => {
+      if (levelId !== undefined) {
+        memberCounts.set(levelId, (memberCounts.get(levelId) ?? 0) + 1);
+      }
+    };
+    for (const node of project.nodes) {
+      countMember(node.pocketId);
+    }
+    for (const storage of project.storages ?? []) {
+      countMember(storage.pocketId);
+    }
+    for (const annotation of project.annotations ?? []) {
+      countMember(annotation.pocketId);
+    }
+    for (const pocket of project.pockets ?? []) {
+      countMember(pocket.parentPocketId);
+    }
+
+    return [
+      // Open boards first: React Flow insists a parent node appears before
+      // every child that names it, and `openBoards` already comes
+      // parents-before-children for the same reason.
+      ...pocketView.openBoards.map(
+        (pocket) =>
+          ({
+            id: pocket.id,
+            type: "boardNode",
+            position: pocket.position,
+            ...childOf(pocket.parentPocketId),
+            width: boardWindowSize(pocket).width,
+            height: boardWindowSize(pocket).height,
+            // Under every card (they sit at CARD_Z_INDEX) but over the
+            // backdrop ink at -5. The class keeps the selected/dragging
+            // z-lift from raising the frame above the members it holds.
+            zIndex: -4,
+            className: "board-window",
+            // Marquee selection over the board's floor must collect the
+            // CARDS, not the frame — and a frame in a dragged selection
+            // would move its members twice (once itself, once as their
+            // parent). The title bar drags it without selection.
+            selectable: false,
+            dragHandle: `.${BOARD_DRAG_HANDLE_CLASS}`,
+            style: { pointerEvents: "none" as const },
+            data: reuseObjectIdentity(boardNodeDataCache, pocket.id, {
+              pocket,
+              memberCount: memberCounts.get(pocket.id) ?? 0,
+            }),
+          }) satisfies BoardWindowFlowNode,
+      ),
       ...project.nodes
-        .filter((node) => node.pocketId === activePocketId)
+        .filter((node) => pocketView.isLevelShown(node.pocketId))
         .map((node): BoardFlowNode => {
         const recipe = recipesById.get(node.recipeId) ?? getMissingRecipePlaceholder(node.recipeId);
         // Trash cans get their own compact card; a distinct node TYPE (not a
@@ -1576,6 +1651,7 @@ export function FactoryFlow() {
             id: node.id,
             type: "trashNode",
             position: node.position,
+            ...childOf(node.pocketId),
             zIndex: CARD_Z_INDEX,
             data: reuseObjectIdentity(trashNodeDataCache, node.id, {
               projectNode: node,
@@ -1586,6 +1662,7 @@ export function FactoryFlow() {
           id: node.id,
           type: "recipeNode",
           position: node.position,
+          ...childOf(node.pocketId),
           zIndex:
             hoveredUsageNodeId === node.id
               ? 1500
@@ -1606,13 +1683,14 @@ export function FactoryFlow() {
         } satisfies RecipeFlowNode;
       }),
       ...(project.storages ?? [])
-        .filter((storage) => storage.pocketId === activePocketId)
+        .filter((storage) => pocketView.isLevelShown(storage.pocketId))
         .map(
         (storage) =>
           ({
             id: storage.id,
             type: "storageNode",
             position: storage.position,
+            ...childOf(storage.pocketId),
             zIndex:
               activeFlowResourceKey === makeResourceKey(storage.kind, storage.resourceId)
                 ? 1500
@@ -1624,13 +1702,14 @@ export function FactoryFlow() {
           }) satisfies StorageFlowNode,
       ),
       ...(project.annotations ?? [])
-        .filter((annotation) => annotation.pocketId === activePocketId)
+        .filter((annotation) => pocketView.isLevelShown(annotation.pocketId))
         .map(
         (annotation) =>
           ({
             id: annotation.id,
             type: "annotationNode",
             position: annotation.position,
+            ...childOf(annotation.pocketId),
             width: annotation.size.width,
             height: annotation.size.height,
             // Boxes, zones and images sit under everything so they read as
@@ -1663,6 +1742,7 @@ export function FactoryFlow() {
             id: pocket.id,
             type: "pocketNode",
             position: pocket.position,
+            ...childOf(pocket.parentPocketId),
             zIndex: CARD_Z_INDEX,
             data: reuseObjectIdentity(pocketNodeDataCache, pocket.id, {
               pocket,
@@ -1671,30 +1751,28 @@ export function FactoryFlow() {
             }),
           }) satisfies PocketFlowNode,
       ),
-    ],
-    [
-      activeFlowResourceKey,
-      activeNodeBottlenecks,
-      activePocketId,
-      hoveredUsageNodeId,
-      pocketRails,
-      pocketSummaries,
-      pocketView.visiblePockets,
-      project.annotations,
-      project.nodes,
-      project.storages,
-      recipesById,
-      result.nodes,
-      result.storages,
-    ],
-  );
+    ];
+  }, [
+    activeFlowResourceKey,
+    activeNodeBottlenecks,
+    activePocketId,
+    hoveredUsageNodeId,
+    pocketRails,
+    pocketSummaries,
+    pocketView,
+    project.annotations,
+    project.nodes,
+    project.pockets,
+    project.storages,
+    recipesById,
+    result.nodes,
+    result.storages,
+  ]);
   const [flowNodes, setFlowNodes] = useState<BoardFlowNode[]>(() => nodesFromProject);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([]);
   const [isNodeDragging, setNodeDragging] = useState(false);
-  const [annotationTool, setAnnotationTool] = useState<FactoryAnnotationKind | undefined>(
-    undefined,
-  );
+  const [annotationTool, setAnnotationTool] = useState<BoardDrawTool | undefined>(undefined);
   // Shared by the brush and the annotation tools: the last colour picked in
   // the palette is what a new box/arrow/note is created with. Blue to start:
   // the house colour, and legible on every paper the board ships with.
@@ -1776,9 +1854,14 @@ export function FactoryFlow() {
         // deselected the user's whole selection. A pending paste instead
         // hands the selection over to the freshly pasted cards.
         const selected = pendingSelection ? pendingSelection.has(node.id) : previous?.selected;
+        // A pocket flipping between card and open board keeps its id but not
+        // its shape; carrying the old card's measurement over would publish
+        // a frame the size of a card until React Flow re-measures.
         const merged = {
           ...node,
-          ...(previous?.measured ? { measured: previous.measured } : undefined),
+          ...(previous?.measured && previous.type === node.type
+            ? { measured: previous.measured }
+            : undefined),
           ...(selected !== undefined ? { selected } : undefined),
         } as typeof node;
         if (previous && isSameFlowNode(previous, merged)) {
@@ -1872,9 +1955,27 @@ export function FactoryFlow() {
    */
   const cameraCards = useCallback((nodeIds?: string[]) => {
     const wanted = nodeIds && nodeIds.length > 0 ? new Set(nodeIds) : undefined;
-    const cards = wanted
-      ? nodesFromProjectRef.current.filter((node) => wanted.has(node.id))
-      : nodesFromProjectRef.current;
+    const all = nodesFromProjectRef.current;
+    // Members of an open board carry frame-relative positions; the camera
+    // frames flow space, so parent chains resolve here first.
+    const byId = new Map(all.map((node) => [node.id, node]));
+    const absoluteById = new Map<string, { x: number; y: number }>();
+    const absoluteOf = (id: string): { x: number; y: number } => {
+      const cached = absoluteById.get(id);
+      if (cached) {
+        return cached;
+      }
+      const node = byId.get(id)!;
+      const parent = node.parentId ? byId.get(node.parentId) : undefined;
+      const base = parent ? absoluteOf(parent.id) : { x: 0, y: 0 };
+      const absolute = { x: base.x + node.position.x, y: base.y + node.position.y };
+      absoluteById.set(id, absolute);
+      return absolute;
+    };
+    const picked = wanted ? all.filter((node) => wanted.has(node.id)) : all;
+    const cards = picked.map((node) =>
+      node.parentId ? ({ ...node, position: absoluteOf(node.id) } as typeof node) : node,
+    );
     const measuredById = new Map(
       flowNodesRef.current.map((node) => [node.id, node.measured] as const),
     );
@@ -2045,11 +2146,28 @@ export function FactoryFlow() {
       // the new bumps are drawn.
       clearDirectRoutes();
     }
+    // Members of an open board carry frame-RELATIVE positions (that is what
+    // lets React Flow move them with the frame); everything downstream of
+    // this publish — routing sweeps, slot endpoints, arrange, cameras —
+    // speaks flow space, so the parent chain is resolved here, once.
+    const nodeById = new Map(flowNodesRef.current.map((node) => [node.id, node]));
+    const absoluteById = new Map<string, { x: number; y: number }>();
+    const absoluteOf = (id: string): { x: number; y: number } => {
+      const cached = absoluteById.get(id);
+      if (cached) {
+        return cached;
+      }
+      const node = nodeById.get(id)!;
+      const parent = node.parentId ? nodeById.get(node.parentId) : undefined;
+      const base = parent ? absoluteOf(parent.id) : { x: 0, y: 0 };
+      const absolute = { x: base.x + node.position.x, y: base.y + node.position.y };
+      absoluteById.set(id, absolute);
+      return absolute;
+    };
     const geometryById = new Map<string, { x: number; y: number; width: number; height: number }>();
     for (const node of flowNodesRef.current) {
       geometryById.set(node.id, {
-        x: node.position.x,
-        y: node.position.y,
+        ...absoluteOf(node.id),
         width: node.measured?.width ?? node.width ?? 0,
         height: node.measured?.height ?? node.height ?? 0,
       });
@@ -2059,10 +2177,12 @@ export function FactoryFlow() {
     // cluster used to be a solid obstacle spanning all of it, so every wire
     // inside was forced to detour around its own group — the drawing changed
     // the routing without changing the factory. Wires now pass straight
-    // through boxes, arrows and notes as if they were not there.
+    // through boxes, arrows and notes as if they were not there. A board
+    // WINDOW is the same deal: the frame is chrome, its members are the
+    // obstacles, and wires cross the frame line freely.
     const annotationIds = new Set(
       flowNodesRef.current
-        .filter((node) => node.type === "annotationNode")
+        .filter((node) => node.type === "annotationNode" || node.type === "boardNode")
         .map((node) => node.id),
     );
     publishedBoardBounds = [...geometryById.entries()]
@@ -3842,7 +3962,9 @@ export function FactoryFlow() {
           deleteStorage(node.id);
         } else if (node.type === "annotationNode") {
           deleteAnnotation(node.id);
-        } else if (node.type === "pocketNode") {
+        } else if (node.type === "pocketNode" || node.type === "boardNode") {
+          // A board goes the way a pocket card does: the dimension and
+          // everything in it.
           deleteBoardSelection({ nodeIds: [node.id] });
         }
         return;
@@ -4088,7 +4210,7 @@ export function FactoryFlow() {
     [nodeColorPaintMode, setNodeColorPaintMode],
   );
   const handleAnnotationToolChange = useCallback(
-    (tool: FactoryAnnotationKind | undefined) => {
+    (tool: BoardDrawTool | undefined) => {
       setNodeColorPaintMode(undefined);
       setDeleteMode(false);
       setAnnotationTool(tool);
@@ -4142,7 +4264,98 @@ export function FactoryFlow() {
       // their old positions in the project, and the next store commit snapped
       // them back. One batch move is also one undo entry, not one per card.
       const dropped = draggedNodes.length > 0 ? draggedNodes : [node];
-      moveBoardItems(dropped.map((entry) => ({ id: entry.id, position: entry.position })));
+
+      // Where did each land? A drop whose centre sits inside an open board's
+      // body joins that board; one outside every frame surfaces on the level
+      // in view. Read fresh from the store so the callback stays stable.
+      const state = useFactoryStore.getState();
+      const project = state.project;
+      const activeLevel = state.activePocketId;
+      const view = computeBoardLevelView(project, activeLevel);
+      const frames = computeOpenBoardRects(view.openBoards, activeLevel);
+      const frameById = new Map(frames.map((frame) => [frame.id, frame]));
+      const pockets = project.pockets ?? [];
+      const pocketIdSet = new Set(pockets.map((pocket) => pocket.id));
+      // A dragged board cannot land inside itself or its own descendants.
+      const excluded = new Set<string>();
+      for (const entry of dropped) {
+        if (pocketIdSet.has(entry.id)) {
+          excluded.add(entry.id);
+          for (const id of collectPocketDescendantIds(pockets, entry.id)) {
+            excluded.add(id);
+          }
+        }
+      }
+      const ownerOf = (id: string): string | undefined => {
+        const projectNode = project.nodes.find((entry) => entry.id === id);
+        if (projectNode) {
+          return projectNode.pocketId;
+        }
+        const storage = project.storages?.find((entry) => entry.id === id);
+        if (storage) {
+          return storage.pocketId;
+        }
+        const annotation = project.annotations?.find((entry) => entry.id === id);
+        if (annotation) {
+          return annotation.pocketId;
+        }
+        return pockets.find((entry) => entry.id === id)?.parentPocketId;
+      };
+
+      const instance = flowInstanceRef.current;
+      const moves = dropped.map((entry) => {
+        const internal = instance?.getInternalNode(entry.id);
+        const absolute = internal?.internals.positionAbsolute ?? entry.position;
+        const width = internal?.measured?.width ?? 0;
+        const height = internal?.measured?.height ?? 0;
+        const centre = { x: absolute.x + width / 2, y: absolute.y + height / 2 };
+        const currentOwner = ownerOf(entry.id);
+        const landing = pickBoardOwnerAt(frames, centre, excluded) ?? activeLevel;
+        if (landing === currentOwner) {
+          // Home stands; React Flow's own position is already in its space.
+          return { id: entry.id, position: entry.position };
+        }
+        const origin = landing !== activeLevel ? frameById.get(landing ?? "") : undefined;
+        return {
+          id: entry.id,
+          position: snapPositionToGrid({
+            x: absolute.x - (origin?.x ?? 0),
+            y: absolute.y - (origin?.y ?? 0),
+          }),
+          owner: { pocketId: landing },
+        };
+      });
+
+      // A member dropped past the frame's right or bottom edge grows the
+      // frame to keep it inside; a frame never shrinks itself.
+      const grownSizes = new Map<string, { width: number; height: number }>();
+      for (const move of moves) {
+        const landing = "owner" in move && move.owner ? move.owner.pocketId : ownerOf(move.id);
+        if (landing === undefined || landing === activeLevel) {
+          continue;
+        }
+        const board = pockets.find((pocket) => pocket.id === landing);
+        if (!board?.expanded) {
+          continue;
+        }
+        const internal = instance?.getInternalNode(move.id);
+        const width = internal?.measured?.width ?? 0;
+        const height = internal?.measured?.height ?? 0;
+        const current = grownSizes.get(landing) ?? boardWindowSize(board);
+        const needed = {
+          width: Math.max(current.width, snapSizeUpToGrid(move.position.x + width)),
+          height: Math.max(current.height, snapSizeUpToGrid(move.position.y + height)),
+        };
+        if (needed.width !== current.width || needed.height !== current.height) {
+          grownSizes.set(landing, needed);
+        }
+      }
+      moveBoardItems(
+        moves,
+        grownSizes.size > 0
+          ? { boardSizes: [...grownSizes].map(([id, size]) => ({ id, size })) }
+          : undefined,
+      );
 
       activelyDraggedNodeIds.clear();
       draggingNodeRef.current = false;
@@ -4187,13 +4400,64 @@ export function FactoryFlow() {
   );
 
   const commitAnnotationDraft = useCallback(
-    (tool: FactoryAnnotationKind, draft: AnnotationDraft) => {
+    (tool: BoardDrawTool, draft: AnnotationDraft) => {
       const width = Math.abs(draft.end.x - draft.start.x);
       const height = Math.abs(draft.end.y - draft.start.y);
       const corner = {
         x: Math.min(draft.start.x, draft.end.x),
         y: Math.min(draft.start.y, draft.end.y),
       };
+
+      if (tool === "board") {
+        // Drawn like a box, lands as a pocket standing open. Cards whose
+        // centre the frame's body covers become members where they stand.
+        const isClick = width < 12 && height < 12;
+        const position = snapPositionToGrid(isClick ? draft.start : corner);
+        const size = isClick
+          ? BOARD_WINDOW_DEFAULT_SIZE
+          : {
+              width: Math.max(BOARD_WINDOW_MIN_WIDTH, snapSizeUpToGrid(width)),
+              height: Math.max(BOARD_WINDOW_MIN_HEIGHT, snapSizeUpToGrid(height)),
+            };
+        const state = useFactoryStore.getState();
+        const level = state.activePocketId;
+        const body = {
+          left: position.x,
+          top: position.y + BOARD_WINDOW_TITLE_HEIGHT,
+          right: position.x + size.width,
+          bottom: position.y + size.height,
+        };
+        const covers = (id: string): boolean => {
+          const geometry = publishedBoardGeometryById.get(id);
+          if (!geometry) {
+            return false;
+          }
+          const centreX = geometry.x + geometry.width / 2;
+          const centreY = geometry.y + geometry.height / 2;
+          return (
+            centreX >= body.left &&
+            centreX <= body.right &&
+            centreY >= body.top &&
+            centreY <= body.bottom
+          );
+        };
+        const memberIds = [
+          ...state.project.nodes
+            .filter((node) => node.pocketId === level && covers(node.id))
+            .map((node) => node.id),
+          ...(state.project.storages ?? [])
+            .filter((storage) => storage.pocketId === level && covers(storage.id))
+            .map((storage) => storage.id),
+          ...(state.project.annotations ?? [])
+            .filter((annotation) => annotation.pocketId === level && covers(annotation.id))
+            .map((annotation) => annotation.id),
+          ...(state.project.pockets ?? [])
+            .filter((pocket) => pocket.parentPocketId === level && covers(pocket.id))
+            .map((pocket) => pocket.id),
+        ];
+        createBoard({ position, size, memberIds });
+        return;
+      }
 
       if (tool === "box") {
         // A bare click (no meaningful drag) drops a default-sized shape.
@@ -6184,7 +6448,7 @@ function AnnotationDraftPreview({
   draft,
   swatch,
 }: {
-  tool: FactoryAnnotationKind;
+  tool: BoardDrawTool;
   draft: AnnotationDraft;
   swatch: string;
 }) {
@@ -6262,6 +6526,12 @@ function AnnotationDraftPreview({
             className="h-full w-full border-4"
             style={{ borderColor: swatch, backgroundColor: `${swatch}14` }}
           />
+        ) : tool === "board" ? (
+          // The window as it will land: title bar up top, wash below, in the
+          // pocket purple rather than the ink colour — a board is furniture.
+          <div className="h-full w-full border-2 border-[#5e4a85] bg-[#3b2d52]/15">
+            <div className="h-[40px] w-full border-b-2 border-[#241b33] bg-[#3b2d52]" />
+          </div>
         ) : (
           <div
             className="h-full w-full border-2"
@@ -6331,10 +6601,15 @@ function AddImageButton({ onPlaceImage }: { onPlaceImage: (file: File) => Promis
 }
 
 const ANNOTATION_TOOLS: Array<{
-  kind: FactoryAnnotationKind;
+  kind: BoardDrawTool;
   label: string;
   Icon: typeof Square;
 }> = [
+  {
+    kind: "board",
+    label: "Draw board: a window that holds cards and moves them together",
+    Icon: AppWindow,
+  },
   { kind: "box", label: "Draw box", Icon: Square },
   { kind: "zone", label: "Draw zone: click its corners, then click the first one to close", Icon: Hexagon },
   { kind: "arrow", label: "Draw arrow", Icon: MoveUpRight },
@@ -6657,8 +6932,8 @@ const PaintToolbar = memo(function PaintToolbar({
   onPaintModeChange: (tag: FactoryNodeColorTag | null | undefined) => void;
   activeColorTag: FactoryNodeColorTag;
   onColorSelect: (tag: FactoryNodeColorTag) => void;
-  annotationTool?: FactoryAnnotationKind;
-  onAnnotationToolChange: (tool: FactoryAnnotationKind | undefined) => void;
+  annotationTool?: BoardDrawTool;
+  onAnnotationToolChange: (tool: BoardDrawTool | undefined) => void;
   onPlaceImage: (file: File) => Promise<void>;
   isDeleteMode: boolean;
   onDeleteModeChange: (enabled: boolean) => void;
@@ -8384,8 +8659,13 @@ function getMeasuredAvoidanceSweep() {
   } else if (typeof document !== "undefined") {
     for (const element of document.querySelectorAll<HTMLElement>(".react-flow__node")) {
       const id = element.dataset.id;
-      // Same rule as the published set above: annotations never block a wire.
-      if (!id || element.classList.contains("react-flow__node-annotationNode")) {
+      // Same rule as the published set above: annotations and board frames
+      // never block a wire.
+      if (
+        !id ||
+        element.classList.contains("react-flow__node-annotationNode") ||
+        element.classList.contains("react-flow__node-boardNode")
+      ) {
         continue;
       }
 
@@ -9023,6 +9303,13 @@ function computeAutoArrangement(
     if (pocket.parentPocketId !== activePocketId) {
       continue;
     }
+    // A pocket standing OPEN arranges as one block the size of its window;
+    // its members ride along, frame-relative. A collapsed card is sized by
+    // its port rows as ever.
+    if (pocket.expanded) {
+      pushCard(pocket.id, pocket.position, boardWindowSize(pocket), "machine");
+      continue;
+    }
     const rows = Math.max(
       1,
       listPocketPortResources(project, pocket.id, "input").length,
@@ -9039,10 +9326,25 @@ function computeAutoArrangement(
   const cardIds = new Set(cards.map((card) => card.id));
   const wires: ArrangeWire[] = [];
   const resetEdgeIds: string[] = [];
+  const view = computeBoardLevelView(project, activePocketId);
   for (const edge of project.edges) {
     const sourceRep = representativeOf(edge.source);
     const targetRep = representativeOf(edge.target);
     if (!sourceRep || !targetRep || sourceRep === targetRep) {
+      // A wire wholly inside one OPEN board still renders at this level, in
+      // absolute space, and the arrange is about to move its frame: stops
+      // pinned to the old spot go too. Wires inside a collapsed pocket keep
+      // theirs — nothing they render against is moving.
+      if (
+        sourceRep !== undefined &&
+        sourceRep === targetRep &&
+        sourceRep !== edge.source &&
+        (edge.waypoints?.length || edge.labelOffset) &&
+        view.isLevelShown(itemPocketById.get(edge.source)) &&
+        view.isLevelShown(itemPocketById.get(edge.target))
+      ) {
+        resetEdgeIds.push(edge.id);
+      }
       continue;
     }
     if (!cardIds.has(sourceRep) || !cardIds.has(targetRep)) {
@@ -9676,7 +9978,12 @@ function getBoardNodeIdAtPosition(position: { x: number; y: number } | undefined
 }
 
 function isAnnotationNodeElement(element: HTMLElement) {
-  return element.classList.contains("react-flow__node-annotationNode");
+  // Board windows count as ink for every wire gesture too: a drag lands on
+  // the cards inside the frame, never on the frame itself.
+  return (
+    element.classList.contains("react-flow__node-annotationNode") ||
+    element.classList.contains("react-flow__node-boardNode")
+  );
 }
 
 /**

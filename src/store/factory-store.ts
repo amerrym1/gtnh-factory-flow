@@ -31,10 +31,22 @@ import {
 import { optimizeMachineCountsForProject } from "@/lib/solver/machine-count-optimizer";
 import {
   BOARD_GRID,
+  BOARD_WINDOW_DEFAULT_SIZE,
+  BOARD_WINDOW_FIT_PAD,
+  BOARD_WINDOW_MIN_HEIGHT,
+  BOARD_WINDOW_MIN_WIDTH,
+  BOARD_WINDOW_TITLE_HEIGHT,
   RECIPE_NODE_WIDTH,
+  STORAGE_NODE_HEIGHT,
+  STORAGE_NODE_WIDTH,
   snapPositionToGrid,
   snapSizeUpToGrid,
 } from "@/lib/board-grid";
+import {
+  boardWindowSize,
+  computeBoardLevelView,
+  computeOpenBoardRects,
+} from "@/lib/model/board-windows";
 import {
   getResourceKey,
   isOreDictionaryResource,
@@ -315,7 +327,24 @@ interface FactoryStore {
    * annotations land together as a single undo entry. Ids that match nothing
    * are ignored; a drop where nothing actually moved writes no history.
    */
-  moveBoardItems: (moves: Array<{ id: string; position: FactoryNode["position"] }>) => void;
+  moveBoardItems: (
+    moves: Array<{
+      id: string;
+      position: FactoryNode["position"];
+      /**
+       * Also re-home the item: dropped inside an open board it becomes a
+       * member, dropped outside every frame it surfaces on the level in
+       * view. The position is already in the new owner's space. Absent =
+       * the owner stays. A pocket re-homes through `parentPocketId`, and a
+       * drop that would make one its own ancestor keeps its old home.
+       */
+      owner?: { pocketId?: string };
+    }>,
+    options?: {
+      /** Frames grown so a dropped member stays inside; same undo entry. */
+      boardSizes?: Array<{ id: string; size: { width: number; height: number } }>;
+    },
+  ) => void;
   /**
    * Land an auto-arrange as ONE undo entry: every card's new position; a
    * reset of hand-pinned waypoints and dragged rate labels on the wires the
@@ -360,6 +389,29 @@ interface FactoryStore {
   /** Unpack a pocket: members surface on the pocket's parent board. */
   dissolvePocket: (pocketId: string) => void;
   renamePocket: (pocketId: string, name: string) => void;
+  /**
+   * Place a new BOARD: a pocket standing open as a window on the level in
+   * view. Items in `memberIds` (already on that level, covered by the drawn
+   * frame) become members without moving on screen — their positions are
+   * re-measured from the frame's corner. Returns the new pocket id.
+   */
+  createBoard: (input: {
+    position: { x: number; y: number };
+    size?: { width: number; height: number };
+    name?: string;
+    memberIds?: string[];
+  }) => string | undefined;
+  /**
+   * Open a pocket as a board on its parent board. Members are rebased to
+   * fit inside the frame (their dive-in coordinates were their own space),
+   * and hand-pinned waypoints on wires touching them are dropped — they
+   * steered through a space the wires no longer travel.
+   */
+  expandPocket: (pocketId: string) => void;
+  /** Fold a board back into the classic pocket card, at the frame's corner. */
+  minimizePocket: (pocketId: string) => void;
+  /** Resize a board's window frame; snapped up to whole cells. */
+  setPocketSize: (pocketId: string, size: { width: number; height: number }) => void;
   /**
    * Ids the board should hand the selection to after the next project sync -
    * how a paste or a blueprint load arrives already selected.
@@ -1639,20 +1691,80 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       return withProjectHistory(state, { project });
     });
   },
-  moveBoardItems: (moves) => {
+  moveBoardItems: (moves, options) => {
     set((state) => {
-      const positionById = new Map(moves.map((move) => [move.id, move.position] as const));
+      const moveById = new Map(moves.map((move) => [move.id, move] as const));
+      const sizeById = new Map(
+        (options?.boardSizes ?? []).map((entry) => [entry.id, entry.size] as const),
+      );
+      const currentPockets = state.project.pockets ?? [];
       let moved = false;
-      const applyMoves = <T extends { id: string; position: { x: number; y: number } }>(
+      const applyMoves = <
+        T extends { id: string; position: { x: number; y: number }; pocketId?: string },
+      >(
         items: T[],
       ): T[] =>
         items.map((item) => {
-          const position = positionById.get(item.id);
-          if (!position || (position.x === item.position.x && position.y === item.position.y)) {
+          const move = moveById.get(item.id);
+          if (!move) {
+            return item;
+          }
+          const nextOwner = move.owner ? move.owner.pocketId : item.pocketId;
+          if (
+            move.position.x === item.position.x &&
+            move.position.y === item.position.y &&
+            nextOwner === item.pocketId
+          ) {
             return item;
           }
           moved = true;
-          return { ...item, position };
+          return { ...item, position: move.position, pocketId: nextOwner };
+        });
+
+      // A pocket may not become its own descendant. The drop point sits
+      // inside a frame the dragged board is an ancestor of, which the board
+      // filters out before calling here — this is the safety net.
+      const wouldLoop = (pocketId: string, nextParent: string | undefined): boolean => {
+        let parent = nextParent;
+        const seen = new Set<string>();
+        while (parent !== undefined && !seen.has(parent)) {
+          if (parent === pocketId) {
+            return true;
+          }
+          seen.add(parent);
+          parent = currentPockets.find((entry) => entry.id === parent)?.parentPocketId;
+        }
+        return false;
+      };
+      const applyPocketMoves = (items: FactoryPocket[]): FactoryPocket[] =>
+        items.map((item) => {
+          const move = moveById.get(item.id);
+          const size = sizeById.get(item.id);
+          if (!move && !size) {
+            return item;
+          }
+          const nextParent =
+            move?.owner && !wouldLoop(item.id, move.owner.pocketId)
+              ? move.owner.pocketId
+              : item.parentPocketId;
+          const nextPosition = move?.position ?? item.position;
+          const sameSize =
+            !size || (size.width === item.size?.width && size.height === item.size?.height);
+          if (
+            nextPosition.x === item.position.x &&
+            nextPosition.y === item.position.y &&
+            nextParent === item.parentPocketId &&
+            sameSize
+          ) {
+            return item;
+          }
+          moved = true;
+          return {
+            ...item,
+            position: nextPosition,
+            parentPocketId: nextParent,
+            ...(size ? { size } : undefined),
+          };
         });
 
       const nodes = applyMoves(state.project.nodes);
@@ -1660,7 +1772,9 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       const annotations = state.project.annotations
         ? applyMoves(state.project.annotations)
         : undefined;
-      const pockets = state.project.pockets ? applyMoves(state.project.pockets) : undefined;
+      const pockets = state.project.pockets
+        ? applyPocketMoves(state.project.pockets)
+        : undefined;
       // A drag that ends where it started is not an edit; recording it would
       // burn an undo step on nothing.
       if (!moved) {
@@ -1824,11 +1938,20 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       }
       const rehome = (pocketId: string | undefined): string | undefined =>
         (pocketId !== undefined ? idMap.get(pocketId) : undefined) ?? state.activePocketId;
+      // Positions inside a pasted pocket are that pocket's own space (frame-
+      // relative when it stands open as a board), so only items surfacing at
+      // the level in view move by the paste offset — shifting members too
+      // would carry an open board's contents twice.
+      const placeAt = (
+        position: { x: number; y: number },
+        home: string | undefined,
+      ): { x: number; y: number } =>
+        home === state.activePocketId ? shift(position) : snapPositionToGrid(position);
       const pockets = pastePockets.map((pocket) => {
         const clone = structuredClone(pocket);
         clone.id = idMap.get(pocket.id) as string;
         clone.parentPocketId = rehome(pocket.parentPocketId);
-        clone.position = shift(pocket.position);
+        clone.position = placeAt(pocket.position, clone.parentPocketId);
         return clone;
       });
 
@@ -1844,8 +1967,8 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         const clone = structuredClone(node);
         clone.id = createId("node");
         idMap.set(node.id, clone.id);
-        clone.position = shift(node.position);
         clone.pocketId = rehome(node.pocketId);
+        clone.position = placeAt(node.position, clone.pocketId);
         // Custom rate nodes own their recipe (the dialed rate lives on it) -
         // same rule as duplicateNode, or both cards would share one dial.
         if (isCustomRateRecipe(recipe)) {
@@ -1864,20 +1987,27 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         const clone = structuredClone(storage);
         clone.id = createId("storage");
         idMap.set(storage.id, clone.id);
-        clone.position = shift(storage.position);
         clone.pocketId = rehome(storage.pocketId);
+        clone.position = placeAt(storage.position, clone.pocketId);
         return clone;
       });
       const annotations = payload.annotations.map((annotation) => {
         const clone = structuredClone(annotation);
         clone.id = createId("annotation");
         idMap.set(annotation.id, clone.id);
-        clone.position = shift(annotation.position);
         clone.pocketId = rehome(annotation.pocketId);
+        clone.position = placeAt(annotation.position, clone.pocketId);
         return clone;
       });
       // Only wires interior to the copied selection can come along - a wire
       // with one foot outside has nothing on the pasted side to stand on.
+      // Waypoints are corners in the space the wire renders in; they ride
+      // the paste offset only when an endpoint surfaced at the level in
+      // view — a wire wholly inside a pasted pocket kept its own space.
+      const surfaced = new Set([
+        ...nodes.filter((entry) => entry.pocketId === state.activePocketId).map((n) => n.id),
+        ...storages.filter((entry) => entry.pocketId === state.activePocketId).map((s) => s.id),
+      ]);
       const edges: FactoryEdge[] = [];
       for (const edge of payload.edges) {
         const source = idMap.get(edge.source);
@@ -1889,8 +2019,10 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         clone.id = createId("edge");
         clone.source = source;
         clone.target = target;
-        // Waypoints are absolute board corners; they ride along with the paste.
-        clone.waypoints = clone.waypoints?.map((waypoint) => shift(waypoint));
+        clone.waypoints =
+          surfaced.has(source) || surfaced.has(target)
+            ? clone.waypoints?.map((waypoint) => shift(waypoint))
+            : clone.waypoints;
         edges.push(clone);
       }
       if (nodes.length + storages.length + annotations.length + pockets.length === 0) {
@@ -1973,13 +2105,32 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         return state;
       }
 
+      // A selected member may sit inside an open board, whose positions are
+      // frame-relative; the new pocket keeps ONE space, so everything is
+      // converted to the viewed level's own coordinates first.
+      const view = computeBoardLevelView(state.project, state.activePocketId);
+      const frameOrigins = new Map(
+        computeOpenBoardRects(view.openBoards, state.activePocketId).map(
+          (rect) => [rect.id, rect] as const,
+        ),
+      );
+      const absolutize = (
+        position: { x: number; y: number },
+        home: string | undefined,
+      ): { x: number; y: number } => {
+        const origin = home !== state.activePocketId ? frameOrigins.get(home ?? "") : undefined;
+        return origin ? { x: position.x + origin.x, y: position.y + origin.y } : position;
+      };
+
       // The card spawns at the centre of the cards it swallows, so the board
       // reads "that cluster became this" rather than teleporting the work.
       const positions = [
-        ...memberNodes.map((node) => node.position),
-        ...memberStorages.map((storage) => storage.position),
-        ...memberAnnotations.map((annotation) => annotation.position),
-        ...memberPockets.map((pocket) => pocket.position),
+        ...memberNodes.map((node) => absolutize(node.position, node.pocketId)),
+        ...memberStorages.map((storage) => absolutize(storage.position, storage.pocketId)),
+        ...memberAnnotations.map((annotation) =>
+          absolutize(annotation.position, annotation.pocketId),
+        ),
+        ...memberPockets.map((pocket) => absolutize(pocket.position, pocket.parentPocketId)),
       ];
       const centroid = snapPositionToGrid({
         x: positions.reduce((sum, position) => sum + position.x, 0) / positions.length,
@@ -1994,8 +2145,20 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       };
       createdPocketId = pocket.id;
 
-      const intoPocket = <T extends { id: string; pocketId?: string }>(items: T[]): T[] =>
-        items.map((item) => (selected.has(item.id) ? { ...item, pocketId: pocket.id } : item));
+      const intoPocket = <
+        T extends { id: string; pocketId?: string; position: { x: number; y: number } },
+      >(
+        items: T[],
+      ): T[] =>
+        items.map((item) =>
+          selected.has(item.id)
+            ? {
+                ...item,
+                pocketId: pocket.id,
+                position: absolutize(item.position, item.pocketId),
+              }
+            : item,
+        );
 
       const assembled: FactoryProject = {
         ...state.project,
@@ -2004,7 +2167,13 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         annotations: state.project.annotations ? intoPocket(state.project.annotations) : undefined,
         pockets: [
           ...(state.project.pockets ?? []).map((entry) =>
-            selected.has(entry.id) ? { ...entry, parentPocketId: pocket.id } : entry,
+            selected.has(entry.id)
+              ? {
+                  ...entry,
+                  parentPocketId: pocket.id,
+                  position: absolutize(entry.position, entry.parentPocketId),
+                }
+              : entry,
           ),
           pocket,
         ],
@@ -2030,13 +2199,35 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       // Converge FIRST, while the pocket still exists: a wire that fed the
       // pocket's port must spill as a wire to everything behind that port,
       // even when the wiring drifted (an import, members added inside).
-      const converged = convergePocketBoundaryEdges(state.project, pocketId);
+      // An OPEN board skips this: its wires were always direct member wires,
+      // so there is no one-port-per-resource story to spill.
+      const converged = pocket.expanded
+        ? state.project
+        : convergePocketBoundaryEdges(state.project, pocketId);
 
-      // Members surface on the pocket's parent board, exactly where they
-      // always were - positions never changed, only visibility.
-      const surface = <T extends { pocketId?: string }>(items: T[]): T[] =>
+      // Members surface on the pocket's parent board. A collapsed pocket's
+      // members stand exactly where they always were - positions never
+      // changed, only visibility. An OPEN board's members were measured from
+      // the frame's corner, so the frame's own position is added back and
+      // everything stays put on screen while the frame vanishes around it.
+      const surface = <T extends { pocketId?: string; position: { x: number; y: number } }>(
+        items: T[],
+      ): T[] =>
         items.map((item) =>
-          item.pocketId === pocketId ? { ...item, pocketId: pocket.parentPocketId } : item,
+          item.pocketId === pocketId
+            ? {
+                ...item,
+                pocketId: pocket.parentPocketId,
+                ...(pocket.expanded
+                  ? {
+                      position: {
+                        x: item.position.x + pocket.position.x,
+                        y: item.position.y + pocket.position.y,
+                      },
+                    }
+                  : undefined),
+              }
+            : item,
         );
 
       // Everything the unpack just spilled onto the parent board — direct
@@ -2064,7 +2255,18 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
           .filter((entry) => entry.id !== pocketId)
           .map((entry) =>
             entry.parentPocketId === pocketId
-              ? { ...entry, parentPocketId: pocket.parentPocketId }
+              ? {
+                  ...entry,
+                  parentPocketId: pocket.parentPocketId,
+                  ...(pocket.expanded
+                    ? {
+                        position: {
+                          x: entry.position.x + pocket.position.x,
+                          y: entry.position.y + pocket.position.y,
+                        },
+                      }
+                    : undefined),
+                }
               : entry,
           ),
       });
@@ -2092,6 +2294,261 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         ...state.project,
         pockets: (state.project.pockets ?? []).map((entry) =>
           entry.id === pocketId ? { ...entry, name: trimmed } : entry,
+        ),
+      });
+      return withProjectHistory(state, { project });
+    });
+  },
+  createBoard: ({ position, size, name, memberIds }) => {
+    let createdBoardId: string | undefined;
+    set((state) => {
+      const corner = snapPositionToGrid(position);
+      const wanted = size ?? BOARD_WINDOW_DEFAULT_SIZE;
+      const frame = {
+        width: Math.max(BOARD_WINDOW_MIN_WIDTH, snapSizeUpToGrid(wanted.width)),
+        height: Math.max(BOARD_WINDOW_MIN_HEIGHT, snapSizeUpToGrid(wanted.height)),
+      };
+      const board: FactoryPocket = {
+        id: createId("pocket"),
+        name: name?.trim() || `Board ${(state.project.pockets ?? []).length + 1}`,
+        parentPocketId: state.activePocketId,
+        position: corner,
+        expanded: true,
+        size: frame,
+      };
+      createdBoardId = board.id;
+
+      // Covered items become members without moving on screen: same spot,
+      // now measured from the frame's corner. Wires are left entirely alone
+      // - a board says nothing about wiring.
+      const selected = new Set(memberIds ?? []);
+      const adopt = <
+        T extends { id: string; pocketId?: string; position: { x: number; y: number } },
+      >(
+        items: T[],
+      ): T[] =>
+        items.map((item) =>
+          selected.has(item.id) && item.pocketId === state.activePocketId
+            ? {
+                ...item,
+                pocketId: board.id,
+                position: { x: item.position.x - corner.x, y: item.position.y - corner.y },
+              }
+            : item,
+        );
+
+      const project = touchProject({
+        ...state.project,
+        nodes: adopt(state.project.nodes),
+        storages: state.project.storages ? adopt(state.project.storages) : undefined,
+        annotations: state.project.annotations ? adopt(state.project.annotations) : undefined,
+        pockets: [
+          ...(state.project.pockets ?? []).map((entry) =>
+            selected.has(entry.id) && entry.parentPocketId === state.activePocketId
+              ? {
+                  ...entry,
+                  parentPocketId: board.id,
+                  position: {
+                    x: entry.position.x - corner.x,
+                    y: entry.position.y - corner.y,
+                  },
+                }
+              : entry,
+          ),
+          board,
+        ],
+      });
+      return withProjectHistory(state, { project });
+    });
+    return createdBoardId;
+  },
+  expandPocket: (pocketId) => {
+    set((state) => {
+      const pocket = (state.project.pockets ?? []).find((entry) => entry.id === pocketId);
+      if (!pocket || pocket.expanded) {
+        return state;
+      }
+
+      const memberNodes = state.project.nodes.filter((node) => node.pocketId === pocketId);
+      const memberStorages = (state.project.storages ?? []).filter(
+        (storage) => storage.pocketId === pocketId,
+      );
+      const memberAnnotations = (state.project.annotations ?? []).filter(
+        (annotation) => annotation.pocketId === pocketId,
+      );
+      const memberPockets = (state.project.pockets ?? []).filter(
+        (entry) => entry.parentPocketId === pocketId,
+      );
+
+      // The dive view never rendered while collapsed, so there are no
+      // measured member sizes to read; footprints are estimated, and
+      // overshooting only makes the frame roomy.
+      const footprints = [
+        ...memberNodes.map((node) => ({
+          ...node.position,
+          width: RECIPE_NODE_WIDTH,
+          height: BOARD_GRID * 14,
+        })),
+        ...memberStorages.map((storage) => ({
+          ...storage.position,
+          width: STORAGE_NODE_WIDTH,
+          height: STORAGE_NODE_HEIGHT,
+        })),
+        ...memberAnnotations.map((annotation) => ({
+          ...annotation.position,
+          width: annotation.size.width,
+          height: annotation.size.height,
+        })),
+        ...memberPockets.map((entry) => ({
+          ...entry.position,
+          width: entry.expanded ? boardWindowSize(entry).width : RECIPE_NODE_WIDTH,
+          height: entry.expanded ? boardWindowSize(entry).height : BOARD_GRID * 12,
+        })),
+      ];
+
+      // Members are rebased into the frame: their old coordinates were the
+      // dive view's own space, which nothing outside ever referenced. The
+      // frame fits itself around them; a hand-picked size survives while
+      // everything still fits inside it.
+      let shiftBy = { x: 0, y: 0 };
+      let frame = pocket.size;
+      if (footprints.length > 0) {
+        const minX = Math.min(...footprints.map((rect) => rect.x));
+        const minY = Math.min(...footprints.map((rect) => rect.y));
+        const maxX = Math.max(...footprints.map((rect) => rect.x + rect.width));
+        const maxY = Math.max(...footprints.map((rect) => rect.y + rect.height));
+        shiftBy = {
+          x: BOARD_WINDOW_FIT_PAD - minX,
+          y: BOARD_WINDOW_TITLE_HEIGHT + BOARD_WINDOW_FIT_PAD - minY,
+        };
+        const fitted = {
+          width: snapSizeUpToGrid(maxX - minX + BOARD_WINDOW_FIT_PAD * 2),
+          height: snapSizeUpToGrid(
+            maxY - minY + BOARD_WINDOW_TITLE_HEIGHT + BOARD_WINDOW_FIT_PAD * 2,
+          ),
+        };
+        frame =
+          frame && frame.width >= fitted.width && frame.height >= fitted.height ? frame : fitted;
+      }
+      const sized = frame ?? BOARD_WINDOW_DEFAULT_SIZE;
+      const clamped = {
+        width: Math.max(BOARD_WINDOW_MIN_WIDTH, sized.width),
+        height: Math.max(BOARD_WINDOW_MIN_HEIGHT, sized.height),
+      };
+
+      const rebase = <T extends { pocketId?: string; position: { x: number; y: number } }>(
+        items: T[],
+      ): T[] =>
+        items.map((item) =>
+          item.pocketId === pocketId
+            ? {
+                ...item,
+                position: {
+                  x: item.position.x + shiftBy.x,
+                  y: item.position.y + shiftBy.y,
+                },
+              }
+            : item,
+        );
+
+      // Wires touching anything inside change coordinate space, so their
+      // hand-pinned waypoints steered through a space the wires no longer
+      // travel. They go; the router redraws clean.
+      const members = collectPocketMembers(state.project, pocketId);
+      const memberIds = new Set([
+        ...members.nodes.map((node) => node.id),
+        ...members.storages.map((storage) => storage.id),
+      ]);
+      const edges = state.project.edges.map((edge) => {
+        if (
+          !edge.waypoints?.length ||
+          (!memberIds.has(edge.source) && !memberIds.has(edge.target))
+        ) {
+          return edge;
+        }
+        const { waypoints: _waypoints, ...rest } = edge;
+        return rest;
+      });
+
+      const project = touchProject({
+        ...state.project,
+        nodes: rebase(state.project.nodes),
+        storages: state.project.storages ? rebase(state.project.storages) : undefined,
+        annotations: state.project.annotations ? rebase(state.project.annotations) : undefined,
+        pockets: (state.project.pockets ?? []).map((entry) => {
+          if (entry.id === pocketId) {
+            return { ...entry, expanded: true, size: clamped };
+          }
+          if (entry.parentPocketId === pocketId) {
+            return {
+              ...entry,
+              position: {
+                x: entry.position.x + shiftBy.x,
+                y: entry.position.y + shiftBy.y,
+              },
+            };
+          }
+          return entry;
+        }),
+        edges,
+      });
+      return withProjectHistory(state, { project });
+    });
+  },
+  minimizePocket: (pocketId) => {
+    set((state) => {
+      const pocket = (state.project.pockets ?? []).find((entry) => entry.id === pocketId);
+      if (!pocket?.expanded) {
+        return state;
+      }
+
+      // The mirror of expand's waypoint rule: wires among members were
+      // steered in the parent board's space, which the collapsed card's
+      // channels do not share.
+      const members = collectPocketMembers(state.project, pocketId);
+      const memberIds = new Set([
+        ...members.nodes.map((node) => node.id),
+        ...members.storages.map((storage) => storage.id),
+      ]);
+      const edges = state.project.edges.map((edge) => {
+        if (
+          !edge.waypoints?.length ||
+          (!memberIds.has(edge.source) && !memberIds.has(edge.target))
+        ) {
+          return edge;
+        }
+        const { waypoints: _waypoints, ...rest } = edge;
+        return rest;
+      });
+
+      const project = touchProject({
+        ...state.project,
+        pockets: (state.project.pockets ?? []).map((entry) =>
+          entry.id === pocketId ? { ...entry, expanded: false } : entry,
+        ),
+        edges,
+      });
+      return withProjectHistory(state, { project });
+    });
+  },
+  setPocketSize: (pocketId, size) => {
+    set((state) => {
+      const snapped = {
+        width: Math.max(BOARD_WINDOW_MIN_WIDTH, snapSizeUpToGrid(size.width)),
+        height: Math.max(BOARD_WINDOW_MIN_HEIGHT, snapSizeUpToGrid(size.height)),
+      };
+      const pocket = (state.project.pockets ?? []).find((entry) => entry.id === pocketId);
+      if (
+        !pocket ||
+        (pocket.size?.width === snapped.width && pocket.size?.height === snapped.height)
+      ) {
+        return state;
+      }
+
+      const project = touchProject({
+        ...state.project,
+        pockets: (state.project.pockets ?? []).map((entry) =>
+          entry.id === pocketId ? { ...entry, size: snapped } : entry,
         ),
       });
       return withProjectHistory(state, { project });

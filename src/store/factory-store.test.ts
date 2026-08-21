@@ -4035,6 +4035,199 @@ describe("pocket dimensions", () => {
   });
 });
 
+describe("boards (pockets standing open)", () => {
+  beforeEach(() => {
+    useFactoryStore.getState().setProject(createSelectionEditingProject());
+  });
+
+  it("draws a board that adopts covered cards without moving them on screen", () => {
+    const before = useFactoryStore.getState().project;
+    const boardId = useFactoryStore.getState().createBoard({
+      position: { x: -40, y: -80 },
+      size: { width: 480, height: 320 },
+      memberIds: ["alpha", "tank"],
+    }) as string;
+
+    const project = useFactoryStore.getState().project;
+    const board = project.pockets?.find((pocket) => pocket.id === boardId);
+    expect(board?.expanded).toBe(true);
+    expect(board?.size).toEqual({ width: 480, height: 320 });
+    // Members convert to frame space: same screen spot, measured from the
+    // frame corner. alpha stood at (0,0), the corner at (-40,-80).
+    expect(project.nodes.find((node) => node.id === "alpha")?.pocketId).toBe(boardId);
+    expect(project.nodes.find((node) => node.id === "alpha")?.position).toEqual({ x: 40, y: 80 });
+    expect(project.storages?.find((storage) => storage.id === "tank")?.position).toEqual({
+      x: 440,
+      y: 80,
+    });
+    expect(project.nodes.find((node) => node.id === "beta")?.pocketId).toBeUndefined();
+    // A board says nothing about wiring: every edge survives verbatim, and
+    // no convergence fan-out is added.
+    expect(project.edges).toEqual(before.edges);
+  });
+
+  it("opens a legacy pocket as a board, fitting the frame around its members", () => {
+    const pocketId = useFactoryStore
+      .getState()
+      .compactSelectionIntoPocket(["alpha", "tank"], "Smeltery") as string;
+    useFactoryStore.getState().expandPocket(pocketId);
+
+    const project = useFactoryStore.getState().project;
+    const board = project.pockets?.find((pocket) => pocket.id === pocketId);
+    expect(board?.expanded).toBe(true);
+    // Members rebase to sit under the title bar (40) with one cell of air:
+    // the bbox corner (0,0) lands at (20, 60), everything shifting together.
+    expect(project.nodes.find((node) => node.id === "alpha")?.position).toEqual({ x: 20, y: 60 });
+    expect(project.storages?.find((storage) => storage.id === "tank")?.position).toEqual({
+      x: 420,
+      y: 60,
+    });
+    // The frame fits the estimated footprints, in whole cells.
+    expect(board?.size).toBeDefined();
+    expect((board?.size?.width ?? 0) % 20).toBe(0);
+    expect((board?.size?.height ?? 0) % 20).toBe(0);
+    expect(board?.size?.width ?? 0).toBeGreaterThanOrEqual(500);
+  });
+
+  it("drops hand-pinned waypoints on wires touching members when a board opens", () => {
+    const base = createSelectionEditingProject();
+    base.edges = base.edges.map((edge) =>
+      edge.id === "a2b" ? { ...edge, waypoints: [{ x: 200, y: 100 }] } : edge,
+    );
+    useFactoryStore.getState().setProject(base);
+    const pocketId = useFactoryStore
+      .getState()
+      .compactSelectionIntoPocket(["alpha"], "Smeltery") as string;
+    useFactoryStore.getState().expandPocket(pocketId);
+
+    const edge = useFactoryStore.getState().project.edges.find((entry) => entry.id === "a2b");
+    expect(edge?.waypoints).toBeUndefined();
+  });
+
+  it("folds a board back into a pocket card and reopens it in place", () => {
+    const pocketId = useFactoryStore
+      .getState()
+      .compactSelectionIntoPocket(["alpha", "tank"], "Smeltery") as string;
+    useFactoryStore.getState().expandPocket(pocketId);
+    const opened = useFactoryStore.getState().project;
+    const openedAlpha = opened.nodes.find((node) => node.id === "alpha")?.position;
+    const openedSize = opened.pockets?.find((pocket) => pocket.id === pocketId)?.size;
+
+    useFactoryStore.getState().minimizePocket(pocketId);
+    const folded = useFactoryStore.getState().project;
+    expect(folded.pockets?.find((pocket) => pocket.id === pocketId)?.expanded).toBe(false);
+    // Members keep their frame-space coordinates while hidden...
+    expect(folded.nodes.find((node) => node.id === "alpha")?.position).toEqual(openedAlpha);
+
+    // ...so reopening is stable: no drift, same frame.
+    useFactoryStore.getState().expandPocket(pocketId);
+    const reopened = useFactoryStore.getState().project;
+    expect(reopened.nodes.find((node) => node.id === "alpha")?.position).toEqual(openedAlpha);
+    expect(reopened.pockets?.find((pocket) => pocket.id === pocketId)?.size).toEqual(openedSize);
+  });
+
+  it("re-homes a dropped card through moveBoardItems and grows the frame on demand", () => {
+    const boardId = useFactoryStore.getState().createBoard({
+      position: { x: 600, y: 200 },
+      size: { width: 480, height: 320 },
+    }) as string;
+
+    useFactoryStore
+      .getState()
+      .moveBoardItems([{ id: "beta", position: { x: 40, y: 60 }, owner: { pocketId: boardId } }], {
+        boardSizes: [{ id: boardId, size: { width: 600, height: 400 } }],
+      });
+    let project = useFactoryStore.getState().project;
+    expect(project.nodes.find((node) => node.id === "beta")?.pocketId).toBe(boardId);
+    expect(project.nodes.find((node) => node.id === "beta")?.position).toEqual({ x: 40, y: 60 });
+    expect(project.pockets?.find((pocket) => pocket.id === boardId)?.size).toEqual({
+      width: 600,
+      height: 400,
+    });
+
+    // Dragging it back out surfaces it on the level in view.
+    useFactoryStore
+      .getState()
+      .moveBoardItems([
+        { id: "beta", position: { x: 300, y: 0 }, owner: { pocketId: undefined } },
+      ]);
+    project = useFactoryStore.getState().project;
+    expect(project.nodes.find((node) => node.id === "beta")?.pocketId).toBeUndefined();
+    expect(project.nodes.find((node) => node.id === "beta")?.position).toEqual({ x: 300, y: 0 });
+  });
+
+  it("refuses to make a board its own descendant", () => {
+    const outerId = useFactoryStore.getState().createBoard({ position: { x: 0, y: 0 } }) as string;
+    const innerId = useFactoryStore
+      .getState()
+      .createBoard({ position: { x: 1000, y: 0 } }) as string;
+    useFactoryStore
+      .getState()
+      .moveBoardItems([
+        { id: innerId, position: { x: 40, y: 60 }, owner: { pocketId: outerId } },
+      ]);
+    expect(
+      useFactoryStore.getState().project.pockets?.find((pocket) => pocket.id === innerId)
+        ?.parentPocketId,
+    ).toBe(outerId);
+
+    // The loop: dropping the outer board into its own child keeps its home.
+    useFactoryStore
+      .getState()
+      .moveBoardItems([
+        { id: outerId, position: { x: 20, y: 80 }, owner: { pocketId: innerId } },
+      ]);
+    const outer = useFactoryStore
+      .getState()
+      .project.pockets?.find((pocket) => pocket.id === outerId);
+    expect(outer?.parentPocketId).toBeUndefined();
+    // The position still lands; only the impossible re-homing is refused.
+    expect(outer?.position).toEqual({ x: 20, y: 80 });
+  });
+
+  it("dissolving an open board leaves members standing where they were on screen", () => {
+    const boardId = useFactoryStore.getState().createBoard({
+      position: { x: -40, y: -80 },
+      memberIds: ["alpha", "tank"],
+    }) as string;
+    const before = useFactoryStore.getState().project.edges;
+
+    useFactoryStore.getState().dissolvePocket(boardId);
+    const project = useFactoryStore.getState().project;
+    expect(project.pockets ?? []).toHaveLength(0);
+    expect(project.nodes.find((node) => node.id === "alpha")?.pocketId).toBeUndefined();
+    expect(project.nodes.find((node) => node.id === "alpha")?.position).toEqual({ x: 0, y: 0 });
+    expect(project.storages?.find((storage) => storage.id === "tank")?.position).toEqual({
+      x: 400,
+      y: 0,
+    });
+    // No convergence on the way out either: an open board's wires were
+    // always the real member wires.
+    expect(project.edges).toEqual(before);
+  });
+
+  it("pastes an open board without shifting its members twice", () => {
+    const boardId = useFactoryStore.getState().createBoard({
+      position: { x: -40, y: -80 },
+      memberIds: ["alpha"],
+    }) as string;
+    const payload = captureBoardSelection(useFactoryStore.getState().project, [
+      boardId,
+    ]) as NonNullable<ReturnType<typeof captureBoardSelection>>;
+
+    const pastedIds = useFactoryStore.getState().pasteBoardItems(payload, { x: 200, y: 0 });
+    const project = useFactoryStore.getState().project;
+    const pastedBoard = project.pockets?.find((pocket) => pocket.id === pastedIds[0]);
+    expect(pastedBoard?.expanded).toBe(true);
+    // The frame moved by the offset; the member kept its frame-relative spot.
+    expect(pastedBoard?.position).toEqual({ x: 160, y: -80 });
+    const pastedMember = project.nodes.find(
+      (node) => node.pocketId === pastedBoard?.id,
+    );
+    expect(pastedMember?.position).toEqual({ x: 40, y: 80 });
+  });
+});
+
 describe("cycled input picks", () => {
   const CIRCUIT_RECIPE = {
     id: "assembler-lv-machine",
