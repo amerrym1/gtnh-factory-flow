@@ -2,7 +2,7 @@
 
 import { NodeToolbar, Position, type Node, type NodeProps, useReactFlow } from "@xyflow/react";
 import { memo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { Copy, Minimize2, Save, X } from "lucide-react";
+import { Copy, Minimize2, PackageOpen, Save, X } from "lucide-react";
 import type { FactoryNodeColorTag, FactoryPocket } from "@/lib/model/types";
 import { boardWindowSize } from "@/lib/model/board-windows";
 import {
@@ -171,6 +171,7 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
   const setPocketSize = useFactoryStore((state) => state.setPocketSize);
   const setPocketTheme = useFactoryStore((state) => state.setPocketTheme);
   const deleteBoardSelection = useFactoryStore((state) => state.deleteBoardSelection);
+  const dissolvePocket = useFactoryStore((state) => state.dissolvePocket);
   const { calmMode } = useBoardView();
   const { getZoom, getNodes } = useReactFlow();
   const [draftName, setDraftName] = useState<string | undefined>(undefined);
@@ -464,6 +465,19 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
               aria-label={`Save board ${pocket.name} to my shelf`}
             >
               <Save aria-hidden className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                dissolvePocket(pocket.id);
+              }}
+              className="nodrag flex h-6 w-6 shrink-0 items-center justify-center border-2 hover:brightness-125"
+              style={buttonStyle}
+              title="Dump this board: the frame goes, the cards stay where they are"
+              aria-label={`Dump board ${pocket.name}`}
+            >
+              <PackageOpen aria-hidden className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"

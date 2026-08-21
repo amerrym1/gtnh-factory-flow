@@ -362,8 +362,13 @@ interface FactoryStore {
      * sizes ride the `moves`/`setBoardSizes` lists like any board's.
      */
     addBoards?: FactoryPocket[];
-    /** Cards the arrange moved INTO a zone; positions ride `moves`. */
-    setOwners?: Array<{ id: string; pocketId: string }>;
+    /**
+     * Where the arrange put each card: a zone's id, or undefined for the
+     * open canvas. Positions ride `moves`.
+     */
+    setOwners?: Array<{ id: string; pocketId?: string }>;
+    /** Boards the arrange dumped; their members ride `setOwners`. */
+    removeBoards?: string[];
     /** Paper for boards that had none; hand-picked papers are kept. */
     setBoardThemes?: Array<{ id: string; theme: string }>;
   }) => void;
@@ -1813,6 +1818,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
     addBoards,
     setOwners,
     setBoardThemes,
+    removeBoards,
   }) => {
     set((state) => {
       const positionById = new Map(moves.map((move) => [move.id, move.position] as const));
@@ -1820,6 +1826,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         (setBoardSizes ?? []).map((entry) => [entry.id, entry.size] as const),
       );
       const ownerById = new Map((setOwners ?? []).map((entry) => [entry.id, entry.pocketId]));
+      const dumpedBoards = new Set(removeBoards ?? []);
       const boardThemeById = new Map(
         (setBoardThemes ?? []).map((entry) => [entry.id, entry.theme]),
       );
@@ -1831,7 +1838,13 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       ): T[] =>
         items.map((item) => {
           const position = positionById.get(item.id);
-          const nextOwner = ownerById.get(item.id) ?? item.pocketId;
+          // An explicit owner wins, including an explicit "no board"; a card
+          // whose board was dumped without one surfaces on the canvas.
+          const nextOwner = ownerById.has(item.id)
+            ? ownerById.get(item.id)
+            : item.pocketId !== undefined && dumpedBoards.has(item.pocketId)
+              ? undefined
+              : item.pocketId;
           const samePosition =
             !position || (position.x === item.position.x && position.y === item.position.y);
           if (samePosition && nextOwner === item.pocketId) {
@@ -1846,10 +1859,15 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       if (addBoards && addBoards.length > 0) {
         changed = true;
       }
-      const combinedPockets =
-        addBoards && addBoards.length > 0
-          ? [...(state.project.pockets ?? []), ...addBoards]
+      const kept =
+        dumpedBoards.size > 0
+          ? (state.project.pockets ?? []).filter((pocket) => !dumpedBoards.has(pocket.id))
           : state.project.pockets;
+      if (dumpedBoards.size > 0 && (kept?.length ?? 0) !== (state.project.pockets?.length ?? 0)) {
+        changed = true;
+      }
+      const combinedPockets =
+        addBoards && addBoards.length > 0 ? [...(kept ?? []), ...addBoards] : kept;
       const pockets = combinedPockets
         ? combinedPockets.map((pocket) => {
             const position = positionById.get(pocket.id);
@@ -1869,6 +1887,9 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
             return {
               ...pocket,
               position: position ?? pocket.position,
+              ...(pocket.parentPocketId !== undefined && dumpedBoards.has(pocket.parentPocketId)
+                ? { parentPocketId: undefined }
+                : undefined),
               ...(size ? { size } : undefined),
               ...(theme ? { theme } : undefined),
             };

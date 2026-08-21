@@ -289,14 +289,18 @@ gh run watch <run-id> --exit-status
 - Opening a legacy pocket (`size` absent - the "coordinates are their own
   old space" signal) rebases members to fit the frame and drops waypoints
   on wires touching them; minimize mirrors the waypoint rule.
-- Auto-arrange BUILDS ZONES and draws no ink (`computeAutoArrangement`).
-  Phase 0 scouts the root with a throwaway arrange: each natural island of
-  loose cards becomes a real open board ("Zone N", `addBoards`/`setOwners`
-  on `applyBoardArrangement`, one undo entry with everything else); a
-  cluster wired around exactly ONE open board joins that board instead;
-  islands that are all boards stay as they are, which is what keeps re-runs
-  from nesting anything. Shelf strays and interchange buffers (the
-  arranger's `backdrop: false` islands) stay loose between zones. Then the
+- Auto-arrange DUMPS EVERY BOARD FIRST and builds zones from scratch, and
+  it draws no ink (`computeAutoArrangement`). Phase 0 spills every frame's
+  cards onto the canvas at their absolute positions (`removeBoards` on
+  `applyBoardArrangement`), then scouts with a throwaway arrange: each
+  natural island becomes a fresh open board ("Zone N", `addBoards` /
+  `setOwners`, all one undo entry). A rebuilt zone holding exactly the same
+  cards as a dumped board inherits its NAME and paper — the layout is
+  decided from scratch either way, and renaming somebody's zone on every
+  arrange is its own small betrayal. Hand-drawn frames therefore never
+  fence the layout in, and the button gives the same answer for the same
+  factory. Shelf strays and interchange buffers (the arranger's
+  `backdrop: false` islands) stay loose between zones. Then the
   layout passes: every open board arranges its own members inside its
   frame (deepest first, in frame space, origin one cell under the title
   bar) and the frame REFITS around the result (`setBoardSizes`); the root
@@ -347,6 +351,10 @@ gh run watch <run-id> --exit-status
   themes out, and `ZONE_PAPERS` lists dark ids): a pale sheet under the
   board's dark cards reads as a hole in the plan. A board already carrying
   a light theme still renders it.
+- `dissolvePocket` is the DUMP: the frame goes and its cards stay exactly
+  where they were (frame-relative positions get the frame's corner added
+  back when the board carries a `size`). Its button lives on both the open
+  title bar and the minimized card.
 - Board frames are `selectable: false`: marquee over the floor collects the
   cards, and a frame inside a dragged selection would move its members
   twice. The title bar drags it without selection; the minimized card

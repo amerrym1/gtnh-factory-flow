@@ -97,6 +97,7 @@ import {
   resourceMatchesInput,
 } from "@/lib/model";
 import {
+  collectPocketMembers,
   getEffectiveNodeRecipe,
   getPocketResourceForHandle,
   isPocketId,
@@ -4204,6 +4205,7 @@ export function FactoryFlow() {
       addBoards,
       setOwners,
       setBoardThemes,
+      removeBoards,
     } = computeAutoArrangement(
         state.project,
         state.lastResult,
@@ -4231,6 +4233,7 @@ export function FactoryFlow() {
       addBoards,
       setOwners,
       setBoardThemes,
+      removeBoards,
       removeAnnotationIds: staleInkIds,
     });
     useFactoryStore.getState().frameBoardNodes();
@@ -9261,8 +9264,9 @@ function computeAutoArrangement(
   staleInkIds: string[];
   boardSizes: Array<{ id: string; size: { width: number; height: number } }>;
   addBoards: FactoryPocket[];
-  setOwners: Array<{ id: string; pocketId: string }>;
+  setOwners: Array<{ id: string; pocketId?: string }>;
   setBoardThemes: Array<{ id: string; theme: string }>;
+  removeBoards: string[];
 } {
   const recipesById = new Map(baseProject.recipes.map((recipe) => [recipe.id, recipe]));
   // Frames refitted by the interior passes, read by every OUTER pass so a
@@ -9422,8 +9426,87 @@ function computeAutoArrangement(
     return { gatherLevel, representativeAt };
   };
 
-  // ---- Phase 0: zoning. A throwaway arrange of the root finds the natural
-  // islands; each island of loose cards becomes a ZONE. ----
+  // ---- Phase 0: dump every board, then zone from scratch. ----
+  //
+  // The arrange lays the plan out as if no board had ever been drawn: every
+  // frame is dumped, its cards spilled onto the canvas where they stand,
+  // and the zoning below decides the rooms afresh from the wiring alone. A
+  // board that survives is a board the arrange would have built anyway — so
+  // hand-drawn frames never fence the layout in, and the button always
+  // gives the same answer for the same factory.
+  const basePockets = baseProject.pockets ?? [];
+  const removeBoards = basePockets.map((pocket) => pocket.id);
+
+  // Absolute origin of every frame, so a dumped card lands where it looked
+  // like it was. A board that never stood open (no size) kept its members
+  // in their own old space, which is nobody's coordinates — those spill as
+  // they are, exactly as unwrapping one by hand does.
+  const originById = new Map<string, { x: number; y: number }>();
+  const originOf = (pocketId: string): { x: number; y: number } => {
+    const cached = originById.get(pocketId);
+    if (cached) {
+      return cached;
+    }
+    originById.set(pocketId, { x: 0, y: 0 });
+    const pocket = basePockets.find((entry) => entry.id === pocketId);
+    if (!pocket) {
+      return { x: 0, y: 0 };
+    }
+    const parent = pocket.parentPocketId ? originOf(pocket.parentPocketId) : { x: 0, y: 0 };
+    const origin =
+      pocket.size === undefined
+        ? parent
+        : { x: parent.x + pocket.position.x, y: parent.y + pocket.position.y };
+    originById.set(pocketId, origin);
+    return origin;
+  };
+  const spill = <T extends { pocketId?: string; position: { x: number; y: number } }>(
+    items: T[],
+  ): T[] =>
+    items.map((item) => {
+      if (item.pocketId === undefined) {
+        return item;
+      }
+      const origin = originOf(item.pocketId);
+      return {
+        ...item,
+        pocketId: undefined,
+        position: { x: item.position.x + origin.x, y: item.position.y + origin.y },
+      };
+    });
+
+  const flat: FactoryProject = {
+    ...baseProject,
+    nodes: spill(baseProject.nodes),
+    storages: baseProject.storages ? spill(baseProject.storages) : undefined,
+    annotations: baseProject.annotations ? spill(baseProject.annotations) : undefined,
+    pockets: [],
+  };
+
+  // What each dumped board held and what it was wearing. A rebuilt zone
+  // covering exactly the same cards inherits the name and paper: the layout
+  // is decided from scratch either way, and silently renaming somebody's
+  // "Platline" to "Zone 3" on every arrange would be its own small betrayal.
+  const clothesByMembers = new Map<
+    string,
+    { name: string; theme?: string; colorTag?: FactoryNodeColorTag }
+  >();
+  const memberKey = (ids: string[]) => [...ids].sort().join("|");
+  for (const pocket of basePockets) {
+    const members = collectPocketMembers(baseProject, pocket.id);
+    const ids = [
+      ...members.nodes.map((node) => node.id),
+      ...members.storages.map((storage) => storage.id),
+    ];
+    if (ids.length > 0) {
+      clothesByMembers.set(memberKey(ids), {
+        name: pocket.name,
+        theme: pocket.theme,
+        colorTag: pocket.colorTag,
+      });
+    }
+  }
+
   const mintZoneId = () =>
     `pocket-${
       typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -9431,10 +9514,8 @@ function computeAutoArrangement(
         : `${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`
     }`;
   const addBoards: FactoryPocket[] = [];
-  const setOwners: Array<{ id: string; pocketId: string }> = [];
-  const basePockets = baseProject.pockets ?? [];
-  const basePocketsById = new Map(basePockets.map((pocket) => [pocket.id, pocket]));
-  const scout = makeGatherer(baseProject).gatherLevel(undefined);
+  const setOwners: Array<{ id: string; pocketId?: string }> = [];
+  const scout = makeGatherer(flat).gatherLevel(undefined);
   if (scout.cards.length > 0) {
     const scouted = arrangeBoard({ cards: scout.cards, wires: scout.wires, taste });
     const scoutPositionById = new Map(
@@ -9465,66 +9546,46 @@ function computeAutoArrangement(
         islandMembers[index].push(card.id);
       }
     }
-    let zoneNumber = basePockets.length + 1;
+    let zoneNumber = 1;
     for (const members of islandMembers) {
       if (members.length < 2) {
         continue;
       }
-      const boardMembers = members.filter((id) => basePocketsById.has(id));
-      const looseMembers = members.filter((id) => !basePocketsById.has(id));
-      if (looseMembers.length === 0) {
-        // A constellation of existing zones: they arrange as neighbours,
-        // never as a zone of zones — that is what kept re-runs from
-        // nesting the plan one level deeper every time.
-        continue;
-      }
-      const loneBoard =
-        boardMembers.length === 1 ? basePocketsById.get(boardMembers[0]) : undefined;
-      if (loneBoard?.expanded) {
-        // The cluster is wired around one open board: its loose cards join
-        // that board rather than getting a wrapper of their own.
-        for (const id of looseMembers) {
-          setOwners.push({ id, pocketId: loneBoard.id });
-        }
-        continue;
-      }
-      if (looseMembers.length < 2) {
-        continue;
-      }
+      const clothes = clothesByMembers.get(memberKey(members));
       const zone: FactoryPocket = {
         id: mintZoneId(),
-        name: `Zone ${zoneNumber}`,
+        name: clothes?.name ?? `Zone ${zoneNumber}`,
         position: { x: 0, y: 0 },
         expanded: true,
+        ...(clothes?.theme ? { theme: clothes.theme } : undefined),
+        ...(clothes?.colorTag ? { colorTag: clothes.colorTag } : undefined),
       };
       zoneNumber += 1;
       addBoards.push(zone);
-      for (const id of looseMembers) {
+      for (const id of members) {
         setOwners.push({ id, pocketId: zone.id });
       }
     }
   }
 
-  // The plan as the layout passes see it: new zones in place, cards moved
-  // into their homes. Positions are stale mixed-space here, which is fine —
-  // every arranged card gets a fresh one, and the passes only read
-  // positions for the default-origin anchor.
-  let project = baseProject;
-  if (addBoards.length > 0 || setOwners.length > 0) {
-    const zoneOwner = new Map(setOwners.map((owner) => [owner.id, owner.pocketId]));
-    project = {
-      ...baseProject,
-      nodes: baseProject.nodes.map((node) =>
-        zoneOwner.has(node.id) ? { ...node, pocketId: zoneOwner.get(node.id) } : node,
-      ),
-      storages: baseProject.storages?.map((storage) =>
-        zoneOwner.has(storage.id)
-          ? { ...storage, pocketId: zoneOwner.get(storage.id) }
-          : storage,
-      ),
-      pockets: [...basePockets, ...addBoards],
-    };
-  }
+  // Everything the zoning did not claim goes on the canvas — which, since
+  // every board was dumped, is where it already is.
+  const zoneOwner = new Map(setOwners.map((owner) => [owner.id, owner.pocketId]));
+
+  // The plan as the layout passes see it: no old frames, the fresh zones in
+  // place, cards moved into them. Positions are stale here, which is fine —
+  // every arranged card gets a new one, and the passes read positions only
+  // for the default-origin anchor.
+  const project: FactoryProject = {
+    ...flat,
+    nodes: flat.nodes.map((node) =>
+      zoneOwner.has(node.id) ? { ...node, pocketId: zoneOwner.get(node.id) } : node,
+    ),
+    storages: flat.storages?.map((storage) =>
+      zoneOwner.has(storage.id) ? { ...storage, pocketId: zoneOwner.get(storage.id) } : storage,
+    ),
+    pockets: addBoards,
+  };
 
   const { gatherLevel, representativeAt } = makeGatherer(project);
   const view = computeBoardLevelView(project);
@@ -9714,6 +9775,7 @@ function computeAutoArrangement(
     addBoards,
     setOwners,
     setBoardThemes,
+    removeBoards,
   };
 }
 

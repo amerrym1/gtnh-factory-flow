@@ -2,7 +2,7 @@
 
 import { type Node, type NodeProps } from "@xyflow/react";
 import { memo, useState, type CSSProperties } from "react";
-import { Copy, Maximize2, Save } from "lucide-react";
+import { Copy, Maximize2, PackageOpen, Save } from "lucide-react";
 import type { FactoryPocket } from "@/lib/model/types";
 import { RECIPE_NODE_WIDTH } from "@/lib/board-grid";
 import { fluidArtPixels, isSwatchFluid, ResourceIcon } from "@/components/nei/ResourceIcon";
@@ -50,6 +50,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
   const { pocket, summary, railPorts } = data;
   const pendingResourceConnection = useFactoryStore((state) => state.pendingResourceConnection);
   const expandPocket = useFactoryStore((state) => state.expandPocket);
+  const dissolvePocket = useFactoryStore((state) => state.dissolvePocket);
   const renamePocket = useFactoryStore((state) => state.renamePocket);
   const deleteBoardSelection = useFactoryStore((state) => state.deleteBoardSelection);
   const [draftName, setDraftName] = useState<string | undefined>(undefined);
@@ -167,7 +168,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
               "grid h-[40px] min-w-0 items-center gap-1",
               calmMode
                 ? "grid-cols-[minmax(0,1fr)]"
-                : "grid-cols-[24px_24px_minmax(0,1fr)_24px_24px]",
+                : "grid-cols-[24px_24px_minmax(0,1fr)_24px_24px_24px]",
             ].join(" ")}
           >
             {!calmMode ? (
@@ -252,6 +253,18 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                   aria-label={`Save board ${pocket.name} to my shelf`}
                 >
                   <Save aria-hidden className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    dissolvePocket(pocket.id);
+                  }}
+                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
+                  title="Dump this board: the frame goes, the cards come back where they were"
+                  aria-label={`Dump board ${pocket.name}`}
+                >
+                  <PackageOpen aria-hidden className="h-3.5 w-3.5" />
                 </button>
                 <button
                   type="button"
