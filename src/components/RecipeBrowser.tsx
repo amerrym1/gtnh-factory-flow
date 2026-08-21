@@ -239,16 +239,12 @@ const RESOURCE_FILTER_CHOICES: Array<{
   label: string;
   title: string;
 }> = [
-  { mode: "all", label: "All", title: "Every item and fluid in the loaded dataset" },
-  { mode: "item", label: "Items", title: "Items only" },
-  { mode: "fluid", label: "Fluids", title: "Fluids only" },
-  {
-    mode: "board",
-    label: "Placed",
-    title: "Only what the cards and drawers you have placed on this board use or make",
-  },
-  { mode: "plants", label: "Plants", title: "Only what a crop farm or a tree can grow" },
-  { mode: "bees", label: "Bees", title: "Only what bees produce" },
+  { mode: "all", label: "All", title: "Everything" },
+  { mode: "item", label: "Items", title: "Items" },
+  { mode: "fluid", label: "Fluids", title: "Fluids" },
+  { mode: "board", label: "Placed", title: "On this board" },
+  { mode: "plants", label: "Plants", title: "Grown" },
+  { mode: "bees", label: "Bees", title: "From bees" },
 ];
 
 /** The dataset query only knows kinds and sources; this splits the choice up. */
@@ -2293,7 +2289,7 @@ function RecipeBookOverlay({
             <select
               value={maxTier}
               onChange={(event) => onMaxTierChange(event.target.value as TierFilter)}
-              title="Hide recipes above this voltage tier"
+              title="Highest tier"
               aria-label="Maximum machine tier"
               className="h-9 w-28 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1.5 text-sm text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
             >

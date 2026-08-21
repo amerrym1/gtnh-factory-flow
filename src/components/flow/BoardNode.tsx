@@ -469,7 +469,7 @@ function BoardNodeComponent({
                 : "border-[#241b33]",
             ].join(" ")}
             style={{ backgroundColor: ownPaper.base, backgroundImage: ownPaper.texture }}
-            title="Back to this board's own colour"
+            title="Its own colour"
             aria-label={`Clear the paper on board ${pocket.name}`}
           >
             <X className="h-3.5 w-3.5" />
@@ -587,7 +587,7 @@ function BoardNodeComponent({
               }}
               className="nodrag flex h-6 w-6 shrink-0 items-center justify-center border-2 hover:!bg-red-700 hover:!text-white"
               style={buttonStyle}
-              title="Delete this board (everything inside goes with it)"
+              title="Delete board"
               aria-label={`Delete board ${pocket.name}`}
             >
               {/* Drawn rather than a "-" glyph: at this size Monocraft's
@@ -602,7 +602,7 @@ function BoardNodeComponent({
               }}
               className="nodrag flex h-6 w-6 shrink-0 items-center justify-center border-2 hover:brightness-125"
               style={buttonStyle}
-              title="Clone this board (everything inside comes along)"
+              title="Clone board"
               aria-label={`Clone board ${pocket.name}`}
             >
               <Copy aria-hidden className="h-3.5 w-3.5" />
@@ -659,7 +659,7 @@ function BoardNodeComponent({
               }}
               className="nodrag flex h-6 w-6 shrink-0 items-center justify-center border-2 hover:brightness-125"
               style={buttonStyle}
-              title="Choose this board's paper"
+              title="Paper"
               aria-label={`Choose paper for board ${pocket.name}`}
             >
               <span
@@ -693,7 +693,7 @@ function BoardNodeComponent({
               }}
               className="nodrag flex h-6 w-6 shrink-0 items-center justify-center border-2 hover:brightness-125"
               style={buttonStyle}
-              title="Dump this board: the frame goes, the cards stay where they are"
+              title="Dump board"
               aria-label={`Dump board ${pocket.name}`}
             >
               <PackageOpen aria-hidden className="h-3.5 w-3.5" />
@@ -706,7 +706,7 @@ function BoardNodeComponent({
               }}
               className="nodrag flex h-6 w-6 shrink-0 items-center justify-center border-2 hover:brightness-125"
               style={buttonStyle}
-              title="Fold this board into its minimized card"
+              title="Fold board"
               aria-label={`Fold board ${pocket.name} into a pocket card`}
             >
               <Minimize2 aria-hidden className="h-3.5 w-3.5" />
@@ -724,7 +724,7 @@ function BoardNodeComponent({
           onPointerDown={(event) => beginResize(grip.side, event)}
           className={`nodrag absolute ${grip.cursor}`}
           style={{ ...grip.hitBox, pointerEvents: "all" }}
-          title="Drag to resize this board (it keeps its cards, and stops at its neighbours)"
+          title="Resize board"
           aria-label={`Resize board ${pocket.name}`}
         />
       ))}
