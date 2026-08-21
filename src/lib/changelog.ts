@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.22.1",
+    date: "2026-08-21",
+    headline: "Plainer buttons",
+    notes: [
+      "Auto-arrange is one button: click it and the board is laid out.",
+      "Hovering a button now tells you its name instead of a paragraph.",
+    ],
+  },
+  {
     version: "2.22.0",
     date: "2026-08-21",
     headline: "Boards: rooms you can put your factory in",
