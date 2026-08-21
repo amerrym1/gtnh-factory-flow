@@ -125,6 +125,13 @@ export interface GridRouteRequest {
    * route fall back to ignoring them rather than failing.
    */
   waypoints?: GridPoint[];
+  /**
+   * Obstacles THIS wire is allowed to pass through: the open board frames
+   * its endpoints live inside. A wire into a board member has to cross that
+   * board's border somewhere, so the frame cannot block it — while every
+   * frame the wire has no business in stays as solid as a card.
+   */
+  exemptObstacleIds?: readonly string[];
 }
 
 export interface GridRoutedEdge {
@@ -447,6 +454,14 @@ function routeOne(context: SolveContext, request: GridRouteRequest): GridRoutedE
   if (allSources.length === 0 || allTargets.length === 0) {
     return { edgeId: request.edgeId, points: [] };
   }
+  // The frames this wire lives inside are not obstacles to it. Filtered per
+  // request, not in the shared context: the same frame that lets a member
+  // wire through must still turn every foreign wire away.
+  const exempt = request.exemptObstacleIds;
+  const obstacles =
+    exempt && exempt.length > 0
+      ? context.obstacles.filter((obstacle) => !exempt.includes(obstacle.id))
+      : context.obstacles;
   // A taken dock is off the menu — until the card is out of free ones, when
   // sharing beats failing.
   const freeSources = allSources.filter((e) => !context.usedDocks.has(dockKey(e)));
@@ -459,7 +474,7 @@ function routeOne(context: SolveContext, request: GridRouteRequest): GridRoutedE
 
   let pad = WINDOW_PAD;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const routed = routeWithinWindow(context, request, sources, targets, waypoints, pad);
+    const routed = routeWithinWindow(context, obstacles, request, sources, targets, waypoints, pad);
     if (routed) {
       return routed;
     }
@@ -470,7 +485,7 @@ function routeOne(context: SolveContext, request: GridRouteRequest): GridRoutedE
   if (waypoints.length > 0) {
     pad = WINDOW_PAD;
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const routed = routeWithinWindow(context, request, sources, targets, [], pad);
+      const routed = routeWithinWindow(context, obstacles, request, sources, targets, [], pad);
       if (routed) {
         return routed;
       }
@@ -504,6 +519,7 @@ function isFiniteEndpoint(endpoint: GridEndpoint): boolean {
 
 function routeWithinWindow(
   context: SolveContext,
+  obstacles: GridObstacle[],
   request: GridRouteRequest,
   sources: GridEndpoint[],
   targets: GridEndpoint[],
@@ -537,7 +553,7 @@ function routeWithinWindow(
   // in the graph.
   const xs: number[] = [];
   const ys: number[] = [];
-  for (const obstacle of context.obstacles) {
+  for (const obstacle of obstacles) {
     if (
       obstacle.right < windowLeft - 2 * BOARD_GRID ||
       obstacle.left > windowRight + 2 * BOARD_GRID ||
@@ -568,7 +584,7 @@ function routeWithinWindow(
     return undefined;
   }
 
-  const windowObstacles = context.obstacles.filter(
+  const windowObstacles = obstacles.filter(
     (obstacle) =>
       obstacle.right >= windowLeft &&
       obstacle.left <= windowRight &&

@@ -268,11 +268,18 @@ gh run watch <run-id> --exit-status
   the household. Everything downstream speaks flow space:
   `publishBoardGeometry` and `cameraCards` resolve the parent chain once.
 - Wires belong to cards. An open board's members wire directly, and the
-  frame is ink to the router and to wire gestures (its members are the
-  obstacles). Only the MINIMIZED card has ports: its rails come from the
-  scoped solve in `pocket-summary.ts`, a wire dropped on a port fans out to
-  the members behind it, and the view collapses same-resource crossings
-  into one drawn channel - presentation, never stored rewiring.
+  frame is invisible to wire GESTURES (drops land on the cards inside) -
+  but to ROUTING a frame is as solid as a card: foreign wires go around it
+  with the same one-cell clearance, and only wires whose endpoints live
+  inside it are exempt (`throughBoardIds` on the route inputs,
+  `exemptObstacleIds` in grid-edge-router.ts) - they have to cross the
+  border to exist. Frames publish through `publishedBoardFrameBounds`,
+  separate from the card set, and exemptions ride the solve signature so
+  adopting a card reroutes its wires without anything moving. Only the
+  MINIMIZED card has ports: its rails come from the scoped solve in
+  `pocket-summary.ts`, a wire dropped on a port fans out to the members
+  behind it, and the view collapses same-resource crossings into one drawn
+  channel - presentation, never stored rewiring.
 - Membership changes by drop (`handleNodeDragStop`): a card whose centre
   lands in a frame's body joins that board, one dropped outside surfaces on
   the canvas - coordinates convert so nothing moves on screen, and the

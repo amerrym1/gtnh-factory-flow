@@ -942,6 +942,11 @@ type GridRouteEdgeInput = {
   routingWidth: number;
   /** User-pinned stops the wire must pass through, in order. */
   waypoints?: Array<{ x: number; y: number }>;
+  /**
+   * The open board frames this wire's endpoints live inside — the only
+   * frames its route may cross. Every other frame blocks it like a card.
+   */
+  throughBoardIds?: string[];
 };
 
 let publishedGridRouteEdges: GridRouteEdgeInput[] = [];
@@ -1128,6 +1133,7 @@ function ensureGridSolve() {
       targets,
       strokeWidth: Math.min(input.routingWidth, LANE_CAPACITY),
       waypoints: input.waypoints,
+      exemptObstacleIds: input.throughBoardIds,
     });
     orderByEdge.set(input.edgeId, input.order);
     // Free-dock candidates derive purely from the card rects, and the sweep
@@ -1146,18 +1152,40 @@ function ensureGridSolve() {
           .join("+")}|${targets
           .map((endpoint) => `${Math.round(endpoint.x)},${Math.round(endpoint.y)}`)
           .join("+")}`;
+    // Frame exemptions are a routing input like a waypoint: adopting a card
+    // changes no endpoint and moves no obstacle, yet its wires must reroute.
+    const throughPart =
+      input.throughBoardIds && input.throughBoardIds.length > 0
+        ? `|thru:${input.throughBoardIds.join(",")}`
+        : "";
     parts.push(
-      `${input.edgeId}|${input.order}|${input.routingWidth}|${input.sourceNodeId}|${input.targetNodeId}${describe}`,
+      `${input.edgeId}|${input.order}|${input.routingWidth}|${input.sourceNodeId}|${input.targetNodeId}${describe}${throughPart}`,
     );
   }
 
-  const signature = `${publishedGridFreeDock ? "free" : "ports"}::${sweep.hash}::${parts.join(";")}`;
+  // Open board frames are obstacles too — solid to every wire that is not
+  // exempt from them. They live outside the card sweep, so they carry their
+  // own slice of the signature.
+  const frames = publishedBoardFrameBounds;
+  const framesPart = frames
+    .map(
+      (entry) =>
+        `${entry.id}:${Math.round(entry.bounds.left)},${Math.round(entry.bounds.top)},${Math.round(
+          entry.bounds.right,
+        )},${Math.round(entry.bounds.bottom)}`,
+    )
+    .join(";");
+
+  const signature = `${publishedGridFreeDock ? "free" : "ports"}::${sweep.hash}::${framesPart}::${parts.join(";")}`;
   if (signature === gridSolveSignature) {
     return;
   }
   gridSolveSignature = signature;
 
-  const obstacles = sweep.bounds.map((entry) => ({ id: entry.id, ...entry.bounds }));
+  const obstacles = [
+    ...sweep.bounds.map((entry) => ({ id: entry.id, ...entry.bounds })),
+    ...frames.map((entry) => ({ id: entry.id, ...entry.bounds })),
+  ];
   const solved = solveGridRoutes(obstacles, requests);
   for (const [edgeId, routed] of solved) {
     if (routed.points.length < 2) {
@@ -1362,6 +1390,14 @@ const measuredNodeBoundsCache = new Map<string, MeasuredBounds | undefined>();
 // obstacle set, invalidating every cached route (and quietly making routes
 // depend on the viewport, which AGENTS.md forbids).
 let publishedBoardBounds: Array<{ id: string; bounds: MeasuredBounds }> | undefined;
+/**
+ * Open board frames, published separately from the card set: a frame is a
+ * ROUTING obstacle (a foreign wire goes around it like a card), but only for
+ * wires with no business inside — the solve exempts each wire from the
+ * frames its endpoints live in. Kept out of `publishedBoardBounds` so every
+ * other consumer of the card set (drop targeting, label maths) is untouched.
+ */
+let publishedBoardFrameBounds: Array<{ id: string; bounds: MeasuredBounds }> = [];
 let publishedBoardGeometryById = new Map<
   string,
   { x: number; y: number; width: number; height: number }
@@ -2159,18 +2195,20 @@ export function FactoryFlow() {
     // Annotations are ink on the board, not furniture. A box drawn AROUND a
     // cluster used to be a solid obstacle spanning all of it, so every wire
     // inside was forced to detour around its own group — the drawing changed
-    // the routing without changing the factory. Wires now pass straight
-    // through boxes, arrows and notes as if they were not there. A board
-    // WINDOW is the same deal: the frame is chrome, its members are the
-    // obstacles, and wires cross the frame line freely.
+    // the routing without changing the factory. Wires pass straight through
+    // boxes, arrows and notes as if they were not there. A board WINDOW is
+    // different: to a wire with no business inside it, the frame is as
+    // solid as a card — it goes in the frame list below and the solve routes
+    // foreign wires around it, exempting only the wires whose endpoints
+    // live inside (they have to cross the border to exist).
     const annotationIds = new Set(
       flowNodesRef.current
         .filter((node) => node.type === "annotationNode" || node.type === "boardNode")
         .map((node) => node.id),
     );
-    publishedBoardBounds = [...geometryById.entries()]
-      .filter(([id]) => !annotationIds.has(id))
-      .map(([id, geometry]) => ({
+    const asBounds = (id: string) => {
+      const geometry = geometryById.get(id)!;
+      return {
         id,
         bounds: {
           left: geometry.x,
@@ -2178,7 +2216,16 @@ export function FactoryFlow() {
           right: geometry.x + geometry.width,
           bottom: geometry.y + geometry.height,
         },
-      }))
+      };
+    };
+    publishedBoardBounds = [...geometryById.keys()]
+      .filter((id) => !annotationIds.has(id))
+      .map(asBounds)
+      .filter((entry) => entry.bounds.right > entry.bounds.left)
+      .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+    publishedBoardFrameBounds = flowNodesRef.current
+      .filter((node) => node.type === "boardNode")
+      .map((node) => asBounds(node.id))
       .filter((entry) => entry.bounds.right > entry.bounds.left)
       .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
     if (invalidateRoutes) {
@@ -2539,6 +2586,31 @@ export function FactoryFlow() {
       }
     }
 
+    // Which open frames each wire may cross: the chain of open boards its
+    // endpoint cards live inside. A wire into a member must cross that
+    // board's border to exist; every OTHER frame turns it away like a card.
+    const hasOpenFrames = pocketView.openBoards.length > 0;
+    const frameChainByLevel = new Map<string | undefined, string[]>();
+    const frameOwnerById = new Map<string, string | undefined>();
+    if (hasOpenFrames) {
+      frameChainByLevel.set(undefined, []);
+      for (const board of pocketView.openBoards) {
+        frameChainByLevel.set(board.id, [
+          ...(frameChainByLevel.get(board.parentPocketId) ?? []),
+          board.id,
+        ]);
+      }
+      for (const node of project.nodes) {
+        frameOwnerById.set(node.id, node.pocketId);
+      }
+      for (const storage of project.storages ?? []) {
+        frameOwnerById.set(storage.id, storage.pocketId);
+      }
+      for (const pocket of project.pockets ?? []) {
+        frameOwnerById.set(pocket.id, pocket.parentPocketId);
+      }
+    }
+
     // What the grid solve needs about every wire, collected as the edge
     // objects are built and published in one shot below.
     const gridRouteInputs: GridRouteEdgeInput[] = [];
@@ -2634,11 +2706,26 @@ export function FactoryFlow() {
       const isFlowHighlighted =
         activeFlowResourceKey === makeResourceKey(edge.resourceKind, edge.resourceId);
 
+      let throughBoardIds: string[] | undefined;
+      if (hasOpenFrames) {
+        const sourceChain = frameChainByLevel.get(frameOwnerById.get(sourceRep));
+        const targetChain = frameChainByLevel.get(frameOwnerById.get(targetRep));
+        if (sourceChain?.length && targetChain?.length) {
+          throughBoardIds =
+            sourceChain === targetChain
+              ? sourceChain
+              : [...new Set([...sourceChain, ...targetChain])];
+        } else if (sourceChain?.length || targetChain?.length) {
+          throughBoardIds = sourceChain?.length ? sourceChain : targetChain;
+        }
+      }
+
       gridRouteInputs.push({
         edgeId: edge.id,
         order: edgeIndex,
         sourceNodeId: sourceRep,
         targetNodeId: targetRep,
+        throughBoardIds,
         // A machine end is a PORT even when the stored edge carries no handle
         // id (old plans and the demo do this): the rails publish canonical
         // ids derived from the resource, so the same derivation here finds

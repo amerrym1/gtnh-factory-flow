@@ -438,4 +438,31 @@ describe("solveGridRoutes", () => {
     expect(points.length).toBeGreaterThanOrEqual(2);
     expect(isOrthogonal(points)).toBe(true);
   });
+
+  it("a board frame blocks foreign wires but lets its own members' wires through", () => {
+    // Two facing cards with an open board frame standing between them.
+    const a = card("a", 0, 0);
+    const b = card("b", 1200, 0);
+    const frame: GridObstacle = { id: "frame", left: 480, top: -200, right: 840, bottom: 360 };
+    const endpoints = {
+      sources: [{ x: 360, y: 60, side: "right" as const }],
+      targets: [{ x: 1200, y: 60, side: "left" as const }],
+    };
+
+    // Foreign wire: the frame is furniture, one cell of clearance like a card.
+    const foreign = solveGridRoutes(
+      [a, b, frame],
+      [request({ edgeId: "foreign", ...endpoints })],
+    ).get("foreign")!.points;
+    expect(isOrthogonal(foreign)).toBe(true);
+    expect(violatesMargin(foreign, frame, 0)).toBe(false);
+
+    // The same wire exempted from the frame (an endpoint lives inside):
+    // nothing in the way, so it runs straight through where the frame stands.
+    const member = solveGridRoutes(
+      [a, b, frame],
+      [request({ edgeId: "member", ...endpoints, exemptObstacleIds: ["frame"] })],
+    ).get("member")!.points;
+    expect(member.every((point) => Math.abs(point.y - 60) < 0.01)).toBe(true);
+  });
 });
