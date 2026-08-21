@@ -132,6 +132,14 @@ export interface GridRouteRequest {
    * frame the wire has no business in stays as solid as a card.
    */
   exemptObstacleIds?: readonly string[];
+  /**
+   * The frames holding BOTH of this wire's ends — the rooms it lives in.
+   * A wire between two cards on the same board has no business leaving it,
+   * so wandering outside these costs (`COST_OUTSIDE_HOME`), while the
+   * frames it is only passing OUT of charge for loitering instead. Always
+   * a subset of `exemptObstacleIds`.
+   */
+  homeObstacleIds?: readonly string[];
 }
 
 export interface GridRoutedEdge {
@@ -161,17 +169,27 @@ const COST_SHARED = 1.3;
  */
 const COST_OVERFLOW = 6;
 /**
- * Cost per pixel spent INSIDE a board frame this wire is exempt from.
+ * Cost per pixel spent inside a board frame this wire is on its way OUT of.
  *
- * A wire with an endpoint in a board has to cross that border, but it should
+ * A wire with one end in a board has to cross that border, but it should
  * cross it and be gone: left at the plain rate it would happily run the
  * length of the frame's own edge line (an empty lane like any other) before
  * turning out, which draws the wire along the board's rim and reads as the
  * board leaking. At this rate the shortest way out always beats the scenic
- * one, while a wire between two members of the same board — which pays this
- * on every candidate path equally — is unaffected.
+ * one.
  */
 const COST_INSIDE_EXEMPT = 3;
+/**
+ * Cost per pixel spent OUTSIDE a frame that holds both of this wire's ends.
+ *
+ * The mirror of the rule above, and the reason it needs one: a wire between
+ * two cards on the same board pays the leaving-rate on the stretch inside
+ * but nothing out in the open, so it would duck out of the board and come
+ * back in — which is precisely the thing a board is drawn to say does not
+ * happen. Inside its own room the wire travels at the plain rate; stepping
+ * out costs, so it only does that when the room leaves it no path at all.
+ */
+const COST_OUTSIDE_HOME = 3;
 /** Cost of one 90° turn, in pixel-equivalents. */
 const TURN_COST = 30;
 /** A* gives up after this many pops and the caller falls back. */
@@ -474,11 +492,20 @@ function routeOne(context: SolveContext, request: GridRouteRequest): GridRoutedE
     exempt && exempt.length > 0
       ? context.obstacles.filter((obstacle) => !exempt.includes(obstacle.id))
       : context.obstacles;
-  // The frames this wire may cross, kept as rects: crossing is allowed,
-  // loitering is expensive. See COST_INSIDE_EXEMPT.
+  // The frames this wire is on its way OUT of, kept as rects: crossing is
+  // allowed, loitering is expensive (COST_INSIDE_EXEMPT). Frames holding
+  // BOTH ends are its home instead — there, leaving is what costs.
+  const home = request.homeObstacleIds;
   const exemptRects =
     exempt && exempt.length > 0
-      ? context.obstacles.filter((obstacle) => exempt.includes(obstacle.id))
+      ? context.obstacles.filter(
+          (obstacle) =>
+            exempt.includes(obstacle.id) && !(home && home.includes(obstacle.id)),
+        )
+      : [];
+  const homeRects =
+    home && home.length > 0
+      ? context.obstacles.filter((obstacle) => home.includes(obstacle.id))
       : [];
   // A taken dock is off the menu — until the card is out of free ones, when
   // sharing beats failing.
@@ -492,7 +519,7 @@ function routeOne(context: SolveContext, request: GridRouteRequest): GridRoutedE
 
   let pad = WINDOW_PAD;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const routed = routeWithinWindow(context, obstacles, exemptRects, request, sources, targets, waypoints, pad);
+    const routed = routeWithinWindow(context, obstacles, exemptRects, homeRects, request, sources, targets, waypoints, pad);
     if (routed) {
       return routed;
     }
@@ -503,7 +530,7 @@ function routeOne(context: SolveContext, request: GridRouteRequest): GridRoutedE
   if (waypoints.length > 0) {
     pad = WINDOW_PAD;
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const routed = routeWithinWindow(context, obstacles, exemptRects, request, sources, targets, [], pad);
+      const routed = routeWithinWindow(context, obstacles, exemptRects, homeRects, request, sources, targets, [], pad);
       if (routed) {
         return routed;
       }
@@ -539,6 +566,7 @@ function routeWithinWindow(
   context: SolveContext,
   obstacles: GridObstacle[],
   exemptRects: GridObstacle[],
+  homeRects: GridObstacle[],
   request: GridRouteRequest,
   sources: GridEndpoint[],
   targets: GridEndpoint[],
@@ -842,27 +870,43 @@ function routeWithinWindow(
         const used = context.occupancy.usedWidth(laneAxis, laneLine, from, to);
         const fits = used === 0 || used + LANE_GAP + request.strokeWidth <= LANE_CAPACITY;
         const factor = used === 0 ? COST_EMPTY : fits ? COST_SHARED : COST_OVERFLOW;
-        // Time spent inside a frame this wire may cross is charged for, so
-        // the wire leaves by the shortest way it can find instead of running
-        // the board's rim. The border line itself counts as inside.
-        const insideExempt =
-          exemptRects.length > 0 &&
-          exemptRects.some((rect) => {
-            const spanLo = Math.min(from, to);
-            const spanHi = Math.max(from, to);
-            return laneAxis === "h"
-              ? laneLine >= rect.top - 1e-6 &&
-                  laneLine <= rect.bottom + 1e-6 &&
-                  spanHi > rect.left - 1e-6 &&
-                  spanLo < rect.right + 1e-6
-              : laneLine >= rect.left - 1e-6 &&
-                  laneLine <= rect.right + 1e-6 &&
-                  spanHi > rect.top - 1e-6 &&
-                  spanLo < rect.bottom + 1e-6;
-          });
+        // Where this run sits relative to the frames that matter to it.
+        // The border line itself counts as inside.
+        const spanLo = Math.min(from, to);
+        const spanHi = Math.max(from, to);
+        const touches = (rect: GridObstacle): boolean =>
+          laneAxis === "h"
+            ? laneLine >= rect.top - 1e-6 &&
+              laneLine <= rect.bottom + 1e-6 &&
+              spanHi > rect.left - 1e-6 &&
+              spanLo < rect.right + 1e-6
+            : laneLine >= rect.left - 1e-6 &&
+              laneLine <= rect.right + 1e-6 &&
+              spanHi > rect.top - 1e-6 &&
+              spanLo < rect.bottom + 1e-6;
+        const within = (rect: GridObstacle): boolean =>
+          laneAxis === "h"
+            ? laneLine >= rect.top - 1e-6 &&
+              laneLine <= rect.bottom + 1e-6 &&
+              spanLo >= rect.left - 1e-6 &&
+              spanHi <= rect.right + 1e-6
+            : laneLine >= rect.left - 1e-6 &&
+              laneLine <= rect.right + 1e-6 &&
+              spanLo >= rect.top - 1e-6 &&
+              spanHi <= rect.bottom + 1e-6;
+        // Loitering in a frame the wire is leaving costs; so does straying
+        // out of the frame it lives in. A run only counts as home when it
+        // lies wholly inside — a run half out is already the excursion.
+        const insideExempt = exemptRects.length > 0 && exemptRects.some(touches);
+        const strayedFromHome = homeRects.length > 0 && !homeRects.every(within);
+        const framePenalty =
+          insideExempt || strayedFromHome
+            ? insideExempt
+              ? COST_INSIDE_EXEMPT
+              : COST_OUTSIDE_HOME
+            : 1;
         const stepCost =
-          distance * factor * (insideExempt ? COST_INSIDE_EXEMPT : 1) +
-          (dir === currentDir ? 0 : TURN_COST);
+          distance * factor * framePenalty + (dir === currentDir ? 0 : TURN_COST);
         const nextState = (nxi * yCount + nyi) * 4 + dir;
         const nextG = current.g + stepCost;
         if (nextG < gScores[nextState] - 1e-9) {

@@ -334,11 +334,19 @@ gh run watch <run-id> --exit-status
   positions from the node lookup, so paper tracks a dragged frame exactly.
   Open boards therefore also un-seal the edge/node layers
   (`factory-flow-board--edges-under`, the lever thickness mode pulls).
-- A wire may cross a frame it belongs to, but LOITERING inside costs
-  `COST_INSIDE_EXEMPT` per pixel (grid-edge-router.ts): left at the plain
-  rate a wire would ride the frame's own edge line before turning out,
-  which reads as the board leaking. Wires now leave by the shortest way
-  they can find.
+- Two mirrored routing rules keep wires honest about rooms
+  (grid-edge-router.ts). A wire leaving a board pays `COST_INSIDE_EXEMPT`
+  per pixel spent inside it, so it makes for the nearest border instead of
+  riding the frame's own edge line on the way out. A wire whose BOTH ends
+  sit in a frame (`homeObstacleIds` — the shared prefix of the two
+  endpoints' ancestor chains, `exemptObstacleIds` being their union) pays
+  `COST_OUTSIDE_HOME` for every pixel spent OUTSIDE it, so it never ducks
+  out of its own board and back in. The second rule exists because the
+  first one alone made leaving cheaper than staying.
+- Only DARK papers are offered (`BOARD_PAPERS` filters the light canvas
+  themes out, and `ZONE_PAPERS` lists dark ids): a pale sheet under the
+  board's dark cards reads as a hole in the plan. A board already carrying
+  a light theme still renders it.
 - Board frames are `selectable: false`: marquee over the floor collects the
   cards, and a frame inside a dragged selection would move its members
   twice. The title bar drags it without selection; the minimized card

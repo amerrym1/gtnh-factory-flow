@@ -513,4 +513,37 @@ describe("solveGridRoutes", () => {
     // the dock stub. A wire that ran the rim would be several times this.
     expect(insideLength).toBeLessThanOrEqual(1000 - 480 + WIRE_NODE_MARGIN);
   });
+
+  it("a wire between two cards on one board never leaves it", () => {
+    // Two members side by side inside a roomy frame. The frame is exempt
+    // for this wire AND holds both its ends, so the route has to stay in:
+    // ducking out to the open board and back is what this forbids.
+    const frame: GridObstacle = { id: "frame", left: 0, top: 0, right: 1400, bottom: 500 };
+    const left = card("left", 100, 160);
+    const right = card("right", 900, 160);
+    const points = solveGridRoutes(
+      [frame, left, right],
+      [
+        request({
+          edgeId: "inner",
+          sources: [{ x: 460, y: 220, side: "right" }],
+          targets: [{ x: 900, y: 220, side: "left" }],
+          exemptObstacleIds: ["frame"],
+          homeObstacleIds: ["frame"],
+        }),
+      ],
+    ).get("inner")!.points;
+
+    expect(isOrthogonal(points)).toBe(true);
+    // Every corner of the route sits inside the room it belongs to.
+    expect(
+      points.every(
+        (point) =>
+          point.x >= frame.left &&
+          point.x <= frame.right &&
+          point.y >= frame.top &&
+          point.y <= frame.bottom,
+      ),
+    ).toBe(true);
+  });
 });

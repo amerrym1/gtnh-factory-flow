@@ -71,6 +71,14 @@ const DEFAULT_CHROME: BoardChrome = {
   grip: "#8d6fd1",
 };
 
+/**
+ * The papers a board may be laid on: the canvas themes, minus the light
+ * ones. A pale sheet under the board's dark cards reads as a hole cut in
+ * the plan rather than as a surface the cards sit on, so the picker simply
+ * does not offer them. A board that already carries one still renders it.
+ */
+const BOARD_PAPERS = CANVAS_THEMES.filter((theme) => !isLightColor(theme.base));
+
 /** Rough luminance of a #rrggbb colour, for picking readable ink. */
 function isLightColor(hex: string): boolean {
   const value = hex.replace("#", "");
@@ -292,7 +300,7 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
           >
             <X className="h-3.5 w-3.5" />
           </button>
-          {CANVAS_THEMES.map((theme) => (
+          {BOARD_PAPERS.map((theme) => (
             <button
               key={theme.id}
               type="button"

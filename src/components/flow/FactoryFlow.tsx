@@ -951,6 +951,11 @@ type GridRouteEdgeInput = {
    * frames its route may cross. Every other frame blocks it like a card.
    */
   throughBoardIds?: string[];
+  /**
+   * The frames holding BOTH ends: the rooms the wire lives in, which it
+   * should not leave and come back into. Always a subset of the above.
+   */
+  homeBoardIds?: string[];
 };
 
 let publishedGridRouteEdges: GridRouteEdgeInput[] = [];
@@ -1138,6 +1143,7 @@ function ensureGridSolve() {
       strokeWidth: Math.min(input.routingWidth, LANE_CAPACITY),
       waypoints: input.waypoints,
       exemptObstacleIds: input.throughBoardIds,
+      homeObstacleIds: input.homeBoardIds,
     });
     orderByEdge.set(input.edgeId, input.order);
     // Free-dock candidates derive purely from the card rects, and the sweep
@@ -1159,9 +1165,12 @@ function ensureGridSolve() {
     // Frame exemptions are a routing input like a waypoint: adopting a card
     // changes no endpoint and moves no obstacle, yet its wires must reroute.
     const throughPart =
-      input.throughBoardIds && input.throughBoardIds.length > 0
+      (input.throughBoardIds && input.throughBoardIds.length > 0
         ? `|thru:${input.throughBoardIds.join(",")}`
-        : "";
+        : "") +
+      (input.homeBoardIds && input.homeBoardIds.length > 0
+        ? `|home:${input.homeBoardIds.join(",")}`
+        : "");
     parts.push(
       `${input.edgeId}|${input.order}|${input.routingWidth}|${input.sourceNodeId}|${input.targetNodeId}${describe}${throughPart}`,
     );
@@ -2723,6 +2732,7 @@ export function FactoryFlow() {
         activeFlowResourceKey === makeResourceKey(edge.resourceKind, edge.resourceId);
 
       let throughBoardIds: string[] | undefined;
+      let homeBoardIds: string[] | undefined;
       if (hasOpenFrames) {
         const sourceChain = frameChainByLevel.get(frameOwnerById.get(sourceRep));
         const targetChain = frameChainByLevel.get(frameOwnerById.get(targetRep));
@@ -2731,6 +2741,10 @@ export function FactoryFlow() {
             sourceChain === targetChain
               ? sourceChain
               : [...new Set([...sourceChain, ...targetChain])];
+          // The rooms BOTH ends sit in: the wire stays inside these and
+          // only crosses the frames one end is outside of. Chains run
+          // outermost-first, so the shared prefix is the answer.
+          homeBoardIds = sourceChain.filter((id) => targetChain.includes(id));
         } else if (sourceChain?.length || targetChain?.length) {
           throughBoardIds = sourceChain?.length ? sourceChain : targetChain;
         }
@@ -2742,6 +2756,7 @@ export function FactoryFlow() {
         sourceNodeId: sourceRep,
         targetNodeId: targetRep,
         throughBoardIds,
+        homeBoardIds,
         // A machine end is a PORT even when the stored edge carries no handle
         // id (old plans and the demo do this): the rails publish canonical
         // ids derived from the resource, so the same derivation here finds
@@ -9227,12 +9242,12 @@ function estimateNodeCardSize(
 const ZONE_PAPERS: string[] = [
   "slate",
   "blueprint",
-  "parchment",
-  "gunmetal",
   "chalkboard",
-  "midnight",
-  "paper",
   "graphite",
+  "gunmetal",
+  "midnight",
+  "charcoal",
+  "void",
 ];
 
 function computeAutoArrangement(
