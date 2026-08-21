@@ -680,18 +680,18 @@ const READ_THE_BOARD: TourLesson = {
       ],
     },
     {
-      anchor: "board-rules",
+      anchor: "setup-rules",
       side: "bottom",
-      title: "Board rules",
+      title: "Setup rules",
       rows: [
         {
-          text: "The gear holds two rules. *Free inputs*: anything short of stock takes the rest from off the board.",
+          text: "The gear holds two rules. *Free inputs*: anything short of stock takes the rest from off the setup.",
         },
         {
-          text: "*Free outputs*: anything with nowhere to go leaves the board instead of backing up.",
+          text: "*Free outputs*: anything with nowhere to go leaves the setup instead of backing up.",
         },
         {
-          text: "Both off, you wire the boundary yourself and the board tells you what is missing.",
+          text: "Both off, you wire the boundary yourself and the setup tells you what is missing.",
         },
       ],
     },

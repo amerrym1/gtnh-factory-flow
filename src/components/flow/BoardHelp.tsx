@@ -171,7 +171,7 @@ const CALLOUTS: Array<{
       { icon: Undo2, text: "Undo and redo" },
       { chip: "/s", text: "Rates per tick, second, minute or hour" },
       { icon: Trash, text: "Place *farm*, *trash can*, *custom rate*" },
-      { icon: Settings, text: "*Board rules*: free inputs and free outputs" },
+      { icon: Settings, text: "*Setup rules*: free inputs and free outputs" },
       { icon: Network, text: "*Auto-arrange* the whole board" },
     ],
   },

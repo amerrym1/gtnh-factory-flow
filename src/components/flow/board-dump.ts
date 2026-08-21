@@ -26,7 +26,7 @@ import {
 import { applyRecipeInputOverrides } from "@/lib/model/recipe-input-overrides";
 import { expandPocketSelection } from "@/lib/model/pocket-connections";
 import { getStorageRoles } from "@/lib/model/storage-role";
-import { getBoardRules } from "@/lib/model/board-rules";
+import { getSetupRules } from "@/lib/model/setup-rules";
 import { getCustomRateDial, isCustomRateRecipe } from "@/lib/model/custom-rate";
 import { isTrashRecipe } from "@/lib/model/trash";
 import { getMachineParallelMultiplier } from "@/lib/solver/machine-effects";
@@ -108,11 +108,11 @@ export function buildBoardDump({ project, result, selectedIds }: BoardDumpOption
   };
   dropEmpty(dump);
 
-  const rules = getBoardRules(project);
+  const rules = getSetupRules(project);
   if (rules.freeInputs || rules.freeOutputs) {
-    dump.boardRules = [
+    dump.setupRules = [
       rules.freeInputs ? "free inputs: any input short of stock is topped up" : undefined,
-      rules.freeOutputs ? "free outputs: any surplus leaves the board instead of clogging" : undefined,
+      rules.freeOutputs ? "free outputs: any surplus leaves the setup instead of clogging" : undefined,
     ]
       .filter(Boolean)
       .join("; ");

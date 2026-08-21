@@ -49,7 +49,7 @@ import {
   selectRuntimeCalculationVariant,
 } from "./runtime-calculation";
 import { closeBoundaries } from "./close-boundaries";
-import { getBoardRules } from "../model/board-rules";
+import { getSetupRules } from "../model/setup-rules";
 import { solveEquationsCore } from "./equations-core";
 
 const EPSILON = 0.000001;
@@ -76,7 +76,7 @@ export function calculateThroughput(
   // exist only inside this result and never reach the board, and the LP
   // spends a free source only after every real wire (its recycle-before-
   // importing stage), so nothing the player drew is bypassed.
-  const rules = getBoardRules(project);
+  const rules = getSetupRules(project);
   if (rules.freeInputs || rules.freeOutputs) {
     project = closeBoundaries(project, {
       inputs: rules.freeInputs ? "all" : "none",

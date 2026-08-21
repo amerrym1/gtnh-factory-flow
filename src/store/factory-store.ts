@@ -55,7 +55,7 @@ import {
   resourceLabel,
 } from "@/lib/model/resources";
 import type {
-  BoardRules,
+  SetupRules,
   EntryIcon,
   FactoryAnnotation,
   FactoryEdge,
@@ -75,7 +75,7 @@ import type {
 import { planContentFingerprint } from "@/lib/community/plan-fingerprint";
 import { collectPocketMembers, expandPocketSelection } from "@/lib/model/pocket-connections";
 import { paperForBoardId, pickBoardPaper } from "@/lib/model/board-paper";
-import { getBoardRules, packBoardRules } from "@/lib/model/board-rules";
+import { getSetupRules, packSetupRules } from "@/lib/model/setup-rules";
 import type { BoardCamera } from "@/lib/designs/design-camera";
 
 export const LOCAL_STORAGE_KEY = "gtnh-factory-flow.project.v2";
@@ -294,7 +294,7 @@ interface FactoryStore {
   /** Drains only: flip between pulling the feeder flat out and catching the extra. */
   setStorageDrainMode: (storageId: string, drainMode: StorageDrainMode) => void;
   /** Free inputs and free outputs: what the board does off its own edges. */
-  setBoardRules: (rules: Partial<BoardRules>) => void;
+  setSetupRules: (rules: Partial<SetupRules>) => void;
   deleteStorage: (storageId: string) => void;
   /** Clone a node (same recipe/config, no wires) beside the original. */
   duplicateNode: (nodeId: string) => void;
@@ -3096,12 +3096,12 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       });
     });
   },
-  setBoardRules: (rules) => {
+  setSetupRules: (rules) => {
     set((state) => {
       const { assumeBoundaries: _legacy, ...rest } = state.project;
       const project = touchProject({
         ...rest,
-        boardRules: packBoardRules({ ...getBoardRules(state.project), ...rules }),
+        setupRules: packSetupRules({ ...getSetupRules(state.project), ...rules }),
       });
       return withProjectHistory(state, {
         project,

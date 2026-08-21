@@ -597,7 +597,7 @@ export interface PlanViewState {
  * The drawers are virtual: they exist inside the solve and never reach the
  * board, so nothing the player drew is touched or hidden.
  */
-export interface BoardRules {
+export interface SetupRules {
   /** An input short of stock takes the rest from off the board. */
   freeInputs?: boolean;
   /** Output with nowhere to go leaves the board instead of clogging. */
@@ -618,8 +618,8 @@ export interface FactoryProject {
   /** Only shared setups carry this; see PlanViewState. */
   view?: PlanViewState;
   targetRate?: TargetRate;
-  /** How the board treats what it cannot feed or shift. See BoardRules. */
-  boardRules?: BoardRules;
+  /** How the board treats what it cannot feed or shift. See SetupRules. */
+  setupRules?: SetupRules;
   /**
    * LEGACY sketch mode, read on load and rewritten as both board rules.
    * Plans saved before the rules existed still carry it; nothing writes it.

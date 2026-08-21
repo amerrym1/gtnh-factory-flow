@@ -63,8 +63,7 @@ import {
   Type,
   Undo2,
   Wallpaper,
-  LogIn,
-  LogOut,
+  Check,
   Settings,
   X,
   Zap,
@@ -325,7 +324,7 @@ import {
 } from "./AnnotationNode";
 import { settleZonePoints } from "@/lib/model/zone-points";
 import { BOARD_PAPER_IDS } from "@/lib/model/board-paper";
-import { getBoardRules } from "@/lib/model/board-rules";
+import { getSetupRules } from "@/lib/model/setup-rules";
 import { nearestFreeSpot, type PlacementRect, type PlacementRegion } from "./board-placement";
 import { registerBoardResize, type BoardResizeDraft } from "./board-resize";
 
@@ -6027,18 +6026,24 @@ const RATE_UNIT_CHOICES: Array<{ unit: RateUnit; label: string; title: string }>
 ];
 
 /**
- * The board's two rules, on a gear beside the tidy-up button.
+ * The setup's two rules, on a gear beside the tidy-up button.
  *
  * They are the only settings that change what the SOLVE is allowed to assume,
  * so they get a sheet with a sentence each rather than a mystery toggle: a
  * player who turns one on and does not know what it did will read every number
  * on the board wrong afterwards.
+ *
+ * Each row says ON or OFF in as many ways as it takes. The pressed face alone
+ * was a light grey against a dark grey, and there is no way to know from one
+ * row which of the two greys means yes - so a row also carries a TICK BOX and
+ * the word itself, in green when the rule is on. Any one of the three answers
+ * the question; you do not have to know the house style to read it.
  */
-const BoardRulesButton = memo(function BoardRulesButton() {
-  const rules = useFactoryStore((state) => state.project.boardRules);
+const SetupRulesButton = memo(function SetupRulesButton() {
+  const rules = useFactoryStore((state) => state.project.setupRules);
   const legacy = useFactoryStore((state) => state.project.assumeBoundaries);
-  const setBoardRules = useFactoryStore((state) => state.setBoardRules);
-  const { freeInputs, freeOutputs } = getBoardRules({ boardRules: rules, assumeBoundaries: legacy });
+  const setSetupRules = useFactoryStore((state) => state.setSetupRules);
+  const { freeInputs, freeOutputs } = getSetupRules({ setupRules: rules, assumeBoundaries: legacy });
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -6071,23 +6076,20 @@ const BoardRulesButton = memo(function BoardRulesButton() {
   const choices: Array<{
     id: "freeInputs" | "freeOutputs";
     on: boolean;
-    icon: typeof LogIn;
     label: string;
     line: string;
   }> = [
     {
       id: "freeInputs",
       on: freeInputs,
-      icon: LogIn,
       label: "Free inputs",
-      line: "An input short of stock takes the rest from off the board.",
+      line: "An input short of stock takes the rest from off the setup.",
     },
     {
       id: "freeOutputs",
       on: freeOutputs,
-      icon: LogOut,
       label: "Free outputs",
-      line: "Output with nowhere to go leaves the board instead of backing up.",
+      line: "Output with nowhere to go leaves the setup instead of backing up.",
     },
   ];
 
@@ -6095,37 +6097,69 @@ const BoardRulesButton = memo(function BoardRulesButton() {
     <div ref={rootRef} className="pointer-events-auto relative flex">
       <button
         type="button"
-        data-tour-anchor="board-rules"
+        data-tour-anchor="setup-rules"
         onClick={() => setOpen((was) => !was)}
         aria-expanded={open}
         className={[
           "relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
           open || freeInputs || freeOutputs ? TOOL_FACE_ON : TOOL_FACE_OFF,
         ].join(" ")}
-        title="Board rules"
-        aria-label="Board rules"
+        title="Setup rules"
+        aria-label="Setup rules"
       >
         <Settings className="h-4 w-4" />
       </button>
       {open ? (
-        <div className="absolute left-0 top-[calc(100%+6px)] z-30 flex w-[300px] flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+        <div className="absolute left-0 top-[calc(100%+6px)] z-30 flex w-[320px] flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+          {/* The second line names the thing in game this is: once you have an
+              AE2 network holding everything, machines pull and push straight
+              into it and no slot is ever the reason anything stops. Players
+              recognise that state long before they would recognise a phrase
+              like "assumed boundary". */}
           <p className="px-1 pt-1 font-mono text-[11px] leading-snug text-[var(--mc-ink)] opacity-70">
-            What the board does when a slot cannot be supplied or emptied.
+            What the setup does when a slot cannot be supplied or emptied.
+            <br />
+            Both on is an AE2 network holding everything.
           </p>
           {choices.map((choice) => (
             <button
               key={choice.id}
               type="button"
-              onClick={() => setBoardRules({ [choice.id]: !choice.on })}
+              onClick={() => setSetupRules({ [choice.id]: !choice.on })}
               aria-pressed={choice.on}
               className={[
-                "flex items-start gap-2 border-2 border-[var(--mc-15)] p-2 text-left",
-                choice.on ? TOOL_FACE_ON : TOOL_FACE_OFF,
+                "flex items-start gap-2 border-2 p-2 text-left",
+                choice.on
+                  ? `border-[var(--mc-good)] ${TOOL_FACE_ON}`
+                  : `border-[var(--mc-15)] ${TOOL_FACE_OFF}`,
               ].join(" ")}
             >
-              <choice.icon className="mt-[2px] h-4 w-4 shrink-0" />
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span className="font-mono text-[12px] font-black uppercase">{choice.label}</span>
+              {/* The tick box. Green and filled, or empty and near black -
+                  two states nobody has to compare against another row to
+                  tell apart. */}
+              <span
+                aria-hidden
+                className={[
+                  "mt-[1px] flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)]",
+                  choice.on ? "bg-[var(--mc-good)]" : "bg-[var(--mc-24)]",
+                ].join(" ")}
+              >
+                {choice.on ? <Check className="h-3 w-3 text-[var(--mc-15)]" strokeWidth={4} /> : null}
+              </span>
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="flex items-baseline justify-between gap-2">
+                  <span className="font-mono text-[12px] font-black uppercase">{choice.label}</span>
+                  {/* Said in words as well, because a tick is a convention and
+                      a word is not. */}
+                  <span
+                    className={[
+                      "font-mono text-[10px] font-black tracking-[1px]",
+                      choice.on ? "text-[var(--mc-good)]" : "text-[var(--mc-ink-muted)]",
+                    ].join(" ")}
+                  >
+                    {choice.on ? "ON" : "OFF"}
+                  </span>
+                </span>
                 <span className="font-mono text-[11px] leading-snug opacity-80">{choice.line}</span>
               </span>
             </button>
@@ -6271,7 +6305,7 @@ const SourceToolbar = memo(function SourceToolbar({
       {/* The tidy-up and the board's own rules: the two buttons that act on
           the whole board at once rather than on a card. */}
       <ToolTray>
-        <BoardRulesButton />
+        <SetupRulesButton />
         <button
           type="button"
           onClick={onAutoArrange}

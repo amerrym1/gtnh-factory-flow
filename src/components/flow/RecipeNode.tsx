@@ -2181,7 +2181,7 @@ export function OutputSocketRow({
             port.nameplatePerSecond <= 0
               ? "Empty socket: nothing plugged in."
               : port.boundaryFree
-                ? "Free outputs is on, so this leaves the board."
+                ? "Free outputs is on, so this leaves the setup."
                 : "Nothing takes this, so it backs up and the machine stops. Wire it to a machine that wants it, a DRAIN drawer, or a trash can."
           }
         >

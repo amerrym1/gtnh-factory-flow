@@ -481,7 +481,7 @@ export const factoryProjectSchema = z.object({
   view: planViewStateSchema.optional(),
   targetRate: targetRateSchema.optional(),
   // What the board does with an input nothing feeds and output nothing takes.
-  boardRules: z
+  setupRules: z
     .object({
       freeInputs: z.boolean().optional(),
       freeOutputs: z.boolean().optional(),

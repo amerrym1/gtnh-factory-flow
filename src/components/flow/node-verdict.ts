@@ -14,7 +14,7 @@ import { isCustomRateRecipe } from "@/lib/model/custom-rate";
 import { collectTrashNodeIds } from "@/lib/model/trash";
 import { describeStorage, getStorageRole, getStorageRoles } from "@/lib/model/storage-role";
 import { makeResourceHandleId } from "./resource-handles";
-import { getBoardRules, type ResolvedBoardRules } from "@/lib/model/board-rules";
+import { getSetupRules, type ResolvedSetupRules } from "@/lib/model/setup-rules";
 
 type ProjectEdge = FactoryProject["edges"][number];
 
@@ -441,7 +441,7 @@ export function deriveNodeVerdict(
   // solve already fed every bare input, so marking it is nagging about
   // something the plan has answered. The other side still speaks up - the
   // rules are separate on purpose, and half a closed plan is still a plan.
-  const rules = getBoardRules(project);
+  const rules = getSetupRules(project);
   if (!rules.freeInputs || !rules.freeOutputs) {
     const bare = findBareSlots(project, nodeResult, incoming, outgoing, rules);
     if (bare || (incoming.length === 0 && outgoing.length === 0)) {
@@ -546,7 +546,7 @@ export function findUnwiredNodeIds(
 ): string[] {
   // With both board rules on, the solve feeds and drains every bare slot
   // itself; a checklist of things the rules already handled would just nag.
-  const rules = getBoardRules(project);
+  const rules = getSetupRules(project);
   if (rules.freeInputs && rules.freeOutputs) {
     return [];
   }
@@ -600,7 +600,7 @@ function findBareSlots(
   nodeResult: NodeThroughputResult,
   incoming: ProjectEdge[],
   outgoing: ProjectEdge[],
-  rules: ResolvedBoardRules,
+  rules: ResolvedSetupRules,
 ): NodeVerdict["bare"] {
   const describe = (
     flow: { kind: ResourceKind; resourceId: string; displayName?: string },
@@ -1233,7 +1233,7 @@ export function buildRailPorts(
     const storage = storagesById.get(id);
     return storage ? describeStorage(storage, storageRoles.get(id)) : "Drawer";
   };
-  const rules = getBoardRules(project);
+  const rules = getSetupRules(project);
   const buildSide = (side: "input" | "output"): RailPort[] => {
     const isInput = side === "input";
     // A board rule ANSWERS its whole side: with free inputs on there is no

@@ -1,9 +1,7 @@
-import type { BoardRules, FactoryProject } from "./types";
+import type { SetupRules } from "./types";
 
-/** Both rules, always answered - the closed plan is `false, false`. */
-export type ResolvedBoardRules = Required<BoardRules>;
-
-export const CLOSED_BOARD: ResolvedBoardRules = { freeInputs: false, freeOutputs: false };
+/** Both rules, always answered - the closed setup is `false, false`. */
+export type ResolvedSetupRules = Required<SetupRules>;
 
 /**
  * What this plan's rules are, legacy included.
@@ -13,11 +11,11 @@ export const CLOSED_BOARD: ResolvedBoardRules = { freeInputs: false, freeOutputs
  * flag on the way in; this still honours it, because fixtures and tests build
  * projects by hand and never go through that funnel.
  */
-export function getBoardRules(project: {
-  boardRules?: BoardRules;
+export function getSetupRules(project: {
+  setupRules?: SetupRules;
   assumeBoundaries?: boolean;
-}): ResolvedBoardRules {
-  const rules = project.boardRules;
+}): ResolvedSetupRules {
+  const rules = project.setupRules;
   if (!rules) {
     const legacy = project.assumeBoundaries === true;
     return { freeInputs: legacy, freeOutputs: legacy };
@@ -25,14 +23,8 @@ export function getBoardRules(project: {
   return { freeInputs: rules.freeInputs === true, freeOutputs: rules.freeOutputs === true };
 }
 
-/** True when the plan is closed: it must wire its own boundary. */
-export function isClosedBoard(project: FactoryProject): boolean {
-  const rules = getBoardRules(project);
-  return !rules.freeInputs && !rules.freeOutputs;
-}
-
 /** Stored form: nothing set at all when both rules are off. */
-export function packBoardRules(rules: ResolvedBoardRules): BoardRules | undefined {
+export function packSetupRules(rules: ResolvedSetupRules): SetupRules | undefined {
   if (!rules.freeInputs && !rules.freeOutputs) {
     return undefined;
   }

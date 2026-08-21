@@ -20,7 +20,7 @@ export function normalizeLoadedProject(project: FactoryProject): FactoryProject 
         releaseCustomRates(
           dropDuplicateEdges(
             dropCrossFormConnections(
-              normalizeProjectFuelProfiles(renameOpvTier(adoptBoardRules(project))),
+              normalizeProjectFuelProfiles(renameOpvTier(adoptSetupRules(project))),
             ),
           ),
         ),
@@ -35,16 +35,16 @@ export function normalizeLoadedProject(project: FactoryProject): FactoryProject 
  * is dropped here rather than kept in step, because the rules are now the only
  * thing the solve reads and two fields saying the same thing drift.
  */
-function adoptBoardRules(project: FactoryProject): FactoryProject {
+function adoptSetupRules(project: FactoryProject): FactoryProject {
   if (project.assumeBoundaries === undefined) {
     return project;
   }
   const { assumeBoundaries, ...rest } = project;
   return {
     ...rest,
-    boardRules: assumeBoundaries
+    setupRules: assumeBoundaries
       ? { freeInputs: true, freeOutputs: true }
-      : (project.boardRules ?? undefined),
+      : (project.setupRules ?? undefined),
   };
 }
 

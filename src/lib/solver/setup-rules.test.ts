@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PROJECT_SCHEMA_VERSION, type BoardRules, type FactoryProject } from "@/lib/model/types";
+import { PROJECT_SCHEMA_VERSION, type SetupRules, type FactoryProject } from "@/lib/model/types";
 import { calculateThroughput } from "./throughput";
 
 /**
@@ -47,12 +47,12 @@ function machine(id: string, recipeId: string, machineCount: number, x: number) 
 }
 
 /** Smelter -> presser on one wire, and nothing else declared. */
-function board(rules: BoardRules | undefined, smelters = 1, pressers = 1): FactoryProject {
+function board(rules: SetupRules | undefined, smelters = 1, pressers = 1): FactoryProject {
   return {
     schemaVersion: PROJECT_SCHEMA_VERSION,
     id: "rules",
     name: "rules",
-    boardRules: rules,
+    setupRules: rules,
     recipes: RECIPES,
     nodes: [machine("smelter", "smelt", smelters, 0), machine("presser", "press", pressers, 300)],
     edges: [
@@ -74,7 +74,7 @@ function board(rules: BoardRules | undefined, smelters = 1, pressers = 1): Facto
  * go wrong is the wire in the middle - which is what the two rules are for.
  */
 function closedChain(
-  rules: BoardRules | undefined,
+  rules: SetupRules | undefined,
   smelters = 1,
   pressers = 1,
 ): FactoryProject {
