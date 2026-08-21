@@ -20,6 +20,29 @@ export interface PlacementRect {
   height: number;
 }
 
+/**
+ * A room a card is either IN or OUT of, never half of each.
+ *
+ * A board is a place, not a decoration: a card lying across its wall
+ * belongs to neither side and reads as a mistake. `outer` is the whole
+ * frame — touch it at all and you are involved — and `inner` is the floor
+ * a card has to fit inside to count as being in the room.
+ */
+export interface PlacementRegion {
+  outer: PlacementRect;
+  inner: PlacementRect;
+}
+
+/** Is `inner` wholly within `outer`? */
+export function rectContains(outer: PlacementRect, inner: PlacementRect): boolean {
+  return (
+    inner.x >= outer.x - 1e-6 &&
+    inner.y >= outer.y - 1e-6 &&
+    inner.x + inner.width <= outer.x + outer.width + 1e-6 &&
+    inner.y + inner.height <= outer.y + outer.height + 1e-6
+  );
+}
+
 /** Do two rects share any area? Touching edges is not overlapping. */
 export function rectsOverlap(a: PlacementRect, b: PlacementRect, gap = 0): boolean {
   return (
@@ -57,12 +80,21 @@ export function spotIsFree(
   blockers: PlacementRect[],
   gap = 0,
   bounds?: PlacementBounds,
+  regions?: PlacementRegion[],
 ): boolean {
   if (bounds) {
     if (bounds.minX !== undefined && rect.x < bounds.minX - 1e-6) return false;
     if (bounds.minY !== undefined && rect.y < bounds.minY - 1e-6) return false;
     if (bounds.maxX !== undefined && rect.x + rect.width > bounds.maxX + 1e-6) return false;
     if (bounds.maxY !== undefined && rect.y + rect.height > bounds.maxY + 1e-6) return false;
+  }
+  if (regions) {
+    for (const region of regions) {
+      // Either clear of the room altogether, or all the way inside it.
+      if (rectsOverlap(rect, region.outer) && !rectContains(region.inner, rect)) {
+        return false;
+      }
+    }
   }
   return !blockers.some((blocker) => rectsOverlap(rect, blocker, gap));
 }
@@ -81,9 +113,10 @@ export function nearestFreeSpot(
   blockers: PlacementRect[],
   gap = 0,
   bounds?: PlacementBounds,
+  regions?: PlacementRegion[],
 ): { x: number; y: number } {
   const collides = (x: number, y: number) =>
-    !spotIsFree({ x, y, width: rect.width, height: rect.height }, blockers, gap, bounds);
+    !spotIsFree({ x, y, width: rect.width, height: rect.height }, blockers, gap, bounds, regions);
 
   if (!collides(rect.x, rect.y)) {
     return { x: rect.x, y: rect.y };
@@ -104,7 +137,7 @@ export function nearestFreeSpot(
     ),
   );
   const collidesNear = (x: number, y: number) =>
-    !spotIsFree({ x, y, width: rect.width, height: rect.height }, near, gap, bounds);
+    !spotIsFree({ x, y, width: rect.width, height: rect.height }, near, gap, bounds, regions);
 
   for (let radius = 1; radius <= SEARCH_LIMIT_CELLS; radius += 1) {
     const offsets: Array<{ dx: number; dy: number }> = [];

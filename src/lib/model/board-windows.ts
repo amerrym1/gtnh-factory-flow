@@ -162,15 +162,32 @@ export function computeOpenBoardRects(openBoards: FactoryPocket[]): OpenBoardRec
   return [...rects.values()];
 }
 
+/** The floor of an open board: everything under its title bar. */
+export function boardBodyRect(rect: OpenBoardRect): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  return {
+    x: rect.x,
+    y: rect.y + BOARD_WINDOW_TITLE_HEIGHT,
+    width: rect.width,
+    height: rect.height - BOARD_WINDOW_TITLE_HEIGHT,
+  };
+}
+
 /**
- * Which open board a dropped point lands in: the deepest frame whose BODY
- * (everything under the title bar) contains the point, skipping excluded
- * boards (the dragged board itself and its descendants — nothing may become
- * its own ancestor). Undefined = the point lands on the root canvas.
+ * Which open board a dropped CARD lands in: the deepest frame whose floor
+ * holds the whole card. Wholly, not mostly — a card lying across a wall
+ * belongs to neither side, and the placement magnet has already refused to
+ * leave one there. Excluded boards are skipped (a dragged board and its
+ * descendants: nothing may become its own ancestor). Undefined = the card
+ * came to rest on the canvas, out of every room.
  */
-export function pickBoardOwnerAt(
+export function pickBoardOwnerFor(
   rects: OpenBoardRect[],
-  point: { x: number; y: number },
+  card: { x: number; y: number; width: number; height: number },
   excludedIds?: ReadonlySet<string>,
 ): string | undefined {
   let winner: OpenBoardRect | undefined;
@@ -178,12 +195,13 @@ export function pickBoardOwnerAt(
     if (excludedIds?.has(rect.id)) {
       continue;
     }
-    const inBody =
-      point.x >= rect.x &&
-      point.x <= rect.x + rect.width &&
-      point.y >= rect.y + BOARD_WINDOW_TITLE_HEIGHT &&
-      point.y <= rect.y + rect.height;
-    if (inBody && (!winner || rect.depth > winner.depth)) {
+    const body = boardBodyRect(rect);
+    const inside =
+      card.x >= body.x - 1e-6 &&
+      card.y >= body.y - 1e-6 &&
+      card.x + card.width <= body.x + body.width + 1e-6 &&
+      card.y + card.height <= body.y + body.height + 1e-6;
+    if (inside && (!winner || rect.depth > winner.depth)) {
       winner = rect;
     }
   }

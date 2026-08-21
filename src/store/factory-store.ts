@@ -328,17 +328,13 @@ interface FactoryStore {
       position: FactoryNode["position"];
       /**
        * Also re-home the item: dropped inside an open board it becomes a
-       * member, dropped outside every frame it surfaces on the level in
-       * view. The position is already in the new owner's space. Absent =
-       * the owner stays. A pocket re-homes through `parentPocketId`, and a
-       * drop that would make one its own ancestor keeps its old home.
+       * member, dropped anywhere else it surfaces on the canvas. The
+       * position is already in the new owner's space. Absent = the owner
+       * stays. A board re-homes through `parentPocketId`, and a drop that
+       * would make one its own ancestor keeps its old home.
        */
       owner?: { pocketId?: string };
     }>,
-    options?: {
-      /** Frames grown so a dropped member stays inside; same undo entry. */
-      boardSizes?: Array<{ id: string; size: { width: number; height: number } }>;
-    },
   ) => void;
   /**
    * Land an auto-arrange as ONE undo entry: every card's new position; a
@@ -1726,12 +1722,9 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       return withProjectHistory(state, { project });
     });
   },
-  moveBoardItems: (moves, options) => {
+  moveBoardItems: (moves) => {
     set((state) => {
       const moveById = new Map(moves.map((move) => [move.id, move] as const));
-      const sizeById = new Map(
-        (options?.boardSizes ?? []).map((entry) => [entry.id, entry.size] as const),
-      );
       const currentPockets = state.project.pockets ?? [];
       let moved = false;
       const applyMoves = <
@@ -1774,32 +1767,23 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       const applyPocketMoves = (items: FactoryPocket[]): FactoryPocket[] =>
         items.map((item) => {
           const move = moveById.get(item.id);
-          const size = sizeById.get(item.id);
-          if (!move && !size) {
+          if (!move) {
             return item;
           }
           const nextParent =
-            move?.owner && !wouldLoop(item.id, move.owner.pocketId)
+            move.owner && !wouldLoop(item.id, move.owner.pocketId)
               ? move.owner.pocketId
               : item.parentPocketId;
-          const nextPosition = move?.position ?? item.position;
-          const sameSize =
-            !size || (size.width === item.size?.width && size.height === item.size?.height);
+          const nextPosition = move.position;
           if (
             nextPosition.x === item.position.x &&
             nextPosition.y === item.position.y &&
-            nextParent === item.parentPocketId &&
-            sameSize
+            nextParent === item.parentPocketId
           ) {
             return item;
           }
           moved = true;
-          return {
-            ...item,
-            position: nextPosition,
-            parentPocketId: nextParent,
-            ...(size ? { size } : undefined),
-          };
+          return { ...item, position: nextPosition, parentPocketId: nextParent };
         });
 
       const nodes = applyMoves(state.project.nodes);

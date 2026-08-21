@@ -280,12 +280,14 @@ gh run watch <run-id> --exit-status
   `pocket-summary.ts`, a wire dropped on a port fans out to the members
   behind it, and the view collapses same-resource crossings into one drawn
   channel - presentation, never stored rewiring.
-- Membership changes by drop (`handleNodeDragStop`): a card whose centre
-  lands in a frame's body joins that board, one dropped outside surfaces on
-  the canvas - coordinates convert so nothing moves on screen, and the
-  frame grows to keep a dropped member inside. Drawing a board with the
-  toolbar tool adopts the cards it covers; a drawer spawned off a member's
-  port joins the member's board.
+- Membership changes by drop (`handleNodeDragStop`): a card WHOLLY inside a
+  frame's floor joins that board (deepest frame wins), a card dragged clear
+  of every frame leaves its board and surfaces on the canvas
+  (`pickBoardOwnerFor`). Coordinates convert so nothing moves on screen,
+  and the frame NEVER grows to swallow a drop - a board's walls are the
+  player's to set, and a drop that would not fit simply lands outside.
+  Drawing a board with the toolbar tool adopts the cards it covers; a
+  drawer spawned off a member's port joins the member's board.
 - Opening a legacy pocket (`size` absent - the "coordinates are their own
   old space" signal) rebases members to fit the frame and drops waypoints
   on wires touching them; minimize mirrors the waypoint rule.
@@ -372,6 +374,15 @@ gh run watch <run-id> --exit-status
   cards but never by frames (a frame is a room you drag into, and the drop
   decides membership); a FRAME is blocked by other frames and by every card
   that is not its own. Annotations are ink and never block anything.
+- NOTHING STRADDLES A WALL. Every open frame is also a REGION to the magnet
+  (`PlacementRegion`: the whole frame as `outer`, the floor under the title
+  bar as `inner`), and a card position that touches `outer` without fitting
+  inside `inner` is refused exactly like an occupied spot. So a card clicks
+  IN or clicks OUT as the hand crosses the wall, whichever side is nearer,
+  and the drop can then read membership as plain containment instead of
+  guessing from a centre point. A frame being dragged is not asked to be in
+  or out of anything, and a frame carried by the same drag is not a wall to
+  the cards riding with it.
 - Board frames resize from all four edges and all four corners
   (`RESIZE_GRIPS`), each with a generous hit box straddling the wall, plus
   permanent corner brackets. A wall never cuts into the board's own cards

@@ -305,7 +305,8 @@ import {
   collectPocketDescendantIds,
   computeBoardLevelView,
   computeOpenBoardRects,
-  pickBoardOwnerAt,
+  boardBodyRect,
+  pickBoardOwnerFor,
 } from "@/lib/model/board-windows";
 import {
   buildPocketRailPorts,
@@ -318,7 +319,7 @@ import {
   type AnnotationFlowNode,
 } from "./AnnotationNode";
 import { settleZonePoints } from "@/lib/model/zone-points";
-import { nearestFreeSpot, type PlacementRect } from "./board-placement";
+import { nearestFreeSpot, type PlacementRect, type PlacementRegion } from "./board-placement";
 import { registerBoardResize, type BoardResizeDraft } from "./board-resize";
 
 const nodeTypes = {
@@ -2450,7 +2451,10 @@ export function FactoryFlow() {
             continue;
           }
           const constraint = constraints.get(change.id);
-          if (!constraint || constraint.blockers.length === 0) {
+          if (
+            !constraint ||
+            (constraint.blockers.length === 0 && constraint.regions.length === 0)
+          ) {
             continue;
           }
           const geometry = publishedBoardGeometryById.get(change.id);
@@ -2465,7 +2469,13 @@ export function FactoryFlow() {
             width,
             height,
           };
-          const free = nearestFreeSpot(absolute, constraint.blockers);
+          const free = nearestFreeSpot(
+            absolute,
+            constraint.blockers,
+            0,
+            undefined,
+            constraint.regions,
+          );
           change.position = {
             x: free.x - constraint.origin.x,
             y: free.y - constraint.origin.y,
@@ -4375,7 +4385,14 @@ export function FactoryFlow() {
    * on can change mid-drag anyway, since only the held cards move.
    */
   const dragConstraintsRef = useRef<
-    Map<string, { blockers: PlacementRect[]; origin: { x: number; y: number } }>
+    Map<
+      string,
+      {
+        blockers: PlacementRect[];
+        regions: PlacementRegion[];
+        origin: { x: number; y: number };
+      }
+    >
   >(new Map());
 
   const handleNodeDragStart = useCallback((_: unknown, node: Node, draggedNodes: Node[]) => {
@@ -4455,9 +4472,18 @@ export function FactoryFlow() {
         });
       }
 
+      // The rooms on the canvas, as places to be in or out of. A card
+      // straddling a board's wall belongs to neither, so the magnet treats
+      // a half-crossing as occupied ground and the card clicks in or clicks
+      // out — whichever is nearer.
+      const openFrames = computeOpenBoardRects(computeBoardLevelView(project).openBoards);
       const constraints = new Map<
         string,
-        { blockers: PlacementRect[]; origin: { x: number; y: number } }
+        {
+          blockers: PlacementRect[];
+          regions: PlacementRegion[];
+          origin: { x: number; y: number };
+        }
       >();
       for (const id of held) {
         const heldPocket = pockets.find((entry) => entry.id === id);
@@ -4472,16 +4498,25 @@ export function FactoryFlow() {
                 !other.isFrame,
           )
           .map((other) => other.rect);
+        // A frame is not asked to be in or out of anything: it is blocked
+        // outright by its neighbours. Only cards click in and out of rooms,
+        // and never into a room they are travelling with.
+        const regions: PlacementRegion[] = heldIsOpenFrame
+          ? []
+          : openFrames
+              .filter((rect) => !carried.has(rect.id))
+              .map((rect) => ({
+                outer: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                inner: boardBodyRect(rect),
+              }));
+
         // Positions arrive in the parent's space; the blockers are in flow
         // space, so the held card's own frame origin closes the gap.
         const owner = ownerOf(id);
-        const frame = owner
-          ? computeOpenBoardRects(computeBoardLevelView(project).openBoards).find(
-              (rect) => rect.id === owner,
-            )
-          : undefined;
+        const frame = owner ? openFrames.find((rect) => rect.id === owner) : undefined;
         constraints.set(id, {
           blockers,
+          regions,
           origin: frame ? { x: frame.x, y: frame.y } : { x: 0, y: 0 },
         });
       }
@@ -4608,9 +4643,16 @@ export function FactoryFlow() {
         const absolute = internal?.internals.positionAbsolute ?? entry.position;
         const width = internal?.measured?.width ?? 0;
         const height = internal?.measured?.height ?? 0;
-        const centre = { x: absolute.x + width / 2, y: absolute.y + height / 2 };
         const currentOwner = ownerOf(entry.id);
-        const landing = pickBoardOwnerAt(frames, centre, excluded) ?? currentOwner;
+        // A card belongs to the room it is WHOLLY inside — the magnet has
+        // already refused to leave it lying across a wall, so this reads
+        // where it ended up rather than judging where it mostly is. A card
+        // dragged clear of every frame leaves its board behind.
+        const landing = pickBoardOwnerFor(
+          frames,
+          { x: absolute.x, y: absolute.y, width, height },
+          excluded,
+        );
         const origin = landing !== undefined ? frameById.get(landing) : undefined;
 
         // The magnet, in flow space: slide off anything solid, then convert
@@ -4622,9 +4664,10 @@ export function FactoryFlow() {
             .map((other) => other.rect),
           ...placedThisDrop,
         ];
-        // The live magnet has already kept this card off everything solid,
-        // so this is a safety net for drops that never went through a drag
-        // frame — and it leaves an honest drop exactly where it was let go.
+        // The live magnet has already kept this card off everything solid
+        // and out of every wall, so this is a safety net for drops that
+        // never went through a drag frame — and it leaves an honest drop
+        // exactly where it was let go.
         const wanted = snapPositionToGrid({ x: absolute.x, y: absolute.y });
         const free =
           width > 0 && height > 0
@@ -4641,36 +4684,10 @@ export function FactoryFlow() {
           : { id: entry.id, position, owner: { pocketId: landing } };
       });
 
-      // A member dropped past the frame's right or bottom edge grows the
-      // frame to keep it inside; a frame never shrinks itself.
-      const grownSizes = new Map<string, { width: number; height: number }>();
-      for (const move of moves) {
-        const landing = "owner" in move && move.owner ? move.owner.pocketId : ownerOf(move.id);
-        if (landing === undefined) {
-          continue;
-        }
-        const board = pockets.find((pocket) => pocket.id === landing);
-        if (!board?.expanded) {
-          continue;
-        }
-        const internal = instance?.getInternalNode(move.id);
-        const width = internal?.measured?.width ?? 0;
-        const height = internal?.measured?.height ?? 0;
-        const current = grownSizes.get(landing) ?? boardWindowSize(board);
-        const needed = {
-          width: Math.max(current.width, snapSizeUpToGrid(move.position.x + width)),
-          height: Math.max(current.height, snapSizeUpToGrid(move.position.y + height)),
-        };
-        if (needed.width !== current.width || needed.height !== current.height) {
-          grownSizes.set(landing, needed);
-        }
-      }
-      moveBoardItems(
-        moves,
-        grownSizes.size > 0
-          ? { boardSizes: [...grownSizes].map(([id, size]) => ({ id, size })) }
-          : undefined,
-      );
+      // A board's territory is the player's to set, never the drop's: a
+      // card is in the room or it is not, and the walls do not move to
+      // swallow one that would not fit.
+      moveBoardItems(moves);
 
       activelyDraggedNodeIds.clear();
       dragConstraintsRef.current = new Map();

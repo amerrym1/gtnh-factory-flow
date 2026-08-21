@@ -4,7 +4,7 @@ import {
   collectPocketDescendantIds,
   computeBoardLevelView,
   computeOpenBoardRects,
-  pickBoardOwnerAt,
+  pickBoardOwnerFor,
 } from "./board-windows";
 
 function makePocket(
@@ -117,27 +117,35 @@ describe("computeOpenBoardRects", () => {
   });
 });
 
-describe("pickBoardOwnerAt", () => {
+describe("pickBoardOwnerFor", () => {
   const rects = [
     { id: "outer", depth: 1, x: 0, y: 0, width: 800, height: 600 },
     { id: "inner", depth: 2, x: 100, y: 100, width: 300, height: 200 },
   ];
+  const card = (x: number, y: number) => ({ x, y, width: 60, height: 40 });
 
-  it("lands in the deepest frame whose body holds the point", () => {
-    expect(pickBoardOwnerAt(rects, { x: 200, y: 200 })).toBe("inner");
-    expect(pickBoardOwnerAt(rects, { x: 600, y: 300 })).toBe("outer");
-    expect(pickBoardOwnerAt(rects, { x: 900, y: 300 })).toBeUndefined();
+  it("lands in the deepest frame that holds the whole card", () => {
+    expect(pickBoardOwnerFor(rects, card(200, 200))).toBe("inner");
+    expect(pickBoardOwnerFor(rects, card(600, 300))).toBe("outer");
+    expect(pickBoardOwnerFor(rects, card(900, 300))).toBeUndefined();
   });
 
-  it("treats the title bar as outside the body", () => {
-    // y = 120 is inside inner's title bar (100..140) but inside outer's body.
-    expect(pickBoardOwnerAt(rects, { x: 200, y: 120 })).toBe("outer");
+  it("gives a straddling card to the room that holds all of it", () => {
+    // Overhangs inner's right wall (100..400), so it stays outer's.
+    expect(pickBoardOwnerFor(rects, card(360, 200))).toBe("outer");
+    // Overhangs outer's right wall too: it belongs to no room.
+    expect(pickBoardOwnerFor(rects, card(780, 300))).toBeUndefined();
+  });
+
+  it("treats the title bar as outside the floor", () => {
+    // y = 120 is inside inner's title bar (100..140) but inside outer's floor.
+    expect(pickBoardOwnerFor(rects, card(200, 120))).toBe("outer");
     // y = 20 is inside outer's own title bar: no owner at all.
-    expect(pickBoardOwnerAt(rects, { x: 200, y: 20 })).toBeUndefined();
+    expect(pickBoardOwnerFor(rects, card(200, 20))).toBeUndefined();
   });
 
   it("skips excluded boards (a dragged board and its descendants)", () => {
-    expect(pickBoardOwnerAt(rects, { x: 200, y: 200 }, new Set(["inner"]))).toBe("outer");
+    expect(pickBoardOwnerFor(rects, card(200, 200), new Set(["inner"]))).toBe("outer");
   });
 });
 

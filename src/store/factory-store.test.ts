@@ -4002,7 +4002,7 @@ describe("boards (pockets standing open)", () => {
     expect(reopened.pockets?.find((pocket) => pocket.id === pocketId)?.size).toEqual(openedSize);
   });
 
-  it("re-homes a dropped card through moveBoardItems and grows the frame on demand", () => {
+  it("re-homes a dropped card through moveBoardItems and never resizes the board", () => {
     const boardId = useFactoryStore.getState().createBoard({
       position: { x: 600, y: 200 },
       size: { width: 480, height: 320 },
@@ -4010,18 +4010,17 @@ describe("boards (pockets standing open)", () => {
 
     useFactoryStore
       .getState()
-      .moveBoardItems([{ id: "beta", position: { x: 40, y: 60 }, owner: { pocketId: boardId } }], {
-        boardSizes: [{ id: boardId, size: { width: 600, height: 400 } }],
-      });
+      .moveBoardItems([{ id: "beta", position: { x: 40, y: 60 }, owner: { pocketId: boardId } }]);
     let project = useFactoryStore.getState().project;
     expect(project.nodes.find((node) => node.id === "beta")?.pocketId).toBe(boardId);
     expect(project.nodes.find((node) => node.id === "beta")?.position).toEqual({ x: 40, y: 60 });
+    // A board's walls are the player's to set: a drop never moves them.
     expect(project.pockets?.find((pocket) => pocket.id === boardId)?.size).toEqual({
-      width: 600,
-      height: 400,
+      width: 480,
+      height: 320,
     });
 
-    // Dragging it back out surfaces it on the level in view.
+    // Dragging it back out surfaces it on the canvas.
     useFactoryStore
       .getState()
       .moveBoardItems([

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { BOARD_GRID } from "@/lib/board-grid";
-import { nearestFreeSpot, rectsOverlap, type PlacementRect } from "./board-placement";
+import {
+  nearestFreeSpot,
+  rectsOverlap,
+  spotIsFree,
+  type PlacementRect,
+  type PlacementRegion,
+} from "./board-placement";
 
 const card = (x: number, y: number, width = 360, height = 160): PlacementRect => ({
   x,
@@ -82,5 +88,34 @@ describe("nearestFreeSpot", () => {
     const first = nearestFreeSpot(card(20, 20), blockers);
     const second = nearestFreeSpot(card(20, 20), [...blockers].reverse());
     expect(first).toEqual(second);
+  });
+});
+
+describe("rooms a card is in or out of", () => {
+  // A board 1000 wide from x = 500, its floor starting 40 below the top.
+  const room: PlacementRegion = {
+    outer: { x: 500, y: 0, width: 1000, height: 800 },
+    inner: { x: 500, y: 40, width: 1000, height: 760 },
+  };
+
+  it("refuses a card lying across the wall", () => {
+    // Half in, half out of the left wall.
+    expect(spotIsFree(card(320, 200), [], 0, undefined, [room])).toBe(false);
+    // Poking up into the title bar.
+    expect(spotIsFree(card(600, 20), [], 0, undefined, [room])).toBe(false);
+  });
+
+  it("allows a card wholly inside or wholly outside", () => {
+    expect(spotIsFree(card(600, 200), [], 0, undefined, [room])).toBe(true);
+    expect(spotIsFree(card(100, 200), [], 0, undefined, [room])).toBe(true);
+  });
+
+  it("clicks a straddling card to the nearer side", () => {
+    // Only its nose is over the wall: it backs out.
+    const out = nearestFreeSpot(card(200, 200), [], 0, undefined, [room]);
+    expect(out.x + 360).toBeLessThanOrEqual(500);
+    // Most of it is already in the room: it finishes entering.
+    const inside = nearestFreeSpot(card(400, 200), [], 0, undefined, [room]);
+    expect(inside.x).toBeGreaterThanOrEqual(500);
   });
 });
