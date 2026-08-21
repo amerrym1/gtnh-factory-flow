@@ -5784,7 +5784,7 @@ const SelectionActionsBar = memo(function SelectionActionsBar({
       <button
         type="button"
         onClick={onWrap}
-        title="Wrap the selected cards in a board (Ctrl+G): a window appears around them and moves them together"
+        title="Wrap in a board (Ctrl+G)"
         className="flex h-9 items-center gap-1.5 whitespace-nowrap border-2 border-[#8d6fd1] bg-[#3b2d52] px-3 font-mono text-[12px] font-bold text-white shadow-[inset_2px_2px_0_#5e4a85,inset_-2px_-2px_0_#241b33] hover:brightness-110"
       >
         <Box className="h-4 w-4" />
@@ -5958,7 +5958,7 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
           type="button"
           onClick={onFitView}
           className={buttonClass(false)}
-          title="Fit the whole plan on the screen"
+          title="Fit on screen"
           aria-label="Fit the plan on the screen"
         >
           <Focus className="h-4 w-4" />
@@ -5971,7 +5971,7 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
           type="button"
           onClick={() => onModeChange("identity")}
           className={buttonClass(glanceMode === "identity")}
-          title="Big icons: each card shows its machine"
+          title="Big icons"
           aria-label="Big icons"
           aria-pressed={glanceMode === "identity"}
         >
@@ -5981,7 +5981,7 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
           type="button"
           onClick={() => onModeChange("status")}
           className={buttonClass(glanceMode === "status")}
-          title="Speed: red is idle, green is full speed"
+          title="Speed"
           aria-label="Speed"
           aria-pressed={glanceMode === "status"}
         >
@@ -5991,7 +5991,7 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
           type="button"
           onClick={() => onModeChange("usage")}
           className={buttonClass(glanceMode === "usage")}
-          title="Usage: coloured by the reason word"
+          title="Usage"
           aria-label="Usage"
           aria-pressed={glanceMode === "usage"}
         >
@@ -6001,7 +6001,7 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
           type="button"
           onClick={() => onModeChange("power")}
           className={buttonClass(glanceMode === "power")}
-          title="Power: coloured by voltage tier"
+          title="Power"
           aria-label="Power"
           aria-pressed={glanceMode === "power"}
         >
@@ -6017,10 +6017,10 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
  * crafting, like crop farms). Lives top-left, mirroring the paint toolbar.
  */
 const RATE_UNIT_CHOICES: Array<{ unit: RateUnit; label: string; title: string }> = [
-  { unit: "tick", label: "/t", title: "Show all rates per tick, the game's own unit: 20 ticks a second" },
-  { unit: "second", label: "/s", title: "Show all rates per second" },
-  { unit: "minute", label: "/m", title: "Show all rates per minute" },
-  { unit: "hour", label: "/h", title: "Show all rates per hour" },
+  { unit: "tick", label: "/t", title: "Per tick" },
+  { unit: "second", label: "/s", title: "Per second" },
+  { unit: "minute", label: "/m", title: "Per minute" },
+  { unit: "hour", label: "/h", title: "Per hour" },
 ];
 
 const SourceToolbar = memo(function SourceToolbar({
@@ -6042,30 +6042,6 @@ const SourceToolbar = memo(function SourceToolbar({
   const addTrashNode = useFactoryStore((state) => state.addTrashNode);
   const addCustomRateNode = useFactoryStore((state) => state.addCustomRateNode);
   const boardView = useBoardView();
-  const [arrangeOpen, setArrangeOpen] = useState(false);
-  // A pop-over, not a mode: clicking anywhere off it (or Escape) puts it away.
-  const arrangeRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!arrangeOpen) {
-      return;
-    }
-    const onPointerDown = (event: PointerEvent) => {
-      if (!arrangeRef.current?.contains(event.target as Element | null)) {
-        setArrangeOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setArrangeOpen(false);
-      }
-    };
-    window.addEventListener("pointerdown", onPointerDown, true);
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown, true);
-      window.removeEventListener("keydown", onKeyDown, true);
-    };
-  }, [arrangeOpen]);
   const rateUnit = useFactoryStore((state) => state.rateUnit);
   const setRateUnit = useFactoryStore((state) => state.setRateUnit);
   const assumeBoundaries = useFactoryStore((state) => Boolean(state.project.assumeBoundaries));
@@ -6087,10 +6063,7 @@ const SourceToolbar = memo(function SourceToolbar({
       data-board-toolbar
       data-help-anchor="build"
       className={[
-        "nodrag pointer-events-none absolute left-3 flex items-start gap-2",
-        // Lifted while the arrange panel is out so no later toolbar paints
-        // over it - the same trap the theme picker once fell into.
-        arrangeOpen ? "z-40" : "z-20",
+        "nodrag pointer-events-none absolute left-3 flex items-start gap-2 z-20",
         // Inside a pocket the breadcrumb takes the top line and every trigger row
         // steps down to make room; its fold-out follows, since that is positioned
         // against this root.
@@ -6161,7 +6134,7 @@ const SourceToolbar = memo(function SourceToolbar({
             "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
             assumeBoundaries ? TOOL_FACE_ON : TOOL_FACE_OFF,
           ].join(" ")}
-          title="Sketch mode: every unwired input is supplied for free and every unwired output is exported. Quick math without drawing the boundary. Anything you do wire still behaves as wired."
+          title="Sketch mode"
           aria-label="Sketch mode"
           aria-pressed={assumeBoundaries}
         >
@@ -6174,7 +6147,7 @@ const SourceToolbar = memo(function SourceToolbar({
           type="button"
           onClick={addCropFarmNode}
           className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
-          title="Add crop farm: pick a crop and its stats. It produces at the computed rate"
+          title="Add crop farm"
           aria-label="Add crop farm"
         >
           <Sprout className="h-4 w-4" />
@@ -6183,7 +6156,7 @@ const SourceToolbar = memo(function SourceToolbar({
           type="button"
           onClick={addTrashNode}
           className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
-          title="Add trash can: wire any output into it. Whatever flows in is voided and never shows as an output"
+          title="Add trash can"
           aria-label="Add trash can"
         >
           <Trash className="h-4 w-4" />
@@ -6192,80 +6165,27 @@ const SourceToolbar = memo(function SourceToolbar({
           type="button"
           onClick={addCustomRateNode}
           className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
-          title="Add custom rate node: wire it to any port and dial a rate. It supplies the resource, or flips to a constant request drain"
+          title="Add custom rate node"
           aria-label="Add custom rate node"
         >
           <Gauge className="h-4 w-4" />
         </button>
       </ToolTray>
-      {/* The tidy-up: the button opens the arrange settings pop-over, and
-          the panel's own button does the arranging. Every dial is
-          remembered; clicking anywhere off the panel puts it away. */}
+      {/* The tidy-up, one click. It used to open a pop-over holding a
+          single dial - the paper the arrange drew its island backdrops on
+          - and the arrange stopped drawing backdrops when it started
+          building boards, each of which picks its own paper. A menu with
+          nothing in it is worse than no menu. */}
       <ToolTray>
-        <div ref={arrangeRef} className="relative">
         <button
           type="button"
-          onClick={() => setArrangeOpen((open) => !open)}
-          className={[
-            "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
-            arrangeOpen ? TOOL_FACE_ON : TOOL_FACE_OFF,
-          ].join(" ")}
-          title="Auto-arrange: choose how the board is laid out, then arrange it"
-          aria-label="Auto-arrange settings"
-          aria-pressed={arrangeOpen}
+          onClick={onAutoArrange}
+          className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+          title="Auto-arrange"
+          aria-label="Auto-arrange the board"
         >
           <Network className="h-4 w-4" />
         </button>
-        <div
-          className={[
-            "absolute left-0 top-full mt-2 w-[264px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-2 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
-            arrangeOpen
-              ? "pointer-events-auto translate-y-0 opacity-100"
-              : "pointer-events-none -translate-y-1 opacity-0",
-          ].join(" ")}
-        >
-          <div className="mb-1 text-[11px] font-black tracking-wide text-[var(--mc-ink)]">
-            Auto layout
-          </div>
-          <div className="py-1" title="The paper each island's background is drawn on">
-            <div className="mb-1 text-[11px] font-bold text-[var(--mc-ink)]">
-              Island background
-            </div>
-            <div className="grid grid-cols-5 gap-1">
-              {CANVAS_THEMES.map((theme) => (
-                <button
-                  key={theme.id}
-                  type="button"
-                  onClick={() => writeBoardView({ autoArrangeInkTheme: theme.id })}
-                  className={[
-                    "flex items-center justify-center border-2 p-0.5",
-                    boardView.autoArrangeInkTheme === theme.id
-                      ? "border-white ring-1 ring-cyan-300"
-                      : "border-[var(--mc-15)]",
-                  ].join(" ")}
-                  title={theme.name}
-                  aria-label={`Island background: ${theme.name}`}
-                  aria-pressed={boardView.autoArrangeInkTheme === theme.id}
-                >
-                  <ThemeSwatch theme={theme} />
-                </button>
-              ))}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setArrangeOpen(false);
-              onAutoArrange();
-            }}
-            className="mt-2 w-full border-2 border-[var(--mc-15)] bg-cyan-700 py-2 font-mono text-[13px] font-black text-white shadow-[inset_2px_2px_0_rgba(255,255,255,0.25),inset_-2px_-2px_0_rgba(0,0,0,0.4)] hover:brightness-110"
-            title="Lay every card out left to right by what feeds what. Undo puts the old layout back"
-            aria-label="Auto-arrange the board"
-          >
-            Arrange the board
-          </button>
-        </div>
-        </div>
       </ToolTray>
       </ToolGroup>
     </div>
@@ -6905,7 +6825,7 @@ function AddImageButton({ onPlaceImage }: { onPlaceImage: (file: File) => Promis
           TOOL_FACE_OFF,
           busy ? "cursor-wait opacity-70" : "",
         ].join(" ")}
-        title="Add an image: pick a picture and it lands on the board"
+        title="Add an image"
         aria-label="Add an image"
       >
         {busy ? (
@@ -6923,13 +6843,9 @@ const ANNOTATION_TOOLS: Array<{
   label: string;
   Icon: typeof Square;
 }> = [
-  {
-    kind: "board",
-    label: "Draw board: a window that holds cards and moves them together",
-    Icon: AppWindow,
-  },
+  { kind: "board", label: "Draw board", Icon: AppWindow },
   { kind: "box", label: "Draw box", Icon: Square },
-  { kind: "zone", label: "Draw zone: click its corners, then click the first one to close", Icon: Hexagon },
+  { kind: "zone", label: "Draw zone", Icon: Hexagon },
   { kind: "arrow", label: "Draw arrow", Icon: MoveUpRight },
   { kind: "text", label: "Add text note", Icon: Type },
 ];
@@ -7089,7 +7005,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
           type="button"
           onClick={() => setThemePickerOpen((open) => !open)}
           className={buttonClass(isThemePickerOpen)}
-          title={`Background style: ${activeTheme.name}. Click to choose another.`}
+          title={`Background: ${activeTheme.name}`}
           aria-label="Choose background style"
         >
           <Wallpaper className="h-4 w-4" />
@@ -7106,7 +7022,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
           })
         }
         className={buttonClass(false)}
-        title={`${CANVAS_PATTERN_LABEL[canvasPattern]}: click to change`}
+        title={CANVAS_PATTERN_LABEL[canvasPattern]}
         aria-label={CANVAS_PATTERN_LABEL[canvasPattern]}
       >
         <PatternIcon className="h-4 w-4" />
@@ -7124,11 +7040,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
         type="button"
         onClick={() => onChange({ lineThicknessMode: !lineThicknessMode })}
         className={buttonClass(lineThicknessMode)}
-        title={
-          lineThicknessMode
-            ? "Line thickness: by volume. Click to restore normal widths."
-            : "Thicken every line by how much moves through it"
-        }
+        title="Line thickness"
         aria-label={lineThicknessMode ? "Turn line thickness off" : "Thicken lines by volume"}
         aria-pressed={lineThicknessMode}
       >
@@ -7138,11 +7050,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
         type="button"
         onClick={() => onChange({ linePulseMode: !linePulseMode })}
         className={buttonClass(linePulseMode)}
-        title={
-          linePulseMode
-            ? "Moving dashes: on. Click to stop them."
-            : "Show which way each line flows, with dashes that march faster on busier lines"
-        }
+        title="Moving dashes"
         aria-label={linePulseMode ? "Stop the moving dashes" : "Show moving dashes"}
         aria-pressed={linePulseMode}
       >
@@ -7152,11 +7060,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
         type="button"
         onClick={() => onChange({ lineLabelsMode: !lineLabelsMode })}
         className={buttonClass(lineLabelsMode)}
-        title={
-          lineLabelsMode
-            ? "Line labels: on. Click to hide the rate pills."
-            : "Show what each line carries and how fast, as a pill on the line"
-        }
+        title="Line labels"
         aria-label={lineLabelsMode ? "Hide line labels" : "Show line labels"}
         aria-pressed={lineLabelsMode}
       >
@@ -7171,11 +7075,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
           onChange({ freeDockMode: !freeDockMode });
         }}
         className={buttonClass(freeDockMode)}
-        title={
-          freeDockMode
-            ? "Free docking: wires attach wherever routes best. Click to pin them to their ports."
-            : "Port docking: wires attach at their ports. Click to let them attach anywhere."
-        }
+        title={freeDockMode ? "Free docking" : "Port docking"}
         aria-label={freeDockMode ? "Pin wires to their ports" : "Let wires attach anywhere"}
         aria-pressed={freeDockMode}
       >
@@ -7185,11 +7085,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
         type="button"
         onClick={() => onChange({ calmMode: !calmMode })}
         className={buttonClass(calmMode)}
-        title={
-          calmMode
-            ? "Calm colours on. The board still names every problem, without the alarm reds and greens. Click to bring them back."
-            : "Calm the colours: keep every readout but drop the alarm reds, ambers and greens. Made for presenting a plan"
-        }
+        title="Calm colours"
         aria-label={calmMode ? "Turn calm colours off" : "Turn calm colours on"}
         aria-pressed={calmMode}
       >
@@ -7201,11 +7097,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
         type="button"
         onClick={() => writeBoardMotion({ moveMotion: !boardMotion.moveMotion })}
         className={buttonClass(boardMotion.moveMotion)}
-        title={
-          boardMotion.moveMotion
-            ? "Smooth movement: cards glide onto the grid and rerouted wires slide to their new line. Click for instant."
-            : "Instant movement. Click to let cards glide onto the grid and wires slide to their new lines."
-        }
+        title="Smooth movement"
         aria-label={boardMotion.moveMotion ? "Turn smooth movement off" : "Turn smooth movement on"}
         aria-pressed={boardMotion.moveMotion}
       >
@@ -7215,11 +7107,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
         type="button"
         onClick={() => writeBoardMotion({ valueMotion: !boardMotion.valueMotion })}
         className={buttonClass(boardMotion.valueMotion)}
-        title={
-          boardMotion.valueMotion
-            ? "Live numbers: rates, bars, line widths and dash speeds ease into new values. Click for instant."
-            : "Instant numbers. Click to let rates, bars, line widths and dash speeds ease into new values."
-        }
+        title="Live numbers"
         aria-label={boardMotion.valueMotion ? "Turn live numbers off" : "Turn live numbers on"}
         aria-pressed={boardMotion.valueMotion}
       >
@@ -7374,11 +7262,7 @@ const PaintToolbar = memo(function PaintToolbar({
           "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
           paintMode !== undefined ? TOOL_FACE_ON : TOOL_FACE_OFF,
         ].join(" ")}
-        title={
-          paintMode !== undefined
-            ? "Stop painting"
-            : `Paint nodes ${activeColorTag}`
-        }
+        title={paintMode !== undefined ? "Stop painting" : "Paint"}
         aria-label={paintMode !== undefined ? "Stop painting" : "Paint nodes"}
       >
         {paintMode === null ? <X className="h-4 w-4" /> : <Paintbrush className="h-4 w-4" />}
@@ -7411,7 +7295,7 @@ const PaintToolbar = memo(function PaintToolbar({
             "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
             isDeleteMode ? TOOL_FACE_ON : TOOL_FACE_OFF,
           ].join(" ")}
-          title={isDeleteMode ? "Stop deleting" : "Delete tool: click anything to remove it"}
+          title={isDeleteMode ? "Stop deleting" : "Delete tool"}
           aria-label={isDeleteMode ? "Stop deleting" : "Delete tool"}
         >
           {/* The pressed face says "on"; the red icon still says what is armed. */}

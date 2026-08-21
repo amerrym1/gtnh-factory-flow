@@ -248,7 +248,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                   }}
                   className="nodrag flex h-6 w-6 items-center justify-center border-2 hover:bg-red-700"
                   style={buttonStyle(chrome)}
-                  title="Delete this board (everything inside goes with it)"
+                  title="Delete board"
                   aria-label={`Delete board ${pocket.name}`}
                 >
                   {/* Drawn rather than a "-" glyph: at this size Monocraft's
@@ -263,7 +263,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                   }}
                   className="nodrag flex h-6 w-6 items-center justify-center border-2 hover:brightness-125"
                   style={buttonStyle(chrome)}
-                  title="Clone this board (everything inside comes along)"
+                  title="Clone board"
                   aria-label={`Clone board ${pocket.name}`}
                 >
                   <Copy aria-hidden className="h-3.5 w-3.5" />
@@ -338,7 +338,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                   }}
                   className="nodrag flex h-6 w-6 items-center justify-center border-2 hover:brightness-125"
                   style={buttonStyle(chrome)}
-                  title="Dump this board: the frame goes, the cards come back where they were"
+                  title="Dump board"
                   aria-label={`Dump board ${pocket.name}`}
                 >
                   <PackageOpen aria-hidden className="h-3.5 w-3.5" />
@@ -351,7 +351,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                   }}
                   className="nodrag flex h-6 w-6 items-center justify-center border-2 hover:brightness-125"
                   style={buttonStyle(chrome)}
-                  title="Open the window (or double-click the card)"
+                  title="Open board"
                   aria-label={`Open board ${pocket.name}`}
                 >
                   <Maximize2 aria-hidden className="h-3.5 w-3.5" />

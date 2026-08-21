@@ -583,7 +583,7 @@ export function SetupsPanel() {
       {isShareOpen ? <SharePlanDialog onClose={() => setShareOpen(false)} /> : null}
       {iconEditId ? (
         <IconPicker
-          title="Pick this setup's icon"
+          title="Pick an icon"
           suggestions={iconSuggestionsFromStats(
             plans.find((entry) => entry.id === iconEditId)?.needs,
             plans.find((entry) => entry.id === iconEditId)?.outputs,
