@@ -6,6 +6,7 @@ import { Copy, Minimize2, Save, X } from "lucide-react";
 import type { FactoryNodeColorTag, FactoryPocket } from "@/lib/model/types";
 import { boardWindowSize } from "@/lib/model/board-windows";
 import {
+  BOARD_GRID,
   BOARD_WINDOW_FIT_PAD,
   BOARD_WINDOW_MIN_HEIGHT,
   BOARD_WINDOW_MIN_WIDTH,
@@ -13,7 +14,8 @@ import {
 import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
 import { useBlueprintStore } from "@/store/blueprint-store";
 import { useBoardView } from "./board-view";
-import { GT_NODE_COLORS, GT_NODE_COLOR_PALETTE } from "./node-colors";
+import { CANVAS_THEMES, getCanvasTheme } from "./canvas-themes";
+import { GT_NODE_COLORS } from "./node-colors";
 
 /**
  * A board standing OPEN: a window frame whose members render as ordinary
@@ -46,12 +48,15 @@ interface BoardChrome {
   nameBg: string;
   ink: string;
   inkMuted: string;
-  washFill: string;
+  /** The floor: a flat paper colour, its grain, and its own grid dots. */
+  floorColor: string;
+  floorTexture?: string;
+  dotColor: string;
   frameLine: string;
   grip: string;
 }
 
-/** The untagged look: the purple family the minimized card wears. */
+/** The unpapered look: the purple family the minimized card wears. */
 const DEFAULT_CHROME: BoardChrome = {
   barBg: "#3b2d52",
   barBevelHi: "#5e4a85",
@@ -60,7 +65,8 @@ const DEFAULT_CHROME: BoardChrome = {
   nameBg: "#5e4a85",
   ink: "#ffffff",
   inkMuted: "#c9b8ec",
-  washFill: "rgba(59, 45, 82, 0.15)",
+  floorColor: "#2a2140",
+  dotColor: "#5b4c7a",
   frameLine: "#5e4a85",
   grip: "#8d6fd1",
 };
@@ -77,7 +83,55 @@ function isLightColor(hex: string): boolean {
   return 0.299 * r + 0.587 * g + 0.114 * b > 150;
 }
 
-function chromeFor(colorTag: FactoryNodeColorTag | undefined): BoardChrome {
+/** Mix a #rrggbb toward black (amount < 0) or white (amount > 0). */
+function shadeHex(hex: string, amount: number): string {
+  const value = hex.replace("#", "");
+  if (value.length < 6) {
+    return hex;
+  }
+  const mix = (channel: number) =>
+    Math.round(
+      amount >= 0 ? channel + (255 - channel) * amount : channel * (1 + amount),
+    )
+      .toString(16)
+      .padStart(2, "0");
+  return `#${mix(parseInt(value.slice(0, 2), 16))}${mix(
+    parseInt(value.slice(2, 4), 16),
+  )}${mix(parseInt(value.slice(4, 6), 16))}`;
+}
+
+/**
+ * A board's clothes. The PAPER comes first: a canvas theme gives the floor
+ * its colour, its grain and the ink its own grid dots are drawn in, and the
+ * title bar is cut from the same paper a few shades off so the window reads
+ * as one object. A board with no paper falls back to a colour tag (the paint
+ * tool still works on boards), and with neither to the house purple.
+ */
+function chromeFor(
+  themeId: string | undefined,
+  colorTag: FactoryNodeColorTag | undefined,
+): BoardChrome {
+  if (themeId) {
+    const theme = getCanvasTheme(themeId);
+    const light = isLightColor(theme.base);
+    const ink = light ? "#1b1d21" : "#f4f4f5";
+    return {
+      // The bar: the same paper, pushed away from the floor so the two never
+      // read as one flat slab.
+      barBg: shadeHex(theme.base, light ? -0.12 : 0.16),
+      barBevelHi: shadeHex(theme.base, light ? -0.02 : 0.28),
+      barBevelLo: shadeHex(theme.base, light ? -0.3 : -0.4),
+      barBorder: shadeHex(theme.base, light ? -0.45 : -0.55),
+      nameBg: shadeHex(theme.base, light ? -0.05 : 0.24),
+      ink,
+      inkMuted: light ? "rgba(27, 29, 33, 0.7)" : "rgba(244, 244, 245, 0.7)",
+      floorColor: theme.base,
+      floorTexture: theme.texture,
+      dotColor: theme.patternColor,
+      frameLine: shadeHex(theme.base, light ? -0.35 : 0.34),
+      grip: theme.patternColor,
+    };
+  }
   if (!colorTag) {
     return DEFAULT_CHROME;
   }
@@ -95,7 +149,8 @@ function chromeFor(colorTag: FactoryNodeColorTag | undefined): BoardChrome {
     ink,
     inkMuted: ink === "#ffffff" ? "rgba(255, 255, 255, 0.75)" : "rgba(27, 29, 33, 0.75)",
     // A wash, not a paint bucket: ~13% of the swatch over the canvas.
-    washFill: `${paint.swatch}22`,
+    floorColor: `${paint.swatch}22`,
+    dotColor: paint.border,
     frameLine: paint.border,
     grip: paint.swatch,
   };
@@ -106,14 +161,14 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
   const minimizePocket = useFactoryStore((state) => state.minimizePocket);
   const renamePocket = useFactoryStore((state) => state.renamePocket);
   const setPocketSize = useFactoryStore((state) => state.setPocketSize);
-  const paintPocket = useFactoryStore((state) => state.paintPocket);
+  const setPocketTheme = useFactoryStore((state) => state.setPocketTheme);
   const deleteBoardSelection = useFactoryStore((state) => state.deleteBoardSelection);
   const { calmMode } = useBoardView();
   const { getZoom, getNodes } = useReactFlow();
   const [draftName, setDraftName] = useState<string | undefined>(undefined);
   const [isPaletteOpen, setPaletteOpen] = useState(false);
   const isRenaming = draftName !== undefined && !calmMode;
-  const chrome = chromeFor(pocket.colorTag);
+  const chrome = chromeFor(pocket.theme, pocket.colorTag);
 
   // A resize follows the pointer live through local state and lands in the
   // store once, on release — where it snaps to whole cells. Same commit
@@ -224,50 +279,56 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
         align="start"
         style={{ zIndex: 30 }}
       >
-        <div className="nodrag grid grid-cols-8 gap-1 border-2 border-[#8d6fd1] bg-[#241b33] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+        <div className="nodrag flex max-w-[420px] flex-wrap gap-1 border-2 border-[#8d6fd1] bg-[#241b33] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
           <button
             type="button"
             onClick={() => {
-              paintPocket(pocket.id, undefined);
+              setPocketTheme(pocket.id, undefined);
               setPaletteOpen(false);
             }}
-            className="flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#3b2d52] text-white hover:bg-[#5e4a85]"
+            className="flex h-7 w-9 items-center justify-center border-2 border-[#241b33] bg-[#3b2d52] text-white hover:bg-[#5e4a85]"
             title="Back to the house purple"
-            aria-label={`Wash the paint off board ${pocket.name}`}
+            aria-label={`Clear the paper on board ${pocket.name}`}
           >
             <X className="h-3.5 w-3.5" />
           </button>
-          {GT_NODE_COLOR_PALETTE.map((entry) => (
+          {CANVAS_THEMES.map((theme) => (
             <button
-              key={entry.tag}
+              key={theme.id}
               type="button"
               onClick={() => {
-                paintPocket(pocket.id, entry.tag);
+                setPocketTheme(pocket.id, theme.id);
                 setPaletteOpen(false);
               }}
               className={[
-                "h-6 w-6 border-2 shadow-[inset_1px_1px_0_rgba(255,255,255,0.45),inset_-1px_-1px_0_rgba(0,0,0,0.45)]",
-                pocket.colorTag === entry.tag
+                "flex h-7 w-9 shrink-0 items-center justify-center gap-1 border-2",
+                pocket.theme === theme.id
                   ? "border-white ring-2 ring-cyan-300"
                   : "border-[#241b33]",
               ].join(" ")}
-              style={{ backgroundColor: entry.color.swatch }}
-              title={entry.tag}
-              aria-label={`Paint board ${pocket.name} ${entry.tag}`}
-            />
+              style={{ backgroundColor: theme.base, backgroundImage: theme.texture }}
+              title={theme.name}
+              aria-label={`Paper board ${pocket.name} in ${theme.name}`}
+            >
+              {[0, 1, 2].map((dot) => (
+                <span
+                  key={dot}
+                  aria-hidden
+                  className="h-[3px] w-[3px]"
+                  style={{ backgroundColor: theme.patternColor }}
+                />
+              ))}
+            </button>
           ))}
         </div>
       </NodeToolbar>
-      {/* The floor: the board's own background, painted by its colour tag.
-          Clicks fall through to the pane, so panning and marquee selection
-          work over the floor exactly as they do over bare canvas. */}
+      {/* The frame line only. The PAPER is a separate node underneath the
+          wire layer (BoardFloorNode) so a board's own members keep their
+          wiring in plain sight while foreign wires pass beneath the board. */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
-        style={{
-          backgroundColor: chrome.washFill,
-          boxShadow: `inset 0 0 0 2px ${chrome.frameLine}`,
-        }}
+        style={{ boxShadow: `inset 0 0 0 2px ${chrome.frameLine}` }}
       />
       {/* The title bar: the window's one handle. Dragging it moves the board
           and every member with it. */}
@@ -370,16 +431,15 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
               }}
               className="nodrag flex h-6 w-6 shrink-0 items-center justify-center border-2 hover:brightness-125"
               style={buttonStyle}
-              title="Paint this board's background"
-              aria-label={`Paint board ${pocket.name}`}
+              title="Choose this board's paper"
+              aria-label={`Choose paper for board ${pocket.name}`}
             >
               <span
                 aria-hidden
                 className="block h-3.5 w-3.5 border"
                 style={{
-                  backgroundColor: pocket.colorTag
-                    ? (GT_NODE_COLORS[pocket.colorTag]?.swatch ?? "#8d6fd1")
-                    : "#8d6fd1",
+                  backgroundColor: chrome.floorColor,
+                  backgroundImage: chrome.floorTexture,
                   borderColor: chrome.barBorder,
                 }}
               />
@@ -428,6 +488,52 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * One board's paper, painted by the floor LAYER rather than by the board's
+ * own node.
+ *
+ * The layer is a viewport portal parked under the wires (see BoardFloors in
+ * FactoryFlow): a board's chrome has to sit OVER the wires that cross it
+ * while its floor sits UNDER them, and a node cannot be in two places in the
+ * stack — React Flow also pins every child node above its parent, so the
+ * floor cannot simply be a child either. Pure decoration: no pointer events,
+ * no geometry, invisible to routing, drop targeting and the camera.
+ */
+export function BoardFloor({
+  pocket,
+  width,
+  height,
+}: {
+  pocket: FactoryPocket;
+  width: number;
+  height: number;
+}) {
+  const chrome = chromeFor(pocket.theme, pocket.colorTag);
+  return (
+    <div
+      aria-hidden
+      data-board-floor={pocket.id}
+      className="pointer-events-none absolute"
+      style={{
+        transform: `translate(${pocket.position.x}px, ${pocket.position.y}px)`,
+        width,
+        height,
+        backgroundColor: chrome.floorColor,
+        // The board's own grid dots, on the same 20px pitch the canvas uses,
+        // over the theme's grain: a board reads as a piece of board rather
+        // than a tinted rectangle.
+        backgroundImage: [
+          `radial-gradient(circle at 1px 1px, ${chrome.dotColor} 1.5px, transparent 1.5px)`,
+          chrome.floorTexture,
+        ]
+          .filter(Boolean)
+          .join(", "),
+        backgroundSize: `${BOARD_GRID}px ${BOARD_GRID}px, auto`,
+      }}
+    />
   );
 }
 

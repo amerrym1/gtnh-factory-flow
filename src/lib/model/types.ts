@@ -493,6 +493,13 @@ export interface FactoryPocket {
     width: number;
     height: number;
   };
+  /**
+   * The paper this board is drawn on: a canvas theme id (see
+   * `canvas-themes.ts`), giving the floor its base colour, its grain and its
+   * own grid dots. Absent = the house purple. Deliberately the SAME palette
+   * the canvas itself offers — a board is a piece of board.
+   */
+  theme?: string;
 }
 
 export interface FactoryEdge {

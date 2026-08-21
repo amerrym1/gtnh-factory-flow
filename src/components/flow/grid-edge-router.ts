@@ -160,6 +160,18 @@ const COST_SHARED = 1.3;
  * still routes instead of failing.
  */
 const COST_OVERFLOW = 6;
+/**
+ * Cost per pixel spent INSIDE a board frame this wire is exempt from.
+ *
+ * A wire with an endpoint in a board has to cross that border, but it should
+ * cross it and be gone: left at the plain rate it would happily run the
+ * length of the frame's own edge line (an empty lane like any other) before
+ * turning out, which draws the wire along the board's rim and reads as the
+ * board leaking. At this rate the shortest way out always beats the scenic
+ * one, while a wire between two members of the same board — which pays this
+ * on every candidate path equally — is unaffected.
+ */
+const COST_INSIDE_EXEMPT = 3;
 /** Cost of one 90° turn, in pixel-equivalents. */
 const TURN_COST = 30;
 /** A* gives up after this many pops and the caller falls back. */
@@ -462,6 +474,12 @@ function routeOne(context: SolveContext, request: GridRouteRequest): GridRoutedE
     exempt && exempt.length > 0
       ? context.obstacles.filter((obstacle) => !exempt.includes(obstacle.id))
       : context.obstacles;
+  // The frames this wire may cross, kept as rects: crossing is allowed,
+  // loitering is expensive. See COST_INSIDE_EXEMPT.
+  const exemptRects =
+    exempt && exempt.length > 0
+      ? context.obstacles.filter((obstacle) => exempt.includes(obstacle.id))
+      : [];
   // A taken dock is off the menu — until the card is out of free ones, when
   // sharing beats failing.
   const freeSources = allSources.filter((e) => !context.usedDocks.has(dockKey(e)));
@@ -474,7 +492,7 @@ function routeOne(context: SolveContext, request: GridRouteRequest): GridRoutedE
 
   let pad = WINDOW_PAD;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const routed = routeWithinWindow(context, obstacles, request, sources, targets, waypoints, pad);
+    const routed = routeWithinWindow(context, obstacles, exemptRects, request, sources, targets, waypoints, pad);
     if (routed) {
       return routed;
     }
@@ -485,7 +503,7 @@ function routeOne(context: SolveContext, request: GridRouteRequest): GridRoutedE
   if (waypoints.length > 0) {
     pad = WINDOW_PAD;
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const routed = routeWithinWindow(context, obstacles, request, sources, targets, [], pad);
+      const routed = routeWithinWindow(context, obstacles, exemptRects, request, sources, targets, [], pad);
       if (routed) {
         return routed;
       }
@@ -520,6 +538,7 @@ function isFiniteEndpoint(endpoint: GridEndpoint): boolean {
 function routeWithinWindow(
   context: SolveContext,
   obstacles: GridObstacle[],
+  exemptRects: GridObstacle[],
   request: GridRouteRequest,
   sources: GridEndpoint[],
   targets: GridEndpoint[],
@@ -823,7 +842,27 @@ function routeWithinWindow(
         const used = context.occupancy.usedWidth(laneAxis, laneLine, from, to);
         const fits = used === 0 || used + LANE_GAP + request.strokeWidth <= LANE_CAPACITY;
         const factor = used === 0 ? COST_EMPTY : fits ? COST_SHARED : COST_OVERFLOW;
-        const stepCost = distance * factor + (dir === currentDir ? 0 : TURN_COST);
+        // Time spent inside a frame this wire may cross is charged for, so
+        // the wire leaves by the shortest way it can find instead of running
+        // the board's rim. The border line itself counts as inside.
+        const insideExempt =
+          exemptRects.length > 0 &&
+          exemptRects.some((rect) => {
+            const spanLo = Math.min(from, to);
+            const spanHi = Math.max(from, to);
+            return laneAxis === "h"
+              ? laneLine >= rect.top - 1e-6 &&
+                  laneLine <= rect.bottom + 1e-6 &&
+                  spanHi > rect.left - 1e-6 &&
+                  spanLo < rect.right + 1e-6
+              : laneLine >= rect.left - 1e-6 &&
+                  laneLine <= rect.right + 1e-6 &&
+                  spanHi > rect.top - 1e-6 &&
+                  spanLo < rect.bottom + 1e-6;
+          });
+        const stepCost =
+          distance * factor * (insideExempt ? COST_INSIDE_EXEMPT : 1) +
+          (dir === currentDir ? 0 : TURN_COST);
         const nextState = (nxi * yCount + nyi) * 4 + dir;
         const nextG = current.g + stepCost;
         if (nextG < gScores[nextState] - 1e-9) {

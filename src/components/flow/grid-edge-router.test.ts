@@ -439,30 +439,78 @@ describe("solveGridRoutes", () => {
     expect(isOrthogonal(points)).toBe(true);
   });
 
-  it("a board frame blocks foreign wires but lets its own members' wires through", () => {
+  it("a board frame turns foreign wires away like a card", () => {
     // Two facing cards with an open board frame standing between them.
     const a = card("a", 0, 0);
     const b = card("b", 1200, 0);
     const frame: GridObstacle = { id: "frame", left: 480, top: -200, right: 840, bottom: 360 };
-    const endpoints = {
-      sources: [{ x: 360, y: 60, side: "right" as const }],
-      targets: [{ x: 1200, y: 60, side: "left" as const }],
-    };
-
-    // Foreign wire: the frame is furniture, one cell of clearance like a card.
     const foreign = solveGridRoutes(
       [a, b, frame],
-      [request({ edgeId: "foreign", ...endpoints })],
+      [
+        request({
+          edgeId: "foreign",
+          sources: [{ x: 360, y: 60, side: "right" }],
+          targets: [{ x: 1200, y: 60, side: "left" }],
+        }),
+      ],
     ).get("foreign")!.points;
     expect(isOrthogonal(foreign)).toBe(true);
     expect(violatesMargin(foreign, frame, 0)).toBe(false);
+  });
 
-    // The same wire exempted from the frame (an endpoint lives inside):
-    // nothing in the way, so it runs straight through where the frame stands.
-    const member = solveGridRoutes(
-      [a, b, frame],
-      [request({ edgeId: "member", ...endpoints, exemptObstacleIds: ["frame"] })],
+  it("a member's wire crosses its own frame and leaves by the shortest way", () => {
+    // A card outside, a member card inside the frame's right half: the wire
+    // must cross the border (the frame cannot block its own member's wire)
+    // and must not run the length of the frame's rim to get there.
+    const outside = card("outside", 0, 0);
+    const frame: GridObstacle = { id: "frame", left: 480, top: -200, right: 1400, bottom: 600 };
+    const member = card("member", 1000, 0);
+    const points = solveGridRoutes(
+      [outside, frame, member],
+      [
+        request({
+          edgeId: "member",
+          sources: [{ x: 360, y: 60, side: "right" }],
+          targets: [{ x: 1000, y: 60, side: "left" }],
+          exemptObstacleIds: ["frame"],
+        }),
+      ],
     ).get("member")!.points;
-    expect(member.every((point) => Math.abs(point.y - 60) < 0.01)).toBe(true);
+
+    expect(isOrthogonal(points)).toBe(true);
+    // It arrives: the frame never blocks a wire that belongs to it.
+    expect(points[points.length - 1]).toEqual({ x: 1000, y: 60 });
+
+    // And it spends only the crossing inside the frame — the straight run
+    // from the border to the card, not a lap of the rim. Each segment is
+    // clipped to the frame so a run that enters part-way counts only the
+    // part that is actually in there.
+    let insideLength = 0;
+    for (const { a: from, b: to } of segments(points)) {
+      const overlap = (lo: number, hi: number, min: number, max: number) =>
+        Math.max(0, Math.min(hi, max) - Math.max(lo, min));
+      const spanX = overlap(
+        Math.min(from.x, to.x),
+        Math.max(from.x, to.x),
+        frame.left,
+        frame.right,
+      );
+      const spanY = overlap(
+        Math.min(from.y, to.y),
+        Math.max(from.y, to.y),
+        frame.top,
+        frame.bottom,
+      );
+      // One of the two is zero on an orthogonal run; a run is inside only
+      // while its fixed coordinate is inside as well.
+      if (from.y === to.y && from.y >= frame.top && from.y <= frame.bottom) {
+        insideLength += spanX;
+      } else if (from.x === to.x && from.x >= frame.left && from.x <= frame.right) {
+        insideLength += spanY;
+      }
+    }
+    // The card's left edge is 520 past the border; a cell of slack covers
+    // the dock stub. A wire that ran the rim would be several times this.
+    expect(insideLength).toBeLessThanOrEqual(1000 - 480 + WIRE_NODE_MARGIN);
   });
 });

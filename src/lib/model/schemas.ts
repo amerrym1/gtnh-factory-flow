@@ -405,6 +405,8 @@ export const factoryPocketSchema = z.object({
       height: z.number().positive(),
     })
     .optional(),
+  // A canvas theme id; unknown ids quietly fall back at render time.
+  theme: z.string().max(32).optional(),
 });
 
 export const factoryEdgeSchema = z.object({

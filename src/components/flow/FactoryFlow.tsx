@@ -23,6 +23,7 @@ import {
   type NodeTypes,
   type OnSelectionChangeParams,
   type ReactFlowInstance,
+  useStore,
   useStoreApi,
   ViewportPortal,
 } from "@xyflow/react";
@@ -293,6 +294,7 @@ import { TrashNode, type TrashFlowNode } from "./TrashNode";
 import { PocketNode, type PocketFlowNode } from "./PocketNode";
 import {
   BOARD_DRAG_HANDLE_CLASS,
+  BoardFloor,
   BoardNode,
   type BoardNodeData,
   type BoardWindowFlowNode,
@@ -1265,6 +1267,12 @@ const trashNodeDataCache = new Map<string, TrashFlowNode["data"]>();
 const annotationNodeDataCache = new Map<string, AnnotationFlowNode["data"]>();
 const pocketNodeDataCache = new Map<string, PocketFlowNode["data"]>();
 const boardNodeDataCache = new Map<string, BoardNodeData>();
+
+/**
+ * The board chrome's depth: over the wire layer (10 while un-sealed), under
+ * the cards (20). See the frame node below.
+ */
+const BOARD_CHROME_Z_INDEX = 15;
 // Same idea for edges, but with structural comparison: an edge object nests
 // fresh data/style objects on every rebuild, and handing React Flow an equal-
 // but-new identity re-renders the edge — which re-runs the route solver. Most
@@ -1649,10 +1657,15 @@ export function FactoryFlow() {
             ...childOf(pocket.parentPocketId),
             width: boardWindowSize(pocket).width,
             height: boardWindowSize(pocket).height,
-            // Under every card (they sit at CARD_Z_INDEX) but over the
-            // backdrop ink at -5. The class keeps the selected/dragging
-            // z-lift from raising the frame above the members it holds.
-            zIndex: -4,
+            // The chrome — title bar, border, grip — sits ABOVE the wires
+            // (which ride at 10 while the layers are un-sealed) and below
+            // the cards at 20: a wire crossing a board passes under its bar
+            // and its rim, the way a window occludes what is behind it. The
+            // FLOOR is a separate child node underneath the wires, so the
+            // board's own members keep their wiring in plain sight. The
+            // class keeps the selected/dragging z-lift from raising the
+            // frame over the cards it holds.
+            zIndex: BOARD_CHROME_Z_INDEX,
             className: "board-window",
             // Marquee selection over the board's floor must collect the
             // CARDS, not the frame — and a frame in a dragged selection
@@ -4175,7 +4188,7 @@ export function FactoryFlow() {
       boardSizes,
       addBoards,
       setOwners,
-      setBoardColors,
+      setBoardThemes,
     } = computeAutoArrangement(
         state.project,
         state.lastResult,
@@ -4202,7 +4215,7 @@ export function FactoryFlow() {
       setBoardSizes: boardSizes,
       addBoards,
       setOwners,
-      setBoardColors,
+      setBoardThemes,
       removeAnnotationIds: staleInkIds,
     });
     useFactoryStore.getState().frameBoardNodes();
@@ -4795,6 +4808,11 @@ export function FactoryFlow() {
         // Inside a pocket dimension the room itself says where you are:
         // purple canvas, purple dots, purple window frame (globals.css).
         overwritePicking ? "factory-flow-board--blueprint-picking" : "",
+        // A board's chrome must occlude the wires crossing it while its
+        // floor stays under them, and node/edge depths are only compared
+        // when the two layers stop being stacking contexts of their own.
+        // Same lever thickness mode pulls; see globals.css.
+        pocketView.openBoards.length > 0 ? "factory-flow-board--edges-under" : "",
       ].join(" ")}
       style={
         {
@@ -4948,6 +4966,7 @@ export function FactoryFlow() {
             bgColor="transparent"
           />
         )}
+        <BoardFloors />
         {annotationDraft && annotationTool ? (
           <AnnotationDraftPreview
             tool={annotationTool}
@@ -5297,6 +5316,80 @@ const TourLoopNoticeExample = memo(function TourLoopNoticeExample() {
  * name, I/O rates on hover) or status (utilisation percentage, hop-distance
  * map on hover).
  */
+/**
+ * Every open board's paper, painted in one viewport-space layer parked under
+ * the wires.
+ *
+ * Not the boards' own nodes: a board's chrome sits OVER the wires crossing
+ * it (so its bar and rim occlude them) while its floor sits UNDER them, and
+ * one node cannot be in two places in the stack — React Flow also pins every
+ * child node above its parent, so a floor child could not go below either.
+ * Positions come from the live node lookup rather than from the project, so
+ * the paper tracks a dragged board frame-perfectly instead of lagging a
+ * commit behind.
+ */
+const BoardFloors = memo(function BoardFloors() {
+  const floors = useStore(
+    (state) => {
+      const open: Array<{ pocket: FactoryPocket; width: number; height: number }> = [];
+      for (const [, node] of state.nodeLookup) {
+        if (node.type !== "boardNode") {
+          continue;
+        }
+        const data = node.data as BoardNodeData | undefined;
+        const pocket = data?.pocket;
+        if (!pocket?.expanded) {
+          continue;
+        }
+        const size = boardWindowSize(pocket);
+        open.push({
+          // The live absolute position, so a nested board's paper follows
+          // its parent as well as its own drag.
+          pocket: { ...pocket, position: node.internals.positionAbsolute },
+          width: node.measured?.width ?? size.width,
+          height: node.measured?.height ?? size.height,
+        });
+      }
+      return open;
+    },
+    (left, right) =>
+      left.length === right.length &&
+      left.every((entry, index) => {
+        const other = right[index];
+        return (
+          entry.pocket.id === other.pocket.id &&
+          entry.pocket.position.x === other.pocket.position.x &&
+          entry.pocket.position.y === other.pocket.position.y &&
+          entry.pocket.theme === other.pocket.theme &&
+          entry.pocket.colorTag === other.pocket.colorTag &&
+          entry.width === other.width &&
+          entry.height === other.height
+        );
+      }),
+  );
+
+  if (floors.length === 0) {
+    return null;
+  }
+
+  return (
+    <ViewportPortal>
+      {/* Under the wires (10) and above the backdrop ink (-5): the same
+          depth the floors held when they were nodes. */}
+      <div className="pointer-events-none absolute left-0 top-0" style={{ zIndex: -4 }}>
+        {floors.map((floor) => (
+          <BoardFloor
+            key={floor.pocket.id}
+            pocket={floor.pocket}
+            width={floor.width}
+            height={floor.height}
+          />
+        ))}
+      </div>
+    </ViewportPortal>
+  );
+});
+
 /**
  * Lives inside the ReactFlow tree for its store access. After a band select,
  * React Flow overlays the selection with a group-drag rectangle and keeps it
@@ -9122,16 +9215,24 @@ function estimateNodeCardSize(
  * draws lose their hand-pinned steering; pins aimed at the old layout
  * would only fight the router on the new one.
  */
-/** The coats zones wear when the arrange paints them, cycled in order. */
-const ZONE_PAINTS: FactoryNodeColorTag[] = [
-  "emerald",
-  "azure",
-  "amber",
-  "magenta",
-  "cyan",
-  "orange",
-  "lime",
-  "purple",
+/**
+ * The papers zones are laid on when the arrange dresses them, in order.
+ *
+ * Canvas themes, not dyes: these are the same subdued papers the board
+ * itself offers, so a plan full of zones reads as a workshop of quiet
+ * surfaces rather than a bag of highlighters. Neighbouring entries are
+ * chosen to sit a step apart in tone, since adjacent zones usually get
+ * adjacent papers.
+ */
+const ZONE_PAPERS: string[] = [
+  "slate",
+  "blueprint",
+  "parchment",
+  "gunmetal",
+  "chalkboard",
+  "midnight",
+  "paper",
+  "graphite",
 ];
 
 function computeAutoArrangement(
@@ -9146,7 +9247,7 @@ function computeAutoArrangement(
   boardSizes: Array<{ id: string; size: { width: number; height: number } }>;
   addBoards: FactoryPocket[];
   setOwners: Array<{ id: string; pocketId: string }>;
-  setBoardColors: Array<{ id: string; colorTag: FactoryNodeColorTag }>;
+  setBoardThemes: Array<{ id: string; theme: string }>;
 } {
   const recipesById = new Map(baseProject.recipes.map((recipe) => [recipe.id, recipe]));
   // Frames refitted by the interior passes, read by every OUTER pass so a
@@ -9562,31 +9663,31 @@ function computeAutoArrangement(
     .filter((annotation) => view.isLevelShown(annotation.pocketId))
     .map((annotation) => annotation.id);
 
-  // Every board without paint gets a coat, cycling through distinct dyes,
-  // so the zones read apart at a glance. Coats other boards already wear -
-  // hand-painted or from an earlier run - are passed over until the cycle
-  // runs dry, and a second run repaints nothing.
-  const setBoardColors: Array<{ id: string; colorTag: FactoryNodeColorTag }> = [];
-  const wornPaints = new Set(
-    (project.pockets ?? []).map((pocket) => pocket.colorTag).filter(Boolean),
+  // Every board without paper gets one, cycling through the subdued
+  // canvas papers so the zones read apart without shouting. Papers other
+  // boards already lie on - hand-picked or from an earlier run - are passed
+  // over until the cycle runs dry, and a second run re-papers nothing.
+  const setBoardThemes: Array<{ id: string; theme: string }> = [];
+  const wornPapers = new Set(
+    (project.pockets ?? []).map((pocket) => pocket.theme).filter(Boolean),
   );
-  let paintIndex = 0;
+  let paperIndex = 0;
   for (const pocket of project.pockets ?? []) {
-    if (pocket.colorTag) {
+    if (pocket.theme) {
       continue;
     }
-    let coat = ZONE_PAINTS[paintIndex % ZONE_PAINTS.length];
-    for (let step = 0; step < ZONE_PAINTS.length; step += 1) {
-      const candidate = ZONE_PAINTS[(paintIndex + step) % ZONE_PAINTS.length];
-      if (!wornPaints.has(candidate)) {
-        coat = candidate;
-        paintIndex += step;
+    let paper = ZONE_PAPERS[paperIndex % ZONE_PAPERS.length];
+    for (let step = 0; step < ZONE_PAPERS.length; step += 1) {
+      const candidate = ZONE_PAPERS[(paperIndex + step) % ZONE_PAPERS.length];
+      if (!wornPapers.has(candidate)) {
+        paper = candidate;
+        paperIndex += step;
         break;
       }
     }
-    paintIndex += 1;
-    wornPaints.add(coat);
-    setBoardColors.push({ id: pocket.id, colorTag: coat });
+    paperIndex += 1;
+    wornPapers.add(paper);
+    setBoardThemes.push({ id: pocket.id, theme: paper });
   }
 
   return {
@@ -9597,7 +9698,7 @@ function computeAutoArrangement(
     boardSizes,
     addBoards,
     setOwners,
-    setBoardColors,
+    setBoardThemes,
   };
 }
 
@@ -10189,7 +10290,7 @@ function getBoardNodeIdAtPosition(position: { x: number; y: number } | undefined
 
 function isAnnotationNodeElement(element: HTMLElement) {
   // Board windows count as ink for every wire gesture too: a drag lands on
-  // the cards inside the frame, never on the frame itself.
+  // the cards inside the frame, never on the frame or its floor.
   return (
     element.classList.contains("react-flow__node-annotationNode") ||
     element.classList.contains("react-flow__node-boardNode")

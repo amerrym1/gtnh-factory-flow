@@ -317,11 +317,28 @@ gh run watch <run-id> --exit-status
 - The board title bar has a paint button (palette in a NodeToolbar portal,
   because the frame's own layer sits under the cards); the paint TOOL works
   on boards too. Both go through `paintPocket`.
-- A board's floor is paintable: `pocket.colorTag` (the paint tool works on
-  the open frame and the minimized card) recolours the wash, frame line and
-  title bar via `chromeFor` in BoardNode.tsx. The resize grip's floor is
-  the members' extent plus a cell - a frame can never be made smaller than
-  what it holds (measured from React Flow child geometry at grab time).
+- A board is drawn on PAPER: `pocket.theme` is a canvas theme id, and it
+  gives the floor its base colour, its grain and its own grid dots on the
+  20px pitch (`chromeFor` in BoardNode.tsx cuts the title bar from the same
+  paper). The title bar's paper button picks one; the arrange assigns from
+  `ZONE_PAPERS`, skipping papers other boards already wear. `colorTag`
+  still works (the paint tool) and is the fallback when there is no theme.
+  The resize grip's floor is the members' extent plus a cell - a frame can
+  never be made smaller than what it holds.
+- The paper is painted by `BoardFloors`, ONE viewport portal at z -4, not
+  by the board's node. A board's chrome sits at 15 (over the wires at 10,
+  under the cards at 20) so its bar and rim OCCLUDE the wires crossing
+  them, while the floor stays under those wires - one node cannot be in
+  two places in the stack, and React Flow pins every child node above its
+  parent, so a floor child could not go below either. The layer reads live
+  positions from the node lookup, so paper tracks a dragged frame exactly.
+  Open boards therefore also un-seal the edge/node layers
+  (`factory-flow-board--edges-under`, the lever thickness mode pulls).
+- A wire may cross a frame it belongs to, but LOITERING inside costs
+  `COST_INSIDE_EXEMPT` per pixel (grid-edge-router.ts): left at the plain
+  rate a wire would ride the frame's own edge line before turning out,
+  which reads as the board leaking. Wires now leave by the shortest way
+  they can find.
 - Board frames are `selectable: false`: marquee over the floor collects the
   cards, and a frame inside a dragged selection would move its members
   twice. The title bar drags it without selection; the minimized card

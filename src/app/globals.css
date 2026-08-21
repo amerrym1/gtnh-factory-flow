@@ -1073,12 +1073,17 @@ img {
   z-index: -5 !important;
 }
 
-/* A board window is chrome under its members: dragging its title bar must
-   not lift the frame's wash over the cards riding along inside it. */
+/* A board window is chrome BETWEEN the wires and its members: over the
+   lines that cross it (so the bar and the rim occlude them, the way a
+   window occludes what is behind it), under the cards riding along inside
+   it. Dragging the title bar must not lift it past either. */
 .factory-flow-board .react-flow__node.board-window.selected,
 .factory-flow-board .react-flow__node.board-window.dragging {
-  z-index: -4 !important;
+  z-index: 15 !important;
 }
+
+/* Its paper is painted by the floor layer instead (a viewport portal at
+   z -4, under the wires and over the backdrop ink) — see BoardFloors. */
 
 /* While a drag is live the NODES layer rides above the wires: the card in
    hand must visibly pass over them (wires hold still for the whole drag and

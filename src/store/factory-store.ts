@@ -364,8 +364,8 @@ interface FactoryStore {
     addBoards?: FactoryPocket[];
     /** Cards the arrange moved INTO a zone; positions ride `moves`. */
     setOwners?: Array<{ id: string; pocketId: string }>;
-    /** Paint for boards that had none; hand-painted boards keep theirs. */
-    setBoardColors?: Array<{ id: string; colorTag: FactoryNodeColorTag }>;
+    /** Paper for boards that had none; hand-picked papers are kept. */
+    setBoardThemes?: Array<{ id: string; theme: string }>;
   }) => void;
   /**
    * Delete a whole selection as a single undo entry. `nodeIds` may hold any
@@ -392,6 +392,8 @@ interface FactoryStore {
   renamePocket: (pocketId: string, name: string) => void;
   /** Paint a board's background; undefined washes the paint off. */
   paintPocket: (pocketId: string, colorTag?: FactoryNodeColorTag) => void;
+  /** The paper a board is drawn on; undefined returns it to the house look. */
+  setPocketTheme: (pocketId: string, theme?: string) => void;
   /**
    * Place a new board: an open window on the canvas. Items in `memberIds`
    * (root items covered by the drawn frame) become members without moving
@@ -1810,7 +1812,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
     setBoardSizes,
     addBoards,
     setOwners,
-    setBoardColors,
+    setBoardThemes,
   }) => {
     set((state) => {
       const positionById = new Map(moves.map((move) => [move.id, move.position] as const));
@@ -1818,8 +1820,8 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         (setBoardSizes ?? []).map((entry) => [entry.id, entry.size] as const),
       );
       const ownerById = new Map((setOwners ?? []).map((entry) => [entry.id, entry.pocketId]));
-      const boardColorById = new Map(
-        (setBoardColors ?? []).map((entry) => [entry.id, entry.colorTag]),
+      const boardThemeById = new Map(
+        (setBoardThemes ?? []).map((entry) => [entry.id, entry.theme]),
       );
       let changed = false;
       const applyMoves = <
@@ -1852,15 +1854,15 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         ? combinedPockets.map((pocket) => {
             const position = positionById.get(pocket.id);
             const size = boardSizeById.get(pocket.id);
-            const colorTag = boardColorById.get(pocket.id);
+            const theme = boardThemeById.get(pocket.id);
             const samePosition =
               !position ||
               (position.x === pocket.position.x && position.y === pocket.position.y);
             const sameSize =
               !size ||
               (pocket.size?.width === size.width && pocket.size?.height === size.height);
-            const sameColor = !colorTag || pocket.colorTag === colorTag;
-            if (samePosition && sameSize && sameColor) {
+            const sameTheme = !theme || pocket.theme === theme;
+            if (samePosition && sameSize && sameTheme) {
               return pocket;
             }
             changed = true;
@@ -1868,7 +1870,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
               ...pocket,
               position: position ?? pocket.position,
               ...(size ? { size } : undefined),
-              ...(colorTag ? { colorTag } : undefined),
+              ...(theme ? { theme } : undefined),
             };
           })
         : undefined;
@@ -2376,6 +2378,22 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         ...state.project,
         pockets: (state.project.pockets ?? []).map((entry) =>
           entry.id === pocketId ? { ...entry, colorTag } : entry,
+        ),
+      });
+      return withProjectHistory(state, { project });
+    });
+  },
+  setPocketTheme: (pocketId, theme) => {
+    set((state) => {
+      const pocket = (state.project.pockets ?? []).find((entry) => entry.id === pocketId);
+      if (!pocket || pocket.theme === theme) {
+        return state;
+      }
+
+      const project = touchProject({
+        ...state.project,
+        pockets: (state.project.pockets ?? []).map((entry) =>
+          entry.id === pocketId ? { ...entry, theme } : entry,
         ),
       });
       return withProjectHistory(state, { project });
