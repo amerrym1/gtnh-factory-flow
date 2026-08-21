@@ -14,7 +14,7 @@ import { isWiringConnection, wasRecentWireDrop } from "./connection-drag";
 import { useBoardView } from "./board-view";
 import { NodeGlanceText } from "./NodeGlance";
 import { type PocketCrossing, type PocketSummary } from "./pocket-summary";
-import { boardChrome, type BoardChrome } from "./BoardNode";
+import { BOARD_EDGE, boardChrome, type BoardChrome } from "./BoardNode";
 
 export interface PocketNodeData extends Record<string, unknown> {
   pocket: FactoryPocket;
@@ -188,17 +188,22 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
         isConnectable={false}
         className={INERT_HANDLE}
       />
-      {/* The window: same inset-frame construction as a recipe card (a real
-          border would push the rows off the grid), painted star-field purple. */}
+      {/* The folded window. The rim is the board's own frame line at the
+          board's own weight, drawn as an inset shadow on all four sides (a
+          real border would push the rows off the grid) with a dark seat
+          just inside it. It used to be a bevel - light top-left, dark
+          bottom-right - which on dark paper read as an edge that simply
+          stopped halfway round the card. */}
       <div
         data-node-glance-root=""
-        // The board's own paper, cut the same way the window cuts it: the
-        // floor colour with its grain, framed in the same line.
         className="relative"
         style={{
           backgroundColor: chrome.floorColor,
           backgroundImage: chrome.floorTexture,
-          boxShadow: `inset 0 0 0 2px ${chrome.barBorder}, inset 4px 4px 0 ${chrome.barBevelHi}, inset -4px -4px 0 ${chrome.barBevelLo}`,
+          boxShadow: [
+            `inset 0 0 0 ${BOARD_EDGE}px ${chrome.frameLine}`,
+            `inset 0 0 0 ${BOARD_EDGE + 2}px ${chrome.barBevelLo}`,
+          ].join(", "),
           color: chrome.ink,
         }}
       >
@@ -211,9 +216,17 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
           needs={needs}
           offers={offers}
         />
-        <div className="px-2">
-          {/* One head row, exactly two cells tall, like every machine card:
-              delete/clone on the left like every card's edit chrome, the
+        {/* The title bar, cut from the same paper as the window's: the
+            folded board has to read as the same object. Exactly two cells
+            tall either way, so everything below keeps its grid lines. */}
+        <div
+          className="px-2"
+          style={{
+            backgroundColor: chrome.barBg,
+            boxShadow: `inset 0 -2px 0 ${chrome.barBevelLo}`,
+          }}
+        >
+          {/* Delete/clone on the left like every card's edit chrome, the
               name in the middle, shelve, dump and restore on the right —
               restore rightmost, where a window keeps it. Calm mode drops all
               five and gives the whole row to the name. */}
@@ -346,7 +359,9 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
               </>
             ) : null}
           </div>
+        </div>
 
+        <div className="px-2">
           {/* Two readings, stacked. First what this board IS as a factory:
               what its contents need brought in, and what they make that
               nothing inside drinks — red in, green out, the same pair the
@@ -640,7 +655,12 @@ function PocketGlanceReveal({
           <span className="grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] items-start gap-x-1">
             <span className="flex min-w-0 flex-col gap-1">
               {needs.map((line) => (
-                <PocketGlanceIoRow key={line.key} crossing={line} tone={IN_TONE} />
+                <PocketGlanceIoRow
+                  key={line.key}
+                  crossing={line}
+                  tone={IN_TONE}
+                  chrome={chrome}
+                />
               ))}
             </span>
             <span
@@ -651,7 +671,12 @@ function PocketGlanceReveal({
             </span>
             <span className="flex min-w-0 flex-col gap-1">
               {offers.map((line) => (
-                <PocketGlanceIoRow key={line.key} crossing={line} tone={OUT_TONE} />
+                <PocketGlanceIoRow
+                  key={line.key}
+                  crossing={line}
+                  tone={OUT_TONE}
+                  chrome={chrome}
+                />
               ))}
             </span>
           </span>
@@ -669,13 +694,22 @@ function PocketGlanceReveal({
 function PocketGlanceIoRow({
   crossing,
   tone,
+  chrome,
 }: {
   crossing: PocketCrossing;
   tone: string;
+  chrome: BoardChrome;
 }) {
   const rate = formatSlotRateOrNull(crossing.ratePerSecond, crossing.kind);
   return (
-    <span className="pocket-port flex items-center gap-1.5 px-1 py-0.5">
+    <span
+      className="flex items-center gap-1.5 border-2 px-1 py-0.5"
+      style={{
+        backgroundColor: chrome.nameBg,
+        borderColor: chrome.barBorder,
+        boxShadow: `inset 1px 1px 0 ${chrome.barBevelHi}, inset -1px -1px 0 ${chrome.barBevelLo}`,
+      }}
+    >
       <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden">
         <ResourceIcon
           resource={{ ...crossing, id: crossing.resourceId, amount: 1 }}

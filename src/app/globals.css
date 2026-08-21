@@ -1797,14 +1797,6 @@ img {
 }
 
 /* A pocket card's port chip: the machine chip's raised tile, in purple. */
-.pocket-port {
-  background: #463659;
-  border: 2px solid #241b33;
-  box-shadow:
-    inset 1px 1px 0 #6b549b,
-    inset -1px -1px 0 #2b2140;
-}
-
 /* Blueprint overwrite picker: every folded board is a target. Amber dashed
    ring on all of them, solid and brighter under the pointer — hover answers
    "what happens if I click": THIS board becomes the waiting blueprint. */
