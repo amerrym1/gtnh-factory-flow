@@ -5787,7 +5787,11 @@ const SelectionActionsBar = memo(function SelectionActionsBar({
         type="button"
         onClick={onWrap}
         title="Wrap in a board (Ctrl+G)"
-        className="flex h-9 items-center gap-1.5 whitespace-nowrap border-2 border-[#8d6fd1] bg-[#3b2d52] px-3 font-mono text-[12px] font-bold text-white shadow-[inset_2px_2px_0_#5e4a85,inset_-2px_-2px_0_#241b33] hover:brightness-110"
+        // Plain chrome, like every other button. It used to wear the pocket
+        // purple, which stopped meaning anything when boards started picking
+        // their own paper - and a purple button is the last thing that should
+        // appear beside a selection now that selection is not purple.
+        className="flex h-9 items-center gap-1.5 whitespace-nowrap border-2 border-[var(--mc-15)] bg-[var(--mc-49)] px-3 font-mono text-[12px] font-bold text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
       >
         <Box className="h-4 w-4" />
         Wrap {selectionCount} in a board
@@ -6889,10 +6893,12 @@ function AnnotationDraftPreview({
             style={{ borderColor: swatch, backgroundColor: `${swatch}14` }}
           />
         ) : tool === "board" ? (
-          // The window as it will land: title bar up top, wash below, in the
-          // pocket purple rather than the ink colour — a board is furniture.
-          <div className="h-full w-full border-2 border-[#5e4a85] bg-[#3b2d52]/15">
-            <div className="h-[40px] w-full border-b-2 border-[#241b33] bg-[#3b2d52]" />
+          // The window as it will land: title bar up top, wash below. No hue
+          // at all - a board picks its own paper on the way in, so a coloured
+          // preview promises a colour the board will not be wearing. This is
+          // just the shape being drawn, in the chrome grey every panel uses.
+          <div className="h-full w-full border-2 border-[var(--mc-ink)] bg-[var(--mc-ink)]/5">
+            <div className="h-[40px] w-full border-b-2 border-[var(--mc-15)] bg-[var(--mc-78)]" />
           </div>
         ) : (
           <div

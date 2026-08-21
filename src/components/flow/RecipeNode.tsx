@@ -664,7 +664,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // about what the plan is allowed to contain, and reading it as a verdict meant
   // filtering the book to LV accused a third of the board of being wrong.
   const cardOutlineRings = [
-    ...(selected ? [{ width: 2, color: "#a855f7" }] : []),
+    ...(selected ? [{ width: 2, color: "var(--selection)" }] : []),
     ...(isSearchHighlighted ? [{ width: 4, color: "#7dd3fc" }] : []),
   ];
 

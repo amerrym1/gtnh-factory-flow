@@ -131,11 +131,27 @@
   --mc-bad: #f87171;
   --mc-info: #22d3ee;
 
+  /* SELECTION, in one place. Every mark that answers "what did I click" is
+     this colour: a card's inner ring, a drawer's rim, a board frame's ring,
+     the marquee you drag, and the panel band that says the numbers are a
+     selection. It is the site's own accent (--mc-info's cyan), so the board
+     agrees with the chrome around it instead of running its own hue.
+
+     It was Tailwind purple-500 (#a855f7), which belonged to nothing else
+     here. Change these five and every selection mark moves together; nothing
+     else should hardcode a selection colour. */
+  --selection: #22d3ee;
+  --selection-soft: rgba(34, 211, 238, 0.6);
+  --selection-line: rgba(34, 211, 238, 0.5);
+  --selection-wash: rgba(34, 211, 238, 0.2);
+  --selection-ink: #a5f3fc;
+  --selection-ink-dim: rgba(207, 250, 254, 0.7);
+
   /* The glow: one warm colour for "this carries the hovered resource" —
      cards outline in it, wires halo in it. The old look stacked a yellow
      outline on a cyan ring on a cyan blur; three colours said less than
-     one. Selection stays cyan: a glow answers "where is this item", a
-     ring answers "what did I click". */
+     one. A glow answers "where is this item", a ring answers "what did I
+     click", and they are kept different weights so both can be on at once. */
   --glow-line: #ffd257;
   --glow-halo: rgba(255, 202, 84, 0.8);
 
@@ -1113,6 +1129,15 @@ img {
 
 .factory-flow-board .react-flow__panel {
   z-index: 60;
+}
+
+/* The marquee. React Flow ships its own royal blue here, which was a THIRD
+   blue on a board that already has a selection colour and a search colour;
+   the box you drag and the rings it leaves behind are one gesture and should
+   be one hue. */
+.factory-flow-board .react-flow__selection {
+  background: var(--selection-wash);
+  border: 1px solid var(--selection);
 }
 
 .factory-flow-board .react-flow__edge-path {

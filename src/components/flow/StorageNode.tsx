@@ -372,7 +372,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
                   ? "storage-rim--glow -inset-[3px]"
                   : "storage-rim--glow -inset-[2px]",
             ].join(" ")}
-            style={{ background: selected ? "#a855f7" : "var(--glow-line)" }}
+            style={{ background: selected ? "var(--selection)" : "var(--glow-line)" }}
           />
         ) : null}
         {/* The SHAPE, on its own layer rather than on the card.
