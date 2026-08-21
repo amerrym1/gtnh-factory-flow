@@ -496,10 +496,15 @@ export interface FactoryPocket {
   /**
    * The paper this board is drawn on: a canvas theme id (see
    * `canvas-themes.ts`), giving the floor its base colour, its grain and its
-   * own grid dots. Absent = the house purple. Deliberately the SAME palette
+   * own grid ink. Absent = the house purple. Deliberately the SAME palette
    * the canvas itself offers — a board is a piece of board.
    */
   theme?: string;
+  /**
+   * The ruling on that paper: a canvas pattern id ("dots", "lines",
+   * "cross", "ruled", "graph", "none"). Absent = dots, the canvas default.
+   */
+  pattern?: string;
 }
 
 export interface FactoryEdge {

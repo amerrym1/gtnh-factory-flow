@@ -399,6 +399,8 @@ interface FactoryStore {
   paintPocket: (pocketId: string, colorTag?: FactoryNodeColorTag) => void;
   /** The paper a board is drawn on; undefined returns it to the house look. */
   setPocketTheme: (pocketId: string, theme?: string) => void;
+  /** The ruling on that paper; undefined returns it to the default dots. */
+  setPocketPattern: (pocketId: string, pattern?: string) => void;
   /**
    * Place a new board: an open window on the canvas. Items in `memberIds`
    * (root items covered by the drawn frame) become members without moving
@@ -427,6 +429,16 @@ interface FactoryStore {
   minimizePocket: (pocketId: string) => void;
   /** Resize a board's window frame; snapped up to whole cells. */
   setPocketSize: (pocketId: string, size: { width: number; height: number }) => void;
+  /**
+   * Move AND resize a board's frame in one go — what dragging its top or
+   * left wall does. Members are relative to the frame's origin, so they are
+   * shifted by the same step in the opposite direction: the wall moves and
+   * the cards stay exactly where they were on the canvas.
+   */
+  setPocketFrame: (
+    pocketId: string,
+    frame: { position: { x: number; y: number }; size: { width: number; height: number } },
+  ) => void;
   /**
    * Ids the board should hand the selection to after the next project sync -
    * how a paste or a blueprint load arrives already selected.
@@ -2420,6 +2432,22 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       return withProjectHistory(state, { project });
     });
   },
+  setPocketPattern: (pocketId, pattern) => {
+    set((state) => {
+      const pocket = (state.project.pockets ?? []).find((entry) => entry.id === pocketId);
+      if (!pocket || pocket.pattern === pattern) {
+        return state;
+      }
+
+      const project = touchProject({
+        ...state.project,
+        pockets: (state.project.pockets ?? []).map((entry) =>
+          entry.id === pocketId ? { ...entry, pattern } : entry,
+        ),
+      });
+      return withProjectHistory(state, { project });
+    });
+  },
   createBoard: ({ position, size, name, memberIds }) => {
     let createdBoardId: string | undefined;
     set((state) => {
@@ -2647,6 +2675,62 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
           entry.id === pocketId ? { ...entry, expanded: false } : entry,
         ),
         edges,
+      });
+      return withProjectHistory(state, { project });
+    });
+  },
+  setPocketFrame: (pocketId, frame) => {
+    set((state) => {
+      const pocket = (state.project.pockets ?? []).find((entry) => entry.id === pocketId);
+      if (!pocket) {
+        return state;
+      }
+      const position = snapPositionToGrid(frame.position);
+      const size = {
+        width: Math.max(BOARD_WINDOW_MIN_WIDTH, snapSizeUpToGrid(frame.size.width)),
+        height: Math.max(BOARD_WINDOW_MIN_HEIGHT, snapSizeUpToGrid(frame.size.height)),
+      };
+      if (
+        position.x === pocket.position.x &&
+        position.y === pocket.position.y &&
+        pocket.size?.width === size.width &&
+        pocket.size?.height === size.height
+      ) {
+        return state;
+      }
+
+      // Whatever the origin moved by, its members move back by, so a wall
+      // dragged outward reveals more floor instead of towing the cards.
+      const dx = pocket.position.x - position.x;
+      const dy = pocket.position.y - position.y;
+      const shift = <T extends { pocketId?: string; position: { x: number; y: number } }>(
+        items: T[],
+      ): T[] =>
+        dx === 0 && dy === 0
+          ? items
+          : items.map((item) =>
+              item.pocketId === pocketId
+                ? { ...item, position: { x: item.position.x + dx, y: item.position.y + dy } }
+                : item,
+            );
+
+      const project = touchProject({
+        ...state.project,
+        nodes: shift(state.project.nodes),
+        storages: state.project.storages ? shift(state.project.storages) : undefined,
+        annotations: state.project.annotations ? shift(state.project.annotations) : undefined,
+        pockets: (state.project.pockets ?? []).map((entry) => {
+          if (entry.id === pocketId) {
+            return { ...entry, position, size };
+          }
+          if (entry.parentPocketId === pocketId && (dx !== 0 || dy !== 0)) {
+            return {
+              ...entry,
+              position: { x: entry.position.x + dx, y: entry.position.y + dy },
+            };
+          }
+          return entry;
+        }),
       });
       return withProjectHistory(state, { project });
     });

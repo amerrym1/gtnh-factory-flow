@@ -407,6 +407,8 @@ export const factoryPocketSchema = z.object({
     .optional(),
   // A canvas theme id; unknown ids quietly fall back at render time.
   theme: z.string().max(32).optional(),
+  // A canvas pattern id; unknown ids fall back to the default ruling.
+  pattern: z.string().max(16).optional(),
 });
 
 export const factoryEdgeSchema = z.object({

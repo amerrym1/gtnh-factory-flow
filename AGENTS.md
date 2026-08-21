@@ -350,11 +350,37 @@ gh run watch <run-id> --exit-status
 - Only DARK papers are offered (`BOARD_PAPERS` filters the light canvas
   themes out, and `ZONE_PAPERS` lists dark ids): a pale sheet under the
   board's dark cards reads as a hole in the plan. A board already carrying
-  a light theme still renders it.
+  a light theme still renders it. `pocket.pattern` rules that paper with
+  the same six the canvas offers (`boardRuling` draws them as CSS layers,
+  and the picker previews each one at a 7px cell). The picker's popover is
+  `align="end"` — it belongs under the button that opens it, which sits at
+  the right end of a bar that can be very wide.
+- The frame line is `BOARD_EDGE` (4px), and the title bar wears the same
+  weight in the same colour so the window reads as one object: a 2px line
+  vanished at the zooms a board is actually read at.
 - `dissolvePocket` is the DUMP: the frame goes and its cards stay exactly
   where they were (frame-relative positions get the frame's corner added
   back when the board carries a `size`). Its button lives on both the open
   title bar and the minimized card.
+- NOTHING SOLID OVERLAPS. `board-placement.ts` is the magnet, and it runs
+  LIVE: `handleNodesChange` rewrites each drag frame's position to the
+  nearest free grid spot, so a card is never allowed onto an occupied spot
+  rather than being tidied up after release (the drop keeps the same call
+  as a safety net for drops that never saw a drag frame). Blockers are
+  computed ONCE per drag in `handleNodeDragStart` — nothing they depend on
+  can change mid-drag — and differ by kind: a CARD is blocked by other
+  cards but never by frames (a frame is a room you drag into, and the drop
+  decides membership); a FRAME is blocked by other frames and by every card
+  that is not its own. Annotations are ink and never block anything.
+- Board frames resize from all four edges and all four corners
+  (`RESIZE_GRIPS`), each with a generous hit box straddling the wall, plus
+  permanent corner brackets. A wall never cuts into the board's own cards
+  and never crosses anything outside — the same no-overlap rule the drag
+  magnet enforces. Dragging the TOP or LEFT wall moves the origin, so
+  members are shifted by the same step the other way and stay put on the
+  canvas: live through `board-resize.ts` (the frame publishes, the board
+  applies both halves to its node state on one frame) and committed by
+  `setPocketFrame`, one undo entry, nothing written until the pointer lifts.
 - Board frames are `selectable: false`: marquee over the floor collects the
   cards, and a frame inside a dragged selection would move its members
   twice. The title bar drags it without selection; the minimized card

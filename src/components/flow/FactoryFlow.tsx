@@ -318,6 +318,8 @@ import {
   type AnnotationFlowNode,
 } from "./AnnotationNode";
 import { settleZonePoints } from "@/lib/model/zone-points";
+import { nearestFreeSpot, type PlacementRect } from "./board-placement";
+import { registerBoardResize, type BoardResizeDraft } from "./board-resize";
 
 const nodeTypes = {
   recipeNode: RecipeNode,
@@ -1860,6 +1862,55 @@ export function FactoryFlow() {
   // which toolbars are folded, where the centred banners sit.
   const isCompact = useIsCompactViewport();
 
+  // A board being resized publishes its frame here (board-resize.ts). The
+  // frame's own node takes the new rect, and its members are shifted by the
+  // same step in the opposite direction, so a wall dragged outward reveals
+  // floor instead of towing the cards. Local to the board's node state:
+  // nothing reaches the plan until the pointer comes up.
+  useEffect(() => {
+    registerBoardResize((draft: BoardResizeDraft | undefined) => {
+      if (!draft) {
+        // The commit that follows re-syncs from the plan; nothing to undo
+        // here, and clearing the draft must not fight it.
+        return;
+      }
+      setFlowNodes((currentNodes) => {
+        const frame = currentNodes.find((node) => node.id === draft.boardId);
+        if (!frame) {
+          return currentNodes;
+        }
+        const dx = frame.position.x - draft.position.x;
+        const dy = frame.position.y - draft.position.y;
+        if (
+          dx === 0 &&
+          dy === 0 &&
+          frame.width === draft.size.width &&
+          frame.height === draft.size.height
+        ) {
+          return currentNodes;
+        }
+        return currentNodes.map((node) => {
+          if (node.id === draft.boardId) {
+            return {
+              ...node,
+              position: draft.position,
+              width: draft.size.width,
+              height: draft.size.height,
+            } as typeof node;
+          }
+          if (node.parentId === draft.boardId && (dx !== 0 || dy !== 0)) {
+            return {
+              ...node,
+              position: { x: node.position.x + dx, y: node.position.y + dy },
+            } as typeof node;
+          }
+          return node;
+        });
+      });
+    });
+    return () => registerBoardResize(undefined);
+  }, []);
+
   useEffect(() => {
     if (draggingNodeRef.current) {
       return;
@@ -2388,6 +2439,39 @@ export function FactoryFlow() {
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<BoardFlowNode>[]) => {
+      // The placement magnet, live: a held card is never ALLOWED onto a spot
+      // it cannot have, so it slides along whatever it meets instead of
+      // being tidied up after the fact. The pointer runs ahead of the card
+      // exactly as it does when a drag meets the grid.
+      const constraints = dragConstraintsRef.current;
+      if (constraints.size > 0) {
+        for (const change of changes) {
+          if (change.type !== "position" || !change.dragging || !change.position) {
+            continue;
+          }
+          const constraint = constraints.get(change.id);
+          if (!constraint || constraint.blockers.length === 0) {
+            continue;
+          }
+          const geometry = publishedBoardGeometryById.get(change.id);
+          const width = geometry?.width ?? 0;
+          const height = geometry?.height ?? 0;
+          if (width <= 0 || height <= 0) {
+            continue;
+          }
+          const absolute = {
+            x: change.position.x + constraint.origin.x,
+            y: change.position.y + constraint.origin.y,
+            width,
+            height,
+          };
+          const free = nearestFreeSpot(absolute, constraint.blockers);
+          change.position = {
+            x: free.x - constraint.origin.x,
+            y: free.y - constraint.origin.y,
+          };
+        }
+      }
       setFlowNodes((currentNodes) => {
         const next = applyNodeChanges(changes, currentNodes) as BoardFlowNode[];
         // Only when the selection moved. This runs on every frame of a drag, and
@@ -4283,6 +4367,17 @@ export function FactoryFlow() {
     [setNodeColorPaintMode],
   );
 
+  /**
+   * What each held card is not allowed to be dragged onto, worked out once
+   * when the drag starts and applied to every frame of it (see
+   * handleNodesChange). Rebuilding this per frame would be the sort of
+   * O(nodes) per-frame work ARCHITECTURE.md rules out; nothing it depends
+   * on can change mid-drag anyway, since only the held cards move.
+   */
+  const dragConstraintsRef = useRef<
+    Map<string, { blockers: PlacementRect[]; origin: { x: number; y: number } }>
+  >(new Map());
+
   const handleNodeDragStart = useCallback((_: unknown, node: Node, draggedNodes: Node[]) => {
     // A drag is about to move geometry; the map under it would be a distraction
     // and the pointer never leaves the node, so nothing else would clear it.
@@ -4298,6 +4393,100 @@ export function FactoryFlow() {
     dragMovesObstaclesRef.current = [node, ...draggedNodes].some(
       (dragged) => dragged.type !== "annotationNode",
     );
+    // What the held cards may not be dropped on. Furniture only: annotations
+    // are ink and never block. A CARD is blocked by other cards but not by
+    // board frames — a frame is a room you may drag into, and the drop
+    // decides membership. A FRAME is blocked by other frames and by every
+    // card that is not its own, since a board sliding over a card would
+    // swallow one it never adopted.
+    {
+      const state = useFactoryStore.getState();
+      const project = state.project;
+      const pockets = project.pockets ?? [];
+      const held = new Set<string>([node.id, ...draggedNodes.map((entry) => entry.id)]);
+      const boardIds = new Set(pockets.map((pocket) => pocket.id));
+      const ownerOf = (id: string): string | undefined =>
+        project.nodes.find((entry) => entry.id === id)?.pocketId ??
+        project.storages?.find((entry) => entry.id === id)?.pocketId ??
+        pockets.find((entry) => entry.id === id)?.parentPocketId;
+      const chainOf = (id: string | undefined): Set<string> => {
+        const chain = new Set<string>();
+        let cursor = id;
+        while (cursor !== undefined && !chain.has(cursor)) {
+          chain.add(cursor);
+          cursor = pockets.find((entry) => entry.id === cursor)?.parentPocketId;
+        }
+        return chain;
+      };
+      // Everything travelling with this drag, including whole boards.
+      const carried = new Set(held);
+      for (const id of held) {
+        if (boardIds.has(id)) {
+          for (const descendant of collectPocketDescendantIds(pockets, id)) {
+            carried.add(descendant);
+          }
+        }
+      }
+      const ridesAlong = (id: string) => {
+        for (const owner of chainOf(ownerOf(id))) {
+          if (carried.has(owner)) {
+            return true;
+          }
+        }
+        return false;
+      };
+      const inkIds = new Set((project.annotations ?? []).map((annotation) => annotation.id));
+      const solid: Array<{ id: string; isFrame: boolean; rect: PlacementRect }> = [];
+      for (const [id, geometry] of publishedBoardGeometryById) {
+        if (
+          carried.has(id) ||
+          inkIds.has(id) ||
+          ridesAlong(id) ||
+          geometry.width <= 0 ||
+          geometry.height <= 0
+        ) {
+          continue;
+        }
+        const pocket = pockets.find((entry) => entry.id === id);
+        solid.push({
+          id,
+          isFrame: pocket?.expanded === true,
+          rect: { x: geometry.x, y: geometry.y, width: geometry.width, height: geometry.height },
+        });
+      }
+
+      const constraints = new Map<
+        string,
+        { blockers: PlacementRect[]; origin: { x: number; y: number } }
+      >();
+      for (const id of held) {
+        const heldPocket = pockets.find((entry) => entry.id === id);
+        const heldIsOpenFrame = heldPocket?.expanded === true;
+        const mine = heldIsOpenFrame ? chainOf(id) : new Set<string>();
+        const blockers = solid
+          .filter((other) =>
+            heldIsOpenFrame
+              ? // A frame: everything solid that is not inside it.
+                !mine.has(other.id) && !chainOf(ownerOf(other.id)).has(id)
+              : // A card: other cards, never the rooms themselves.
+                !other.isFrame,
+          )
+          .map((other) => other.rect);
+        // Positions arrive in the parent's space; the blockers are in flow
+        // space, so the held card's own frame origin closes the gap.
+        const owner = ownerOf(id);
+        const frame = owner
+          ? computeOpenBoardRects(computeBoardLevelView(project).openBoards).find(
+              (rect) => rect.id === owner,
+            )
+          : undefined;
+        constraints.set(id, {
+          blockers,
+          origin: frame ? { x: frame.x, y: frame.y } : { x: 0, y: 0 },
+        });
+      }
+      dragConstraintsRef.current = constraints;
+    }
     // A fresh drag's first cell change solves immediately; the throttle only
     // paces the changes after it.
     lastLiveDragSolveAtRef.current = 0;
@@ -4354,7 +4543,66 @@ export function FactoryFlow() {
         return pockets.find((entry) => entry.id === id)?.parentPocketId;
       };
 
+      // Everything that MOVES with this drag: the dragged cards, plus every
+      // board they hold and everything living on those boards. None of it
+      // can block the drop, because all of it is travelling too.
+      const carried = new Set<string>(dropped.map((entry) => entry.id));
+      for (const entry of dropped) {
+        if (pocketIdSet.has(entry.id)) {
+          for (const id of collectPocketDescendantIds(pockets, entry.id)) {
+            carried.add(id);
+          }
+        }
+      }
+      const ridesAlong = (itemId: string): boolean => {
+        let owner = ownerOf(itemId);
+        const seen = new Set<string>();
+        while (owner !== undefined && !seen.has(owner)) {
+          if (carried.has(owner)) {
+            return true;
+          }
+          seen.add(owner);
+          owner = pockets.find((entry) => entry.id === owner)?.parentPocketId;
+        }
+        return false;
+      };
+
+      // The furniture already on the surface. Annotations are ink and never
+      // block anything — a note over a machine and a box around a cluster
+      // are both what they are for.
+      const inkIds = new Set((project.annotations ?? []).map((annotation) => annotation.id));
+      const surface: Array<{ id: string; rect: PlacementRect }> = [];
+      for (const [id, geometry] of publishedBoardGeometryById) {
+        if (
+          carried.has(id) ||
+          inkIds.has(id) ||
+          ridesAlong(id) ||
+          geometry.width <= 0 ||
+          geometry.height <= 0
+        ) {
+          continue;
+        }
+        surface.push({
+          id,
+          rect: { x: geometry.x, y: geometry.y, width: geometry.width, height: geometry.height },
+        });
+      }
+      // The chain of frames a landing sits inside: a card dropped ON a board
+      // is not landing on top of it, it is landing IN it.
+      const chainOf = (boardId: string | undefined): Set<string> => {
+        const chain = new Set<string>();
+        let cursor = boardId;
+        while (cursor !== undefined && !chain.has(cursor)) {
+          chain.add(cursor);
+          cursor = pockets.find((entry) => entry.id === cursor)?.parentPocketId;
+        }
+        return chain;
+      };
+
       const instance = flowInstanceRef.current;
+      // Resolved rects of the cards already placed by this same drop, so a
+      // multi-card drag does not stack its own cards.
+      const placedThisDrop: PlacementRect[] = [];
       const moves = dropped.map((entry) => {
         const internal = instance?.getInternalNode(entry.id);
         const absolute = internal?.internals.positionAbsolute ?? entry.position;
@@ -4362,20 +4610,35 @@ export function FactoryFlow() {
         const height = internal?.measured?.height ?? 0;
         const centre = { x: absolute.x + width / 2, y: absolute.y + height / 2 };
         const currentOwner = ownerOf(entry.id);
-        const landing = pickBoardOwnerAt(frames, centre, excluded);
-        if (landing === currentOwner) {
-          // Home stands; React Flow's own position is already in its space.
-          return { id: entry.id, position: entry.position };
-        }
+        const landing = pickBoardOwnerAt(frames, centre, excluded) ?? currentOwner;
         const origin = landing !== undefined ? frameById.get(landing) : undefined;
-        return {
-          id: entry.id,
-          position: snapPositionToGrid({
-            x: absolute.x - (origin?.x ?? 0),
-            y: absolute.y - (origin?.y ?? 0),
-          }),
-          owner: { pocketId: landing },
-        };
+
+        // The magnet, in flow space: slide off anything solid, then convert
+        // back into whichever board the drop belongs to.
+        const inside = chainOf(landing);
+        const blockers = [
+          ...surface
+            .filter((other) => !inside.has(other.id))
+            .map((other) => other.rect),
+          ...placedThisDrop,
+        ];
+        // The live magnet has already kept this card off everything solid,
+        // so this is a safety net for drops that never went through a drag
+        // frame — and it leaves an honest drop exactly where it was let go.
+        const wanted = snapPositionToGrid({ x: absolute.x, y: absolute.y });
+        const free =
+          width > 0 && height > 0
+            ? nearestFreeSpot({ x: wanted.x, y: wanted.y, width, height }, blockers)
+            : wanted;
+        placedThisDrop.push({ x: free.x, y: free.y, width, height });
+
+        const position = snapPositionToGrid({
+          x: free.x - (origin?.x ?? 0),
+          y: free.y - (origin?.y ?? 0),
+        });
+        return landing === currentOwner
+          ? { id: entry.id, position }
+          : { id: entry.id, position, owner: { pocketId: landing } };
       });
 
       // A member dropped past the frame's right or bottom edge grows the
@@ -4410,6 +4673,7 @@ export function FactoryFlow() {
       );
 
       activelyDraggedNodeIds.clear();
+      dragConstraintsRef.current = new Map();
       draggingNodeRef.current = false;
       // The drop's own publish below supersedes any trailing live-drag solve.
       window.clearTimeout(liveDragTrailingTimerRef.current);
@@ -5379,6 +5643,7 @@ const BoardFloors = memo(function BoardFloors() {
           entry.pocket.position.x === other.pocket.position.x &&
           entry.pocket.position.y === other.pocket.position.y &&
           entry.pocket.theme === other.pocket.theme &&
+          entry.pocket.pattern === other.pocket.pattern &&
           entry.pocket.colorTag === other.pocket.colorTag &&
           entry.width === other.width &&
           entry.height === other.height

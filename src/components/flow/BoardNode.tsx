@@ -10,11 +10,15 @@ import {
   BOARD_WINDOW_FIT_PAD,
   BOARD_WINDOW_MIN_HEIGHT,
   BOARD_WINDOW_MIN_WIDTH,
+  BOARD_WINDOW_TITLE_HEIGHT,
 } from "@/lib/board-grid";
 import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
 import { useBlueprintStore } from "@/store/blueprint-store";
 import { useBoardView } from "./board-view";
+import { publishBoardResizeDraft } from "./board-resize";
+import { rectsOverlap, type PlacementRect } from "./board-placement";
 import { CANVAS_THEMES, getCanvasTheme } from "./canvas-themes";
+import { CANVAS_PATTERNS } from "./board-view";
 import { GT_NODE_COLORS } from "./node-colors";
 
 /**
@@ -31,6 +35,48 @@ import { GT_NODE_COLORS } from "./node-colors";
 
 /** The title bar is the only place a drag can grab the frame. */
 export const BOARD_DRAG_HANDLE_CLASS = "board-window-grab";
+
+/**
+ * The frame line, in px. Thicker than a card's: a board is read at zoomed-
+ * out distances where a 2px line thins to nothing, and the same number
+ * dresses the title bar's border so the bar sits flush in the frame rather
+ * than half a pixel proud of it.
+ */
+const BOARD_EDGE = 4;
+
+type ResizeSide = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+/**
+ * How much room each grip answers to. Generous on purpose, and straddling
+ * the wall so the reach is the same whether the pointer is a little inside
+ * the board or a little outside it.
+ */
+const GRIP_REACH = 12;
+const GRIP_CORNER = 26;
+
+const RESIZE_GRIPS: Array<{
+  side: ResizeSide;
+  cursor: string;
+  hitBox: Record<string, number | string>;
+}> = [
+  // Edges first, corners over them: a corner grab beats an edge grab.
+  { side: "n", cursor: "cursor-ns-resize", hitBox: { top: -GRIP_REACH / 2, left: GRIP_CORNER, right: GRIP_CORNER, height: GRIP_REACH } },
+  { side: "s", cursor: "cursor-ns-resize", hitBox: { bottom: -GRIP_REACH / 2, left: GRIP_CORNER, right: GRIP_CORNER, height: GRIP_REACH } },
+  { side: "w", cursor: "cursor-ew-resize", hitBox: { left: -GRIP_REACH / 2, top: GRIP_CORNER, bottom: GRIP_CORNER, width: GRIP_REACH } },
+  { side: "e", cursor: "cursor-ew-resize", hitBox: { right: -GRIP_REACH / 2, top: GRIP_CORNER, bottom: GRIP_CORNER, width: GRIP_REACH } },
+  { side: "nw", cursor: "cursor-nwse-resize", hitBox: { top: -GRIP_REACH / 2, left: -GRIP_REACH / 2, width: GRIP_CORNER, height: GRIP_CORNER } },
+  { side: "ne", cursor: "cursor-nesw-resize", hitBox: { top: -GRIP_REACH / 2, right: -GRIP_REACH / 2, width: GRIP_CORNER, height: GRIP_CORNER } },
+  { side: "sw", cursor: "cursor-nesw-resize", hitBox: { bottom: -GRIP_REACH / 2, left: -GRIP_REACH / 2, width: GRIP_CORNER, height: GRIP_CORNER } },
+  { side: "se", cursor: "cursor-nwse-resize", hitBox: { bottom: -GRIP_REACH / 2, right: -GRIP_REACH / 2, width: GRIP_CORNER, height: GRIP_CORNER } },
+];
+
+/** The visible mark on each corner: an L of the board's own grip colour. */
+const RESIZE_CORNERS: Array<{ side: ResizeSide; className: string }> = [
+  { side: "nw", className: "left-[3px] top-[3px] h-3.5 w-3.5 border-l-[3px] border-t-[3px]" },
+  { side: "ne", className: "right-[3px] top-[3px] h-3.5 w-3.5 border-r-[3px] border-t-[3px]" },
+  { side: "sw", className: "bottom-[3px] left-[3px] h-3.5 w-3.5 border-b-[3px] border-l-[3px]" },
+  { side: "se", className: "bottom-[3px] right-[3px] h-3.5 w-3.5 border-b-[3px] border-r-[3px]" },
+];
 
 export interface BoardNodeData extends Record<string, unknown> {
   pocket: FactoryPocket;
@@ -168,32 +214,29 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
   const { pocket, memberCount } = data;
   const minimizePocket = useFactoryStore((state) => state.minimizePocket);
   const renamePocket = useFactoryStore((state) => state.renamePocket);
-  const setPocketSize = useFactoryStore((state) => state.setPocketSize);
+  const setPocketFrame = useFactoryStore((state) => state.setPocketFrame);
   const setPocketTheme = useFactoryStore((state) => state.setPocketTheme);
+  const setPocketPattern = useFactoryStore((state) => state.setPocketPattern);
   const deleteBoardSelection = useFactoryStore((state) => state.deleteBoardSelection);
   const dissolvePocket = useFactoryStore((state) => state.dissolvePocket);
   const { calmMode } = useBoardView();
-  const { getZoom, getNodes } = useReactFlow();
+  const { getZoom, getNodes, getInternalNode } = useReactFlow();
   const [draftName, setDraftName] = useState<string | undefined>(undefined);
   const [isPaletteOpen, setPaletteOpen] = useState(false);
   const isRenaming = draftName !== undefined && !calmMode;
   const chrome = chromeFor(pocket.theme, pocket.colorTag);
 
-  // A resize follows the pointer live through local state and lands in the
-  // store once, on release — where it snaps to whole cells. Same commit
-  // discipline as an annotation's NodeResizer.
-  const [draftSize, setDraftSizeState] = useState<
-    { width: number; height: number } | undefined
-  >(undefined);
-  const draftSizeRef = useRef<{ width: number; height: number } | undefined>(undefined);
-  const setDraftSize = (size: { width: number; height: number } | undefined) => {
-    draftSizeRef.current = size;
-    setDraftSizeState(size);
-  };
+  // A resize follows the pointer live and lands in the store once, on
+  // release. The DRAFT carries a whole frame, not just a size: dragging the
+  // top or left wall moves the origin too, and the board applies both halves
+  // together (see board-resize.ts).
+  const draftRef = useRef<{ position: { x: number; y: number }; size: { width: number; height: number } } | undefined>(
+    undefined,
+  );
 
   const storedSize = boardWindowSize(pocket);
-  const frameWidth = draftSize?.width ?? width ?? storedSize.width;
-  const frameHeight = draftSize?.height ?? height ?? storedSize.height;
+  const frameWidth = width ?? storedSize.width;
+  const frameHeight = height ?? storedSize.height;
 
   const commitRename = () => {
     if (draftName !== undefined) {
@@ -225,42 +268,157 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
     }
   };
 
-  const beginResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const beginResize = (side: ResizeSide, event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
     const startClient = { x: event.clientX, y: event.clientY };
-    const startSize = { width: frameWidth, height: frameHeight };
-    // The frame must contain what is on it: the floor of a resize is the
-    // members' extent plus a cell of air, measured once at grab time from
-    // React Flow's own child geometry (member positions are frame-relative).
-    let minWidth = BOARD_WINDOW_MIN_WIDTH;
-    let minHeight = BOARD_WINDOW_MIN_HEIGHT;
-    for (const child of getNodes()) {
-      if (child.parentId !== pocket.id) {
+
+    // Everything the walls have to respect, measured once at grab time.
+    // React Flow gives child positions relative to their parent, so the
+    // frame's own absolute origin turns the whole board into one space.
+    const self = getInternalNode(pocket.id);
+    const frameOrigin = self?.internals.positionAbsolute ?? { x: 0, y: 0 };
+    const parentOrigin = {
+      x: frameOrigin.x - pocket.position.x,
+      y: frameOrigin.y - pocket.position.y,
+    };
+    const start = {
+      left: frameOrigin.x,
+      top: frameOrigin.y,
+      right: frameOrigin.x + frameWidth,
+      bottom: frameOrigin.y + frameHeight,
+    };
+
+    // What the board holds: no wall may cut into it.
+    const holds = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity };
+    // What stands outside: no wall may cross it.
+    const blockers: PlacementRect[] = [];
+    const isInside = (nodeId: string): boolean => {
+      let cursor = getInternalNode(nodeId)?.parentId;
+      const seen = new Set<string>();
+      while (cursor !== undefined && !seen.has(cursor)) {
+        if (cursor === pocket.id) {
+          return true;
+        }
+        seen.add(cursor);
+        cursor = getInternalNode(cursor)?.parentId;
+      }
+      return false;
+    };
+    for (const other of getNodes()) {
+      if (other.id === pocket.id || other.type === "annotationNode") {
         continue;
       }
-      const childWidth = child.measured?.width ?? child.width ?? 0;
-      const childHeight = child.measured?.height ?? child.height ?? 0;
-      minWidth = Math.max(minWidth, child.position.x + childWidth + BOARD_WINDOW_FIT_PAD);
-      minHeight = Math.max(minHeight, child.position.y + childHeight + BOARD_WINDOW_FIT_PAD);
+      const internal = getInternalNode(other.id);
+      const absolute = internal?.internals.positionAbsolute;
+      const size = {
+        width: internal?.measured?.width ?? 0,
+        height: internal?.measured?.height ?? 0,
+      };
+      if (!absolute || size.width <= 0 || size.height <= 0) {
+        continue;
+      }
+      if (isInside(other.id)) {
+        holds.left = Math.min(holds.left, absolute.x);
+        holds.top = Math.min(holds.top, absolute.y);
+        holds.right = Math.max(holds.right, absolute.x + size.width);
+        holds.bottom = Math.max(holds.bottom, absolute.y + size.height);
+        continue;
+      }
+      blockers.push({ x: absolute.x, y: absolute.y, width: size.width, height: size.height });
     }
+
+    const pulls = {
+      left: side === "w" || side === "nw" || side === "sw",
+      right: side === "e" || side === "ne" || side === "se",
+      top: side === "n" || side === "nw" || side === "ne",
+      bottom: side === "s" || side === "sw" || side === "se",
+    };
+
     const handleMove = (move: PointerEvent) => {
       const zoom = getZoom() || 1;
-      setDraftSize({
-        width: Math.max(minWidth, startSize.width + (move.clientX - startClient.x) / zoom),
-        height: Math.max(minHeight, startSize.height + (move.clientY - startClient.y) / zoom),
-      });
+      const dx = (move.clientX - startClient.x) / zoom;
+      const dy = (move.clientY - startClient.y) / zoom;
+      const snap = (value: number) => Math.round(value / BOARD_GRID) * BOARD_GRID;
+
+      let left = pulls.left ? snap(start.left + dx) : start.left;
+      let right = pulls.right ? snap(start.right + dx) : start.right;
+      let top = pulls.top ? snap(start.top + dy) : start.top;
+      let bottom = pulls.bottom ? snap(start.bottom + dy) : start.bottom;
+
+      // A wall never cuts into the board's own cards, and never shrinks the
+      // window below the smallest a window may be.
+      if (pulls.left) {
+        if (holds.left !== Infinity) {
+          left = Math.min(left, holds.left - BOARD_WINDOW_FIT_PAD);
+        }
+        left = Math.min(left, right - BOARD_WINDOW_MIN_WIDTH);
+      }
+      if (pulls.right) {
+        if (holds.right !== -Infinity) {
+          right = Math.max(right, holds.right + BOARD_WINDOW_FIT_PAD);
+        }
+        right = Math.max(right, left + BOARD_WINDOW_MIN_WIDTH);
+      }
+      if (pulls.top) {
+        if (holds.top !== Infinity) {
+          top = Math.min(top, holds.top - BOARD_WINDOW_TITLE_HEIGHT - BOARD_WINDOW_FIT_PAD);
+        }
+        top = Math.min(top, bottom - BOARD_WINDOW_MIN_HEIGHT);
+      }
+      if (pulls.bottom) {
+        if (holds.bottom !== -Infinity) {
+          bottom = Math.max(bottom, holds.bottom + BOARD_WINDOW_FIT_PAD);
+        }
+        bottom = Math.max(bottom, top + BOARD_WINDOW_MIN_HEIGHT);
+      }
+
+      // And no wall crosses anything standing outside: a board grows until
+      // it meets its neighbour and stops there, exactly as a dragged board
+      // stops rather than sliding over one.
+      const wouldHit = (rect: PlacementRect) =>
+        blockers.some((blocker) => rectsOverlap(rect, blocker));
+      const frame = () => ({ x: left, y: top, width: right - left, height: bottom - top });
+      if (pulls.left) {
+        while (left < start.left && wouldHit(frame())) {
+          left += BOARD_GRID;
+        }
+      }
+      if (pulls.right) {
+        while (right > start.right && wouldHit(frame())) {
+          right -= BOARD_GRID;
+        }
+      }
+      if (pulls.top) {
+        while (top < start.top && wouldHit(frame())) {
+          top += BOARD_GRID;
+        }
+      }
+      if (pulls.bottom) {
+        while (bottom > start.bottom && wouldHit(frame())) {
+          bottom -= BOARD_GRID;
+        }
+      }
+
+      const draft = {
+        position: { x: left - parentOrigin.x, y: top - parentOrigin.y },
+        size: { width: right - left, height: bottom - top },
+      };
+      draftRef.current = draft;
+      publishBoardResizeDraft({ boardId: pocket.id, ...draft });
     };
+
     const handleUp = () => {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
-      const draft = draftSizeRef.current;
-      setDraftSize(undefined);
+      const draft = draftRef.current;
+      draftRef.current = undefined;
+      publishBoardResizeDraft(undefined);
       if (draft) {
-        setPocketSize(pocket.id, draft);
+        setPocketFrame(pocket.id, draft);
       }
     };
     window.addEventListener("pointermove", handleMove);
@@ -276,19 +434,23 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
 
   return (
     <div
-      className="relative font-mono"
+      className="group relative font-mono"
       style={{ width: frameWidth, height: frameHeight, color: chrome.ink }}
     >
       {/* The background palette, in a React Flow toolbar PORTAL: the frame
           itself sits under every card, and a popover drawn in the node's own
           layer would be buried by the very members it floats over. */}
-      <NodeToolbar
+<NodeToolbar
         isVisible={isPaletteOpen}
         position={Position.Top}
-        align="start"
+        // The button sits at the right end of the bar, so the sheet opens
+        // there: anchored left, a wide board put it a whole screen away
+        // from the hand that opened it.
+        align="end"
         style={{ zIndex: 30 }}
       >
-        <div className="nodrag flex max-w-[420px] flex-wrap gap-1 border-2 border-[#8d6fd1] bg-[#241b33] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+        <div className="nodrag flex w-[340px] flex-col gap-1 border-2 border-[#8d6fd1] bg-[#241b33] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+        <div className="flex flex-wrap gap-1">
           <button
             type="button"
             onClick={() => {
@@ -330,6 +492,40 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
             </button>
           ))}
         </div>
+        {/* The ruling on the paper, the same six the canvas itself offers. */}
+        <div className="flex flex-wrap gap-1 border-t border-[#3b2d52] pt-1">
+          {CANVAS_PATTERNS.map((pattern) => (
+            <button
+              key={pattern}
+              type="button"
+              onClick={() => {
+                setPocketPattern(pocket.id, pattern === "dots" ? undefined : pattern);
+                setPaletteOpen(false);
+              }}
+              className={[
+                "relative flex h-7 w-9 shrink-0 items-center justify-center overflow-hidden border-2",
+                (pocket.pattern ?? "dots") === pattern
+                  ? "border-white ring-2 ring-cyan-300"
+                  : "border-[#241b33]",
+              ].join(" ")}
+              style={{
+                backgroundColor: chrome.floorColor,
+                // The ruling itself, drawn small: a picture of the choice
+                // beats a four-letter abbreviation of its name.
+                ...boardRuling(pattern, chrome.dotColor, undefined, 7),
+              }}
+              title={`Rule this board's paper: ${pattern}`}
+              aria-label={`Rule board ${pocket.name} with ${pattern}`}
+            >
+              {pattern === "none" ? (
+                <span aria-hidden className="text-[9px] uppercase" style={{ color: chrome.inkMuted }}>
+                  off
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+        </div>
       </NodeToolbar>
       {/* The frame line only. The PAPER is a separate node underneath the
           wire layer (BoardFloorNode) so a board's own members keep their
@@ -337,19 +533,24 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
-        style={{ boxShadow: `inset 0 0 0 2px ${chrome.frameLine}` }}
+        style={{ boxShadow: `inset 0 0 0 ${BOARD_EDGE}px ${chrome.frameLine}` }}
       />
       {/* The title bar: the window's one handle. Dragging it moves the board
           and every member with it. */}
       <div
         className={[
           BOARD_DRAG_HANDLE_CLASS,
-          "absolute inset-x-0 top-0 flex h-[40px] cursor-grab items-center gap-1 border-2 px-2",
+          "absolute inset-x-0 top-0 flex h-[40px] cursor-grab items-center gap-1 px-2",
         ].join(" ")}
         style={{
           pointerEvents: "all",
           backgroundColor: chrome.barBg,
-          borderColor: chrome.barBorder,
+          // The bar's outline IS the frame's: same weight, same colour, drawn
+          // as a border on three sides so the window reads as one object and
+          // the seam under the bar stays a single line.
+          borderStyle: "solid",
+          borderColor: chrome.frameLine,
+          borderWidth: `${BOARD_EDGE}px ${BOARD_EDGE}px 2px`,
           boxShadow: `inset 2px 2px 0 ${chrome.barBevelHi}, inset -2px -2px 0 ${chrome.barBevelLo}`,
         }}
         title={
@@ -495,20 +696,28 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
           </>
         ) : null}
       </div>
-      {/* The corner grip: resize follows the pointer, snaps on release, and
-          never shrinks past what the board holds. */}
-      <div
-        onPointerDown={beginResize}
-        className="nodrag absolute bottom-0 right-0 h-5 w-5 cursor-nwse-resize"
-        style={{ pointerEvents: "all" }}
-        title="Drag to resize this board (it always keeps its cards inside)"
-      >
+      {/* The walls: every edge and every corner is a grip, each with a hand
+          of room around it — half outside the frame, half in — so grabbing
+          one is a glance, not a hunt. The corners wear permanent brackets
+          and the whole set brightens when the pointer is over the board. */}
+      {RESIZE_GRIPS.map((grip) => (
+        <div
+          key={grip.side}
+          onPointerDown={(event) => beginResize(grip.side, event)}
+          className={`nodrag absolute ${grip.cursor}`}
+          style={{ ...grip.hitBox, pointerEvents: "all" }}
+          title="Drag to resize this board (it keeps its cards, and stops at its neighbours)"
+          aria-label={`Resize board ${pocket.name}`}
+        />
+      ))}
+      {RESIZE_CORNERS.map((corner) => (
         <span
+          key={corner.side}
           aria-hidden
-          className="absolute bottom-[3px] right-[3px] block h-2.5 w-2.5 border-b-2 border-r-2"
+          className={`pointer-events-none absolute ${corner.className} opacity-70 transition-opacity group-hover:opacity-100`}
           style={{ borderColor: chrome.grip }}
         />
-      </div>
+      ))}
     </div>
   );
 }
@@ -524,6 +733,66 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
  * floor cannot simply be a child either. Pure decoration: no pointer events,
  * no geometry, invisible to routing, drop targeting and the camera.
  */
+/**
+ * The CSS for one board's ruling: the same six the canvas offers, drawn on
+ * the board's own paper in its own ink. The canvas draws these as SVG
+ * layers that pan with the viewport; a board is a plain element that pans
+ * with it already, so background images are all it takes.
+ */
+function boardRuling(
+  pattern: string | undefined,
+  ink: string,
+  texture: string | undefined,
+  cellPx = BOARD_GRID,
+): { backgroundImage?: string; backgroundSize?: string } {
+  const cell = `${cellPx}px ${cellPx}px`;
+  const layers: string[] = [];
+  const sizes: string[] = [];
+  const add = (image: string, size: string) => {
+    layers.push(image);
+    sizes.push(size);
+  };
+  switch (pattern) {
+    case "none":
+      break;
+    case "lines":
+      add(`linear-gradient(to right, ${ink} 1px, transparent 1px)`, cell);
+      add(`linear-gradient(to bottom, ${ink} 1px, transparent 1px)`, cell);
+      break;
+    case "cross":
+      // A plus at every corner: two short bars crossing on the grid point.
+      add(`linear-gradient(to right, ${ink} 5px, transparent 5px)`, cell);
+      add(`linear-gradient(to bottom, ${ink} 5px, transparent 5px)`, cell);
+      break;
+    case "ruled":
+      // A notepad: one line every two cells, nothing vertical.
+      add(`linear-gradient(to bottom, ${ink} 1px, transparent 1px)`, `100% ${cellPx * 2}px`);
+      break;
+    case "graph":
+      // Graph paper: a fine line on every cell, a heavy one every five.
+      add(`linear-gradient(to right, ${ink} 1px, transparent 1px)`, cell);
+      add(`linear-gradient(to bottom, ${ink} 1px, transparent 1px)`, cell);
+      add(
+        `linear-gradient(to right, ${ink} 2px, transparent 2px)`,
+        `${cellPx * 5}px ${cellPx * 5}px`,
+      );
+      add(
+        `linear-gradient(to bottom, ${ink} 2px, transparent 2px)`,
+        `${cellPx * 5}px ${cellPx * 5}px`,
+      );
+      break;
+    default:
+      add(`radial-gradient(circle at 1px 1px, ${ink} 1.5px, transparent 1.5px)`, cell);
+      break;
+  }
+  if (texture) {
+    add(texture, "auto");
+  }
+  return layers.length > 0
+    ? { backgroundImage: layers.join(", "), backgroundSize: sizes.join(", ") }
+    : {};
+}
+
 export function BoardFloor({
   pocket,
   width,
@@ -544,16 +813,10 @@ export function BoardFloor({
         width,
         height,
         backgroundColor: chrome.floorColor,
-        // The board's own grid dots, on the same 20px pitch the canvas uses,
+        // The board's own ruling, on the same 20px pitch the canvas uses,
         // over the theme's grain: a board reads as a piece of board rather
         // than a tinted rectangle.
-        backgroundImage: [
-          `radial-gradient(circle at 1px 1px, ${chrome.dotColor} 1.5px, transparent 1.5px)`,
-          chrome.floorTexture,
-        ]
-          .filter(Boolean)
-          .join(", "),
-        backgroundSize: `${BOARD_GRID}px ${BOARD_GRID}px, auto`,
+        ...boardRuling(pocket.pattern, chrome.dotColor, chrome.floorTexture),
       }}
     />
   );
