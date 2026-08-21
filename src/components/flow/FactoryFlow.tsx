@@ -63,7 +63,9 @@ import {
   Type,
   Undo2,
   Wallpaper,
-  Wand2,
+  LogIn,
+  LogOut,
+  Settings,
   X,
   Zap,
   type LucideIcon,
@@ -323,6 +325,7 @@ import {
 } from "./AnnotationNode";
 import { settleZonePoints } from "@/lib/model/zone-points";
 import { BOARD_PAPER_IDS } from "@/lib/model/board-paper";
+import { getBoardRules } from "@/lib/model/board-rules";
 import { nearestFreeSpot, type PlacementRect, type PlacementRegion } from "./board-placement";
 import { registerBoardResize, type BoardResizeDraft } from "./board-resize";
 
@@ -6023,6 +6026,116 @@ const RATE_UNIT_CHOICES: Array<{ unit: RateUnit; label: string; title: string }>
   { unit: "hour", label: "/h", title: "Per hour" },
 ];
 
+/**
+ * The board's two rules, on a gear beside the tidy-up button.
+ *
+ * They are the only settings that change what the SOLVE is allowed to assume,
+ * so they get a sheet with a sentence each rather than a mystery toggle: a
+ * player who turns one on and does not know what it did will read every number
+ * on the board wrong afterwards.
+ */
+const BoardRulesButton = memo(function BoardRulesButton() {
+  const rules = useFactoryStore((state) => state.project.boardRules);
+  const legacy = useFactoryStore((state) => state.project.assumeBoundaries);
+  const setBoardRules = useFactoryStore((state) => state.setBoardRules);
+  const { freeInputs, freeOutputs } = getBoardRules({ boardRules: rules, assumeBoundaries: legacy });
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // Click anywhere else and the sheet goes. Capture phase, because the board
+  // under it stops pointer events of its own before they reach the document.
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const close = (event: PointerEvent) => {
+      // `globalThis.Node`, not `Node`: React Flow's own Node type is imported
+      // into this file and would shadow the DOM one.
+      if (!rootRef.current?.contains(event.target as globalThis.Node)) {
+        setOpen(false);
+      }
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("keydown", escape);
+    return () => {
+      window.removeEventListener("pointerdown", close, true);
+      window.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+
+  const choices: Array<{
+    id: "freeInputs" | "freeOutputs";
+    on: boolean;
+    icon: typeof LogIn;
+    label: string;
+    line: string;
+  }> = [
+    {
+      id: "freeInputs",
+      on: freeInputs,
+      icon: LogIn,
+      label: "Free inputs",
+      line: "An input short of stock takes the rest from off the board.",
+    },
+    {
+      id: "freeOutputs",
+      on: freeOutputs,
+      icon: LogOut,
+      label: "Free outputs",
+      line: "Output with nowhere to go leaves the board instead of backing up.",
+    },
+  ];
+
+  return (
+    <div ref={rootRef} className="pointer-events-auto relative flex">
+      <button
+        type="button"
+        data-tour-anchor="board-rules"
+        onClick={() => setOpen((was) => !was)}
+        aria-expanded={open}
+        className={[
+          "relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+          open || freeInputs || freeOutputs ? TOOL_FACE_ON : TOOL_FACE_OFF,
+        ].join(" ")}
+        title="Board rules"
+        aria-label="Board rules"
+      >
+        <Settings className="h-4 w-4" />
+      </button>
+      {open ? (
+        <div className="absolute left-0 top-[calc(100%+6px)] z-30 flex w-[300px] flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+          <p className="px-1 pt-1 font-mono text-[11px] leading-snug text-[var(--mc-ink)] opacity-70">
+            What the board does when a slot cannot be supplied or emptied.
+          </p>
+          {choices.map((choice) => (
+            <button
+              key={choice.id}
+              type="button"
+              onClick={() => setBoardRules({ [choice.id]: !choice.on })}
+              aria-pressed={choice.on}
+              className={[
+                "flex items-start gap-2 border-2 border-[var(--mc-15)] p-2 text-left",
+                choice.on ? TOOL_FACE_ON : TOOL_FACE_OFF,
+              ].join(" ")}
+            >
+              <choice.icon className="mt-[2px] h-4 w-4 shrink-0" />
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="font-mono text-[12px] font-black uppercase">{choice.label}</span>
+                <span className="font-mono text-[11px] leading-snug opacity-80">{choice.line}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+});
+
 const SourceToolbar = memo(function SourceToolbar({
   compact,
   openGroup,
@@ -6044,8 +6157,6 @@ const SourceToolbar = memo(function SourceToolbar({
   const boardView = useBoardView();
   const rateUnit = useFactoryStore((state) => state.rateUnit);
   const setRateUnit = useFactoryStore((state) => state.setRateUnit);
-  const assumeBoundaries = useFactoryStore((state) => Boolean(state.project.assumeBoundaries));
-  const setAssumeBoundaries = useFactoryStore((state) => state.setAssumeBoundaries);
   // Subscribe to the DEPTHS, not the history arrays: a selector returning the
   // array itself would re-render this toolbar on every project edit.
   const undo = useFactoryStore((state) => state.undo);
@@ -6106,8 +6217,8 @@ const SourceToolbar = memo(function SourceToolbar({
         label="build tools"
         side="left"
       >
-      {/* How the numbers read: the rate units and sketch mode change what the
-          existing board says, so they sit nearest the history plate... */}
+      {/* How the numbers read: the rate units change what the existing board
+          says, so they sit nearest the history plate... */}
       <ToolTray>
         <div className="pointer-events-auto flex">
           {RATE_UNIT_CHOICES.map((choice) => (
@@ -6126,20 +6237,6 @@ const SourceToolbar = memo(function SourceToolbar({
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          data-tour-anchor="sketch"
-          onClick={() => setAssumeBoundaries(!assumeBoundaries)}
-          className={[
-            "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
-            assumeBoundaries ? TOOL_FACE_ON : TOOL_FACE_OFF,
-          ].join(" ")}
-          title="Sketch mode"
-          aria-label="Sketch mode"
-          aria-pressed={assumeBoundaries}
-        >
-          <Wand2 className="h-4 w-4" />
-        </button>
       </ToolTray>
       {/* ...while the plate on the right is the one that puts new cards down. */}
       <ToolTray>
@@ -6171,12 +6268,10 @@ const SourceToolbar = memo(function SourceToolbar({
           <Gauge className="h-4 w-4" />
         </button>
       </ToolTray>
-      {/* The tidy-up, one click. It used to open a pop-over holding a
-          single dial - the paper the arrange drew its island backdrops on
-          - and the arrange stopped drawing backdrops when it started
-          building boards, each of which picks its own paper. A menu with
-          nothing in it is worse than no menu. */}
+      {/* The tidy-up and the board's own rules: the two buttons that act on
+          the whole board at once rather than on a card. */}
       <ToolTray>
+        <BoardRulesButton />
         <button
           type="button"
           onClick={onAutoArrange}

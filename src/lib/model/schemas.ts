@@ -480,7 +480,14 @@ export const factoryProjectSchema = z.object({
   icon: entryIconSchema.optional(),
   view: planViewStateSchema.optional(),
   targetRate: targetRateSchema.optional(),
-  // Sketch mode: solve as if every bare slot had its boundary drawer.
+  // What the board does with an input nothing feeds and output nothing takes.
+  boardRules: z
+    .object({
+      freeInputs: z.boolean().optional(),
+      freeOutputs: z.boolean().optional(),
+    })
+    .optional(),
+  // Legacy sketch mode, rewritten as both rules on load.
   assumeBoundaries: z.boolean().optional(),
   recipes: z.array(recipeSchema),
   nodes: z.array(factoryNodeSchema),

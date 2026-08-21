@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.23.0",
+    date: "2026-08-21",
+    headline: "Board rules, on the gear",
+    notes: [
+      "New gear button, top left, holding two rules for the whole board.",
+      "Free inputs: anything short of stock takes the rest from off the board.",
+      "Free outputs: anything with nowhere to go leaves instead of backing up.",
+      "The wand is gone. A plan saved with sketch mode opens with both rules on.",
+    ],
+  },
+  {
     version: "2.22.1",
     date: "2026-08-21",
     headline: "Plainer buttons",

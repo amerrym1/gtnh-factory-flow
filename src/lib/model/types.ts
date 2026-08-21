@@ -583,6 +583,27 @@ export interface PlanViewState {
   favouriteResourceKeys?: string[];
 }
 
+/**
+ * The two things a board cannot do for itself: find stock for an input
+ * nothing feeds, and get rid of output nothing takes.
+ *
+ * Both off is the CLOSED plan, and the default: you declare the boundary by
+ * wiring it, a slot with no wire reads UNWIRED, and a surplus with nowhere to
+ * go clogs. Turning one on is exactly like wiring a source drawer onto every
+ * input, or a product drawer onto every output - including slots that already
+ * have a wire, so a half-fed input tops up and a surplus output spills rather
+ * than holding its machine back.
+ *
+ * The drawers are virtual: they exist inside the solve and never reach the
+ * board, so nothing the player drew is touched or hidden.
+ */
+export interface BoardRules {
+  /** An input short of stock takes the rest from off the board. */
+  freeInputs?: boolean;
+  /** Output with nowhere to go leaves the board instead of clogging. */
+  freeOutputs?: boolean;
+}
+
 export interface FactoryProject {
   schemaVersion: typeof PROJECT_SCHEMA_VERSION;
   id: string;
@@ -597,11 +618,11 @@ export interface FactoryProject {
   /** Only shared setups carry this; see PlanViewState. */
   view?: PlanViewState;
   targetRate?: TargetRate;
+  /** How the board treats what it cannot feed or shift. See BoardRules. */
+  boardRules?: BoardRules;
   /**
-   * Sketch mode. When true the solve assumes the plan's boundary: every bare
-   * input is supplied for free and every bare output is exported, via virtual
-   * drawers that never reach the board. Declared boundaries still win - only
-   * slots with no wire are filled in. For quick math before the wiring.
+   * LEGACY sketch mode, read on load and rewritten as both board rules.
+   * Plans saved before the rules existed still carry it; nothing writes it.
    */
   assumeBoundaries?: boolean;
   recipes: Recipe[];

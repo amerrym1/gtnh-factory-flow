@@ -19,12 +19,33 @@ export function normalizeLoadedProject(project: FactoryProject): FactoryProject 
       unpaintCustomRateCards(
         releaseCustomRates(
           dropDuplicateEdges(
-            dropCrossFormConnections(normalizeProjectFuelProfiles(renameOpvTier(project))),
+            dropCrossFormConnections(
+              normalizeProjectFuelProfiles(renameOpvTier(adoptBoardRules(project))),
+            ),
           ),
         ),
       ),
     ),
   );
+}
+
+/**
+ * Sketch mode was both board rules at once - every bare input fed, every bare
+ * output exported - so a plan saved under it opens with both on. The old flag
+ * is dropped here rather than kept in step, because the rules are now the only
+ * thing the solve reads and two fields saying the same thing drift.
+ */
+function adoptBoardRules(project: FactoryProject): FactoryProject {
+  if (project.assumeBoundaries === undefined) {
+    return project;
+  }
+  const { assumeBoundaries, ...rest } = project;
+  return {
+    ...rest,
+    boardRules: assumeBoundaries
+      ? { freeInputs: true, freeOutputs: true }
+      : (project.boardRules ?? undefined),
+  };
 }
 
 /**

@@ -2178,17 +2178,20 @@ export function OutputSocketRow({
       ) : (
         <MinecraftTooltip
           label={
-            port.nameplatePerSecond > 0
-              ? "Nothing takes this, so it backs up and the machine stops. Wire it to a machine that wants it, a DRAIN drawer, or a trash can."
-              : "Empty socket: nothing plugged in."
+            port.nameplatePerSecond <= 0
+              ? "Empty socket: nothing plugged in."
+              : port.boundaryFree
+                ? "Free outputs is on, so this leaves the board."
+                : "Nothing takes this, so it backs up and the machine stops. Wire it to a machine that wants it, a DRAIN drawer, or a trash can."
           }
         >
           {/* The mirror of an input's NO SUPPLY. It used to read "—" beside a
               tooltip saying the output vanished, which is exactly the thing
-              that stopped being true when the plan became a closed system. */}
+              that stopped being true when the plan became a closed system.
+              With FREE OUTPUTS on it is true again, so the mark comes off. */}
           <span className="flow-socket-empty nodrag">
             <PlugDragHandle nodeId={nodeId} port={port} />
-            {port.nameplatePerSecond > 0 ? (
+            {port.nameplatePerSecond > 0 && !port.boundaryFree ? (
               <span className="text-[7px] font-black leading-3 tracking-[0.5px] text-[var(--verdict-unwired-ink)]">
                 NO TAKER
               </span>

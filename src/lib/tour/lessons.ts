@@ -680,15 +680,18 @@ const READ_THE_BOARD: TourLesson = {
       ],
     },
     {
-      anchor: "sketch",
+      anchor: "board-rules",
       side: "bottom",
-      title: "Sketch mode",
+      title: "Board rules",
       rows: [
         {
-          text: "The wand is *sketch mode*: every unwired input is fed for free, and every unwired output is exported.",
+          text: "The gear holds two rules. *Free inputs*: anything short of stock takes the rest from off the board.",
         },
         {
-          text: "Made for quick math on a half-built plan. Turn it off when you are ready to wire real drawers.",
+          text: "*Free outputs*: anything with nowhere to go leaves the board instead of backing up.",
+        },
+        {
+          text: "Both off, you wire the boundary yourself and the board tells you what is missing.",
         },
       ],
     },

@@ -49,6 +49,7 @@ import {
   selectRuntimeCalculationVariant,
 } from "./runtime-calculation";
 import { closeBoundaries } from "./close-boundaries";
+import { getBoardRules } from "../model/board-rules";
 import { solveEquationsCore } from "./equations-core";
 
 const EPSILON = 0.000001;
@@ -68,14 +69,19 @@ export function calculateThroughput(
   project: FactoryProject,
   options: SolverOptions = {},
 ): ThroughputResult {
-  // Sketch mode: the player asked the plan to assume its own boundary, so
-  // every bare input gets a virtual source and every bare output a virtual
-  // drain before the solve. The virtual drawers never reach the board - they
-  // exist only inside this result - and a boundary the player DID declare
-  // still wins, because closeBoundaries only fills slots with no wire on
-  // them. Quick math first, honest wiring when it matters.
-  if (project.assumeBoundaries) {
-    project = closeBoundaries(project);
+  // BOARD RULES: the player asked the plan to feed its own inputs, or to let
+  // its spare output leave, or both. Each is a virtual drawer on every slot
+  // of that side - wired ones included, so a half-fed input tops up and a
+  // surplus output spills instead of holding its machine back. The drawers
+  // exist only inside this result and never reach the board, and the LP
+  // spends a free source only after every real wire (its recycle-before-
+  // importing stage), so nothing the player drew is bypassed.
+  const rules = getBoardRules(project);
+  if (rules.freeInputs || rules.freeOutputs) {
+    project = closeBoundaries(project, {
+      inputs: rules.freeInputs ? "all" : "none",
+      outputs: rules.freeOutputs ? "all" : "none",
+    });
   }
   const recipesById = new Map(project.recipes.map((recipe) => [recipe.id, recipe]));
   const nodes: Record<string, NodeThroughputResult> = {};
