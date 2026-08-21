@@ -453,10 +453,21 @@ gh run watch <run-id> --exit-status
   canvas: live through `board-resize.ts` (the frame publishes, the board
   applies both halves to its node state on one frame) and committed by
   `setPocketFrame`, one undo entry, nothing written until the pointer lifts.
-- Board frames are `selectable: false`: marquee over the floor collects the
-  cards, and a frame inside a dragged selection would move its members
-  twice. The title bar drags it without selection; the minimized card
-  selects like any card, which is what the blueprint picker rings.
+- A board SELECTS like anything else: `selectable: true`, so a marquee
+  drawn round one picks up the frame (and, being a marquee, the cards
+  inside it too) and it wears the same purple ring every selected card
+  wears (`SELECTION_RING`). The frame used to be unselectable because a
+  selected frame AND its selected members both took the drag delta, so
+  the household moved twice as far as the hand. `dragPassengersRef` is
+  the fix: at drag start, any held card whose board is held too is a
+  PASSENGER, and its own position changes are dropped for the length of
+  the drag - the frame carries it, and its stored frame-relative position
+  is already right.
+- NOTHING SITS IN TWO BOARDS AT ONCE. `wrapSelectionInBoard` refuses a
+  selection where anything already has an owner or IS a board, and the
+  board hides the wrap button for such a selection (`selectionCanWrap`),
+  so Ctrl+G and the button agree. Boards inside boards is a real feature
+  and a separate decision; it must not happen by accident from a marquee.
 
 ## Compact Mode (Phones And Small Windows)
 

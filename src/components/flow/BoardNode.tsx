@@ -46,6 +46,9 @@ export const BOARD_DRAG_HANDLE_CLASS = "board-window-grab";
  */
 export const BOARD_EDGE = 4;
 
+/** The ring every selected thing on this board wears (Tailwind purple-500). */
+export const SELECTION_RING = "#a855f7";
+
 type ResizeSide = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
 /**
@@ -204,7 +207,12 @@ export function boardChrome(
   };
 }
 
-function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNode>) {
+function BoardNodeComponent({
+  data,
+  width,
+  height,
+  selected,
+}: NodeProps<BoardWindowFlowNode>) {
   const { pocket, memberCount } = data;
   const minimizePocket = useFactoryStore((state) => state.minimizePocket);
   const renamePocket = useFactoryStore((state) => state.renamePocket);
@@ -536,7 +544,14 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
-        style={{ boxShadow: `inset 0 0 0 ${BOARD_EDGE}px ${chrome.frameLine}` }}
+        style={{
+          // Selected, the frame wears the same purple ring every selected
+          // card wears - a board picked up by a marquee has to look picked
+          // up, and it has no other body to ring.
+          boxShadow: selected
+            ? `inset 0 0 0 ${BOARD_EDGE}px ${chrome.frameLine}, 0 0 0 3px ${SELECTION_RING}`
+            : `inset 0 0 0 ${BOARD_EDGE}px ${chrome.frameLine}`,
+        }}
       />
       {/* The title bar: the window's one handle. Dragging it moves the board
           and every member with it. */}
@@ -833,5 +848,6 @@ export const BoardNode = memo(
   (previous, next) =>
     previous.data === next.data &&
     previous.width === next.width &&
-    previous.height === next.height,
+    previous.height === next.height &&
+    previous.selected === next.selected,
 );

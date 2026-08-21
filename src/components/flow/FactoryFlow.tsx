@@ -1688,11 +1688,13 @@ export function FactoryFlow() {
             // frame over the cards it holds.
             zIndex: BOARD_CHROME_Z_INDEX,
             className: "board-window",
-            // Marquee selection over the board's floor must collect the
-            // CARDS, not the frame — and a frame in a dragged selection
-            // would move its members twice (once itself, once as their
-            // parent). The title bar drags it without selection.
-            selectable: false,
+            // A board is a thing on the plan: a marquee drawn around one
+            // picks it up like any card, and shift-clicking its bar adds
+            // it to a selection. Its members are collected by the same
+            // marquee, which is fine - a passenger's own position change
+            // is dropped mid-drag (see dragPassengersRef) so a selected
+            // frame and its selected cards never move twice.
+            selectable: true,
             dragHandle: `.${BOARD_DRAG_HANDLE_CLASS}`,
             style: { pointerEvents: "none" as const },
             data: reuseObjectIdentity(boardNodeDataCache, pocket.id, {
@@ -2445,11 +2447,18 @@ export function FactoryFlow() {
   });
 
   const handleNodesChange = useCallback(
-    (changes: NodeChange<BoardFlowNode>[]) => {
+    (incoming: NodeChange<BoardFlowNode>[]) => {
+      let changes = incoming;
       // The placement magnet, live: a held card is never ALLOWED onto a spot
       // it cannot have, so it slides along whatever it meets instead of
       // being tidied up after the fact. The pointer runs ahead of the card
       // exactly as it does when a drag meets the grid.
+      const passengers = dragPassengersRef.current;
+      if (passengers.size > 0) {
+        changes = changes.filter(
+          (change) => change.type !== "position" || !passengers.has(change.id),
+        );
+      }
       const constraints = dragConstraintsRef.current;
       if (constraints.size > 0) {
         for (const change of changes) {
@@ -3879,6 +3888,35 @@ export function FactoryFlow() {
     return true;
   }, [deleteBoardSelection, selectNode, selectedEdgeIds, selectedNodeIds]);
 
+  /**
+   * Whether the selection could become a board: everything in it lives on
+   * the canvas, and none of it IS a board. Nothing may sit in two boards
+   * at once, and putting a board inside a board is its own decision - so
+   * the gesture is not offered rather than half-working.
+   */
+  const selectionCanWrap = useMemo(() => {
+    if (selectedNodeIds.length < 2) {
+      return false;
+    }
+    const chosen = new Set(selectedNodeIds);
+    if ((project.pockets ?? []).some((pocket) => chosen.has(pocket.id))) {
+      return false;
+    }
+    const housed = (entry: { id: string; pocketId?: string }) =>
+      chosen.has(entry.id) && entry.pocketId !== undefined;
+    return !(
+      project.nodes.some(housed) ||
+      (project.storages ?? []).some(housed) ||
+      (project.annotations ?? []).some(housed)
+    );
+  }, [
+    project.annotations,
+    project.nodes,
+    project.pockets,
+    project.storages,
+    selectedNodeIds,
+  ]);
+
   const wrapSelectedBoardItems = useCallback((): boolean => {
     if (selectedNodeIds.length === 0) {
       return false;
@@ -4348,6 +4386,16 @@ export function FactoryFlow() {
     >
   >(new Map());
 
+  /**
+   * Cards in this drag that are already being carried by a FRAME in the
+   * same drag. React Flow moves every selected node and also moves a
+   * frame's children with the frame, so a card selected inside a selected
+   * board would travel twice as far as the hand. Their own position
+   * changes are dropped for the length of the drag; the frame carries
+   * them, and their stored frame-relative positions are already right.
+   */
+  const dragPassengersRef = useRef<Set<string>>(new Set());
+
   const handleNodeDragStart = useCallback((_: unknown, node: Node, draggedNodes: Node[]) => {
     // A drag is about to move geometry; the map under it would be a distraction
     // and the pointer never leaves the node, so nothing else would clear it.
@@ -4474,6 +4522,15 @@ export function FactoryFlow() {
         });
       }
       dragConstraintsRef.current = constraints;
+      // Held cards whose board is held too: the frame carries them, so
+      // their own drag deltas are dropped for the length of the drag.
+      const passengers = new Set<string>();
+      for (const id of held) {
+        if (ridesAlong(id)) {
+          passengers.add(id);
+        }
+      }
+      dragPassengersRef.current = passengers;
     }
     // A fresh drag's first cell change solves immediately; the throttle only
     // paces the changes after it.
@@ -4644,6 +4701,7 @@ export function FactoryFlow() {
 
       activelyDraggedNodeIds.clear();
       dragConstraintsRef.current = new Map();
+      dragPassengersRef.current = new Set();
       draggingNodeRef.current = false;
       // The drop's own publish below supersedes any trailing live-drag solve.
       window.clearTimeout(liveDragTrailingTimerRef.current);
@@ -5280,6 +5338,7 @@ export function FactoryFlow() {
       ) : null}
       <SelectionActionsBar
         selectionCount={selectedNodeIds.length}
+        canWrap={selectionCanWrap}
         onWrap={wrapSelectedBoardItems}
       />
       <SmartViewToolbar
@@ -5699,13 +5758,16 @@ function actionBarPosition(compact: boolean, second: boolean): string {
  */
 const SelectionActionsBar = memo(function SelectionActionsBar({
   selectionCount,
+  canWrap,
   onWrap,
 }: {
   selectionCount: number;
+  /** False when something selected is already on a board, or is one. */
+  canWrap: boolean;
   onWrap: () => boolean;
 }) {
   const isCompact = useIsCompactViewport();
-  if (selectionCount < 2) {
+  if (selectionCount < 2 || !canWrap) {
     return null;
   }
 

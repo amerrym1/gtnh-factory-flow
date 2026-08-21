@@ -388,6 +388,11 @@ interface FactoryStore {
    * them. Selected boards nest whole. Returns the new board id, or
    * undefined when the selection held nothing.
    */
+  /**
+   * Wrap a root selection in a new open board. Refused - and returns
+   * undefined - when anything selected already belongs to a board or IS
+   * one: nothing may sit in two boards at once.
+   */
   wrapSelectionInBoard: (ids: string[], name?: string) => string | undefined;
   /** Unwrap a board: members surface where they stand, the frame goes. */
   dissolvePocket: (pocketId: string) => void;
@@ -2172,6 +2177,21 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         memberAnnotations.length +
         memberPockets.length;
       if (memberCount === 0) {
+        return state;
+      }
+
+      // NOTHING IS IN TWO BOARDS AT ONCE. A card already living on a
+      // board cannot be wrapped in a second one, and a board cannot be
+      // wrapped either - that is nesting, which is its own decision and
+      // not one to make by accident from a marquee. The board refuses
+      // the gesture rather than building a frame whose members belong
+      // to somebody else.
+      const alreadyHoused =
+        memberPockets.length > 0 ||
+        memberNodes.some((node) => node.pocketId !== undefined) ||
+        memberStorages.some((storage) => storage.pocketId !== undefined) ||
+        memberAnnotations.some((annotation) => annotation.pocketId !== undefined);
+      if (alreadyHoused) {
         return state;
       }
 

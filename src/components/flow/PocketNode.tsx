@@ -14,7 +14,7 @@ import { isWiringConnection, wasRecentWireDrop } from "./connection-drag";
 import { useBoardView } from "./board-view";
 import { NodeGlanceText } from "./NodeGlance";
 import { type PocketCrossing, type PocketSummary } from "./pocket-summary";
-import { BOARD_EDGE, boardChrome, type BoardChrome } from "./BoardNode";
+import { BOARD_EDGE, boardChrome, SELECTION_RING, type BoardChrome } from "./BoardNode";
 
 export interface PocketNodeData extends Record<string, unknown> {
   pocket: FactoryPocket;
@@ -156,7 +156,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
       ].join(" ")}
       style={{
         width: POCKET_NODE_WIDTH,
-        outline: selected ? `2px solid ${chrome.grip}` : undefined,
+        outline: selected ? `2px solid ${SELECTION_RING}` : undefined,
         outlineOffset: selected ? 1 : undefined,
       }}
       onDoubleClick={(event) => {
