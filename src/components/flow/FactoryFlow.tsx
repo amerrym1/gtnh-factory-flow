@@ -6111,15 +6111,10 @@ const SetupRulesButton = memo(function SetupRulesButton() {
       </button>
       {open ? (
         <div className="absolute left-0 top-[calc(100%+6px)] z-30 flex w-[320px] flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
-          {/* The second line names the thing in game this is: once you have an
-              AE2 network holding everything, machines pull and push straight
-              into it and no slot is ever the reason anything stops. Players
-              recognise that state long before they would recognise a phrase
-              like "assumed boundary". */}
           <p className="px-1 pt-1 font-mono text-[11px] leading-snug text-[var(--mc-ink)] opacity-70">
             What the setup does when a slot cannot be supplied or emptied.
             <br />
-            Both on is an AE2 network holding everything.
+            Simulates more of an AE2 experience.
           </p>
           {choices.map((choice) => (
             <button
