@@ -98,8 +98,12 @@ export function sectionCells(left: number, right: number): number {
  * footer.
  */
 export function pocketCardHeight(lines: PocketCardLines): number {
-  const body =
-    sectionCells(lines.needs, lines.offers) + sectionCells(lines.incoming, lines.outgoing);
+  const balance = sectionCells(lines.needs, lines.offers);
+  const crossings = sectionCells(lines.incoming, lines.outgoing);
+  // A rule between the two, when there are two: they answer different
+  // questions and must not read as one long list.
+  const rule = balance > 0 && crossings > 0 ? 1 : 0;
+  const body = balance + rule + crossings;
   // A board with nothing to say still gets a line saying so.
   return BOARD_GRID * (2 + (body === 0 ? 2 : body) + 2);
 }

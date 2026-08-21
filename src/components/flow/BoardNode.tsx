@@ -88,7 +88,7 @@ export interface BoardNodeData extends Record<string, unknown> {
 
 export type BoardWindowFlowNode = Node<BoardNodeData, "boardNode">;
 
-interface BoardChrome {
+export interface BoardChrome {
   barBg: string;
   barBevelHi: string;
   barBevelLo: string;
@@ -149,7 +149,12 @@ function shadeHex(hex: string, amount: number): string {
  * tool still works on boards), and a board with neither is given a paper
  * from its id - boards have no default colour to fall back to.
  */
-function chromeFor(
+/**
+ * Exported because a MINIMIZED board wears the same clothes: folding a
+ * board must not turn it into a different-coloured object, and the paper
+ * is how you recognise which board it is.
+ */
+export function boardChrome(
   boardId: string,
   themeId: string | undefined,
   colorTag: FactoryNodeColorTag | undefined,
@@ -180,7 +185,7 @@ function chromeFor(
   if (!paint) {
     // A tag the palette no longer carries: the board still gets a paper,
     // because there is no house colour to fall back to.
-    return chromeFor(boardId, paperForBoardId(boardId), undefined);
+    return boardChrome(boardId, paperForBoardId(boardId), undefined);
   }
   const ink = isLightColor(paint.header) ? "#1b1d21" : "#ffffff";
   return {
@@ -213,7 +218,7 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
   const [draftName, setDraftName] = useState<string | undefined>(undefined);
   const [isPaletteOpen, setPaletteOpen] = useState(false);
   const isRenaming = draftName !== undefined && !calmMode;
-  const chrome = chromeFor(pocket.id, pocket.theme, pocket.colorTag);
+  const chrome = boardChrome(pocket.id, pocket.theme, pocket.colorTag);
   // What clearing the paper hands the board back to: a colour of its own,
   // picked from its id. There is no house colour under a board.
   const ownPaper = getCanvasTheme(paperForBoardId(pocket.id));
@@ -800,7 +805,7 @@ export function BoardFloor({
   width: number;
   height: number;
 }) {
-  const chrome = chromeFor(pocket.id, pocket.theme, pocket.colorTag);
+  const chrome = boardChrome(pocket.id, pocket.theme, pocket.colorTag);
   return (
     <div
       aria-hidden

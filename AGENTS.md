@@ -271,11 +271,15 @@ gh run watch <run-id> --exit-status
     erases exactly that line.
   - COMING IN / GOING OUT: what actually crosses the border on wires
     right now, one line per resource per direction with its wire count.
-  - Red for what goes in, green for what comes out, in both sections: a
-    faint ground behind each column and a centred title chip on it. NO
-    CAP and no "and N more" - a summary that hides half of itself is not
-    one - so the card grows a row per line and `sectionCells` charges for
-    every one of them.
+  - Only the BALANCE is painted: red ground under NEEDS, green under
+    MAKES, each with a centred title chip. The wire crossings are plain
+    paper - colouring them too made the card two stacks of the same two
+    colours saying different things. A ground ends with its own last
+    line (`items-start`), never running down past the taller column, and
+    a rule (one cell, charged for in `pocketCardHeight`) separates the
+    two sections. NO CAP and no "and N more" - a summary that hides half
+    of itself is not one - so the card grows a row per line and
+    `sectionCells` charges for every one of them.
   - The footer is what is inside: machines, cards, EU/t.
   - The card used to run a SCOPED solve over its members with the outside
     world unhooked and wear the result as input/output rails. It read like
@@ -400,9 +404,11 @@ gh run watch <run-id> --exit-status
   with no stored paper - every pocket made before papers existed - is drawn
   in `paperForBoardId`, hashed from its own id so it looks the same on
   every reload and needs no migration. The picker's clear button hands a
-  board back to that id colour rather than to a house one. The minimized
-  card is still the star-field purple, on purpose: it must never pass for a
-  machine card.
+  board back to that id colour rather than to a house one. The MINIMIZED
+  card wears the same paper (`boardChrome`, exported from BoardNode):
+  folding a board must not turn it into a different-coloured object, and
+  the paper is how you recognise which board it is. The house purple it
+  used to wear is gone from there too.
 - Only DARK papers are offered (`BOARD_PAPERS` filters the light canvas
   themes out, and `BOARD_PAPER_IDS` - which `ZONE_PAPERS` now is - lists
   the dark ids): a pale sheet under the

@@ -14,7 +14,7 @@ import { isWiringConnection, wasRecentWireDrop } from "./connection-drag";
 import { useBoardView } from "./board-view";
 import { NodeGlanceText } from "./NodeGlance";
 import { type PocketCrossing, type PocketSummary } from "./pocket-summary";
-import { GT_NODE_RAMPS } from "./node-colors";
+import { boardChrome, type BoardChrome } from "./BoardNode";
 
 export interface PocketNodeData extends Record<string, unknown> {
   pocket: FactoryPocket;
@@ -53,27 +53,39 @@ export const POCKET_NODE_WIDTH = RECIPE_NODE_WIDTH;
 export const POCKET_CARD_TARGET_HANDLE = "board-card-in";
 export const POCKET_CARD_SOURCE_HANDLE = "board-card-out";
 
-/** The purple ink pair: names in white, figures a step down. */
-const INK_MUTED = "text-[#c9b8ec]";
-
 /*
- * Red in, green out, faint enough to sit under icons and figures without
- * turning the card into a stack of colour. The chips are the same hue a
- * step up, so a title reads as a label on its list rather than as another
- * line of it.
+ * Red for what the board must be brought, green for what it has to give
+ * away: faint grounds with a title chip on each, the same pair the
+ * right-hand panel uses. Only the BALANCE wears them. What crosses the
+ * border is a plain accounting of wires - colouring it too made the card
+ * two stacks of the same two colours saying different things.
  */
 const IN_GROUND = "bg-red-500/18";
-const IN_CHIP = "bg-red-500/25 text-red-100";
+const IN_CHIP = "bg-red-500/30 text-red-50";
 const IN_TONE = "text-red-200";
 const OUT_GROUND = "bg-emerald-400/22";
 const OUT_CHIP = "bg-emerald-400/30 text-emerald-50";
 const OUT_TONE = "text-emerald-200";
+
+/** A head-row control, in the board's clothes. */
+function buttonStyle(chrome: BoardChrome): CSSProperties {
+  return {
+    borderColor: chrome.barBorder,
+    backgroundColor: chrome.nameBg,
+    color: chrome.ink,
+    boxShadow: `inset 2px 2px 0 ${chrome.barBevelHi}, inset -2px -2px 0 ${chrome.barBevelLo}`,
+  };
+}
 
 const INERT_HANDLE =
   "nodrag !pointer-events-none !h-0 !w-0 !min-h-0 !min-w-0 !border-0 !bg-transparent !opacity-0";
 
 function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
   const { pocket, summary } = data;
+  // A folded board is the SAME board: it wears the paper the window wore,
+  // so you can tell which one it is at a glance instead of meeting an
+  // anonymous purple card.
+  const chrome = boardChrome(pocket.id, pocket.theme, pocket.colorTag);
   const expandPocket = useFactoryStore((state) => state.expandPocket);
   const dissolvePocket = useFactoryStore((state) => state.dissolvePocket);
   const renamePocket = useFactoryStore((state) => state.renamePocket);
@@ -137,12 +149,16 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
     <div
       className={[
         "group relative font-mono text-white",
-        selected ? "ring-2 ring-purple-500" : "",
+
         // On the shell, exactly where a machine card wears it, so the outline
         // frames the whole board rather than its inner window.
         isResourceHighlighted ? "resource-glow" : "",
       ].join(" ")}
-      style={{ width: POCKET_NODE_WIDTH }}
+      style={{
+        width: POCKET_NODE_WIDTH,
+        outline: selected ? `2px solid ${chrome.grip}` : undefined,
+        outlineOffset: selected ? 1 : undefined,
+      }}
       onDoubleClick={(event) => {
         // The name field manages its own double-click, the buttons are their
         // own controls, and the mouseup that lands a wire must never read as
@@ -176,17 +192,25 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
           border would push the rows off the grid), painted star-field purple. */}
       <div
         data-node-glance-root=""
-        // Painted like a colour-tagged machine card: the purple ramp is
-        // declared here, so everything the card borrows arrives purple
-        // instead of board grey. The bright bevels and the head buttons are
-        // the board's own identity and stay hand-painted.
-        className="relative bg-[#3b2d52] shadow-[inset_0_0_0_2px_#241b33,inset_4px_4px_0_#5e4a85,inset_-4px_-4px_0_#1a1326]"
-        style={GT_NODE_RAMPS.purple as CSSProperties}
+        // The board's own paper, cut the same way the window cuts it: the
+        // floor colour with its grain, framed in the same line.
+        className="relative"
+        style={{
+          backgroundColor: chrome.floorColor,
+          backgroundImage: chrome.floorTexture,
+          boxShadow: `inset 0 0 0 2px ${chrome.barBorder}, inset 4px 4px 0 ${chrome.barBevelHi}, inset -4px -4px 0 ${chrome.barBevelLo}`,
+          color: chrome.ink,
+        }}
       >
         {/* Zoomed out, the card is a star on purple — a board, not a machine.
             Hovering opens the same reveal a machine card gives. */}
-        <NodeGlanceText text="✦" className={INK_MUTED} />
-        <PocketGlanceReveal name={pocket.name} incoming={incoming} outgoing={outgoing} />
+        <NodeGlanceText text="✦" accent={chrome.inkMuted} />
+        <PocketGlanceReveal
+          name={pocket.name}
+          chrome={chrome}
+          needs={needs}
+          offers={offers}
+        />
         <div className="px-2">
           {/* One head row, exactly two cells tall, like every machine card:
               delete/clone on the left like every card's edit chrome, the
@@ -209,7 +233,8 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                     event.stopPropagation();
                     deleteBoardSelection({ nodeIds: [pocket.id] });
                   }}
-                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-red-700"
+                  className="nodrag flex h-6 w-6 items-center justify-center border-2 hover:bg-red-700"
+                  style={buttonStyle(chrome)}
                   title="Delete this board (everything inside goes with it)"
                   aria-label={`Delete board ${pocket.name}`}
                 >
@@ -223,7 +248,8 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                     event.stopPropagation();
                     duplicatePocket();
                   }}
-                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
+                  className="nodrag flex h-6 w-6 items-center justify-center border-2 hover:brightness-125"
+                  style={buttonStyle(chrome)}
                   title="Clone this board (everything inside comes along)"
                   aria-label={`Clone board ${pocket.name}`}
                 >
@@ -233,7 +259,8 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
             ) : null}
             {!isRenaming ? (
               <div
-                className="minecraft-title flex h-6 min-w-0 items-center border-2 border-[#241b33] bg-[#5e4a85] px-2 text-[13px] leading-[18px] shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140]"
+                className="minecraft-title flex h-6 min-w-0 items-center border-2 px-2 text-[13px] leading-[18px]"
+                style={buttonStyle(chrome)}
                 title={
                   calmMode
                     ? `${pocket.name} (double-click the card to open the window)`
@@ -267,7 +294,12 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                   }
                   event.stopPropagation();
                 }}
-                className="nodrag h-6 min-w-0 border-2 border-[#8d6fd1] bg-[#241b33] px-1 text-[13px] leading-none text-white outline-none"
+                className="nodrag h-6 min-w-0 border-2 px-1 text-[13px] leading-none outline-none"
+                style={{
+                  borderColor: chrome.grip,
+                  backgroundColor: chrome.barBevelLo,
+                  color: chrome.ink,
+                }}
               />
             )}
             {!calmMode ? (
@@ -278,7 +310,8 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                     event.stopPropagation();
                     saveAsBlueprint();
                   }}
-                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
+                  className="nodrag flex h-6 w-6 items-center justify-center border-2 hover:brightness-125"
+                  style={buttonStyle(chrome)}
                   title={`Save "${pocket.name}" to my shelf (sign in required)`}
                   aria-label={`Save board ${pocket.name} to my shelf`}
                 >
@@ -290,7 +323,8 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                     event.stopPropagation();
                     dissolvePocket(pocket.id);
                   }}
-                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
+                  className="nodrag flex h-6 w-6 items-center justify-center border-2 hover:brightness-125"
+                  style={buttonStyle(chrome)}
                   title="Dump this board: the frame goes, the cards come back where they were"
                   aria-label={`Dump board ${pocket.name}`}
                 >
@@ -302,7 +336,8 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                     event.stopPropagation();
                     expandPocket(pocket.id);
                   }}
-                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
+                  className="nodrag flex h-6 w-6 items-center justify-center border-2 hover:brightness-125"
+                  style={buttonStyle(chrome)}
                   title="Open the window (or double-click the card)"
                   aria-label={`Open board ${pocket.name}`}
                 >
@@ -320,7 +355,8 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
               grab, nothing to drop a wire on. */}
           {!hasNeeds && !hasCrossings ? (
             <div
-              className={`flex h-[80px] items-center justify-center text-center text-[11px] leading-4 ${INK_MUTED}`}
+              className="flex h-[80px] items-center justify-center text-center text-[11px] leading-4"
+              style={{ color: chrome.inkMuted }}
             >
               Nothing goes in or out.
               <br />
@@ -328,19 +364,37 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
             </div>
           ) : (
             <>
-              <CardSection leftLabel="NEEDS" rightLabel="MAKES" left={needs} right={offers} />
+              <CardSection
+                leftLabel="NEEDS"
+                rightLabel="MAKES"
+                left={needs}
+                right={offers}
+                painted
+                chrome={chrome}
+              />
+              {hasNeeds && hasCrossings ? (
+                <div className="flex h-[20px] items-center">
+                  <span
+                    aria-hidden
+                    className="h-px w-full"
+                    style={{ backgroundColor: chrome.frameLine }}
+                  />
+                </div>
+              ) : null}
               <CardSection
                 leftLabel="COMING IN"
                 rightLabel="GOING OUT"
                 left={incoming}
                 right={outgoing}
+                chrome={chrome}
               />
             </>
           )}
 
           {/* What is inside, in one line. */}
           <div
-            className={`flex h-[40px] min-w-0 items-center justify-center gap-2 border-t border-[#5e4a85] text-[11px] leading-4 ${INK_MUTED}`}
+            className="flex h-[40px] min-w-0 items-center justify-center gap-2 border-t text-[11px] leading-4"
+            style={{ borderColor: chrome.frameLine, color: chrome.inkMuted }}
           >
             <span className="truncate">
               {summary
@@ -375,42 +429,55 @@ function CardSection({
   rightLabel,
   left,
   right,
+  painted,
+  chrome,
 }: {
   leftLabel: string;
   rightLabel: string;
   left: PocketCrossing[];
   right: PocketCrossing[];
+  /** The balance wears red and green; the wire crossings do not. */
+  painted?: boolean;
+  chrome: BoardChrome;
 }) {
   if (left.length === 0 && right.length === 0) {
     return null;
   }
   return (
-    <div className="grid grid-cols-2 gap-1">
+    <div className="grid grid-cols-2 items-start gap-1">
       <SectionColumn
         label={leftLabel}
         lines={left}
         side="in"
-        ground={IN_GROUND}
-        chip={IN_CHIP}
-        tone={IN_TONE}
+        chrome={chrome}
+        ground={painted ? IN_GROUND : undefined}
+        chip={painted ? IN_CHIP : undefined}
+        tone={painted ? IN_TONE : undefined}
       />
       <SectionColumn
         label={rightLabel}
         lines={right}
         side="out"
-        ground={OUT_GROUND}
-        chip={OUT_CHIP}
-        tone={OUT_TONE}
+        chrome={chrome}
+        ground={painted ? OUT_GROUND : undefined}
+        chip={painted ? OUT_CHIP : undefined}
+        tone={painted ? OUT_TONE : undefined}
       />
     </div>
   );
 }
 
-/** One half of a section: a centred title chip on a faint ground. */
+/**
+ * One half of a section: a centred title chip over its own list. Painted
+ * halves get a faint ground, which ends with the last line - a ground that
+ * ran to the bottom of the taller column would draw a coloured box around
+ * nothing.
+ */
 function SectionColumn({
   label,
   lines,
   side,
+  chrome,
   ground,
   chip,
   tone,
@@ -418,24 +485,32 @@ function SectionColumn({
   label: string;
   lines: PocketCrossing[];
   side: "in" | "out";
-  ground: string;
-  chip: string;
-  tone: string;
+  chrome: BoardChrome;
+  ground?: string;
+  chip?: string;
+  tone?: string;
 }) {
   if (lines.length === 0) {
     return <div />;
   }
   return (
-    <div className={`flex min-w-0 flex-col ${ground}`}>
+    <div className={`flex min-w-0 flex-col ${ground ?? ""}`}>
       <div className="flex h-[20px] items-center justify-center">
         <span
-          className={`px-1.5 text-[10px] font-bold leading-[14px] tracking-wide ${chip}`}
+          className={`px-1.5 text-[10px] font-bold leading-[14px] tracking-wide ${chip ?? ""}`}
+          style={chip ? undefined : { backgroundColor: chrome.nameBg, color: chrome.ink }}
         >
           {label}
         </span>
       </div>
       {lines.map((line) => (
-        <CrossingRow key={line.key} crossing={line} side={side} tone={tone} />
+        <CrossingRow
+          key={line.key}
+          crossing={line}
+          side={side}
+          tone={tone}
+          chrome={chrome}
+        />
       ))}
     </div>
   );
@@ -450,10 +525,12 @@ function CrossingRow({
   crossing,
   side,
   tone,
+  chrome,
 }: {
   crossing: PocketCrossing;
   side: "in" | "out";
-  tone: string;
+  tone?: string;
+  chrome: BoardChrome;
 }) {
   const rate = formatSlotRateOrNull(crossing.ratePerSecond, crossing.kind);
   const icon = (
@@ -476,10 +553,16 @@ function CrossingRow({
   );
   const text = (
     <span className={`flex min-w-0 flex-1 flex-col ${side === "out" ? "text-right" : ""}`}>
-      <span className="truncate text-[11px] font-bold leading-[14px] text-white">
+      <span
+        className="truncate text-[11px] font-bold leading-[14px]"
+        style={{ color: chrome.ink }}
+      >
         {crossing.displayName ?? crossing.resourceId}
       </span>
-      <span className={`truncate text-[10px] leading-[12px] tabular-nums ${tone}`}>
+      <span
+        className={`truncate text-[10px] leading-[12px] tabular-nums ${tone ?? ""}`}
+        style={tone ? undefined : { color: chrome.inkMuted }}
+      >
         {rate ?? "0/s"}
         {crossing.wireCount > 1 ? ` · ${crossing.wireCount} wires` : ""}
       </span>
@@ -523,12 +606,14 @@ export const PocketNode = memo(
  */
 function PocketGlanceReveal({
   name,
-  incoming,
-  outgoing,
+  chrome,
+  needs,
+  offers,
 }: {
   name: string;
-  incoming: PocketCrossing[];
-  outgoing: PocketCrossing[];
+  chrome: BoardChrome;
+  needs: PocketCrossing[];
+  offers: PocketCrossing[];
 }) {
   return (
     <div
@@ -536,31 +621,43 @@ function PocketGlanceReveal({
       aria-hidden
       className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
     >
-      <span className="glance-io absolute left-1/2 top-full z-30 w-[560px] origin-top flex-col gap-2 border-2 border-[#241b33] bg-[#3b2d52] p-3 font-mono text-white shadow-[8px_8px_0_rgba(0,0,0,0.55)]">
-        <span className="minecraft-title flex h-8 min-w-0 items-center border-2 border-[#241b33] bg-[#5e4a85] px-2 text-[16px] leading-[22px] shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140]">
+      <span
+        className="glance-io absolute left-1/2 top-full z-30 w-[560px] origin-top flex-col gap-2 border-2 p-3 font-mono shadow-[8px_8px_0_rgba(0,0,0,0.55)]"
+        style={{
+          borderColor: chrome.barBorder,
+          backgroundColor: chrome.floorColor,
+          backgroundImage: chrome.floorTexture,
+          color: chrome.ink,
+        }}
+      >
+        <span
+          className="minecraft-title flex h-8 min-w-0 items-center border-2 px-2 text-[16px] leading-[22px]"
+          style={buttonStyle(chrome)}
+        >
           <span className="mx-auto min-w-0 truncate">✦ {name}</span>
         </span>
-        {incoming.length > 0 || outgoing.length > 0 ? (
+        {needs.length > 0 || offers.length > 0 ? (
           <span className="grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] items-start gap-x-1">
             <span className="flex min-w-0 flex-col gap-1">
-              {incoming.map((crossing) => (
-                <PocketGlanceIoRow key={crossing.key} crossing={crossing} />
+              {needs.map((line) => (
+                <PocketGlanceIoRow key={line.key} crossing={line} tone={IN_TONE} />
               ))}
             </span>
             <span
-              className={`flex items-start justify-center pt-2 text-[20px] font-black leading-6 ${INK_MUTED}`}
+              className="flex items-start justify-center pt-2 text-[20px] font-black leading-6"
+              style={{ color: chrome.inkMuted }}
             >
               →
             </span>
             <span className="flex min-w-0 flex-col gap-1">
-              {outgoing.map((crossing) => (
-                <PocketGlanceIoRow key={crossing.key} crossing={crossing} />
+              {offers.map((line) => (
+                <PocketGlanceIoRow key={line.key} crossing={line} tone={OUT_TONE} />
               ))}
             </span>
           </span>
         ) : (
-          <span className={`text-center text-[13px] ${INK_MUTED}`}>
-            Nothing crosses the border.
+          <span className="text-center text-[13px]" style={{ color: chrome.inkMuted }}>
+            Nothing goes in or out.
           </span>
         )}
       </span>
@@ -569,7 +666,13 @@ function PocketGlanceReveal({
 }
 
 /** One line of the reveal, in the board's own clothes. */
-function PocketGlanceIoRow({ crossing }: { crossing: PocketCrossing }) {
+function PocketGlanceIoRow({
+  crossing,
+  tone,
+}: {
+  crossing: PocketCrossing;
+  tone: string;
+}) {
   const rate = formatSlotRateOrNull(crossing.ratePerSecond, crossing.kind);
   return (
     <span className="pocket-port flex items-center gap-1.5 px-1 py-0.5">
@@ -590,11 +693,11 @@ function PocketGlanceIoRow({ crossing }: { crossing: PocketCrossing }) {
         />
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-[14px] font-bold leading-[17px] text-white">
+        <span className="truncate text-[14px] font-bold leading-[17px]">
           {crossing.displayName ?? crossing.resourceId}
         </span>
         {rate ? (
-          <span className={`truncate text-[13px] leading-4 tabular-nums ${INK_MUTED}`}>{rate}</span>
+          <span className={`truncate text-[13px] leading-4 tabular-nums ${tone}`}>{rate}</span>
         ) : null}
       </span>
     </span>
