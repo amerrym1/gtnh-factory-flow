@@ -357,6 +357,13 @@ interface FactoryStore {
     removeAnnotationIds?: string[];
     /** Frames refitted around freshly arranged members; same undo entry. */
     setBoardSizes?: Array<{ id: string; size: { width: number; height: number } }>;
+    /**
+     * Zones the arrange built: fully-formed new boards. Their positions and
+     * sizes ride the `moves`/`setBoardSizes` lists like any board's.
+     */
+    addBoards?: FactoryPocket[];
+    /** Cards the arrange moved INTO a zone; positions ride `moves`. */
+    setOwners?: Array<{ id: string; pocketId: string }>;
   }) => void;
   /**
    * Delete a whole selection as a single undo entry. `nodeIds` may hold any
@@ -1799,29 +1806,44 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
     addAnnotations,
     removeAnnotationIds,
     setBoardSizes,
+    addBoards,
+    setOwners,
   }) => {
     set((state) => {
       const positionById = new Map(moves.map((move) => [move.id, move.position] as const));
       const boardSizeById = new Map(
         (setBoardSizes ?? []).map((entry) => [entry.id, entry.size] as const),
       );
+      const ownerById = new Map((setOwners ?? []).map((entry) => [entry.id, entry.pocketId]));
       let changed = false;
-      const applyMoves = <T extends { id: string; position: { x: number; y: number } }>(
+      const applyMoves = <
+        T extends { id: string; position: { x: number; y: number }; pocketId?: string },
+      >(
         items: T[],
       ): T[] =>
         items.map((item) => {
           const position = positionById.get(item.id);
-          if (!position || (position.x === item.position.x && position.y === item.position.y)) {
+          const nextOwner = ownerById.get(item.id) ?? item.pocketId;
+          const samePosition =
+            !position || (position.x === item.position.x && position.y === item.position.y);
+          if (samePosition && nextOwner === item.pocketId) {
             return item;
           }
           changed = true;
-          return { ...item, position };
+          return { ...item, position: position ?? item.position, pocketId: nextOwner };
         });
 
       const nodes = applyMoves(state.project.nodes);
       const storages = state.project.storages ? applyMoves(state.project.storages) : undefined;
-      const pockets = state.project.pockets
-        ? state.project.pockets.map((pocket) => {
+      if (addBoards && addBoards.length > 0) {
+        changed = true;
+      }
+      const combinedPockets =
+        addBoards && addBoards.length > 0
+          ? [...(state.project.pockets ?? []), ...addBoards]
+          : state.project.pockets;
+      const pockets = combinedPockets
+        ? combinedPockets.map((pocket) => {
             const position = positionById.get(pocket.id);
             const size = boardSizeById.get(pocket.id);
             const samePosition =

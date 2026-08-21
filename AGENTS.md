@@ -289,15 +289,21 @@ gh run watch <run-id> --exit-status
 - Opening a legacy pocket (`size` absent - the "coordinates are their own
   old space" signal) rebases members to fit the frame and drops waypoints
   on wires touching them; minimize mirrors the waypoint rule.
-- Auto-arrange is board-aware, two kinds of pass in `computeAutoArrangement`:
-  every OPEN board first arranges its own members inside its frame (deepest
-  board first, in frame space, origin one cell under the title bar) and the
-  frame REFITS around the result (`setBoardSizes` on
-  `applyBoardArrangement`); then the root arranges with every board as one
-  meta card at its fresh size, wire length between blocks doing the
-  placing. Interior passes draw no island backdrops and pin no waypoints
-  (stored waypoints are flow-space); ink on every arranged level is
-  cleared, island boxes come back at the root only.
+- Auto-arrange BUILDS ZONES and draws no ink (`computeAutoArrangement`).
+  Phase 0 scouts the root with a throwaway arrange: each natural island of
+  loose cards becomes a real open board ("Zone N", `addBoards`/`setOwners`
+  on `applyBoardArrangement`, one undo entry with everything else); a
+  cluster wired around exactly ONE open board joins that board instead;
+  islands that are all boards stay as they are, which is what keeps re-runs
+  from nesting anything. Shelf strays and interchange buffers (the
+  arranger's `backdrop: false` islands) stay loose between zones. Then the
+  layout passes: every open board arranges its own members inside its
+  frame (deepest first, in frame space, origin one cell under the title
+  bar) and the frame REFITS around the result (`setBoardSizes`); the root
+  then arranges with every board as one meta card at its fresh size, wire
+  length between blocks doing the placing. Interior passes pin no
+  waypoints (stored waypoints are flow-space); ink on every arranged level
+  is cleared and nothing replaces it - the zones are the grouping.
 - A board's floor is paintable: `pocket.colorTag` (the paint tool works on
   the open frame and the minimized card) recolours the wash, frame line and
   title bar via `chromeFor` in BoardNode.tsx. The resize grip's floor is
