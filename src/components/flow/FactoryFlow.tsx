@@ -6042,30 +6042,6 @@ const SourceToolbar = memo(function SourceToolbar({
   const addTrashNode = useFactoryStore((state) => state.addTrashNode);
   const addCustomRateNode = useFactoryStore((state) => state.addCustomRateNode);
   const boardView = useBoardView();
-  const [arrangeOpen, setArrangeOpen] = useState(false);
-  // A pop-over, not a mode: clicking anywhere off it (or Escape) puts it away.
-  const arrangeRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!arrangeOpen) {
-      return;
-    }
-    const onPointerDown = (event: PointerEvent) => {
-      if (!arrangeRef.current?.contains(event.target as Element | null)) {
-        setArrangeOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setArrangeOpen(false);
-      }
-    };
-    window.addEventListener("pointerdown", onPointerDown, true);
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown, true);
-      window.removeEventListener("keydown", onKeyDown, true);
-    };
-  }, [arrangeOpen]);
   const rateUnit = useFactoryStore((state) => state.rateUnit);
   const setRateUnit = useFactoryStore((state) => state.setRateUnit);
   const assumeBoundaries = useFactoryStore((state) => Boolean(state.project.assumeBoundaries));
@@ -6087,10 +6063,7 @@ const SourceToolbar = memo(function SourceToolbar({
       data-board-toolbar
       data-help-anchor="build"
       className={[
-        "nodrag pointer-events-none absolute left-3 flex items-start gap-2",
-        // Lifted while the arrange panel is out so no later toolbar paints
-        // over it - the same trap the theme picker once fell into.
-        arrangeOpen ? "z-40" : "z-20",
+        "nodrag pointer-events-none absolute left-3 flex items-start gap-2 z-20",
         // Inside a pocket the breadcrumb takes the top line and every trigger row
         // steps down to make room; its fold-out follows, since that is positioned
         // against this root.
@@ -6198,74 +6171,21 @@ const SourceToolbar = memo(function SourceToolbar({
           <Gauge className="h-4 w-4" />
         </button>
       </ToolTray>
-      {/* The tidy-up: the button opens the arrange settings pop-over, and
-          the panel's own button does the arranging. Every dial is
-          remembered; clicking anywhere off the panel puts it away. */}
+      {/* The tidy-up, one click. It used to open a pop-over holding a
+          single dial - the paper the arrange drew its island backdrops on
+          - and the arrange stopped drawing backdrops when it started
+          building boards, each of which picks its own paper. A menu with
+          nothing in it is worse than no menu. */}
       <ToolTray>
-        <div ref={arrangeRef} className="relative">
         <button
           type="button"
-          onClick={() => setArrangeOpen((open) => !open)}
-          className={[
-            "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
-            arrangeOpen ? TOOL_FACE_ON : TOOL_FACE_OFF,
-          ].join(" ")}
-          title="Auto-arrange: choose how the board is laid out, then arrange it"
-          aria-label="Auto-arrange settings"
-          aria-pressed={arrangeOpen}
+          onClick={onAutoArrange}
+          className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+          title="Auto-arrange: lay every card out by what feeds what, and put each part of the factory on its own board. Undo puts the old layout back"
+          aria-label="Auto-arrange the board"
         >
           <Network className="h-4 w-4" />
         </button>
-        <div
-          className={[
-            "absolute left-0 top-full mt-2 w-[264px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-2 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
-            arrangeOpen
-              ? "pointer-events-auto translate-y-0 opacity-100"
-              : "pointer-events-none -translate-y-1 opacity-0",
-          ].join(" ")}
-        >
-          <div className="mb-1 text-[11px] font-black tracking-wide text-[var(--mc-ink)]">
-            Auto layout
-          </div>
-          <div className="py-1" title="The paper each island's background is drawn on">
-            <div className="mb-1 text-[11px] font-bold text-[var(--mc-ink)]">
-              Island background
-            </div>
-            <div className="grid grid-cols-5 gap-1">
-              {CANVAS_THEMES.map((theme) => (
-                <button
-                  key={theme.id}
-                  type="button"
-                  onClick={() => writeBoardView({ autoArrangeInkTheme: theme.id })}
-                  className={[
-                    "flex items-center justify-center border-2 p-0.5",
-                    boardView.autoArrangeInkTheme === theme.id
-                      ? "border-white ring-1 ring-cyan-300"
-                      : "border-[var(--mc-15)]",
-                  ].join(" ")}
-                  title={theme.name}
-                  aria-label={`Island background: ${theme.name}`}
-                  aria-pressed={boardView.autoArrangeInkTheme === theme.id}
-                >
-                  <ThemeSwatch theme={theme} />
-                </button>
-              ))}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setArrangeOpen(false);
-              onAutoArrange();
-            }}
-            className="mt-2 w-full border-2 border-[var(--mc-15)] bg-cyan-700 py-2 font-mono text-[13px] font-black text-white shadow-[inset_2px_2px_0_rgba(255,255,255,0.25),inset_-2px_-2px_0_rgba(0,0,0,0.4)] hover:brightness-110"
-            title="Lay every card out left to right by what feeds what. Undo puts the old layout back"
-            aria-label="Auto-arrange the board"
-          >
-            Arrange the board
-          </button>
-        </div>
-        </div>
       </ToolTray>
       </ToolGroup>
     </div>
