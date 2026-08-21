@@ -99,10 +99,7 @@ import {
 import {
   collectPocketMembers,
   getEffectiveNodeRecipe,
-  getPocketResourceForHandle,
   isPocketId,
-  listPocketPortResources,
-  resolvePocketMemberIds,
 } from "@/lib/model/pocket-connections";
 import type {
   EdgeThroughput,
@@ -292,7 +289,12 @@ import {
 } from "./edge-pulse";
 import { StorageNode, type StorageFlowNode } from "./StorageNode";
 import { TrashNode, type TrashFlowNode } from "./TrashNode";
-import { PocketNode, type PocketFlowNode } from "./PocketNode";
+import {
+  POCKET_CARD_SOURCE_HANDLE,
+  POCKET_CARD_TARGET_HANDLE,
+  PocketNode,
+  type PocketFlowNode,
+} from "./PocketNode";
 import {
   BOARD_DRAG_HANDLE_CLASS,
   BOARD_EDGE,
@@ -310,9 +312,9 @@ import {
   pickBoardOwnerFor,
 } from "@/lib/model/board-windows";
 import {
-  buildPocketRailPorts,
   computePocketSummaries,
-  resolvePocketPortHandleId,
+  countPocketCrossings,
+  pocketCardHeight,
 } from "./pocket-summary";
 import {
   ANNOTATION_DRAG_HANDLE_CLASS,
@@ -1627,27 +1629,15 @@ export function FactoryFlow() {
     };
   }, [project]);
 
-  // Scoped solves are small (a pocket's members only) and run once per
-  // project commit, not per hover — see pocket-summary.ts.
+  // What each minimized board says about itself: what is inside, and what
+  // crosses its border. Read straight out of the plan-wide solve - a
+  // minimized board has no books of its own (see pocket-summary.ts) - and
+  // built here rather than in the card so an unrelated store write cannot
+  // make every card redo it.
   const pocketSummaries = useMemo(
-    () => computePocketSummaries(project, pocketView.visiblePockets),
-    [project, pocketView.visiblePockets],
+    () => computePocketSummaries(project, pocketView.visiblePockets, result),
+    [project, result, pocketView.visiblePockets],
   );
-
-  // The rails a pocket card wears. Built here rather than inside the card for
-  // the same reason the summaries are: this reads the whole plan's solve, and
-  // a card that derived it per render would redo it on every unrelated store
-  // write. Keyed off the result too, so the bars follow the live numbers.
-  const pocketRails = useMemo(() => {
-    const rails = new Map<string, ReturnType<typeof buildPocketRailPorts>>();
-    for (const pocket of pocketView.visiblePockets) {
-      const summary = pocketSummaries.get(pocket.id);
-      if (summary) {
-        rails.set(pocket.id, buildPocketRailPorts(project, result, pocket.id, summary));
-      }
-    }
-    return rails;
-  }, [project, result, pocketSummaries, pocketView.visiblePockets]);
 
   const nodesFromProject = useMemo<BoardFlowNode[]>(() => {
     // An item inside an open board is a React Flow CHILD of the frame: its
@@ -1819,7 +1809,6 @@ export function FactoryFlow() {
             data: reuseObjectIdentity(pocketNodeDataCache, pocket.id, {
               pocket,
               summary: pocketSummaries.get(pocket.id),
-              railPorts: pocketRails.get(pocket.id),
             }),
           }) satisfies PocketFlowNode,
       ),
@@ -1828,7 +1817,6 @@ export function FactoryFlow() {
     activeFlowResourceKey,
     activeNodeBottlenecks,
     hoveredUsageNodeId,
-    pocketRails,
     pocketSummaries,
     pocketView,
     project.annotations,
@@ -2649,12 +2637,13 @@ export function FactoryFlow() {
       }
     }
 
-    // Collapsed-pocket channels. Convergence keeps several flat wires
-    // crossing one boundary with the same resource (a maker feeding both
-    // melters inside a pocket is TWO real edges), but the collapsed card
-    // advertises one channel per resource — so the view draws ONE wire per
-    // (visible far end, pocket, resource, ports) group: the first flat edge
-    // is the representative, the rest are skipped, the rates are summed.
+    // Minimized-board channels. Several flat wires can cross one border
+    // carrying the same resource (a maker feeding both melters inside a
+    // board is TWO real edges), and the card is a summary with one line per
+    // resource — so the view draws ONE wire per (visible far end, board,
+    // resource) group: the first flat edge is the representative, the rest
+    // are skipped, the rates are summed. Handles play no part: a minimized
+    // board has no ports to tell its wires apart by.
     const channelKeyFor = (
       edge: FactoryEdge,
       sourceRep: string,
@@ -2667,14 +2656,8 @@ export function FactoryFlow() {
         targetRep,
         edge.resourceKind,
         edge.resourceId,
-        (sourceIsPocket
-          ? (canonicalizeResourceHandleId(edge.sourceHandle) ??
-            makeResourceHandleId("output", { kind: edge.resourceKind, id: edge.resourceId }))
-          : canonicalizeResourceHandleId(edge.sourceHandle)) ?? "",
-        (targetIsPocket
-          ? (canonicalizeResourceHandleId(edge.targetHandle) ??
-            makeResourceHandleId("input", { kind: edge.resourceKind, id: edge.resourceId }))
-          : canonicalizeResourceHandleId(edge.targetHandle)) ?? "",
+        sourceIsPocket ? "" : (canonicalizeResourceHandleId(edge.sourceHandle) ?? ""),
+        targetIsPocket ? "" : (canonicalizeResourceHandleId(edge.targetHandle) ?? ""),
       ].join("|");
 
     channelEdgeIdsByRepresentative.clear();
@@ -2807,33 +2790,15 @@ export function FactoryFlow() {
       // Rails render one canonical (index-less) handle per resource; stored
       // edges may carry legacy per-slot ids. Collapse them here or React Flow
       // refuses to draw the edge and the anchor lookup misses the port.
-      // A pocket end docks on the card's canonical port for this wire. The
-      // stored handle names the exact port (an oredict input keeps its
-      // oredict id even when the wire carries a concrete log); edges of
-      // older vintage carry no handle and fall back to the wire's resource.
-      // pocket-summary derives its port rows the SAME way, which is what
-      // guarantees every crossing wire has a rendered port to dock on.
-      // The card merges compatible forms into one row, so the stored handle
-      // is not always a port that got drawn: a wire carrying concrete carbon
-      // dust docks on the oredict row that survived. Ask the summary which
-      // row this wire belongs to, and only fall back to the stored handle
-      // when it has no opinion — otherwise the wire anchors to a port that
-      // was never rendered and disappears.
+      // A MINIMIZED BOARD has no ports at all: the wire ends at the card and
+      // docks wherever the route is cheapest, exactly as it would on a
+      // drawer. Its handles are inert anchors that exist only because React
+      // Flow will not draw an edge without one.
       const canonicalSourceHandle = sourceIsPocket
-        ? (resolvePocketPortHandleId(project, pocketSummaries.get(sourceRep), sourceRep, "output", {
-            kind: sourceHandle?.kind ?? edge.resourceKind,
-            id: sourceHandle?.resourceId ?? edge.resourceId,
-          }) ??
-          canonicalizeResourceHandleId(edge.sourceHandle) ??
-          makeResourceHandleId("output", { kind: edge.resourceKind, id: edge.resourceId }))
+        ? POCKET_CARD_SOURCE_HANDLE
         : canonicalizeResourceHandleId(edge.sourceHandle);
       const canonicalTargetHandle = targetIsPocket
-        ? (resolvePocketPortHandleId(project, pocketSummaries.get(targetRep), targetRep, "input", {
-            kind: targetHandle?.kind ?? edge.resourceKind,
-            id: targetHandle?.resourceId ?? edge.resourceId,
-          }) ??
-          canonicalizeResourceHandleId(edge.targetHandle) ??
-          makeResourceHandleId("input", { kind: edge.resourceKind, id: edge.resourceId }))
+        ? POCKET_CARD_TARGET_HANDLE
         : canonicalizeResourceHandleId(edge.targetHandle);
       const isSearchEdgeActive = edgeMatchesSearch(edge, resource, recipeSearch);
       // A drawer's own wires thicken when the search names them. Hovering the
@@ -2881,12 +2846,13 @@ export function FactoryFlow() {
         targetHandleId:
           canonicalTargetHandle ??
           makeResourceHandleId("input", { kind: edge.resourceKind, id: edge.resourceId }),
-        // A pocket card's port is a slot endpoint like a machine rail's,
-        // whatever the hidden endpoint inside really is.
-        sourceSlotEndpoint: sourceIsPocket || !sourceStorage,
-        targetSlotEndpoint: targetIsPocket || (!targetStorage && !targetIsTrashCan),
-        sourceStorageEndpoint: !sourceIsPocket && Boolean(sourceStorage),
-        targetStorageEndpoint: !targetIsPocket && Boolean(targetStorage || targetIsTrashCan),
+        // A minimized board is an any-side card like a drawer: the wire
+        // reaches the summary, and the summary has no rows to aim at.
+        sourceSlotEndpoint: !sourceIsPocket && !sourceStorage,
+        targetSlotEndpoint: !targetIsPocket && !targetStorage && !targetIsTrashCan,
+        sourceStorageEndpoint: sourceIsPocket || Boolean(sourceStorage),
+        targetStorageEndpoint:
+          targetIsPocket || Boolean(targetStorage || targetIsTrashCan),
         // The published stroke width IS the routing width: it never carries
         // hover/highlight bumps, so a hover can never trigger a re-solve.
         routingWidth: publishedEdgeStrokeWidths.get(edge.id) ?? DEFAULT_EDGE_STROKE_WIDTH,
@@ -3058,42 +3024,15 @@ export function FactoryFlow() {
         targetHandle?: string;
       },
     ) => {
-      // A pocket card is a view: the flat graph only holds member edges, so
-      // an end that names a pocket fans out to EVERY member exposing that
-      // exact resource on that side — two redstone drinkers inside means two
-      // wires, landed together as one undo entry.
-      const sourceIsPocket = isPocketId(project, sourceNodeId);
-      const targetIsPocket = isPocketId(project, targetNodeId);
-      if ((sourceIsPocket || targetIsPocket) && !resource) {
-        // A bare node-to-node connect names no resource to fan out on.
+      // A minimized board is a summary, not a card you can wire: it has no
+      // ports, and guessing which machine inside a wire meant is exactly the
+      // cleverness that made the old card wrong. Open the window and wire the
+      // machine you mean.
+      if (isPocketId(project, sourceNodeId) || isPocketId(project, targetNodeId)) {
         return;
       }
-      const sourceIdentity = resource
-        ? (parseResourceHandleId(resource.sourceHandle) ?? {
-            kind: resource.kind,
-            resourceId: resource.id,
-          })
-        : undefined;
-      const targetIdentity = resource
-        ? (parseResourceHandleId(resource.targetHandle) ?? {
-            kind: resource.kind,
-            resourceId: resource.id,
-          })
-        : undefined;
-      const sourceIds =
-        sourceIsPocket && sourceIdentity
-          ? resolvePocketMemberIds(project, sourceNodeId, "output", {
-              kind: sourceIdentity.kind,
-              id: sourceIdentity.resourceId,
-            })
-          : [sourceNodeId];
-      const targetIds =
-        targetIsPocket && targetIdentity
-          ? resolvePocketMemberIds(project, targetNodeId, "input", {
-              kind: targetIdentity.kind,
-              id: targetIdentity.resourceId,
-            })
-          : [targetNodeId];
+      const sourceIds = [sourceNodeId];
+      const targetIds = [targetNodeId];
 
       const pairs: Array<{
         sourceNodeId: string;
@@ -3102,10 +3041,8 @@ export function FactoryFlow() {
       }> = [];
       for (const source of sourceIds) {
         for (const target of targetIds) {
-          // A pocket fan-out can land both ends on one member — that pair is
-          // an artefact of the expansion, not a wire anybody asked for. A self
-          // pair the user actually aimed (the same card named on both ends) is
-          // a real loop and has to survive.
+          // A self pair the user actually aimed (the same card named on both
+          // ends) is a real loop and has to survive.
           if (source === target && sourceNodeId !== targetNodeId) {
             continue;
           }
@@ -3522,17 +3459,12 @@ export function FactoryFlow() {
         return;
       }
 
-      // Dragging out of a pocket port: the one new drawer buffers every
-      // member behind the port, not the pocket card (which is no node).
-      const storageAnchorIds = isPocketId(project, draggedResource.nodeId)
-        ? resolvePocketMemberIds(project, draggedResource.nodeId, draggedResource.side, {
-            kind: draggedResource.kind,
-            id: draggedResource.id,
-          })
-        : draggedResource.nodeId;
-      if (Array.isArray(storageAnchorIds) && storageAnchorIds.length === 0) {
+      // A minimized board has no ports, so no drag can start on one and
+      // nothing can be spawned off it.
+      if (isPocketId(project, draggedResource.nodeId)) {
         return;
       }
+      const storageAnchorIds = draggedResource.nodeId;
 
       // A drag off a DRAWER into space always answers with a SOURCE feeding
       // it, whichever half the drag left from. A drawer already catches its
@@ -9629,12 +9561,11 @@ function computeAutoArrangement(
     };
 
     const minimizedCardSize = (pocketId: string) => {
-      const rows = Math.max(
-        1,
-        listPocketPortResources(project, pocketId, "input").length,
-        listPocketPortResources(project, pocketId, "output").length,
-      );
-      return { width: RECIPE_NODE_WIDTH, height: cells(4) + cells(2) * rows + cells(2) };
+      const crossings = countPocketCrossings(project, pocketId);
+      return {
+        width: RECIPE_NODE_WIDTH,
+        height: pocketCardHeight(crossings.incoming, crossings.outgoing),
+      };
     };
 
     const gatherLevel = (level: string | undefined) => {
@@ -10739,20 +10670,10 @@ function findNodeDropTargetOnSide(
     return accepts(held) ? port(held) : undefined;
   }
 
-  // The whole pocket card is the port, same as a machine card: if any member
-  // inside takes the resource, the drop lands on that resource's pocket port
-  // and fans out to every member behind it.
+  // A minimized board takes no wires at all: it is a summary of a factory
+  // you have to open before you can change it.
   if (isPocketId(project, nodeId)) {
-    if (
-      draggedResource.id === TRASH_ANY_RESOURCE_ID ||
-      draggedResource.id === CUSTOM_RATE_ANY_RESOURCE_ID
-    ) {
-      return undefined;
-    }
-    const match = listPocketPortResources(project, nodeId, side).find((candidate) =>
-      accepts(candidate),
-    );
-    return match ? port(match) : undefined;
+    return undefined;
   }
 
   const node = project.nodes.find((entry) => entry.id === nodeId);
@@ -11159,32 +11080,10 @@ function getDraggedResourceForHandle(
     return undefined;
   }
 
-  // A pocket port drags like a machine port. The card keeps its own id as
-  // the drag origin — the fan-out onto the members behind the port happens
-  // when the wire lands, in connectResourceEdges.
   if (isPocketId(project, nodeId)) {
-    const resource = getPocketResourceForHandle(project, nodeId, handle.side, {
-      kind: handle.kind,
-      id: handle.resourceId,
-    });
-    if (!resource) {
-      return undefined;
-    }
-    return {
-      nodeId,
-      side: handle.side,
-      handleId,
-      kind: resource.kind,
-      id: resource.id,
-      displayName: resource.displayName,
-      iconPath: resource.iconPath,
-      iconAtlas: resource.iconAtlas,
-      dominantColor: resource.dominantColor ?? resource.iconAtlas?.dominantColor,
-      tooltip: resource.tooltip,
-      alternatives: resource.alternatives,
-    };
+    // A minimized board has no ports to drag from.
+    return undefined;
   }
-
   const storage = (project.storages ?? []).find((entry) => entry.id === nodeId);
   if (storage) {
     return {
@@ -11245,10 +11144,8 @@ function getResourceForHandle(
   }
 
   if (isPocketId(project, nodeId)) {
-    return getPocketResourceForHandle(project, nodeId, handle.side, {
-      kind: handle.kind,
-      id: handle.resourceId,
-    });
+    // No ports, so no resource behind one.
+    return undefined;
   }
 
   const storage = (project.storages ?? []).find((entry) => entry.id === nodeId);

@@ -1,6 +1,6 @@
 "use client";
 
-import { type Node, type NodeProps } from "@xyflow/react";
+import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { memo, useState, type CSSProperties } from "react";
 import { Copy, Maximize2, PackageOpen, Save } from "lucide-react";
 import type { FactoryPocket } from "@/lib/model/types";
@@ -10,45 +10,57 @@ import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
 import { useBlueprintStore } from "@/store/blueprint-store";
 
 import { formatSlotRateOrNull } from "./flow-explainers";
-import { OutputSocketRow, PORT_CHIP_WIDTH_CLASS, PortChip } from "./RecipeNode";
-import type { RailPort } from "./node-verdict";
 import { isWiringConnection, wasRecentWireDrop } from "./connection-drag";
 import { useBoardView } from "./board-view";
 import { NodeGlanceText } from "./NodeGlance";
-import type { PocketPortSummary, PocketSummary } from "./pocket-summary";
-import { useRenderedHandles } from "./use-rendered-handles";
+import { POCKET_CARD_MAX_ROWS, type PocketCrossing, type PocketSummary } from "./pocket-summary";
 import { GT_NODE_RAMPS } from "./node-colors";
 
 export interface PocketNodeData extends Record<string, unknown> {
   pocket: FactoryPocket;
   summary?: PocketSummary;
-  /** The machine-card rails for this pocket, built once per project commit. */
-  railPorts?: { inputs: RailPort[]; outputs: RailPort[] };
 }
 
 export type PocketFlowNode = Node<PocketNodeData, "pocketNode">;
 
 /**
- * A MINIMIZED BOARD: the collapsed state of a board window, nothing more.
- * It reads like a recipe card that happens to hold a whole sub-factory —
- * same 18-cell width, same 40px head row, same 40px port rows with the
- * icon, the name and the rate (inputs on the left rail, outputs on the
- * right), and the same drag-to-wire ports; every wire crossing the hidden
- * contents docks here. Star-field purple so it can never pass for one
- * machine. Double-click (or the restore button) opens the window back up.
+ * A MINIMIZED BOARD: a summary you can look at, not a machine you can wire.
  *
- * Head 40 + rows of 40 + footer 40 keeps the whole card on the grid and
- * every port row's centre exactly on a grid line (60, 100, 140, … from the
- * card's top), which the router requires of every port.
+ * It says what is inside (machines, cards, power) and what crosses its
+ * border, and that is all it says. There are no ports on it: a wire from the
+ * outside cannot be dropped on it, a drag cannot start from it, and nothing
+ * on it claims to be starved or clogged. To change anything about the
+ * factory in here you open the window - double-click, or the restore button.
+ *
+ * That is a deliberate retreat. The card used to wear input and output
+ * ports built from a solve of the members with the outside world unhooked,
+ * which meant a board holding its own source was told it was starving and a
+ * board exporting a byproduct was told it was clogged. The numbers here now
+ * come from the plan-wide solve, so they are the same numbers the board
+ * itself would show with the window open.
+ *
+ * The wires crossing the border still land on the card - they have to go
+ * somewhere - but they dock anywhere on its perimeter, like a drawer's, not
+ * on a row that means something.
  */
 export const POCKET_NODE_WIDTH = RECIPE_NODE_WIDTH;
+
+/**
+ * The inert anchors every crossing wire lands on. React Flow needs an
+ * endpoint handle to exist for an edge to render at all; these have no size,
+ * take no pointer, and mean nothing beyond "the wire ends at this card".
+ */
+export const POCKET_CARD_TARGET_HANDLE = "board-card-in";
+export const POCKET_CARD_SOURCE_HANDLE = "board-card-out";
 
 /** The purple ink pair: names in white, figures a step down. */
 const INK_MUTED = "text-[#c9b8ec]";
 
+const INERT_HANDLE =
+  "nodrag !pointer-events-none !h-0 !w-0 !min-h-0 !min-w-0 !border-0 !bg-transparent !opacity-0";
+
 function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
-  const { pocket, summary, railPorts } = data;
-  const pendingResourceConnection = useFactoryStore((state) => state.pendingResourceConnection);
+  const { pocket, summary } = data;
   const expandPocket = useFactoryStore((state) => state.expandPocket);
   const dissolvePocket = useFactoryStore((state) => state.dissolvePocket);
   const renamePocket = useFactoryStore((state) => state.renamePocket);
@@ -60,28 +72,23 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
   const { calmMode } = useBoardView();
   const isRenaming = draftName !== undefined && !calmMode;
 
-  const inputs = summary?.inputs ?? [];
-  const outputs = summary?.outputs ?? [];
-  // A pocket's ports follow its membership, and a swap can leave the card the
-  // exact same size with different ports on it. React Flow only re-measures
-  // handles on resize, so it has to be told — see use-rendered-handles.ts.
-  useRenderedHandles(pocket.id, [
-    ...(railPorts?.inputs ?? []).map((port) => port.handleId),
-    ...(railPorts?.outputs ?? []).map((port) => port.handleId),
-  ]);
+  const incoming = summary?.incoming ?? [];
+  const outgoing = summary?.outgoing ?? [];
+  const shownIncoming = incoming.slice(0, POCKET_CARD_MAX_ROWS);
+  const shownOutgoing = outgoing.slice(0, POCKET_CARD_MAX_ROWS);
+  const hiddenIncoming = incoming.length - shownIncoming.length;
+  const hiddenOutgoing = outgoing.length - shownOutgoing.length;
+  const hasCrossings = incoming.length > 0 || outgoing.length > 0;
+
   // Pointing at a resource in the right-hand panel lights every card that
-  // touches it. A pocket touches one whenever the resource crosses its
-  // boundary, so it lights up on exactly the same terms as a machine card:
-  // the dimension is a card on this board, and leaving it dark made a lit
-  // board read as "nothing in here uses that".
+  // touches it. A minimized board touches one whenever it crosses the
+  // border, so it lights on the same terms as a machine card.
   const hoveredFlowResourceKey = useFactoryStore((state) => state.hoveredFlowResourceKey);
   const selectedFlowResourceKey = useFactoryStore((state) => state.selectedFlowResourceKey);
   const litResourceKey = hoveredFlowResourceKey ?? selectedFlowResourceKey;
   const isResourceHighlighted =
     litResourceKey !== undefined &&
-    [...inputs, ...outputs].some(
-      (port) => `${port.kind}:${port.resourceId}` === litResourceKey,
-    );
+    [...incoming, ...outgoing].some((crossing) => crossing.key === litResourceKey);
 
   const commitRename = () => {
     if (draftName !== undefined) {
@@ -120,49 +127,60 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
         "group relative font-mono text-white",
         selected ? "ring-2 ring-purple-500" : "",
         // On the shell, exactly where a machine card wears it, so the outline
-        // frames the whole dimension rather than its inner window.
+        // frames the whole board rather than its inner window.
         isResourceHighlighted ? "resource-glow" : "",
       ].join(" ")}
       style={{ width: POCKET_NODE_WIDTH }}
       onDoubleClick={(event) => {
-        // The name field manages its own double-click; the buttons and the
-        // port handles are their own controls; and the mouseup that lands a
-        // wire must never read as "open the window".
+        // The name field manages its own double-click, the buttons are their
+        // own controls, and the mouseup that lands a wire must never read as
+        // "open the window".
         if (isWiringConnection() || wasRecentWireDrop()) {
           return;
         }
         const target = event.target as HTMLElement;
-        if (!target.closest("input, button, .react-flow__handle")) {
+        if (!target.closest("input, button")) {
           expandPocket(pocket.id);
         }
       }}
     >
+      {/* Where the crossing wires end. Inert on purpose: a minimized board
+          is not a wiring surface. */}
+      <Handle
+        id={POCKET_CARD_TARGET_HANDLE}
+        type="target"
+        position={Position.Left}
+        isConnectable={false}
+        className={INERT_HANDLE}
+      />
+      <Handle
+        id={POCKET_CARD_SOURCE_HANDLE}
+        type="source"
+        position={Position.Right}
+        isConnectable={false}
+        className={INERT_HANDLE}
+      />
       {/* The window: same inset-frame construction as a recipe card (a real
           border would push the rows off the grid), painted star-field purple. */}
       <div
         data-node-glance-root=""
         // Painted like a colour-tagged machine card: the purple ramp is
-        // declared here, so everything the card borrows from RecipeNode — the
-        // port chips, the plugs, the name bar — arrives purple instead of
-        // board grey, without this file listing any of them. The bright
-        // bevels and the head buttons below are the pocket's own identity and
-        // stay hand-painted, like the ring around a painted machine card.
+        // declared here, so everything the card borrows arrives purple
+        // instead of board grey. The bright bevels and the head buttons are
+        // the board's own identity and stay hand-painted.
         className="relative bg-[#3b2d52] shadow-[inset_0_0_0_2px_#241b33,inset_4px_4px_0_#5e4a85,inset_-4px_-4px_0_#1a1326]"
         style={GT_NODE_RAMPS.purple as CSSProperties}
       >
-        {/* Zoomed out, the card is a star on purple — a pocket, not a machine.
-            Hovering opens the same I/O reveal a machine card gives: name bar
-            plus needs → offers, scaled to screen size by the glance CSS. */}
+        {/* Zoomed out, the card is a star on purple — a board, not a machine.
+            Hovering opens the same reveal a machine card gives. */}
         <NodeGlanceText text="✦" className={INK_MUTED} />
-        <PocketGlanceReveal name={pocket.name} inputs={inputs} outputs={outputs} />
+        <PocketGlanceReveal name={pocket.name} incoming={incoming} outgoing={outgoing} />
         <div className="px-2">
           {/* One head row, exactly two cells tall, like every machine card:
               delete/clone on the left like every card's edit chrome, the
-              name in the middle, shelve and restore on the right — restore
-              rightmost, where a window keeps it. Calm mode drops all four
-              and gives the whole row to the name, the same trade a machine
-              card makes; the row stays 40px either way, so the ports below
-              keep their grid lines. */}
+              name in the middle, shelve, dump and restore on the right —
+              restore rightmost, where a window keeps it. Calm mode drops all
+              five and gives the whole row to the name. */}
           <div
             className={[
               "grid h-[40px] min-w-0 items-center gap-1",
@@ -282,64 +300,133 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
             ) : null}
           </div>
 
-          {/* The rails ARE the node, exactly like a machine card: what the
-              dimension needs from outside on the left, what it offers on the
-              right. Every row is a wireable port. */}
-          {inputs.length === 0 && outputs.length === 0 ? (
-            <div className={`flex h-[40px] items-center justify-center text-[10px] ${INK_MUTED}`}>
-              self-contained — nothing crosses the boundary
+          {/* What crosses the border, and which way. Reading only: no ports,
+              nothing to grab, nothing to drop a wire on. */}
+          {!hasCrossings ? (
+            <div
+              className={`flex h-[80px] items-center justify-center text-center text-[11px] leading-4 ${INK_MUTED}`}
+            >
+              Nothing crosses the border.
+              <br />
+              Open the window to work on it.
             </div>
           ) : (
-            <div
-              className={[
-                "flex items-start gap-1",
-                inputs.length > 0 && outputs.length > 0
-                  ? "justify-between"
-                  : outputs.length > 0
-                    ? "justify-end"
-                    : "justify-start",
-              ].join(" ")}
-            >
-              {/* The machine card's own rails, not a lookalike. A pocket is a
-                  card on this board that takes things in and gives things
-                  out, so it gets the same chips, the same bars, the same
-                  HAND-FED mark and the same output couplings — and inherits
-                  calm mode's trade with them for free. */}
-              <PocketPortRail
-                nodeId={pocket.id}
-                side="input"
-                ports={railPorts?.inputs ?? []}
-                pending={pendingResourceConnection}
-              />
-              {inputs.length > 0 && outputs.length > 0 ? (
-                <div
-                  className={`flex w-4 shrink-0 items-center justify-center self-stretch text-[15px] font-black ${INK_MUTED}`}
-                >
-                  →
+            <>
+              <div
+                className={`grid h-[20px] grid-cols-2 items-center gap-2 text-[10px] leading-3 ${INK_MUTED}`}
+              >
+                <span>{incoming.length > 0 ? "COMING IN" : ""}</span>
+                <span className="text-right">{outgoing.length > 0 ? "GOING OUT" : ""}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex min-w-0 flex-col">
+                  {shownIncoming.map((crossing) => (
+                    <CrossingRow key={crossing.key} crossing={crossing} side="in" />
+                  ))}
+                  {hiddenIncoming > 0 ? <MoreRow count={hiddenIncoming} side="in" /> : null}
                 </div>
-              ) : null}
-              <PocketPortRail
-                nodeId={pocket.id}
-                side="output"
-                ports={railPorts?.outputs ?? []}
-                pending={pendingResourceConnection}
-              />
-            </div>
+                <div className="flex min-w-0 flex-col">
+                  {shownOutgoing.map((crossing) => (
+                    <CrossingRow key={crossing.key} crossing={crossing} side="out" />
+                  ))}
+                  {hiddenOutgoing > 0 ? <MoreRow count={hiddenOutgoing} side="out" /> : null}
+                </div>
+              </div>
+            </>
           )}
 
-          {/* The stat footer, pocket edition. */}
+          {/* What is inside, in one line. */}
           <div
             className={`flex h-[40px] min-w-0 items-center justify-center gap-2 border-t border-[#5e4a85] text-[11px] leading-4 ${INK_MUTED}`}
           >
             <span className="truncate">
               {summary
-                ? `${summary.machineCount}× ${summary.machineCount === 1 ? "machine" : "machines"} · ${summary.memberCount} ${summary.memberCount === 1 ? "card" : "cards"} inside`
+                ? [
+                    `${summary.machineCount}× ${summary.machineCount === 1 ? "machine" : "machines"}`,
+                    `${summary.memberCount} ${summary.memberCount === 1 ? "card" : "cards"}`,
+                    summary.euPerTick > 0
+                      ? `${Math.round(summary.euPerTick).toLocaleString()} EU/t`
+                      : undefined,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
                 : "minimized board"}
             </span>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * One resource crossing the border: its icon, its name, and what is really
+ * moving. Two cells tall, like a machine card's port row, so the card stays
+ * on the grid — but it is a line of text, not a port.
+ */
+function CrossingRow({ crossing, side }: { crossing: PocketCrossing; side: "in" | "out" }) {
+  const rate = formatSlotRateOrNull(crossing.ratePerSecond, crossing.kind);
+  const icon = (
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden">
+      <ResourceIcon
+        resource={{ ...crossing, id: crossing.resourceId, amount: 1 }}
+        bare
+        tooltip={false}
+        showAmount={false}
+        iconPixelSize={
+          crossing.kind === "fluid"
+            ? isSwatchFluid(crossing)
+              ? 32
+              : fluidArtPixels(24)
+            : undefined
+        }
+        className={crossing.kind === "fluid" ? "!h-6 !w-6" : "!h-6 !w-6 origin-center scale-150"}
+      />
+    </span>
+  );
+  const text = (
+    <span className={`flex min-w-0 flex-1 flex-col ${side === "out" ? "text-right" : ""}`}>
+      <span className="truncate text-[11px] font-bold leading-[14px] text-white">
+        {crossing.displayName ?? crossing.resourceId}
+      </span>
+      <span className={`truncate text-[10px] leading-[12px] tabular-nums ${INK_MUTED}`}>
+        {rate ?? "0/s"}
+        {crossing.wireCount > 1 ? ` · ${crossing.wireCount} wires` : ""}
+      </span>
+    </span>
+  );
+  return (
+    <span
+      className="flex h-[40px] min-w-0 items-center gap-1"
+      title={`${crossing.displayName ?? crossing.resourceId}: ${rate ?? "nothing moving"}`}
+    >
+      {side === "in" ? (
+        <>
+          {icon}
+          {text}
+        </>
+      ) : (
+        <>
+          {text}
+          {icon}
+        </>
+      )}
+    </span>
+  );
+}
+
+/** The overflow line: a long border list stops rather than growing forever. */
+function MoreRow({ count, side }: { count: number; side: "in" | "out" }) {
+  return (
+    <span
+      className={[
+        "flex h-[40px] min-w-0 items-center text-[10px] leading-3",
+        INK_MUTED,
+        side === "out" ? "justify-end" : "",
+      ].join(" ")}
+    >
+      and {count} more
+    </span>
   );
 }
 
@@ -352,21 +439,20 @@ export const PocketNode = memo(
 );
 
 /**
- * The zoomed-out hover reveal, pocket edition: the machine card's glance
- * panel in purple. Pure CSS shows it (globals.css `.glance-io`) only at the
- * glance detail level on hover, scaled to screen size — the panel is in the
- * DOM from the start, so hovering never rebuilds the board. `absolute
- * inset-0` like every glance layer: no say in the card's size, invisible to
- * the router.
+ * The zoomed-out hover reveal: the same summary at screen size. Pure CSS
+ * shows it (globals.css `.glance-io`) only at the glance detail level on
+ * hover — the panel is in the DOM from the start, so hovering never rebuilds
+ * the board. `absolute inset-0` like every glance layer: no say in the
+ * card's size, invisible to the router.
  */
 function PocketGlanceReveal({
   name,
-  inputs,
-  outputs,
+  incoming,
+  outgoing,
 }: {
   name: string;
-  inputs: PocketPortSummary[];
-  outputs: PocketPortSummary[];
+  incoming: PocketCrossing[];
+  outgoing: PocketCrossing[];
 }) {
   return (
     <div
@@ -378,25 +464,27 @@ function PocketGlanceReveal({
         <span className="minecraft-title flex h-8 min-w-0 items-center border-2 border-[#241b33] bg-[#5e4a85] px-2 text-[16px] leading-[22px] shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140]">
           <span className="mx-auto min-w-0 truncate">✦ {name}</span>
         </span>
-        {inputs.length > 0 || outputs.length > 0 ? (
+        {incoming.length > 0 || outgoing.length > 0 ? (
           <span className="grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] items-start gap-x-1">
             <span className="flex min-w-0 flex-col gap-1">
-              {inputs.map((port) => (
-                <PocketGlanceIoRow key={`${port.kind}:${port.resourceId}`} port={port} />
+              {incoming.map((crossing) => (
+                <PocketGlanceIoRow key={crossing.key} crossing={crossing} />
               ))}
             </span>
-            <span className={`flex items-start justify-center pt-2 text-[20px] font-black leading-6 ${INK_MUTED}`}>
+            <span
+              className={`flex items-start justify-center pt-2 text-[20px] font-black leading-6 ${INK_MUTED}`}
+            >
               →
             </span>
             <span className="flex min-w-0 flex-col gap-1">
-              {outputs.map((port) => (
-                <PocketGlanceIoRow key={`${port.kind}:${port.resourceId}`} port={port} />
+              {outgoing.map((crossing) => (
+                <PocketGlanceIoRow key={crossing.key} crossing={crossing} />
               ))}
             </span>
           </span>
         ) : (
           <span className={`text-center text-[13px] ${INK_MUTED}`}>
-            self-contained — nothing crosses the boundary
+            Nothing crosses the border.
           </span>
         )}
       </span>
@@ -404,74 +492,35 @@ function PocketGlanceReveal({
   );
 }
 
-/** One chip of the pocket reveal, in the pocket's own chip clothes. */
-function PocketGlanceIoRow({ port }: { port: PocketPortSummary }) {
-  const rate = formatSlotRateOrNull(port.ratePerSecond, port.kind);
+/** One line of the reveal, in the board's own clothes. */
+function PocketGlanceIoRow({ crossing }: { crossing: PocketCrossing }) {
+  const rate = formatSlotRateOrNull(crossing.ratePerSecond, crossing.kind);
   return (
     <span className="pocket-port flex items-center gap-1.5 px-1 py-0.5">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden">
         <ResourceIcon
-          resource={{ ...port, id: port.resourceId, amount: 1 }}
+          resource={{ ...crossing, id: crossing.resourceId, amount: 1 }}
           bare
           tooltip={false}
           showAmount={false}
           iconPixelSize={
-            port.kind === "fluid" ? (isSwatchFluid(port) ? 50 : fluidArtPixels(36)) : undefined
+            crossing.kind === "fluid"
+              ? isSwatchFluid(crossing)
+                ? 50
+                : fluidArtPixels(36)
+              : undefined
           }
-          className={port.kind === "fluid" ? "!h-9 !w-9" : "!h-9 !w-9 origin-center scale-150"}
+          className={crossing.kind === "fluid" ? "!h-9 !w-9" : "!h-9 !w-9 origin-center scale-150"}
         />
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-[14px] font-bold leading-[17px] text-white">
-          {port.displayName ?? port.resourceId}
+          {crossing.displayName ?? crossing.resourceId}
         </span>
         {rate ? (
           <span className={`truncate text-[13px] leading-4 tabular-nums ${INK_MUTED}`}>{rate}</span>
         ) : null}
       </span>
     </span>
-  );
-}
-
-/**
- * One side of a pocket's rails.
- *
- * The chips are the machine card's own: a pocket takes things in and gives
- * things out like any other card, so it earns the same bar, the same
- * HAND-FED mark, and the same output coupling telling you who is drinking.
- * Widths match a machine rail exactly (140px in, chip plus coupling out),
- * which is what keeps port centres on the grid lines the router measures.
- */
-function PocketPortRail({
-  nodeId,
-  side,
-  ports,
-  pending,
-}: {
-  nodeId: string;
-  side: "input" | "output";
-  ports: RailPort[];
-  pending: ReturnType<typeof useFactoryStore.getState>["pendingResourceConnection"];
-}) {
-  if (ports.length === 0) {
-    return null;
-  }
-
-  const isInput = side === "input";
-  return (
-    <div
-      className={[
-        "flex shrink-0 flex-col justify-start gap-0 py-0",
-        isInput ? PORT_CHIP_WIDTH_CLASS : "w-[176px]",
-      ].join(" ")}
-    >
-      {ports.map((port) =>
-        isInput ? (
-          <PortChip key={port.key} nodeId={nodeId} port={port} pending={pending} />
-        ) : (
-          <OutputSocketRow key={port.key} nodeId={nodeId} port={port} pending={pending} />
-        ),
-      )}
-    </div>
   );
 }

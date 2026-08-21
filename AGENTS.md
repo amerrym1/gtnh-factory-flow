@@ -251,12 +251,35 @@ gh run watch <run-id> --exit-status
 
 - A board is the ONLY container: a `FactoryPocket` record, two states.
   `expanded: true` plus a `size` renders it as a window frame (`BoardNode`)
-  with its members inside; minimized it renders as the I/O card
-  (`PocketNode`): inputs on the left rail, outputs on the right, every
-  crossing wire docked on those ports. That card is ALL a "pocket" is now -
-  there is no dive-in view, no breadcrumbs, no Esc-up, no violet room, no
-  unpack button, and no convergence rewiring anywhere. Old plans load their
-  pockets as minimized boards.
+  with its members inside; minimized it renders as a SUMMARY CARD
+  (`PocketNode`). That card is ALL a "pocket" is now - there is no dive-in
+  view, no breadcrumbs, no Esc-up, no violet room, no unpack button, and no
+  convergence rewiring anywhere. Old plans load their pockets as minimized
+  boards.
+- A MINIMIZED BOARD IS A SUMMARY, NOT A MACHINE. It has NO PORTS: you
+  cannot drop a wire on it (`findNodeDropTarget` returns undefined, so it
+  washes red like any card refusing a resource), no drag starts on it, and
+  `connectResourceEdges` refuses any end that names one. It reports what
+  crosses its border (one line per resource per direction, capped at
+  `POCKET_CARD_MAX_ROWS` with an "and N more") and what is inside
+  (machines, cards, EU/t), and every figure comes from the PLAN-WIDE solve
+  (`computePocketSummaries`). To change anything you open the window.
+  - The card used to run a SCOPED solve over its members with the outside
+    world unhooked and wear the result as input/output rails. It read like
+    a machine and lied like one: a board holding its own source was told it
+    was starving, a board exporting a byproduct was told it was clogged.
+    That whole apparatus is gone - the scoped solve, `buildPocketRailPorts`,
+    `resolvePocketPortHandleId`, the port fan-out
+    (`resolvePocketMemberIds`, `listPocketPortResources`,
+    `getPocketResourceForHandle`). Do not rebuild it.
+  - Crossing wires still land on the card, as ANY-SIDE endpoints (like a
+    drawer's), on two inert handles that exist only because React Flow will
+    not draw an edge without one. Several wires carrying one resource across
+    one border are still drawn as ONE line (the channel grouping, now keyed
+    on resource alone) and counted as one summary row with its wire count.
+  - `pocketCardHeight` is the one place the card's height is decided, so
+    the auto-arranger can size a minimized board from
+    `countPocketCrossings` before it has ever been measured.
 - The canvas always shows the ROOT plus the contents of every open board,
   recursively (`computeBoardLevelView` in `src/lib/model/board-windows.ts`:
   shown levels, representatives, frame rects, drop-owner picking).
@@ -275,11 +298,10 @@ gh run watch <run-id> --exit-status
   `exemptObstacleIds` in grid-edge-router.ts) - they have to cross the
   border to exist. Frames publish through `publishedBoardFrameBounds`,
   separate from the card set, and exemptions ride the solve signature so
-  adopting a card reroutes its wires without anything moving. Only the
-  MINIMIZED card has ports: its rails come from the scoped solve in
-  `pocket-summary.ts`, a wire dropped on a port fans out to the members
-  behind it, and the view collapses same-resource crossings into one drawn
-  channel - presentation, never stored rewiring.
+  adopting a card reroutes its wires without anything moving. A wire whose far
+  end is a MINIMIZED board lands on the summary card as an any-side
+  endpoint, and same-resource crossings collapse into one drawn channel -
+  presentation, never stored rewiring.
 - Membership changes by drop (`handleNodeDragStop`): a card WHOLLY inside a
   frame's floor joins that board (deepest frame wins), a card dragged clear
   of every frame leaves its board and surfaces on the canvas
