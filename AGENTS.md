@@ -304,6 +304,19 @@ gh run watch <run-id> --exit-status
   length between blocks doing the placing. Interior passes pin no
   waypoints (stored waypoints are flow-space); ink on every arranged level
   is cleared and nothing replaces it - the zones are the grouping.
+- The interior passes are BOUNDARY-AWARE: every wire crossing a frame gets
+  a phantom partner card (one per outer neighbour and direction, weight
+  x3), so members that talk across the border land against the edge their
+  wires leave through; phantoms are discarded and the members re-normalise
+  to the frame corner. Each interior pass records where every crossing
+  wire's member landed (`boundaryPortY`, "edgeId:boardId" from frame top),
+  and outer passes use those as the board card's PORT heights - which is
+  what lines frames up so wires between boards run straight instead of
+  crossing. The arrange also paints every unpainted board from
+  `ZONE_PAINTS`, skipping coats other boards already wear.
+- The board title bar has a paint button (palette in a NodeToolbar portal,
+  because the frame's own layer sits under the cards); the paint TOOL works
+  on boards too. Both go through `paintPocket`.
 - A board's floor is paintable: `pocket.colorTag` (the paint tool works on
   the open frame and the minimized card) recolours the wash, frame line and
   title bar via `chromeFor` in BoardNode.tsx. The resize grip's floor is

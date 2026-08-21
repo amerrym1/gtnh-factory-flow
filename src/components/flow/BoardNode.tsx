@@ -1,8 +1,8 @@
 "use client";
 
-import { type Node, type NodeProps, useReactFlow } from "@xyflow/react";
+import { NodeToolbar, Position, type Node, type NodeProps, useReactFlow } from "@xyflow/react";
 import { memo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { Copy, Minimize2, Save } from "lucide-react";
+import { Copy, Minimize2, Save, X } from "lucide-react";
 import type { FactoryNodeColorTag, FactoryPocket } from "@/lib/model/types";
 import { boardWindowSize } from "@/lib/model/board-windows";
 import {
@@ -13,7 +13,7 @@ import {
 import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
 import { useBlueprintStore } from "@/store/blueprint-store";
 import { useBoardView } from "./board-view";
-import { GT_NODE_COLORS } from "./node-colors";
+import { GT_NODE_COLORS, GT_NODE_COLOR_PALETTE } from "./node-colors";
 
 /**
  * A board standing OPEN: a window frame whose members render as ordinary
@@ -106,10 +106,12 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
   const minimizePocket = useFactoryStore((state) => state.minimizePocket);
   const renamePocket = useFactoryStore((state) => state.renamePocket);
   const setPocketSize = useFactoryStore((state) => state.setPocketSize);
+  const paintPocket = useFactoryStore((state) => state.paintPocket);
   const deleteBoardSelection = useFactoryStore((state) => state.deleteBoardSelection);
   const { calmMode } = useBoardView();
   const { getZoom, getNodes } = useReactFlow();
   const [draftName, setDraftName] = useState<string | undefined>(undefined);
+  const [isPaletteOpen, setPaletteOpen] = useState(false);
   const isRenaming = draftName !== undefined && !calmMode;
   const chrome = chromeFor(pocket.colorTag);
 
@@ -213,6 +215,49 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
       className="relative font-mono"
       style={{ width: frameWidth, height: frameHeight, color: chrome.ink }}
     >
+      {/* The background palette, in a React Flow toolbar PORTAL: the frame
+          itself sits under every card, and a popover drawn in the node's own
+          layer would be buried by the very members it floats over. */}
+      <NodeToolbar
+        isVisible={isPaletteOpen}
+        position={Position.Top}
+        align="start"
+        style={{ zIndex: 30 }}
+      >
+        <div className="nodrag grid grid-cols-8 gap-1 border-2 border-[#8d6fd1] bg-[#241b33] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+          <button
+            type="button"
+            onClick={() => {
+              paintPocket(pocket.id, undefined);
+              setPaletteOpen(false);
+            }}
+            className="flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#3b2d52] text-white hover:bg-[#5e4a85]"
+            title="Back to the house purple"
+            aria-label={`Wash the paint off board ${pocket.name}`}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+          {GT_NODE_COLOR_PALETTE.map((entry) => (
+            <button
+              key={entry.tag}
+              type="button"
+              onClick={() => {
+                paintPocket(pocket.id, entry.tag);
+                setPaletteOpen(false);
+              }}
+              className={[
+                "h-6 w-6 border-2 shadow-[inset_1px_1px_0_rgba(255,255,255,0.45),inset_-1px_-1px_0_rgba(0,0,0,0.45)]",
+                pocket.colorTag === entry.tag
+                  ? "border-white ring-2 ring-cyan-300"
+                  : "border-[#241b33]",
+              ].join(" ")}
+              style={{ backgroundColor: entry.color.swatch }}
+              title={entry.tag}
+              aria-label={`Paint board ${pocket.name} ${entry.tag}`}
+            />
+          ))}
+        </div>
+      </NodeToolbar>
       {/* The floor: the board's own background, painted by its colour tag.
           Clicks fall through to the pane, so panning and marquee selection
           work over the floor exactly as they do over bare canvas. */}
@@ -317,6 +362,28 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
         )}
         {!calmMode && !isRenaming ? (
           <>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setPaletteOpen((open) => !open);
+              }}
+              className="nodrag flex h-6 w-6 shrink-0 items-center justify-center border-2 hover:brightness-125"
+              style={buttonStyle}
+              title="Paint this board's background"
+              aria-label={`Paint board ${pocket.name}`}
+            >
+              <span
+                aria-hidden
+                className="block h-3.5 w-3.5 border"
+                style={{
+                  backgroundColor: pocket.colorTag
+                    ? (GT_NODE_COLORS[pocket.colorTag]?.swatch ?? "#8d6fd1")
+                    : "#8d6fd1",
+                  borderColor: chrome.barBorder,
+                }}
+              />
+            </button>
             <button
               type="button"
               onClick={(event) => {

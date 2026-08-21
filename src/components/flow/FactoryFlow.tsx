@@ -4167,8 +4167,16 @@ export function FactoryFlow() {
   // lives on must not re-render per project edit.
   const handleAutoArrange = useCallback(() => {
     const state = useFactoryStore.getState();
-    const { moves, wireRoutes, resetEdgeIds, staleInkIds, boardSizes, addBoards, setOwners } =
-      computeAutoArrangement(
+    const {
+      moves,
+      wireRoutes,
+      resetEdgeIds,
+      staleInkIds,
+      boardSizes,
+      addBoards,
+      setOwners,
+      setBoardColors,
+    } = computeAutoArrangement(
         state.project,
         state.lastResult,
         // Tight spacing and normal island splitting, always: the dials that
@@ -4194,6 +4202,7 @@ export function FactoryFlow() {
       setBoardSizes: boardSizes,
       addBoards,
       setOwners,
+      setBoardColors,
       removeAnnotationIds: staleInkIds,
     });
     useFactoryStore.getState().frameBoardNodes();
@@ -9113,6 +9122,18 @@ function estimateNodeCardSize(
  * draws lose their hand-pinned steering; pins aimed at the old layout
  * would only fight the router on the new one.
  */
+/** The coats zones wear when the arrange paints them, cycled in order. */
+const ZONE_PAINTS: FactoryNodeColorTag[] = [
+  "emerald",
+  "azure",
+  "amber",
+  "magenta",
+  "cyan",
+  "orange",
+  "lime",
+  "purple",
+];
+
 function computeAutoArrangement(
   baseProject: FactoryProject,
   result: ThroughputResult | undefined,
@@ -9125,11 +9146,18 @@ function computeAutoArrangement(
   boardSizes: Array<{ id: string; size: { width: number; height: number } }>;
   addBoards: FactoryPocket[];
   setOwners: Array<{ id: string; pocketId: string }>;
+  setBoardColors: Array<{ id: string; colorTag: FactoryNodeColorTag }>;
 } {
   const recipesById = new Map(baseProject.recipes.map((recipe) => [recipe.id, recipe]));
   // Frames refitted by the interior passes, read by every OUTER pass so a
   // parent sizes its nested board by the frame it is about to wear.
   const refitSizes = new Map<string, { width: number; height: number }>();
+  // Where each crossing wire's member landed inside its frame, keyed
+  // "edgeId:boardId" and measured from the frame's top edge. Recorded by
+  // the interior passes, read by every outer pass as the board card's port
+  // height — which is what lets the outer layout line frames up so wires
+  // between boards run straight instead of crossing.
+  const boundaryPortY = new Map<string, number>();
 
   // Everything one level of one project holds, in arrange terms. Every
   // board on the level is ONE meta card: open, its window; minimized, its
@@ -9257,23 +9285,25 @@ function computeAutoArrangement(
           id: edge.id,
           source: sourceRep,
           target: targetRep,
-          // Port rows are only meaningful on the endpoint's own card; a
-          // board representative remaps ends, so it aligns by centre.
+          // A machine end aligns by its measured port row; a board end by
+          // where the interior pass parked the member this wire reaches —
+          // falling back to centre only when nothing recorded one (a
+          // minimized board, an empty frame).
           sourcePortY:
             sourceRep === edge.source
               ? measuredPortOffsetY(edge.source, edge.sourceHandle, Position.Right)
-              : undefined,
+              : boundaryPortY.get(`${edge.id}:${sourceRep}`),
           targetPortY:
             targetRep === edge.target
               ? measuredPortOffsetY(edge.target, edge.targetHandle, Position.Left)
-              : undefined,
+              : boundaryPortY.get(`${edge.id}:${targetRep}`),
           weight: 1 + Math.log10(1 + Math.max(transferred, 0)),
         });
       }
       return { cards, wires, sizeById };
     };
 
-    return { gatherLevel };
+    return { gatherLevel, representativeAt };
   };
 
   // ---- Phase 0: zoning. A throwaway arrange of the root finds the natural
@@ -9380,7 +9410,7 @@ function computeAutoArrangement(
     };
   }
 
-  const { gatherLevel } = makeGatherer(project);
+  const { gatherLevel, representativeAt } = makeGatherer(project);
   const view = computeBoardLevelView(project);
   const moves: Array<{ id: string; position: { x: number; y: number } }> = [];
   const boardSizes: Array<{ id: string; size: { width: number; height: number } }> = [];
@@ -9395,22 +9425,88 @@ function computeAutoArrangement(
     if (bundle.cards.length === 0) {
       continue;
     }
+
+    // Boundary pulls. A member whose wires cross the frame must end up by
+    // the edge those wires leave through: every crossing edge gets a
+    // phantom partner standing outside the interior flow — an upstream
+    // partner becomes a phantom source (pulling its member toward the left
+    // edge), a downstream one a phantom sink (pulling right) — weighted
+    // well above the interior wires so the border wins the argument.
+    // Phantoms are discarded after the solve; only the pull is real.
+    const cardIds = new Set(bundle.cards.map((card) => card.id));
+    const crossings: Array<{ edge: FactoryEdge; memberRep: string }> = [];
+    const phantomCards = new Map<string, ArrangeCard>();
+    const phantomWires: ArrangeWire[] = [];
+    for (const edge of project.edges) {
+      const sourceRep = representativeAt(board.id, edge.source);
+      const targetRep = representativeAt(board.id, edge.target);
+      const inbound = targetRep !== undefined && sourceRep === undefined;
+      const outbound = sourceRep !== undefined && targetRep === undefined;
+      if (!inbound && !outbound) {
+        continue;
+      }
+      const memberRep = (inbound ? targetRep : sourceRep) as string;
+      if (!cardIds.has(memberRep)) {
+        continue;
+      }
+      // One phantom per distinct outer partner and direction, so members
+      // talking to different neighbours spread apart instead of piling
+      // onto one pull point.
+      const outerEnd = inbound ? edge.source : edge.target;
+      const outerRep = representativeAt(undefined, outerEnd) ?? "outside";
+      const phantomId = `__phantom:${inbound ? "in" : "out"}:${outerRep}`;
+      if (!phantomCards.has(phantomId)) {
+        phantomCards.set(phantomId, {
+          id: phantomId,
+          x: 0,
+          y: 0,
+          width: STORAGE_NODE_WIDTH,
+          height: STORAGE_NODE_HEIGHT,
+          role: "machine",
+        });
+      }
+      const transferred =
+        result?.edges[edge.id]?.transferredPerSecond ?? edge.ratePerSecond ?? 0;
+      const weight = (1 + Math.log10(1 + Math.max(transferred, 0))) * 3;
+      phantomWires.push(
+        inbound
+          ? { source: phantomId, target: memberRep, weight }
+          : { source: memberRep, target: phantomId, weight },
+      );
+      crossings.push({ edge, memberRep });
+    }
+
     const arranged = arrangeBoard({
-      cards: bundle.cards,
-      wires: bundle.wires,
+      cards: [...bundle.cards, ...phantomCards.values()],
+      wires: [...bundle.wires, ...phantomWires],
       taste,
       origin: { x: BOARD_WINDOW_FIT_PAD, y: BOARD_WINDOW_TITLE_HEIGHT + BOARD_WINDOW_FIT_PAD },
     });
-    moves.push(...arranged.moves);
+
+    // Phantoms go; the real members re-normalise so the content corner
+    // lands one cell in, under the title bar, however wide the discarded
+    // phantom columns were.
+    const memberMoves = arranged.moves.filter((move) => bundle.sizeById.has(move.id));
+    let minX = Infinity;
+    let minY = Infinity;
+    for (const move of memberMoves) {
+      minX = Math.min(minX, move.position.x);
+      minY = Math.min(minY, move.position.y);
+    }
+    const shiftX = BOARD_WINDOW_FIT_PAD - minX;
+    const shiftY = BOARD_WINDOW_TITLE_HEIGHT + BOARD_WINDOW_FIT_PAD - minY;
+    const placed = new Map<string, { x: number; y: number }>();
+    for (const move of memberMoves) {
+      const position = { x: move.position.x + shiftX, y: move.position.y + shiftY };
+      placed.set(move.id, position);
+      moves.push({ id: move.id, position });
+    }
     let maxX = 0;
     let maxY = 0;
-    for (const move of arranged.moves) {
-      const size = bundle.sizeById.get(move.id);
-      if (!size) {
-        continue;
-      }
-      maxX = Math.max(maxX, move.position.x + size.width);
-      maxY = Math.max(maxY, move.position.y + size.height);
+    for (const [id, position] of placed) {
+      const size = bundle.sizeById.get(id)!;
+      maxX = Math.max(maxX, position.x + size.width);
+      maxY = Math.max(maxY, position.y + size.height);
     }
     const size = {
       width: Math.max(BOARD_WINDOW_MIN_WIDTH, snapSizeUpToGrid(maxX + BOARD_WINDOW_FIT_PAD)),
@@ -9421,6 +9517,19 @@ function computeAutoArrangement(
     };
     refitSizes.set(board.id, size);
     boardSizes.push({ id: board.id, size });
+
+    // Where each crossing wire's member stands, from the frame's top edge:
+    // the port height the outer pass lines this frame up by.
+    for (const crossing of crossings) {
+      const position = placed.get(crossing.memberRep);
+      const memberSize = bundle.sizeById.get(crossing.memberRep);
+      if (position && memberSize) {
+        boundaryPortY.set(
+          `${crossing.edge.id}:${board.id}`,
+          position.y + memberSize.height / 2,
+        );
+      }
+    }
   }
 
   // The root pass: boards as meta cards at their fresh sizes, wire length
@@ -9453,6 +9562,33 @@ function computeAutoArrangement(
     .filter((annotation) => view.isLevelShown(annotation.pocketId))
     .map((annotation) => annotation.id);
 
+  // Every board without paint gets a coat, cycling through distinct dyes,
+  // so the zones read apart at a glance. Coats other boards already wear -
+  // hand-painted or from an earlier run - are passed over until the cycle
+  // runs dry, and a second run repaints nothing.
+  const setBoardColors: Array<{ id: string; colorTag: FactoryNodeColorTag }> = [];
+  const wornPaints = new Set(
+    (project.pockets ?? []).map((pocket) => pocket.colorTag).filter(Boolean),
+  );
+  let paintIndex = 0;
+  for (const pocket of project.pockets ?? []) {
+    if (pocket.colorTag) {
+      continue;
+    }
+    let coat = ZONE_PAINTS[paintIndex % ZONE_PAINTS.length];
+    for (let step = 0; step < ZONE_PAINTS.length; step += 1) {
+      const candidate = ZONE_PAINTS[(paintIndex + step) % ZONE_PAINTS.length];
+      if (!wornPaints.has(candidate)) {
+        coat = candidate;
+        paintIndex += step;
+        break;
+      }
+    }
+    paintIndex += 1;
+    wornPaints.add(coat);
+    setBoardColors.push({ id: pocket.id, colorTag: coat });
+  }
+
   return {
     moves,
     wireRoutes: arranged.wireRoutes,
@@ -9461,6 +9597,7 @@ function computeAutoArrangement(
     boardSizes,
     addBoards,
     setOwners,
+    setBoardColors,
   };
 }
 

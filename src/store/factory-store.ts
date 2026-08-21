@@ -364,6 +364,8 @@ interface FactoryStore {
     addBoards?: FactoryPocket[];
     /** Cards the arrange moved INTO a zone; positions ride `moves`. */
     setOwners?: Array<{ id: string; pocketId: string }>;
+    /** Paint for boards that had none; hand-painted boards keep theirs. */
+    setBoardColors?: Array<{ id: string; colorTag: FactoryNodeColorTag }>;
   }) => void;
   /**
    * Delete a whole selection as a single undo entry. `nodeIds` may hold any
@@ -1808,6 +1810,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
     setBoardSizes,
     addBoards,
     setOwners,
+    setBoardColors,
   }) => {
     set((state) => {
       const positionById = new Map(moves.map((move) => [move.id, move.position] as const));
@@ -1815,6 +1818,9 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         (setBoardSizes ?? []).map((entry) => [entry.id, entry.size] as const),
       );
       const ownerById = new Map((setOwners ?? []).map((entry) => [entry.id, entry.pocketId]));
+      const boardColorById = new Map(
+        (setBoardColors ?? []).map((entry) => [entry.id, entry.colorTag]),
+      );
       let changed = false;
       const applyMoves = <
         T extends { id: string; position: { x: number; y: number }; pocketId?: string },
@@ -1846,13 +1852,15 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         ? combinedPockets.map((pocket) => {
             const position = positionById.get(pocket.id);
             const size = boardSizeById.get(pocket.id);
+            const colorTag = boardColorById.get(pocket.id);
             const samePosition =
               !position ||
               (position.x === pocket.position.x && position.y === pocket.position.y);
             const sameSize =
               !size ||
               (pocket.size?.width === size.width && pocket.size?.height === size.height);
-            if (samePosition && sameSize) {
+            const sameColor = !colorTag || pocket.colorTag === colorTag;
+            if (samePosition && sameSize && sameColor) {
               return pocket;
             }
             changed = true;
@@ -1860,6 +1868,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
               ...pocket,
               position: position ?? pocket.position,
               ...(size ? { size } : undefined),
+              ...(colorTag ? { colorTag } : undefined),
             };
           })
         : undefined;
