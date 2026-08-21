@@ -295,6 +295,7 @@ import { TrashNode, type TrashFlowNode } from "./TrashNode";
 import { PocketNode, type PocketFlowNode } from "./PocketNode";
 import {
   BOARD_DRAG_HANDLE_CLASS,
+  BOARD_EDGE,
   BoardFloor,
   BoardNode,
   type BoardNodeData,
@@ -1242,6 +1243,22 @@ function clearDirectRoutes() {
 // frame-scoped, because the screen->flow conversion genuinely does depend on the
 // live transform.
 type MeasuredBounds = { left: number; right: number; top: number; bottom: number };
+
+/**
+ * The OPAQUE parts of an open board: its title bar and the rim around its
+ * floor. Both sit above the wires (chrome at z 15, wires at 10), so anything
+ * drawn on top of the wires has to stop at them too. The floor between them
+ * is a separate layer UNDER the wires, so a wire and its dashes cross it.
+ */
+function boardChromeOccluders(bounds: MeasuredBounds): MeasuredBounds[] {
+  const { left, top, right, bottom } = bounds;
+  return [
+    { left, top, right, bottom: Math.min(bottom, top + BOARD_WINDOW_TITLE_HEIGHT) },
+    { left, top, right: Math.min(right, left + BOARD_EDGE), bottom },
+    { left: Math.max(left, right - BOARD_EDGE), top, right, bottom },
+    { left, top: Math.max(top, bottom - BOARD_EDGE), right, bottom },
+  ];
+}
 
 const missingRecipePlaceholders = new Map<string, RecipeFlowNode["data"]["recipe"]>();
 
@@ -3765,6 +3782,9 @@ export function FactoryFlow() {
                 return dockInset > 0 ? { ...bounds, top: bounds.top + dockInset } : bounds;
               })
             : []),
+          // Board chrome hides the wires under it in every mode, so the
+          // exported dashes stop at it too.
+          ...publishedBoardFrameBounds.flatMap(({ bounds }) => boardChromeOccluders(bounds)),
           ...snapshotEdgeLabelBoxes(),
         ],
         occlusionDots: snapshotEdgeWaypointDots(),
@@ -6372,6 +6392,15 @@ const EdgePulseCanvas = memo(function EdgePulseCanvas({
         right: number;
         bottom: number;
       }> = [];
+      // A board's bar and rim occlude the wires in EVERY mode, so the dashes
+      // stop at them in every mode too — this is not part of the thickness
+      // mode's cards-on-pipes trade.
+      for (const entry of publishedBoardFrameBounds) {
+        if (dragging && activelyDraggedNodeIds.has(entry.id)) {
+          continue;
+        }
+        occlusionBounds.push(...boardChromeOccluders(entry.bounds));
+      }
       if (edgesUnderNodesRef.current || dragging) {
         for (const entry of publishedBoardBounds ?? []) {
           if (dragging && activelyDraggedNodeIds.has(entry.id)) {
@@ -6396,14 +6425,22 @@ const EdgePulseCanvas = memo(function EdgePulseCanvas({
               draggedNode.internals?.positionAbsolute ?? draggedNode.position;
             const nodeWidth = draggedNode.measured?.width ?? 0;
             const nodeHeight = draggedNode.measured?.height ?? 0;
-            if (nodeWidth > 0 && nodeHeight > 0) {
-              occlusionBounds.push({
-                left: position.x,
-                top: position.y + getDockTopInset(draggedId),
-                right: position.x + nodeWidth,
-                bottom: position.y + nodeHeight,
-              });
+            if (nodeWidth <= 0 || nodeHeight <= 0) {
+              continue;
             }
+            const rect = {
+              left: position.x,
+              top: position.y,
+              right: position.x + nodeWidth,
+              bottom: position.y + nodeHeight,
+            };
+            // A dragged FRAME is mostly a window: only its chrome is solid,
+            // and the wires inside it keep their dashes.
+            if (draggedNode.type === "boardNode") {
+              occlusionBounds.push(...boardChromeOccluders(rect));
+              continue;
+            }
+            occlusionBounds.push({ ...rect, top: rect.top + getDockTopInset(draggedId) });
           }
         }
       }

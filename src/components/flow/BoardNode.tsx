@@ -42,7 +42,7 @@ export const BOARD_DRAG_HANDLE_CLASS = "board-window-grab";
  * dresses the title bar's border so the bar sits flush in the frame rather
  * than half a pixel proud of it.
  */
-const BOARD_EDGE = 4;
+export const BOARD_EDGE = 4;
 
 type ResizeSide = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 

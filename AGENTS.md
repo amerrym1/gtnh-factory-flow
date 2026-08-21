@@ -340,6 +340,15 @@ gh run watch <run-id> --exit-status
   positions from the node lookup, so paper tracks a dragged frame exactly.
   Open boards therefore also un-seal the edge/node layers
   (`factory-flow-board--edges-under`, the lever thickness mode pulls).
+- The marching dashes are a CANVAS painted over everything, so anything the
+  wires go under has to be punched back out of it. A board's bar and rim are
+  in that set in EVERY mode (`boardChromeOccluders`, fed from
+  `publishedBoardFrameBounds` and copied into the GIF capture's
+  `occlusionRects`) - unlike the cards, which only occlude when thickness
+  mode runs the wires beneath them. Only the chrome strips are erased, never
+  the whole frame: the floor is a layer UNDER the wires, so the dashes cross
+  it, and a frame dragged by its bar erases the same strips at its live
+  position rather than blanking its own interior.
 - Two mirrored routing rules keep wires honest about rooms
   (grid-edge-router.ts). A wire leaving a board pays `COST_INSIDE_EXEMPT`
   per pixel spent inside it, so it makes for the nearest border instead of
