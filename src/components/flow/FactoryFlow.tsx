@@ -139,6 +139,7 @@ import {
   ANNOTATION_MIN_TEXT,
   BOARD_GRID,
   BOARD_WINDOW_DEFAULT_SIZE,
+  BOARD_WINDOW_FIT_PAD,
   BOARD_WINDOW_MIN_HEIGHT,
   BOARD_WINDOW_MIN_WIDTH,
   BOARD_WINDOW_TITLE_HEIGHT,
@@ -1517,6 +1518,7 @@ export function FactoryFlow() {
   const overwritePicking = useBlueprintStore((state) => state.overwritePicking);
   const wrapSelectionInBoard = useFactoryStore((state) => state.wrapSelectionInBoard);
   const expandPocket = useFactoryStore((state) => state.expandPocket);
+  const paintPocket = useFactoryStore((state) => state.paintPocket);
   const setPendingBoardSelection = useFactoryStore((state) => state.setPendingBoardSelection);
   const setSelectedBoardIds = useFactoryStore((state) => state.setSelectedBoardIds);
   const updateNode = useFactoryStore((state) => state.updateNode);
@@ -4018,6 +4020,14 @@ export function FactoryFlow() {
           return;
         }
 
+        // A board's background is paint like any card's face: the brush on
+        // the open frame's title bar (or the minimized card) recolours the
+        // floor, the frame line and the bar.
+        if (node.type === "boardNode" || node.type === "pocketNode") {
+          paintPocket(node.id, nodeColorPaintMode ?? undefined);
+          return;
+        }
+
         return;
       }
 
@@ -4030,6 +4040,7 @@ export function FactoryFlow() {
       deleteStorage,
       isDeleteMode,
       nodeColorPaintMode,
+      paintPocket,
       selectNode,
       updateAnnotation,
       updateNode,
@@ -4156,16 +4167,17 @@ export function FactoryFlow() {
   const handleAutoArrange = useCallback(() => {
     const state = useFactoryStore.getState();
     const view = readBoardViewSnapshot();
-    const { moves, islands, wireRoutes, resetEdgeIds, staleInkIds } = computeAutoArrangement(
-      state.project,
-      state.lastResult,
-      // Tight spacing and normal island splitting, always: the dials that
-      // existed for these were both ever set one way.
-      {
-        spacing: "compact",
-        islands: "normal",
-      },
-    );
+    const { moves, islands, wireRoutes, resetEdgeIds, staleInkIds, boardSizes } =
+      computeAutoArrangement(
+        state.project,
+        state.lastResult,
+        // Tight spacing and normal island splitting, always: the dials that
+        // existed for these were both ever set one way.
+        {
+          spacing: "compact",
+          islands: "normal",
+        },
+      );
     if (moves.length === 0) {
       return;
     }
@@ -4179,6 +4191,7 @@ export function FactoryFlow() {
       moves,
       resetEdgeIds,
       setWaypoints: wireRoutes,
+      setBoardSizes: boardSizes,
       removeAnnotationIds: staleInkIds,
       addAnnotations: islands
         .filter((island) => island.backdrop)
@@ -9094,12 +9107,17 @@ function estimateNodeCardSize(
 }
 
 /**
- * Gather the level the board is showing into auto-arrange's terms and lay it
- * out: every visible card with its best-known size, every wire mapped onto
- * the cards that stand for its ends here (an edge into a collapsed pocket
- * pulls on the pocket card), and the level's ink. Also names the wires whose
- * hand-pinned steering should be reset - waypoints aimed at the old layout
- * would only fight the router on the new one.
+ * Gather the whole plan into auto-arrange's terms and lay it out in two
+ * kinds of pass. First every OPEN board arranges its own members inside its
+ * frame, deepest board first, and the frame refits around the result — flow
+ * runs left to right inside, so what a board takes sits by its left edge
+ * and what it offers by its right, facing the wires that cross the border.
+ * Then the root arranges with every board as ONE meta card at its fresh
+ * size: wire length between boards drives where the blocks stand, exactly
+ * as it does for machines, and the router already refuses to cut foreign
+ * wires through a frame. Also names the wires whose hand-pinned steering
+ * should be reset — pins aimed at the old layout would only fight the
+ * router on the new one.
  */
 function computeAutoArrangement(
   project: FactoryProject,
@@ -9111,6 +9129,7 @@ function computeAutoArrangement(
   wireRoutes: Array<{ id: string; waypoints: Array<{ x: number; y: number }> }>;
   resetEdgeIds: string[];
   staleInkIds: string[];
+  boardSizes: Array<{ id: string; size: { width: number; height: number } }>;
 } {
   const pockets = project.pockets ?? [];
   const parentById = new Map(pockets.map((pocket) => [pocket.id, pocket.parentPocketId]));
@@ -9121,157 +9140,220 @@ function computeAutoArrangement(
   for (const storage of project.storages ?? []) {
     itemPocketById.set(storage.id, storage.pocketId);
   }
-  // The same walk the board's pocket view does: the card that stands for an
-  // item at this level, or undefined when the item is outside the view.
-  const representativeOf = (itemId: string): string | undefined => {
-    let level = itemPocketById.get(itemId);
-    if (level === undefined) {
+
+  // The card that stands for an item at a LEVEL (the root, or one open
+  // board's floor): the item itself when it sits there, else the board
+  // standing between them, else undefined — the item lives elsewhere.
+  const representativeAt = (
+    level: string | undefined,
+    itemId: string,
+  ): string | undefined => {
+    let owner = itemPocketById.get(itemId);
+    if (owner === level) {
       return itemId;
     }
     const seen = new Set<string>();
-    while (level !== undefined && !seen.has(level)) {
-      seen.add(level);
-      const parent = parentById.get(level);
-      if (parent === undefined) {
-        return level;
+    while (owner !== undefined && !seen.has(owner)) {
+      seen.add(owner);
+      const parent = parentById.get(owner);
+      if (parent === level) {
+        return owner;
       }
-      level = parent;
+      owner = parent;
     }
     return undefined;
   };
 
   const recipesById = new Map(project.recipes.map((recipe) => [recipe.id, recipe]));
-  const cards: ArrangeCard[] = [];
-  const pushCard = (
-    id: string,
-    position: { x: number; y: number },
-    estimate: { width: number; height: number },
-    role: "machine" | "storage",
-  ) => {
-    const measured = publishedBoardGeometryById.get(id);
-    cards.push({
-      id,
-      x: position.x,
-      y: position.y,
-      width: measured?.width ? snapSizeUpToGrid(measured.width) : estimate.width,
-      height: measured?.height ? snapSizeUpToGrid(measured.height) : estimate.height,
-      role,
-    });
-  };
-  for (const node of project.nodes) {
-    if (node.pocketId !== undefined) {
-      continue;
-    }
-    const recipe = recipesById.get(node.recipeId);
-    // Trash cans are storage-shaped furniture: small tiles that want to ride
-    // beside the machine feeding them.
-    pushCard(
-      node.id,
-      node.position,
-      estimateNodeCardSize(node, recipe),
-      recipe && isTrashRecipe(recipe) ? "storage" : "machine",
-    );
-  }
-  for (const storage of project.storages ?? []) {
-    if (storage.pocketId !== undefined) {
-      continue;
-    }
-    pushCard(
-      storage.id,
-      storage.position,
-      { width: STORAGE_NODE_WIDTH, height: STORAGE_NODE_HEIGHT },
-      "storage",
-    );
-  }
-  for (const pocket of pockets) {
-    if (pocket.parentPocketId !== undefined) {
-      continue;
-    }
-    // A pocket standing OPEN arranges as one block the size of its window;
-    // its members ride along, frame-relative. A collapsed card is sized by
-    // its port rows as ever.
-    if (pocket.expanded) {
-      pushCard(pocket.id, pocket.position, boardWindowSize(pocket), "machine");
-      continue;
-    }
+  const view = computeBoardLevelView(project);
+  // Frames refitted by the interior passes, read by every OUTER pass so a
+  // parent sizes its nested board by the frame it is about to wear.
+  const refitSizes = new Map<string, { width: number; height: number }>();
+
+  const minimizedCardSize = (pocketId: string) => {
     const rows = Math.max(
       1,
-      listPocketPortResources(project, pocket.id, "input").length,
-      listPocketPortResources(project, pocket.id, "output").length,
+      listPocketPortResources(project, pocketId, "input").length,
+      listPocketPortResources(project, pocketId, "output").length,
     );
-    pushCard(
-      pocket.id,
-      pocket.position,
-      { width: RECIPE_NODE_WIDTH, height: cells(4) + cells(2) * rows + cells(2) },
-      "machine",
-    );
+    return { width: RECIPE_NODE_WIDTH, height: cells(4) + cells(2) * rows + cells(2) };
+  };
+
+  // Everything one level holds, in arrange terms. Every board on the level
+  // is ONE meta card: open, its window; minimized, its I/O card.
+  const gatherLevel = (level: string | undefined) => {
+    const cards: ArrangeCard[] = [];
+    const sizeById = new Map<string, { width: number; height: number }>();
+    const pushCard = (
+      id: string,
+      position: { x: number; y: number },
+      estimate: { width: number; height: number },
+      role: "machine" | "storage",
+      exactSize?: { width: number; height: number },
+    ) => {
+      // Measured sizes win where they exist — except a frame the interior
+      // pass just refitted, whose fresh size is the truth.
+      const measured = exactSize ? undefined : publishedBoardGeometryById.get(id);
+      const width =
+        exactSize?.width ??
+        (measured?.width ? snapSizeUpToGrid(measured.width) : estimate.width);
+      const height =
+        exactSize?.height ??
+        (measured?.height ? snapSizeUpToGrid(measured.height) : estimate.height);
+      sizeById.set(id, { width, height });
+      cards.push({ id, x: position.x, y: position.y, width, height, role });
+    };
+    for (const node of project.nodes) {
+      if (node.pocketId !== level) {
+        continue;
+      }
+      const recipe = recipesById.get(node.recipeId);
+      // Trash cans are storage-shaped furniture: small tiles that want to
+      // ride beside the machine feeding them.
+      pushCard(
+        node.id,
+        node.position,
+        estimateNodeCardSize(node, recipe),
+        recipe && isTrashRecipe(recipe) ? "storage" : "machine",
+      );
+    }
+    for (const storage of project.storages ?? []) {
+      if (storage.pocketId !== level) {
+        continue;
+      }
+      pushCard(
+        storage.id,
+        storage.position,
+        { width: STORAGE_NODE_WIDTH, height: STORAGE_NODE_HEIGHT },
+        "storage",
+      );
+    }
+    for (const pocket of pockets) {
+      if (pocket.parentPocketId !== level) {
+        continue;
+      }
+      pushCard(
+        pocket.id,
+        pocket.position,
+        pocket.expanded ? boardWindowSize(pocket) : minimizedCardSize(pocket.id),
+        "machine",
+        refitSizes.get(pocket.id),
+      );
+    }
+
+    const cardIds = new Set(cards.map((card) => card.id));
+    const wires: ArrangeWire[] = [];
+    for (const edge of project.edges) {
+      const sourceRep = representativeAt(level, edge.source);
+      const targetRep = representativeAt(level, edge.target);
+      if (!sourceRep || !targetRep || sourceRep === targetRep) {
+        continue;
+      }
+      if (!cardIds.has(sourceRep) || !cardIds.has(targetRep)) {
+        continue;
+      }
+      // The live flow, log-compressed so a 10,000 L/s trunk outranks a 2/s
+      // side feed without flattening every other distinction.
+      const transferred =
+        result?.edges[edge.id]?.transferredPerSecond ?? edge.ratePerSecond ?? 0;
+      wires.push({
+        id: edge.id,
+        source: sourceRep,
+        target: targetRep,
+        // Port rows are only meaningful on the endpoint's own card; a board
+        // representative remaps ends, so it aligns by its centre instead.
+        sourcePortY:
+          sourceRep === edge.source
+            ? measuredPortOffsetY(edge.source, edge.sourceHandle, Position.Right)
+            : undefined,
+        targetPortY:
+          targetRep === edge.target
+            ? measuredPortOffsetY(edge.target, edge.targetHandle, Position.Left)
+            : undefined,
+        weight: 1 + Math.log10(1 + Math.max(transferred, 0)),
+      });
+    }
+    return { cards, wires, sizeById };
+  };
+
+  const moves: Array<{ id: string; position: { x: number; y: number } }> = [];
+  const boardSizes: Array<{ id: string; size: { width: number; height: number } }> = [];
+
+  // Interior passes, deepest board first (openBoards comes parents-first),
+  // so every parent already knows its nested boards' fresh frames. Member
+  // positions are frame-relative, so the arrange happens IN frame space:
+  // content starts one cell in, under the title bar. Interior islands draw
+  // no backdrops (the frame IS the grouping) and interior bridges pin no
+  // waypoints (stored waypoints live in flow space, not the frame's).
+  for (const board of [...view.openBoards].reverse()) {
+    const bundle = gatherLevel(board.id);
+    if (bundle.cards.length === 0) {
+      continue;
+    }
+    const arranged = arrangeBoard({
+      cards: bundle.cards,
+      wires: bundle.wires,
+      taste,
+      origin: { x: BOARD_WINDOW_FIT_PAD, y: BOARD_WINDOW_TITLE_HEIGHT + BOARD_WINDOW_FIT_PAD },
+    });
+    moves.push(...arranged.moves);
+    let maxX = 0;
+    let maxY = 0;
+    for (const move of arranged.moves) {
+      const size = bundle.sizeById.get(move.id);
+      if (!size) {
+        continue;
+      }
+      maxX = Math.max(maxX, move.position.x + size.width);
+      maxY = Math.max(maxY, move.position.y + size.height);
+    }
+    const size = {
+      width: Math.max(BOARD_WINDOW_MIN_WIDTH, snapSizeUpToGrid(maxX + BOARD_WINDOW_FIT_PAD)),
+      height: Math.max(
+        BOARD_WINDOW_MIN_HEIGHT,
+        snapSizeUpToGrid(maxY + BOARD_WINDOW_FIT_PAD),
+      ),
+    };
+    refitSizes.set(board.id, size);
+    boardSizes.push({ id: board.id, size });
   }
 
-  const cardIds = new Set(cards.map((card) => card.id));
-  const wires: ArrangeWire[] = [];
+  // The root pass: boards as meta cards at their fresh sizes, wire length
+  // between the blocks doing the placing.
+  const root = gatherLevel(undefined);
+  const arranged = arrangeBoard({ cards: root.cards, wires: root.wires, taste });
+  moves.push(...arranged.moves);
+
+  // Every wire the arranged view draws loses its hand-pinned stops and
+  // dragged label — both aim at a layout that no longer exists. Wires
+  // hidden behind a minimized board keep theirs; nothing they render
+  // against moved.
   const resetEdgeIds: string[] = [];
-  const view = computeBoardLevelView(project);
   for (const edge of project.edges) {
-    const sourceRep = representativeOf(edge.source);
-    const targetRep = representativeOf(edge.target);
-    if (!sourceRep || !targetRep || sourceRep === targetRep) {
-      // A wire wholly inside one OPEN board still renders at this level, in
-      // absolute space, and the arrange is about to move its frame: stops
-      // pinned to the old spot go too. Wires inside a collapsed pocket keep
-      // theirs — nothing they render against is moving.
-      if (
-        sourceRep !== undefined &&
-        sourceRep === targetRep &&
-        sourceRep !== edge.source &&
-        (edge.waypoints?.length || edge.labelOffset) &&
-        view.isLevelShown(itemPocketById.get(edge.source)) &&
-        view.isLevelShown(itemPocketById.get(edge.target))
-      ) {
-        resetEdgeIds.push(edge.id);
-      }
+    if (!edge.waypoints?.length && !edge.labelOffset) {
       continue;
     }
-    if (!cardIds.has(sourceRep) || !cardIds.has(targetRep)) {
-      continue;
-    }
-    // The live flow, log-compressed so a 10,000 L/s trunk outranks a 2/s
-    // side feed without flattening every other distinction.
-    const transferred = result?.edges[edge.id]?.transferredPerSecond ?? edge.ratePerSecond ?? 0;
-    wires.push({
-      id: edge.id,
-      source: sourceRep,
-      target: targetRep,
-      // Port rows are only meaningful on the endpoint's own card; a pocket
-      // representative remaps handles, so it aligns by its centre instead.
-      sourcePortY:
-        sourceRep === edge.source
-          ? measuredPortOffsetY(edge.source, edge.sourceHandle, Position.Right)
-          : undefined,
-      targetPortY:
-        targetRep === edge.target
-          ? measuredPortOffsetY(edge.target, edge.targetHandle, Position.Left)
-          : undefined,
-      weight: 1 + Math.log10(1 + Math.max(transferred, 0)),
-    });
-    if (edge.waypoints?.length || edge.labelOffset) {
+    const sourceRep = view.representativeOf(edge.source);
+    const targetRep = view.representativeOf(edge.target);
+    if (sourceRep && targetRep && sourceRep !== targetRep) {
       resetEdgeIds.push(edge.id);
     }
   }
 
-  // The arrange owns the level's ink: every annotation goes - old notes and
-  // boxes point at a layout that no longer exists - and fresh island
-  // grounds come back with the new one.
+  // The arrange owns the ink of every level it touched: the root and every
+  // open board. Old notes and boxes point at a layout that no longer
+  // exists; fresh island grounds come back at the root only.
   const staleInkIds = (project.annotations ?? [])
-    .filter((annotation) => annotation.pocketId === undefined)
+    .filter((annotation) => view.isLevelShown(annotation.pocketId))
     .map((annotation) => annotation.id);
 
-  const arranged = arrangeBoard({ cards, wires, taste });
   return {
-    moves: arranged.moves,
+    moves,
     islands: arranged.islands,
     wireRoutes: arranged.wireRoutes,
     resetEdgeIds,
     staleInkIds,
+    boardSizes,
   };
 }
 

@@ -288,10 +288,21 @@ gh run watch <run-id> --exit-status
   port joins the member's board.
 - Opening a legacy pocket (`size` absent - the "coordinates are their own
   old space" signal) rebases members to fit the frame and drops waypoints
-  on wires touching them; minimize mirrors the waypoint rule. Frames are
-  never obstacles, but they ARE in the obstacle fingerprint - moving one
-  moves real obstacles (the children). The arrange adapter arranges the
-  root only; any board, open or minimized, is one block.
+  on wires touching them; minimize mirrors the waypoint rule.
+- Auto-arrange is board-aware, two kinds of pass in `computeAutoArrangement`:
+  every OPEN board first arranges its own members inside its frame (deepest
+  board first, in frame space, origin one cell under the title bar) and the
+  frame REFITS around the result (`setBoardSizes` on
+  `applyBoardArrangement`); then the root arranges with every board as one
+  meta card at its fresh size, wire length between blocks doing the
+  placing. Interior passes draw no island backdrops and pin no waypoints
+  (stored waypoints are flow-space); ink on every arranged level is
+  cleared, island boxes come back at the root only.
+- A board's floor is paintable: `pocket.colorTag` (the paint tool works on
+  the open frame and the minimized card) recolours the wash, frame line and
+  title bar via `chromeFor` in BoardNode.tsx. The resize grip's floor is
+  the members' extent plus a cell - a frame can never be made smaller than
+  what it holds (measured from React Flow child geometry at grab time).
 - Board frames are `selectable: false`: marquee over the floor collects the
   cards, and a frame inside a dragged selection would move its members
   twice. The title bar drags it without selection; the minimized card

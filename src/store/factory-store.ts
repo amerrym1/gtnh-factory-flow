@@ -355,6 +355,8 @@ interface FactoryStore {
     /** Auto-drawn island boxes; ids are stamped here with the auto prefix. */
     addAnnotations?: Array<Omit<FactoryAnnotation, "id">>;
     removeAnnotationIds?: string[];
+    /** Frames refitted around freshly arranged members; same undo entry. */
+    setBoardSizes?: Array<{ id: string; size: { width: number; height: number } }>;
   }) => void;
   /**
    * Delete a whole selection as a single undo entry. `nodeIds` may hold any
@@ -379,6 +381,8 @@ interface FactoryStore {
   /** Unwrap a board: members surface where they stand, the frame goes. */
   dissolvePocket: (pocketId: string) => void;
   renamePocket: (pocketId: string, name: string) => void;
+  /** Paint a board's background; undefined washes the paint off. */
+  paintPocket: (pocketId: string, colorTag?: FactoryNodeColorTag) => void;
   /**
    * Place a new board: an open window on the canvas. Items in `memberIds`
    * (root items covered by the drawn frame) become members without moving
@@ -1788,9 +1792,19 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       return withProjectHistory(state, { project });
     });
   },
-  applyBoardArrangement: ({ moves, resetEdgeIds, setWaypoints, addAnnotations, removeAnnotationIds }) => {
+  applyBoardArrangement: ({
+    moves,
+    resetEdgeIds,
+    setWaypoints,
+    addAnnotations,
+    removeAnnotationIds,
+    setBoardSizes,
+  }) => {
     set((state) => {
       const positionById = new Map(moves.map((move) => [move.id, move.position] as const));
+      const boardSizeById = new Map(
+        (setBoardSizes ?? []).map((entry) => [entry.id, entry.size] as const),
+      );
       let changed = false;
       const applyMoves = <T extends { id: string; position: { x: number; y: number } }>(
         items: T[],
@@ -1806,7 +1820,27 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
 
       const nodes = applyMoves(state.project.nodes);
       const storages = state.project.storages ? applyMoves(state.project.storages) : undefined;
-      const pockets = state.project.pockets ? applyMoves(state.project.pockets) : undefined;
+      const pockets = state.project.pockets
+        ? state.project.pockets.map((pocket) => {
+            const position = positionById.get(pocket.id);
+            const size = boardSizeById.get(pocket.id);
+            const samePosition =
+              !position ||
+              (position.x === pocket.position.x && position.y === pocket.position.y);
+            const sameSize =
+              !size ||
+              (pocket.size?.width === size.width && pocket.size?.height === size.height);
+            if (samePosition && sameSize) {
+              return pocket;
+            }
+            changed = true;
+            return {
+              ...pocket,
+              position: position ?? pocket.position,
+              ...(size ? { size } : undefined),
+            };
+          })
+        : undefined;
 
       const doomedInk = new Set(removeAnnotationIds ?? []);
       let annotations = state.project.annotations
@@ -2295,6 +2329,22 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         ...state.project,
         pockets: (state.project.pockets ?? []).map((entry) =>
           entry.id === pocketId ? { ...entry, name: trimmed } : entry,
+        ),
+      });
+      return withProjectHistory(state, { project });
+    });
+  },
+  paintPocket: (pocketId, colorTag) => {
+    set((state) => {
+      const pocket = (state.project.pockets ?? []).find((entry) => entry.id === pocketId);
+      if (!pocket || pocket.colorTag === colorTag) {
+        return state;
+      }
+
+      const project = touchProject({
+        ...state.project,
+        pockets: (state.project.pockets ?? []).map((entry) =>
+          entry.id === pocketId ? { ...entry, colorTag } : entry,
         ),
       });
       return withProjectHistory(state, { project });
