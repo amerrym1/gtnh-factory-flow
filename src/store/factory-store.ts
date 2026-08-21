@@ -73,6 +73,7 @@ import type {
 } from "@/lib/model/types";
 import { planContentFingerprint } from "@/lib/community/plan-fingerprint";
 import { collectPocketMembers, expandPocketSelection } from "@/lib/model/pocket-connections";
+import { paperForBoardId, pickBoardPaper } from "@/lib/model/board-paper";
 import type { BoardCamera } from "@/lib/designs/design-camera";
 
 export const LOCAL_STORAGE_KEY = "gtnh-factory-flow.project.v2";
@@ -393,7 +394,7 @@ interface FactoryStore {
   renamePocket: (pocketId: string, name: string) => void;
   /** Paint a board's background; undefined washes the paint off. */
   paintPocket: (pocketId: string, colorTag?: FactoryNodeColorTag) => void;
-  /** The paper a board is drawn on; undefined returns it to the house look. */
+  /** The paper a board is drawn on; undefined hands it back to its id. */
   setPocketTheme: (pocketId: string, theme?: string) => void;
   /** The ruling on that paper; undefined returns it to the default dots. */
   setPocketPattern: (pocketId: string, pattern?: string) => void;
@@ -2228,6 +2229,13 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         name: name?.trim() || `Board ${(state.project.pockets ?? []).length + 1}`,
         position: corner,
         expanded: true,
+        // Every board wears a paper, and a new one takes a colour nobody
+        // else on the plan is wearing.
+        theme: pickBoardPaper(
+          // What the others are WEARING, which for a board that has never
+          // been papered is the colour its id gives it.
+          (state.project.pockets ?? []).map((entry) => entry.theme ?? paperForBoardId(entry.id)),
+        ),
         size: {
           width: Math.max(
             BOARD_WINDOW_MIN_WIDTH,
@@ -2446,6 +2454,13 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         name: name?.trim() || `Board ${(state.project.pockets ?? []).length + 1}`,
         position: corner,
         expanded: true,
+        // Every board wears a paper, and a new one takes a colour nobody
+        // else on the plan is wearing.
+        theme: pickBoardPaper(
+          // What the others are WEARING, which for a board that has never
+          // been papered is the colour its id gives it.
+          (state.project.pockets ?? []).map((entry) => entry.theme ?? paperForBoardId(entry.id)),
+        ),
         size: frame,
       };
       createdBoardId = board.id;

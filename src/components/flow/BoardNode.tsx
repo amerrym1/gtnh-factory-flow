@@ -18,6 +18,7 @@ import { useBoardView } from "./board-view";
 import { publishBoardResizeDraft } from "./board-resize";
 import { rectsOverlap, type PlacementRect } from "./board-placement";
 import { CANVAS_THEMES, getCanvasTheme } from "./canvas-themes";
+import { paperForBoardId } from "@/lib/model/board-paper";
 import { CANVAS_PATTERNS } from "./board-view";
 import { GT_NODE_COLORS } from "./node-colors";
 
@@ -29,8 +30,9 @@ import { GT_NODE_COLORS } from "./node-colors";
  * through the frame only when they belong to it; see the router exemptions.
  *
  * The floor is paintable: the board's `colorTag` (set with the paint tool,
- * like any card) recolours the wash, the frame line and the bar. Untagged
- * boards wear the house purple, the same family the minimized card wears.
+ * like any card) recolours the wash, the frame line and the bar. A board
+ * with neither a paper nor a tag is given a paper from its id - there is no
+ * default board colour.
  */
 
 /** The title bar is the only place a drag can grab the frame. */
@@ -102,21 +104,6 @@ interface BoardChrome {
   grip: string;
 }
 
-/** The unpapered look: the purple family the minimized card wears. */
-const DEFAULT_CHROME: BoardChrome = {
-  barBg: "#3b2d52",
-  barBevelHi: "#5e4a85",
-  barBevelLo: "#1a1326",
-  barBorder: "#241b33",
-  nameBg: "#5e4a85",
-  ink: "#ffffff",
-  inkMuted: "#c9b8ec",
-  floorColor: "#2a2140",
-  dotColor: "#5b4c7a",
-  frameLine: "#5e4a85",
-  grip: "#8d6fd1",
-};
-
 /**
  * The papers a board may be laid on: the canvas themes, minus the light
  * ones. A pale sheet under the board's dark cards reads as a hole cut in
@@ -159,14 +146,17 @@ function shadeHex(hex: string, amount: number): string {
  * its colour, its grain and the ink its own grid dots are drawn in, and the
  * title bar is cut from the same paper a few shades off so the window reads
  * as one object. A board with no paper falls back to a colour tag (the paint
- * tool still works on boards), and with neither to the house purple.
+ * tool still works on boards), and a board with neither is given a paper
+ * from its id - boards have no default colour to fall back to.
  */
 function chromeFor(
+  boardId: string,
   themeId: string | undefined,
   colorTag: FactoryNodeColorTag | undefined,
 ): BoardChrome {
-  if (themeId) {
-    const theme = getCanvasTheme(themeId);
+  const paper = themeId ?? (colorTag ? undefined : paperForBoardId(boardId));
+  if (paper) {
+    const theme = getCanvasTheme(paper);
     const light = isLightColor(theme.base);
     const ink = light ? "#1b1d21" : "#f4f4f5";
     return {
@@ -186,12 +176,11 @@ function chromeFor(
       grip: theme.patternColor,
     };
   }
-  if (!colorTag) {
-    return DEFAULT_CHROME;
-  }
-  const paint = GT_NODE_COLORS[colorTag];
+  const paint = colorTag ? GT_NODE_COLORS[colorTag] : undefined;
   if (!paint) {
-    return DEFAULT_CHROME;
+    // A tag the palette no longer carries: the board still gets a paper,
+    // because there is no house colour to fall back to.
+    return chromeFor(boardId, paperForBoardId(boardId), undefined);
   }
   const ink = isLightColor(paint.header) ? "#1b1d21" : "#ffffff";
   return {
@@ -224,7 +213,10 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
   const [draftName, setDraftName] = useState<string | undefined>(undefined);
   const [isPaletteOpen, setPaletteOpen] = useState(false);
   const isRenaming = draftName !== undefined && !calmMode;
-  const chrome = chromeFor(pocket.theme, pocket.colorTag);
+  const chrome = chromeFor(pocket.id, pocket.theme, pocket.colorTag);
+  // What clearing the paper hands the board back to: a colour of its own,
+  // picked from its id. There is no house colour under a board.
+  const ownPaper = getCanvasTheme(paperForBoardId(pocket.id));
 
   // A resize follows the pointer live and lands in the store once, on
   // release. The DRAFT carries a whole frame, not just a size: dragging the
@@ -457,8 +449,14 @@ function BoardNodeComponent({ data, width, height }: NodeProps<BoardWindowFlowNo
               setPocketTheme(pocket.id, undefined);
               setPaletteOpen(false);
             }}
-            className="flex h-7 w-9 items-center justify-center border-2 border-[#241b33] bg-[#3b2d52] text-white hover:bg-[#5e4a85]"
-            title="Back to the house purple"
+            className={[
+              "flex h-7 w-9 items-center justify-center border-2 text-white",
+              pocket.theme === undefined
+                ? "border-white ring-2 ring-cyan-300"
+                : "border-[#241b33]",
+            ].join(" ")}
+            style={{ backgroundColor: ownPaper.base, backgroundImage: ownPaper.texture }}
+            title="Back to this board's own colour"
             aria-label={`Clear the paper on board ${pocket.name}`}
           >
             <X className="h-3.5 w-3.5" />
@@ -802,7 +800,7 @@ export function BoardFloor({
   width: number;
   height: number;
 }) {
-  const chrome = chromeFor(pocket.theme, pocket.colorTag);
+  const chrome = chromeFor(pocket.id, pocket.theme, pocket.colorTag);
   return (
     <div
       aria-hidden

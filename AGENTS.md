@@ -328,7 +328,7 @@ gh run watch <run-id> --exit-status
   20px pitch (`chromeFor` in BoardNode.tsx cuts the title bar from the same
   paper). The title bar's paper button picks one; the arrange assigns from
   `ZONE_PAPERS`, skipping papers other boards already wear. `colorTag`
-  still works (the paint tool) and is the fallback when there is no theme.
+  still works (the paint tool) and wins when there is no theme.
   The resize grip's floor is the members' extent plus a cell - a frame can
   never be made smaller than what it holds.
 - The paper is painted by `BoardFloors`, ONE viewport portal at z -4, not
@@ -358,8 +358,19 @@ gh run watch <run-id> --exit-status
   `COST_OUTSIDE_HOME` for every pixel spent OUTSIDE it, so it never ducks
   out of its own board and back in. The second rule exists because the
   first one alone made leaving cheaper than staying.
+- A board has NO DEFAULT COLOUR - the house purple it used to fall back to
+  is gone (`src/lib/model/board-paper.ts`). A board created now stores a
+  paper nobody else on the plan is WEARING, picked at random
+  (`pickBoardPaper` in `createBoard`/`wrapSelectionInBoard`), and a board
+  with no stored paper - every pocket made before papers existed - is drawn
+  in `paperForBoardId`, hashed from its own id so it looks the same on
+  every reload and needs no migration. The picker's clear button hands a
+  board back to that id colour rather than to a house one. The minimized
+  card is still the star-field purple, on purpose: it must never pass for a
+  machine card.
 - Only DARK papers are offered (`BOARD_PAPERS` filters the light canvas
-  themes out, and `ZONE_PAPERS` lists dark ids): a pale sheet under the
+  themes out, and `BOARD_PAPER_IDS` - which `ZONE_PAPERS` now is - lists
+  the dark ids): a pale sheet under the
   board's dark cards reads as a hole in the plan. A board already carrying
   a light theme still renders it. `pocket.pattern` rules that paper with
   the same six the canvas offers (`boardRuling` draws them as CSS layers,

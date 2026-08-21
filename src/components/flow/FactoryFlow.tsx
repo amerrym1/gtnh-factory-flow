@@ -320,6 +320,7 @@ import {
   type AnnotationFlowNode,
 } from "./AnnotationNode";
 import { settleZonePoints } from "@/lib/model/zone-points";
+import { BOARD_PAPER_IDS } from "@/lib/model/board-paper";
 import { nearestFreeSpot, type PlacementRect, type PlacementRegion } from "./board-placement";
 import { registerBoardResize, type BoardResizeDraft } from "./board-resize";
 
@@ -9561,16 +9562,7 @@ function estimateNodeCardSize(
  * chosen to sit a step apart in tone, since adjacent zones usually get
  * adjacent papers.
  */
-const ZONE_PAPERS: string[] = [
-  "slate",
-  "blueprint",
-  "chalkboard",
-  "graphite",
-  "gunmetal",
-  "midnight",
-  "charcoal",
-  "void",
-];
+const ZONE_PAPERS: readonly string[] = BOARD_PAPER_IDS;
 
 function computeAutoArrangement(
   baseProject: FactoryProject,
