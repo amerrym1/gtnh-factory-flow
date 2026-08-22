@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.24.0",
+    date: "2026-08-22",
+    headline: "The recipe book is a search now",
+    notes: [
+      "Clicking an item opens one screen: your question as a card at the bottom, every answer above it.",
+      "Ask for several items at once, on either side, with any, all or only.",
+      "Adding a recipe lands it on free ground, wires it to the card you came from, and the camera follows.",
+      "Every card has a new button that finds a replacement recipe and keeps the wires that still fit.",
+    ],
+  },
+  {
     version: "2.23.1",
     date: "2026-08-21",
     headline: "Selection is blue",
