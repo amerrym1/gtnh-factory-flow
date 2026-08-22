@@ -30,10 +30,12 @@ import {
 } from "@/lib/solver/power-report";
 import { isMultiblockRecipe } from "@/lib/solver/power";
 import {
-  ENERGY_HATCH_TYPES,
+  energyHatchTypeExistsAtTier,
+  energyHatchTypesForTier,
   getEnergyHatchType,
   STANDARD_ENERGY_HATCH_ID,
 } from "@/lib/machines/energy-hatches";
+import { useEnergyHatchIcons, type EnergyHatchIcon } from "./use-energy-hatch-icons";
 import { prefersCuratedMachineMath } from "@/lib/solver/runtime-calculation";
 import {
   applyMachineOutputMultipliers,
@@ -206,6 +208,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   const nodeColorPaintMode = useFactoryStore((state) => state.nodeColorPaintMode);
   const pendingResourceConnection = useFactoryStore((state) => state.pendingResourceConnection);
   const dataset = useFactoryStore((state) => state.dataset);
+  const energyHatchIcons = useEnergyHatchIcons(dataset?.datasetVersionId);
   const isSearchHighlighted = recipeContainsSearchResource(recipe, recipeSearch);
   const isFlowResourceHighlighted = recipeContainsResourceKey(
     recipe,
@@ -307,9 +310,14 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     // hatch (multi-amp, laser) carrying its whole rating. Offered as a config
     // row wherever the hatch dial itself shows.
     const energyHatchType = getEnergyHatchType(projectNode.energyHatchType);
-    const energyHatchTypeControl = showHatchControl
-      ? buildEnergyHatchTypeControl(projectNode.energyHatchType, dataset)
-      : undefined;
+    const energyHatchTypeControl =
+      showHatchControl && tierControl
+        ? buildEnergyHatchTypeControl(
+            projectNode.energyHatchType,
+            tierControl.current,
+            energyHatchIcons,
+          )
+        : undefined;
     const coilControl = getRecipeCoilTierControl(effectiveRecipe, projectNode);
     const coilResource = coilControl
       ? resolveDatasetMachineConfigResource(coilControl.resource, dataset)
@@ -415,7 +423,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       energyHatchType,
       energyHatchTypeControl,
     };
-  }, [dataset, previewedNode, recipe]);
+  }, [dataset, energyHatchIcons, previewedNode, recipe]);
 
   const {
     machineHandlers,
@@ -521,7 +529,15 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       direction,
     );
     if (nextTier !== tierControl.current) {
-      updateNode(projectNode.id, { overclockTier: nextTier });
+      updateNode(projectNode.id, {
+        overclockTier: nextTier,
+        // A hatch family that does not exist at the new tier (a laser below
+        // IV) goes back to the plain pair rather than modelling a build the
+        // game cannot make.
+        ...(energyHatchTypeExistsAtTier(projectNode.energyHatchType, nextTier)
+          ? undefined
+          : { energyHatchType: undefined }),
+      });
     }
   };
   const updateHatches = (direction: -1 | 1) => {
@@ -629,6 +645,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     updateNode(projectNode.id, {
       machineHandlerId: nextHandler.id,
       overclockTier: nextHandler.minimumTier,
+      ...(energyHatchTypeExistsAtTier(projectNode.energyHatchType, nextHandler.minimumTier)
+        ? undefined
+        : { energyHatchType: undefined }),
     });
     setCompareOpen(false);
     setPreviewHandlerId(undefined);
@@ -3241,23 +3260,30 @@ const ENERGY_HATCH_CONTROL_ID = "energyHatchType";
 /**
  * The energy hatch family as a config-panel row: each option wears the real
  * hatch item's icon (a representative tier - the icon names the FAMILY, the
- * tier chip already names the tier). Selection lands on the node's own
- * `energyHatchType` field, not the generic config map, because the power
- * maths read it.
+ * tier chip already names the tier), fetched once per dataset by
+ * `useEnergyHatchIcons`. Only families that exist at the card's current tier
+ * are offered - there is no 64A hatch below EV and no laser below IV.
+ * Selection lands on the node's own `energyHatchType` field, not the generic
+ * config map, because the power maths read it.
  */
 function buildEnergyHatchTypeControl(
   selectedId: string | undefined,
-  dataset: ReturnType<typeof useFactoryStore.getState>["dataset"],
+  currentTier: string,
+  icons: Map<string, EnergyHatchIcon>,
 ): MachineConfigTierControl {
-  const tiers = ENERGY_HATCH_TYPES.map((type) => ({
-    key: type.id,
-    label: type.label,
-    resource: resolveDatasetMachineConfigResource(
-      {
+  const tiers = energyHatchTypesForTier(currentTier).map((type) => {
+    const icon = icons.get(type.id);
+    return {
+      key: type.id,
+      label: type.label,
+      resource: {
         kind: "item" as const,
         id: type.resourceId,
         amount: 1,
         displayName: type.label,
+        iconPath: icon?.iconPath,
+        iconAtlas: icon?.iconAtlas,
+        dominantColor: icon?.dominantColor,
         tooltip: type.exotic
           ? [
               `${type.amps.toLocaleString("en-US")} A through one hatch (${type.minTier}+)`,
@@ -3265,9 +3291,8 @@ function buildEnergyHatchTypeControl(
             ]
           : ["2 A per hatch; a lone hatch works at 1 A"],
       },
-      dataset,
-    ),
-  }));
+    };
+  });
   const current =
     tiers.find((tier) => tier.key === (selectedId ?? STANDARD_ENERGY_HATCH_ID)) ?? tiers[0];
   return {

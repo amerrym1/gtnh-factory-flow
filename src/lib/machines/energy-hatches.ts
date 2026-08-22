@@ -1,3 +1,4 @@
+import { getVoltageTierIndex } from "@/lib/model/tiers";
 import type { MachineTier } from "@/lib/model/types";
 
 /**
@@ -161,4 +162,26 @@ const BY_ID = new Map(ENERGY_HATCH_TYPES.map((type) => [type.id, type]));
 /** An unknown or absent id is the plain hatch pair every plan started with. */
 export function getEnergyHatchType(id: string | undefined): EnergyHatchType {
   return (id && BY_ID.get(id)) || ENERGY_HATCH_TYPES[0];
+}
+
+/**
+ * The families that exist at this hatch tier: there is no 64A hatch below EV
+ * and no laser below IV, and each laser rating starts at its own tier. Every
+ * family runs to UXV, the highest tier the chip offers, so only the floor
+ * needs guarding.
+ */
+export function energyHatchTypesForTier(tier: string): EnergyHatchType[] {
+  const ordinal = getVoltageTierIndex(tier as Exclude<MachineTier, "DEMO">);
+  return ENERGY_HATCH_TYPES.filter(
+    (type) => getVoltageTierIndex(type.minTier as Exclude<MachineTier, "DEMO">) <= ordinal,
+  );
+}
+
+/** Whether this hatch family exists at this tier - the pair always does. */
+export function energyHatchTypeExistsAtTier(id: string | undefined, tier: string): boolean {
+  const type = getEnergyHatchType(id);
+  return (
+    getVoltageTierIndex(type.minTier as Exclude<MachineTier, "DEMO">) <=
+    getVoltageTierIndex(tier as Exclude<MachineTier, "DEMO">)
+  );
 }

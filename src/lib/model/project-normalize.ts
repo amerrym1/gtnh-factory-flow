@@ -1,4 +1,5 @@
 import type { FactoryProject } from "./types";
+import { energyHatchTypeExistsAtTier } from "@/lib/machines/energy-hatches";
 import { normalizeProjectFuelProfiles } from "./fuels";
 import { isCustomRateRecipe, releaseCustomRates } from "./custom-rate";
 import { dedupeEdgeWires } from "./edge-identity";
@@ -20,13 +21,37 @@ export function normalizeLoadedProject(project: FactoryProject): FactoryProject 
         releaseCustomRates(
           dropDuplicateEdges(
             dropCrossFormConnections(
-              normalizeProjectFuelProfiles(renameOpvTier(adoptSetupRules(project))),
+              dropImpossibleEnergyHatchTypes(
+                normalizeProjectFuelProfiles(renameOpvTier(adoptSetupRules(project))),
+              ),
             ),
           ),
         ),
       ),
     ),
   );
+}
+
+/**
+ * A hatch family that does not exist at the node's tier - a laser below IV, a
+ * multi-amp hatch below EV - cannot be built, so an imported or hand-edited
+ * plan carrying one falls back to the plain pair instead of modelling
+ * impossible amps.
+ */
+function dropImpossibleEnergyHatchTypes(project: FactoryProject): FactoryProject {
+  let changed = false;
+  const nodes = project.nodes.map((node) => {
+    if (
+      node.energyHatchType === undefined ||
+      energyHatchTypeExistsAtTier(node.energyHatchType, node.overclockTier)
+    ) {
+      return node;
+    }
+    changed = true;
+    const { energyHatchType, ...rest } = node;
+    return rest;
+  });
+  return changed ? { ...project, nodes } : project;
 }
 
 /**
