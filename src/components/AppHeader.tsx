@@ -1,5 +1,6 @@
 "use client";
 
+import { Settings } from "lucide-react";
 import { useState } from "react";
 import { useIsCompactViewport } from "@/lib/compact-view";
 import { unseenEntries } from "@/lib/whats-new";
@@ -11,6 +12,7 @@ import { AppMenu } from "./AppMenu";
 import { BoardActions } from "./BoardActions";
 import { ExportImageDialog } from "./export/ExportImageDialog";
 import { ChangelogDialog } from "./ChangelogDialog";
+import { SettingsDialog } from "./SettingsDialog";
 import { HeaderLinks, ReportBugButton, SupportButton, WhatsNewButton } from "./HeaderLinks";
 import { WhatsNewPreview } from "./WhatsNewPreview";
 
@@ -35,6 +37,9 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
   // same reason.
   const [isShareOpen, setShareOpen] = useState(false);
   const [isExportOpen, setExportOpen] = useState(false);
+  // Settings lives up here for the same reason as the share dialog: the
+  // compact menu closes behind it without unmounting it.
+  const [isSettingsOpen, setSettingsOpen] = useState(false);
   // Narrow windows keep the name and the version chip and fold the rest into
   // one menu — see AppMenu for why a bar that overflows costs a phone more than
   // the buttons that fall off the end of it.
@@ -86,11 +91,13 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
       {isPreviewOpen ? <WhatsNewPreview onClose={() => setPreviewOpen(false)} /> : null}
       {isShareOpen ? <SharePlanDialog onClose={() => setShareOpen(false)} /> : null}
       {isExportOpen ? <ExportImageDialog onClose={() => setExportOpen(false)} /> : null}
+      {isSettingsOpen ? <SettingsDialog onClose={() => setSettingsOpen(false)} /> : null}
       {isCompact ? (
         <AppMenu
           onLoadDatasetVersion={onLoadDatasetVersion}
           onShare={() => setShareOpen(true)}
           onExportImage={() => setExportOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
       ) : (
         // The global `font: inherit` reset outranks any text-* on a button, so
@@ -103,6 +110,17 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
             onExportImage={() => setExportOpen(true)}
           />
           <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
+          {/* Dressed like the compass and the brand links: settings is a
+              utility square, not one of the coloured calls to action. */}
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            title="Settings"
+            aria-label="Open settings"
+            className="inline-flex h-7 w-7 items-center justify-center rounded border border-line-strong bg-surface text-fg-subtle hover:bg-surface-raised hover:text-fg"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </button>
           <SupportButton />
           <WhatsNewButton
             onClick={(unseen) => {
