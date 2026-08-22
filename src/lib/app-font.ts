@@ -17,7 +17,15 @@
  * value matches no CSS rule and falls through to the Monocraft default.
  */
 
-export type AppFontId = "minecraft" | "inter" | "jetbrains-mono" | "system";
+export type AppFontId =
+  | "minecraft"
+  | "inter"
+  | "lexend"
+  | "atkinson-hyperlegible"
+  | "open-dyslexic"
+  | "comic-neue"
+  | "jetbrains-mono"
+  | "system";
 
 export interface AppFontOption {
   id: AppFontId;
@@ -40,6 +48,30 @@ export const APP_FONTS: readonly AppFontOption[] = [
     label: "Inter",
     blurb: "A plain modern typeface.",
     stack: "var(--font-inter), ui-sans-serif, system-ui, sans-serif",
+  },
+  {
+    id: "lexend",
+    label: "Lexend",
+    blurb: "Designed for easier reading.",
+    stack: "var(--font-lexend), ui-sans-serif, system-ui, sans-serif",
+  },
+  {
+    id: "atkinson-hyperlegible",
+    label: "Atkinson Hyperlegible",
+    blurb: "Designed for low vision readers.",
+    stack: "var(--font-atkinson), ui-sans-serif, system-ui, sans-serif",
+  },
+  {
+    id: "open-dyslexic",
+    label: "OpenDyslexic",
+    blurb: "Weighted letters made for dyslexic readers.",
+    stack: "var(--font-open-dyslexic), ui-sans-serif, system-ui, sans-serif",
+  },
+  {
+    id: "comic-neue",
+    label: "Comic Neue",
+    blurb: "Casual and rounded. Easy on some dyslexic readers too.",
+    stack: "var(--font-comic-neue), ui-sans-serif, system-ui, sans-serif",
   },
   {
     id: "jetbrains-mono",

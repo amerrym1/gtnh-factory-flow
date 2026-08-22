@@ -8,6 +8,7 @@ import {
   setAppFont,
   type AppFontId,
 } from "@/lib/app-font";
+import { isUpdatePopupEnabled, setUpdatePopupEnabled } from "@/lib/whats-new";
 
 /**
  * The planner's settings, in one small sheet.
@@ -22,6 +23,7 @@ import {
  */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [font, setFont] = useState<AppFontId>(() => getStoredAppFont());
+  const [updatePopup, setUpdatePopup] = useState<boolean>(() => isUpdatePopupEnabled());
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -109,6 +111,42 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                 );
               })}
             </div>
+          </section>
+
+          <section className="mt-4">
+            <h3 className="px-1 pb-1.5 text-[11px] font-bold uppercase tracking-widest text-fg-muted">
+              Popups
+            </h3>
+            <button
+              type="button"
+              onClick={() => {
+                const next = !updatePopup;
+                setUpdatePopupEnabled(next);
+                setUpdatePopup(next);
+              }}
+              aria-pressed={updatePopup}
+              className={[
+                "flex w-full items-center gap-3 rounded border px-3 py-2.5 text-left",
+                updatePopup
+                  ? "border-cyan-600 bg-cyan-500/10"
+                  : "border-line hover:border-line-strong hover:bg-surface-raised",
+              ].join(" ")}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-base leading-tight text-fg">Update notes popup</span>
+                <span className="mt-0.5 block text-xs text-fg-muted">
+                  A release that changes saved plans opens its notes when you arrive. Off, the
+                  What&apos;s new button only shows a dot.
+                </span>
+              </span>
+              <Check
+                aria-hidden
+                className={[
+                  "h-4 w-4 shrink-0",
+                  updatePopup ? "text-cyan-400" : "invisible",
+                ].join(" ")}
+              />
+            </button>
           </section>
         </div>
       </div>

@@ -1,5 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import {
+  Atkinson_Hyperlegible,
+  Comic_Neue,
+  Inter,
+  JetBrains_Mono,
+  Lexend,
+} from "next/font/google";
 import localFont from "next/font/local";
 import { APP_FONT_STORAGE_KEY, DEFAULT_APP_FONT } from "@/lib/app-font";
 import { Analytics } from "./Analytics";
@@ -22,9 +28,9 @@ const monocraft = localFont({
 });
 
 /*
- * The two alternative fonts the settings dialog offers (src/lib/app-font.ts).
- * next/font downloads them at build time and serves them from our own origin,
- * so offering them costs no runtime request to Google.
+ * The alternative fonts the settings dialog offers (src/lib/app-font.ts).
+ * next/font downloads the Google ones at build time and serves everything
+ * from our own origin, so offering them costs no runtime request to Google.
  */
 const inter = Inter({
   subsets: ["latin"],
@@ -35,6 +41,36 @@ const inter = Inter({
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-jetbrains-mono",
+  display: "swap",
+});
+
+const lexend = Lexend({
+  subsets: ["latin"],
+  variable: "--font-lexend",
+  display: "swap",
+});
+
+const atkinson = Atkinson_Hyperlegible({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-atkinson",
+  display: "swap",
+});
+
+const comicNeue = Comic_Neue({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-comic-neue",
+  display: "swap",
+});
+
+/* Not on Google Fonts; vendored under its SIL OFL (OpenDyslexic-LICENSE). */
+const openDyslexic = localFont({
+  src: [
+    { path: "./fonts/OpenDyslexic-Regular.otf", weight: "400", style: "normal" },
+    { path: "./fonts/OpenDyslexic-Bold.otf", weight: "700", style: "normal" },
+  ],
+  variable: "--font-open-dyslexic",
   display: "swap",
 });
 
@@ -160,7 +196,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${monocraft.variable} ${inter.variable} ${jetbrainsMono.variable} h-full`}
+      className={`${monocraft.variable} ${inter.variable} ${jetbrainsMono.variable} ${lexend.variable} ${atkinson.variable} ${comicNeue.variable} ${openDyslexic.variable} h-full`}
       // The boot script above stamps `data-app-font` on this element before
       // React ever renders, and the server markup does not carry it.
       suppressHydrationWarning

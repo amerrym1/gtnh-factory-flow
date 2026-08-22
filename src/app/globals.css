@@ -378,6 +378,22 @@ html[data-app-font="jetbrains-mono"] {
   --app-font: var(--font-jetbrains-mono), ui-monospace, monospace;
 }
 
+html[data-app-font="lexend"] {
+  --app-font: var(--font-lexend), ui-sans-serif, system-ui, sans-serif;
+}
+
+html[data-app-font="atkinson-hyperlegible"] {
+  --app-font: var(--font-atkinson), ui-sans-serif, system-ui, sans-serif;
+}
+
+html[data-app-font="open-dyslexic"] {
+  --app-font: var(--font-open-dyslexic), ui-sans-serif, system-ui, sans-serif;
+}
+
+html[data-app-font="comic-neue"] {
+  --app-font: var(--font-comic-neue), ui-sans-serif, system-ui, sans-serif;
+}
+
 html[data-app-font="system"] {
   --app-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
