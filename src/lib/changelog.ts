@@ -75,12 +75,12 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "2.25.0",
     date: "2026-08-22",
-    headline: "Settings, starting with the font",
+    headline: "Settings, and a roomier recipe search",
     notes: [
-      "A gear in the header opens Settings, saved on your device.",
-      "Eight fonts to pick from, including dyslexia friendly ones.",
+      "A gear in the header opens Settings: eight fonts to pick from, saved on your device.",
       "The update notes popup can be turned off. The What's new dot stays.",
-      "The setup rules button on the board is sliders now, not a second gear.",
+      "The recipe search takes the whole right of the screen, with bigger items and the item list still open beside it.",
+      "Slots that take several forms cycle again by scrolling, and a Ratio view shows amounts in lowest terms.",
     ],
   },
   {
