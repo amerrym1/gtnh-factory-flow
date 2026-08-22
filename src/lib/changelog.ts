@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.25.1",
+    date: "2026-08-22",
+    headline: "Quieter numbers in the search",
+    notes: [
+      "Rate units on recipe items are smaller and grey, so the number reads first.",
+      "Rates drop pointless zeros: 7, not 7.0.",
+    ],
+  },
+  {
     version: "2.25.0",
     date: "2026-08-22",
     headline: "Settings, and a roomier recipe search",

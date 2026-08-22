@@ -1459,7 +1459,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
                 hit={takesClauses.some((clause) => clauseMatchesInput(clause, chip.raw))}
                 amountText={
                   chip.raw.consumed === false
-                    ? "NC"
+                    ? { text: "NC" }
                     : formatChipAmount(chip.resource, rateView, recipe.durationTicks, ratioDivisor)
                 }
                 hasAlternatives={chip.faces.length > 1}
@@ -1580,7 +1580,7 @@ function ResourceChip({
 }: {
   resource: ResourceAmount;
   hit: boolean;
-  amountText: string;
+  amountText: ChipAmount;
   chance?: number;
   /** The slot accepts several forms; the icon wears the classic blue plus. */
   hasAlternatives?: boolean;
@@ -1698,7 +1698,12 @@ function ResourceChip({
         {resource.displayName ?? resource.id}
       </span>
       <span className="shrink-0 text-[16px] font-bold text-[var(--mc-ink)] tabular-nums">
-        {amountText}
+        {amountText.text}
+        {amountText.unit ? (
+          <span className="ml-0.5 text-[11px] font-bold text-[var(--mc-ink-muted)]">
+            {amountText.unit}
+          </span>
+        ) : null}
       </span>
       {chance !== undefined && chance < 1 ? (
         <span className="text-[12px] text-[var(--mc-ink-muted)] tabular-nums">
@@ -1778,32 +1783,45 @@ function clauseMatchesOutput(clause: StencilClause, output: ResourceAmount): boo
   );
 }
 
+/** A chip's number and, apart from it, the quieter unit it is counted in. */
+interface ChipAmount {
+  text: string;
+  unit?: string;
+}
+
+/** "7.0" is 7 and "7.50" is 7.5: a trailing zero says nothing. */
+function trimTrailingZeros(text: string): string {
+  return text.includes(".") ? text.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "") : text;
+}
+
 function formatChipAmount(
   resource: ResourceAmount,
   rateView: RateView,
   durationTicks: number,
   ratioDivisor = 1,
-): string {
+): ChipAmount {
   // Ratio: lowest terms, no time, no unit prefix - a 1:1 recipe says 1 and 1,
   // not x1 and x1. Fluids keep their L so a litre never reads as an item.
   if (rateView === "ratio") {
     const reduced = resource.amount / ratioDivisor;
     return resource.kind === "fluid"
-      ? `${reduced.toLocaleString()} L`
-      : reduced.toLocaleString();
+      ? { text: reduced.toLocaleString(), unit: "L" }
+      : { text: reduced.toLocaleString() };
   }
 
   if (rateView === "recipe" || durationTicks <= 0) {
     if (resource.kind === "fluid") {
-      return `${resource.amount.toLocaleString()} L`;
+      return { text: resource.amount.toLocaleString(), unit: "L" };
     }
-    return `×${resource.amount.toLocaleString()}`;
+    return { text: `×${resource.amount.toLocaleString()}` };
   }
 
   const unit = RATE_VIEW_UNITS[rateView];
   const value = ((resource.amount * 20) / durationTicks) * unit.multiplier;
-  const text = formatRate(value, value >= 100 ? 0 : value >= 10 ? 1 : 2);
-  return resource.kind === "fluid" ? `${text} L/${unit.per}` : `${text}/${unit.per}`;
+  const text = trimTrailingZeros(formatRate(value, value >= 100 ? 0 : value >= 10 ? 1 : 2));
+  return resource.kind === "fluid"
+    ? { text, unit: `L/${unit.per}` }
+    : { text, unit: `/${unit.per}` };
 }
 
 
