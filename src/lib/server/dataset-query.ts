@@ -668,6 +668,12 @@ interface RankedRecipe {
    * sorts accordingly.
    */
   focus?: number;
+  /**
+   * The recipe's whole size - consumed inputs plus outputs - as the tie-break
+   * under equal focus: of two recipes that ONLY make water, the one asking
+   * for one thing beats the one asking for nine.
+   */
+  bulk?: number;
 }
 
 /**
@@ -683,6 +689,7 @@ function rankRecipes(matches: RankedRecipe[]): RankedRecipe[] {
       Number(right.iconScore > 0) - Number(left.iconScore > 0) ||
       right.score - left.score ||
       (right.focus ?? 0) - (left.focus ?? 0) ||
+      (left.bulk ?? 0) - (right.bulk ?? 0) ||
       right.iconScore - left.iconScore ||
       left.recipeIndex - right.recipeIndex,
   );
@@ -735,7 +742,14 @@ async function applyFocusScores(
   );
   return matching.map((match) => {
     const summary = summaries.get(match.recipeIndex);
-    return summary ? { ...match, focus: recipeFocusScore(summary, clauses) } : match;
+    if (!summary) {
+      return match;
+    }
+    return {
+      ...match,
+      focus: recipeFocusScore(summary, clauses),
+      bulk: summary.inputs.filter(isRecipeInputConsumed).length + summary.outputs.length,
+    };
   });
 }
 
