@@ -284,9 +284,9 @@ export function RecipeSearchOverlay({
           height: layout.sheet ? "100%" : `min(${layout.height}px, 100%)`,
         }}
       >
-        {/* The frame is 4px like a board window's, in a dark shade of the
-            site's own cyan: darker than chrome, never as dark as the floor. */}
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden border-4 border-[#153f49] bg-[#101215] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_rgba(255,255,255,0.05),inset_-2px_-2px_0_rgba(0,0,0,0.6)]">
+        {/* The frame is 4px like a board window's, a dark grey one shade off
+            the floor: an accent by contrast, not by colour. */}
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden border-4 border-[#23262d] bg-[#101215] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_rgba(255,255,255,0.05),inset_-2px_-2px_0_rgba(0,0,0,0.6)]">
           <button
             type="button"
             title="Close recipe search (Esc)"
@@ -410,9 +410,11 @@ export function RecipeSearchOverlay({
             )}
           </div>
 
-          {/* ===== the stencil: its own card, bottom middle ===== */}
-          <div className="flex justify-center px-3 pb-3 pt-2">
-            <div className="relative w-full max-w-[760px] border-2 border-[var(--mc-15)] bg-[var(--mc-82)] p-3 shadow-[0_6px_0_rgba(0,0,0,0.45),inset_1px_1px_0_var(--mc-93)]">
+        </div>
+
+        {/* ===== the stencil: its own detached card, the foot of the T ===== */}
+        <div className="flex shrink-0 justify-center pt-3">
+          <div className="relative w-full max-w-[760px] border-4 border-[#23262d] bg-[var(--mc-82)] p-3 text-[var(--mc-ink)] shadow-[0_8px_0_rgba(0,0,0,0.5),inset_1px_1px_0_var(--mc-93)]">
               <div className="flex items-stretch gap-2">
                 <StencilSide
                   label="Takes"
@@ -511,7 +513,6 @@ export function RecipeSearchOverlay({
               ))}
             </div>
           ) : null}
-        </div>
       </section>
     </div>
   );
