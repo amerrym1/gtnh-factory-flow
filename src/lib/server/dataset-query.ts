@@ -72,6 +72,8 @@ interface LoadedRecipeIndex {
   version: DatasetVersion;
   resources: DatasetResource[];
   resourceIndex: DatasetResourceIndexEntry[];
+  /** Cached made-by/used-by recipe counts per `kind:id`, from the lookup index. */
+  resourceDirectionCounts?: Map<string, { madeBy: number; usedBy: number }>;
   recipeMaps: string[];
   recipeMapIcons?: RecipeMapIconEntry[];
   machineHandlerIcons?: MachineHandlerIconEntry[];
@@ -292,7 +294,54 @@ export async function resolveDatasetRecipeRefs(
     .filter((match): match is { importedId: string; recipeId: string } => Boolean(match));
 }
 
-export type ResourceQuerySort = "relevance" | "name" | "mod" | "recipes";
+export type ResourceQuerySort = "relevance" | "name" | "mod" | "recipes" | "made" | "uses";
+
+/**
+ * How many recipes MAKE and how many USE each resource, read off the same
+ * inverted index the recipe search queries - so a Spruce Log's counts include
+ * the oredict recipes it satisfies. Computed once per loaded dataset.
+ */
+async function getResourceDirectionCounts(
+  catalog: LoadedRecipeIndex,
+): Promise<Map<string, { madeBy: number; usedBy: number }>> {
+  if (catalog.resourceDirectionCounts) {
+    return catalog.resourceDirectionCounts;
+  }
+
+  const counts = new Map<string, { madeBy: number; usedBy: number }>();
+  const credit = (key: string, total: number) => {
+    const colon = key.indexOf(":");
+    const mode = key.slice(0, colon);
+    const resourceKey = key.slice(colon + 1);
+    const entry = counts.get(resourceKey) ?? { madeBy: 0, usedBy: 0 };
+    if (mode === "recipes") {
+      entry.madeBy += total;
+    } else if (mode === "uses") {
+      entry.usedBy += total;
+    }
+    counts.set(resourceKey, entry);
+  };
+
+  if (catalog.version.recipeLookupIndexPath) {
+    const lookup = await loadRecipeLookupIndex(catalog.version);
+    for (const [key, recipesByMap] of lookup.entries) {
+      let total = 0;
+      for (const recipeIndexes of recipesByMap.values()) {
+        total += recipeIndexes.length;
+      }
+      credit(key, total);
+    }
+  } else {
+    const recipeCatalog = await loadRecipeIndex(catalog.version.id);
+    const indexes = ensureIndexes(recipeCatalog);
+    for (const [key, recipeIndexes] of indexes.recipeIndexesByResource) {
+      credit(key, recipeIndexes.length);
+    }
+  }
+
+  catalog.resourceDirectionCounts = counts;
+  return counts;
+}
 
 /** Mod is encoded in the id prefix ("gregtech:gt.metaitem..."); fluids are bare ids. */
 export function getResourceModId(resource: { id: string; kind: string }): string {
@@ -372,7 +421,13 @@ export async function queryDatasetResources(
     },
   );
 
-  const matches = sortResourceMatches(catalog, resolved.results, request.sort ?? "relevance");
+  const directionCounts = await getResourceDirectionCounts(catalog);
+  const matches = sortResourceMatches(
+    catalog,
+    resolved.results,
+    request.sort ?? "relevance",
+    directionCounts,
+  );
 
   return {
     resources: matches
@@ -414,6 +469,7 @@ function sortResourceMatches(
   catalog: LoadedRecipeIndex,
   matches: Array<{ resourceIndex: number; score: number }>,
   sort: ResourceQuerySort,
+  directionCounts: Map<string, { madeBy: number; usedBy: number }>,
 ) {
   const nameOf = (match: { resourceIndex: number }) => {
     const resource = catalog.resourceIndex[match.resourceIndex];
@@ -423,6 +479,15 @@ function sortResourceMatches(
     getResourceModId(catalog.resourceIndex[match.resourceIndex]);
   const recipesOf = (match: { resourceIndex: number }) =>
     catalog.resourceIndex[match.resourceIndex]?.recipeCount ?? 0;
+  const countsOf = (match: { resourceIndex: number }) => {
+    const resource = catalog.resourceIndex[match.resourceIndex];
+    return (
+      (resource && directionCounts.get(`${resource.kind}:${resource.id}`)) ?? {
+        madeBy: 0,
+        usedBy: 0,
+      }
+    );
+  };
 
   if (sort === "name") {
     return [...matches].sort((left, right) => nameOf(left).localeCompare(nameOf(right)));
@@ -439,11 +504,25 @@ function sortResourceMatches(
         recipesOf(right) - recipesOf(left) || nameOf(left).localeCompare(nameOf(right)),
     );
   }
+  if (sort === "made") {
+    return [...matches].sort(
+      (left, right) =>
+        countsOf(right).madeBy - countsOf(left).madeBy || nameOf(left).localeCompare(nameOf(right)),
+    );
+  }
+  if (sort === "uses") {
+    return [...matches].sort(
+      (left, right) =>
+        countsOf(right).usedBy - countsOf(left).usedBy || nameOf(left).localeCompare(nameOf(right)),
+    );
+  }
 
-  // Best match. With nothing typed every score is 0 and the sort is stable, so
-  // the list keeps the index's own most-used-first order.
+  // Best match. Equal scores - and with nothing typed every score is 0 - fall
+  // to the thing with the most ways to MAKE it, which is the item a planner
+  // most likely came to place.
   return [...matches].sort(
-    (left, right) => right.score - left.score || recipesOf(right) - recipesOf(left),
+    (left, right) =>
+      right.score - left.score || countsOf(right).madeBy - countsOf(left).madeBy,
   );
 }
 

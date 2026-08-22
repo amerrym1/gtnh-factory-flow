@@ -95,7 +95,7 @@ const RESOURCE_VIEW_STORAGE_KEY = "gtnh-factory-flow.resource-view.v1";
 /** Whether the filter block under the search box is folded away. */
 const RESOURCE_FILTERS_STORAGE_KEY = "gtnh-factory-flow.resource-filters.v1";
 
-type ResourceSortMode = "relevance" | "name" | "mod" | "recipes";
+type ResourceSortMode = "relevance" | "name" | "mod" | "made" | "uses";
 type ResourceViewMode = "list" | "grid";
 
 /**
@@ -1224,7 +1224,8 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
               <option value="relevance">Best match</option>
               <option value="name">Name A–Z</option>
               <option value="mod">By mod</option>
-              <option value="recipes">Most recipes</option>
+              <option value="made">Most ways to make</option>
+              <option value="uses">Most used</option>
             </select>
           </div>
         </ControlsCard>

@@ -51,7 +51,7 @@ export interface RecipeDatasetResourceQuery {
   limit: number;
   kind?: "item" | "fluid";
   mod?: string;
-  sort?: "relevance" | "name" | "mod" | "recipes";
+  sort?: "relevance" | "name" | "mod" | "recipes" | "made" | "uses";
   /** Narrow to what a crop can grow or a bee can make. */
   source?: "plants" | "bees";
 }
