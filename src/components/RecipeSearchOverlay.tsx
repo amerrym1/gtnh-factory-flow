@@ -2,7 +2,7 @@
 
 import { ArrowLeftRight, Plus, Search, Star, X } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { UIEvent } from "react";
+import type { DragEvent, MouseEvent as ReactMouseEvent, UIEvent } from "react";
 import type { DatasetResourceIndexEntry, RecipeSummary } from "@/lib/datasets/types";
 import type { RecipeQueryRole, RecipeQuerySideOp } from "@/lib/datasets/recipe-query";
 import {
@@ -123,19 +123,100 @@ export function RecipeSearchOverlay({
   const panelRef = useRef<HTMLElement>(null);
   const layout = useRecipeSearchViewport();
   const [pickerRole, setPickerRole] = useState<RecipeQueryRole | undefined>(undefined);
+  const [chipMenu, setChipMenu] = useState<
+    { x: number; y: number; resource: ResourceAmount } | undefined
+  >(undefined);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
+      if (event.key !== "Escape") {
+        return;
       }
+      if (chipMenu) {
+        setChipMenu(undefined);
+        return;
+      }
+      onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [chipMenu, onClose]);
+
+  // Any press outside the menu dismisses it; the menu's own buttons stop the
+  // press from reaching this.
+  useEffect(() => {
+    if (!chipMenu) {
+      return;
+    }
+    const dismiss = () => setChipMenu(undefined);
+    window.addEventListener("pointerdown", dismiss);
+    return () => window.removeEventListener("pointerdown", dismiss);
+  }, [chipMenu]);
+
+  const openChipMenu = useCallback((event: ReactMouseEvent, resource: ResourceAmount) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setChipMenu({
+      x: Math.min(event.clientX, window.innerWidth - 230),
+      y: Math.min(event.clientY, window.innerHeight - 190),
+      resource,
+    });
+  }, []);
 
   const removeClause = (index: number) => {
     onClausesChange(clauses.filter((_, at) => at !== index));
+  };
+
+  const addResourceClause = useCallback(
+    (resource: ResourceAmount, role: RecipeQueryRole) => {
+      const already = clauses.some(
+        (clause) => clause.role === role && clause.kind === resource.kind && clause.id === resource.id,
+      );
+      if (!already) {
+        onClausesChange([
+          ...clauses,
+          {
+            role,
+            kind: resource.kind,
+            id: resource.id,
+            displayName: resource.displayName,
+            iconPath: resource.iconPath,
+            iconAtlas: resource.iconAtlas,
+            dominantColor: resource.dominantColor ?? resource.iconAtlas?.dominantColor,
+          },
+        ]);
+      }
+    },
+    [clauses, onClausesChange],
+  );
+
+  // A row dragged onto the other column changes sides; dragged within its own
+  // it reorders. Dropping where the same item already sits does nothing.
+  const moveClause = (fromIndex: number, role: RecipeQueryRole, beforeIndex?: number) => {
+    const dragged = clauses[fromIndex];
+    if (!dragged) {
+      return;
+    }
+    const duplicate = clauses.some(
+      (clause, at) =>
+        at !== fromIndex &&
+        clause.role === role &&
+        clause.kind === dragged.kind &&
+        clause.id === dragged.id,
+    );
+    if (duplicate) {
+      return;
+    }
+    const before = beforeIndex !== undefined ? clauses[beforeIndex] : undefined;
+    const rest = clauses.filter((_, at) => at !== fromIndex);
+    const moved = { ...dragged, role };
+    const insertAt = before ? rest.indexOf(before) : -1;
+    if (insertAt >= 0) {
+      rest.splice(insertAt, 0, moved);
+    } else {
+      rest.push(moved);
+    }
+    onClausesChange(rest);
   };
 
   const addClause = (entry: DatasetResourceIndexEntry, role: RecipeQueryRole) => {
@@ -203,7 +284,9 @@ export function RecipeSearchOverlay({
           height: layout.sheet ? "100%" : `min(${layout.height}px, 100%)`,
         }}
       >
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden border-2 border-[var(--mc-96)] bg-[#101215] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_rgba(255,255,255,0.05),inset_-2px_-2px_0_rgba(0,0,0,0.6)]">
+        {/* The frame is 4px like a board window's, in a dark shade of the
+            site's own cyan: darker than chrome, never as dark as the floor. */}
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden border-4 border-[#153f49] bg-[#101215] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_rgba(255,255,255,0.05),inset_-2px_-2px_0_rgba(0,0,0,0.6)]">
           <button
             type="button"
             title="Close recipe search (Esc)"
@@ -314,6 +397,7 @@ export function RecipeSearchOverlay({
                       onAdd={onAdd}
                       onPrefetch={onPrefetch}
                       onBrowseResource={onBrowseResource}
+                      onChipMenu={openChipMenu}
                     />
                   ))}
                 </div>
@@ -338,6 +422,7 @@ export function RecipeSearchOverlay({
                   op={takesOp}
                   onOpChange={onTakesOpChange}
                   onRemove={removeClause}
+                  onDropClause={moveClause}
                   onOpenPicker={() => setPickerRole(pickerRole === "takes" ? undefined : "takes")}
                 />
                 <button
@@ -367,6 +452,7 @@ export function RecipeSearchOverlay({
                   op={makesOp}
                   onOpChange={onMakesOpChange}
                   onRemove={removeClause}
+                  onDropClause={moveClause}
                   onOpenPicker={() => setPickerRole(pickerRole === "makes" ? undefined : "makes")}
                 />
               </div>
@@ -380,15 +466,72 @@ export function RecipeSearchOverlay({
               ) : null}
             </div>
           </div>
+
+          {/* ===== the chip's right-click menu: every way to use an item ===== */}
+          {chipMenu ? (
+            <div
+              className="fixed z-50 w-[220px] border-2 border-[var(--mc-15)] bg-[var(--mc-61)] p-1 font-mono shadow-[4px_4px_0_rgba(0,0,0,0.45)]"
+              style={{ left: chipMenu.x, top: chipMenu.y }}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              <div className="truncate px-2 py-1 text-[11px] font-bold text-[var(--mc-ink-muted)]">
+                {chipMenu.resource.displayName ?? chipMenu.resource.id}
+              </div>
+              {(
+                [
+                  {
+                    label: "Find what makes it",
+                    act: () => onBrowseResource({ ...chipMenu.resource, amount: 1 }, "recipes"),
+                  },
+                  {
+                    label: "Find what uses it",
+                    act: () => onBrowseResource({ ...chipMenu.resource, amount: 1 }, "uses"),
+                  },
+                  {
+                    label: "Add to takes",
+                    act: () => addResourceClause(chipMenu.resource, "takes"),
+                  },
+                  {
+                    label: "Add to makes",
+                    act: () => addResourceClause(chipMenu.resource, "makes"),
+                  },
+                ] as const
+              ).map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => {
+                    item.act();
+                    setChipMenu(undefined);
+                  }}
+                  className="block w-full px-2 py-1.5 text-left text-[13px] font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       </section>
     </div>
   );
 }
 
+/** The wire form a dragged condition row travels as. */
+const CLAUSE_DRAG_TYPE = "application/x-gtnh-stencil-clause";
+
+function readDraggedClauseIndex(event: DragEvent): number | undefined {
+  const raw = event.dataTransfer.getData(CLAUSE_DRAG_TYPE);
+  const index = Number.parseInt(raw, 10);
+  return Number.isInteger(index) ? index : undefined;
+}
+
 /**
  * One column of the stencil card: the side's name and its ANY/ALL switch on
- * top, then a stack of condition rows, then the add slot.
+ * top, then a stack of condition rows, then the add slot. The stack scrolls
+ * inside a FIXED height, so removing a condition never moves the card and the
+ * next X stays under the pointer. Rows drag: within a column to reorder,
+ * across the arrow to change sides.
  */
 function StencilSide({
   label,
@@ -398,6 +541,7 @@ function StencilSide({
   op,
   onOpChange,
   onRemove,
+  onDropClause,
   onOpenPicker,
 }: {
   label: string;
@@ -407,10 +551,25 @@ function StencilSide({
   op: RecipeQuerySideOp;
   onOpChange: (op: RecipeQuerySideOp) => void;
   onRemove: (index: number) => void;
+  onDropClause: (fromIndex: number, role: RecipeQueryRole, beforeIndex?: number) => void;
   onOpenPicker: () => void;
 }) {
+  const handleDrop = (event: DragEvent, beforeIndex?: number) => {
+    const fromIndex = readDraggedClauseIndex(event);
+    if (fromIndex === undefined) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    onDropClause(fromIndex, role, beforeIndex);
+  };
+
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+    <div
+      className="flex min-w-0 flex-1 flex-col gap-1.5"
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => handleDrop(event)}
+    >
       <div className="flex h-6 items-center justify-between">
         <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--mc-ink)]">
           {label}
@@ -432,49 +591,60 @@ function StencilSide({
           </span>
         ) : null}
       </div>
-      {sideClauses.map((clause) => {
-        const index = clauses.indexOf(clause);
-        return (
-          <span
-            key={`${clause.role}:${clause.kind}:${clause.id}`}
-            className="flex w-full items-center gap-2 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] py-0.5 pl-0.5 pr-1 shadow-[inset_1px_1px_0_var(--mc-85)]"
-          >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]">
-              <ResourceIcon
-                resource={{ ...clause, amount: 1 }}
-                size="sm"
-                bare
-                showAmount={false}
-                tooltip={false}
-                className="!h-full !w-full"
-                iconPixelSize={machineArtPixels(32)}
-              />
-            </span>
-            <span className="min-w-0 flex-1 truncate text-[14px] font-bold">
-              {clause.displayName ?? clause.id}
-            </span>
-            <button
-              type="button"
-              onClick={() => onRemove(index)}
-              aria-label={`Remove ${clause.displayName ?? clause.id} from the search`}
-              title="Remove this condition"
-              className="flex h-6 w-6 shrink-0 items-center justify-center text-[var(--mc-ink-muted)] hover:text-white"
+      <div className="flex h-[172px] flex-col gap-1.5 overflow-y-auto">
+        {sideClauses.map((clause) => {
+          const index = clauses.indexOf(clause);
+          return (
+            <span
+              key={`${clause.role}:${clause.kind}:${clause.id}`}
+              draggable
+              onDragStart={(event) => {
+                event.dataTransfer.setData(CLAUSE_DRAG_TYPE, String(index));
+                event.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => handleDrop(event, index)}
+              className="flex w-full shrink-0 cursor-grab items-center gap-2 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] py-0.5 pl-0.5 pr-1 shadow-[inset_1px_1px_0_var(--mc-85)] active:cursor-grabbing"
             >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </span>
-        );
-      })}
-      <button
-        type="button"
-        onClick={onOpenPicker}
-        aria-label={role === "takes" ? "Add an input to the search" : "Add an output to the search"}
-        title={role === "takes" ? "Add an input" : "Add an output"}
-        className="flex h-10 w-full items-center justify-center gap-1.5 border-2 border-dashed border-[var(--mc-47)] px-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--mc-ink-muted)] hover:border-[var(--mc-33)] hover:text-[var(--mc-ink)]"
-      >
-        <Plus className="h-3.5 w-3.5" />
-        {role === "takes" ? "Input" : "Output"}
-      </button>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]">
+                <ResourceIcon
+                  resource={{ ...clause, amount: 1 }}
+                  size="sm"
+                  bare
+                  showAmount={false}
+                  tooltip={false}
+                  className="!h-full !w-full"
+                  iconPixelSize={machineArtPixels(32)}
+                />
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[14px] font-bold">
+                {clause.displayName ?? clause.id}
+              </span>
+              <button
+                type="button"
+                onClick={() => onRemove(index)}
+                aria-label={`Remove ${clause.displayName ?? clause.id} from the search`}
+                title="Remove this condition"
+                className="flex h-6 w-6 shrink-0 items-center justify-center text-[var(--mc-ink-muted)] hover:text-white"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </span>
+          );
+        })}
+        <button
+          type="button"
+          onClick={onOpenPicker}
+          aria-label={
+            role === "takes" ? "Add an input to the search" : "Add an output to the search"
+          }
+          title={role === "takes" ? "Add an input" : "Add an output"}
+          className="flex h-10 w-full shrink-0 items-center justify-center gap-1.5 border-2 border-dashed border-[var(--mc-47)] px-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--mc-ink-muted)] hover:border-[var(--mc-33)] hover:text-[var(--mc-ink)]"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {role === "takes" ? "Input" : "Output"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -692,6 +862,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
   onAdd,
   onPrefetch,
   onBrowseResource,
+  onChipMenu,
 }: {
   recipe: RecipeSummary;
   takesClauses: StencilClause[];
@@ -702,6 +873,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
   onAdd: (recipe: RecipeSummary, machineHandlerId?: string) => void | Promise<void>;
   onPrefetch?: (recipeId: string) => void;
   onBrowseResource: (resource: ResourceAmount, mode: "recipes" | "uses") => void;
+  onChipMenu: (event: ReactMouseEvent, resource: ResourceAmount) => void;
 }) {
   const machineIcons = useMachineHandlerIcons();
   const preview = useMemo(
@@ -819,6 +991,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
               hit={takesClauses.some((clause) => clauseMatchesInput(clause, input))}
               amountText={input.consumed === false ? "NC" : formatChipAmount(input)}
               onBrowseResource={onBrowseResource}
+              onMenu={onChipMenu}
             />
           ))}
         </span>
@@ -834,6 +1007,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
               amountText={formatChipAmount(output)}
               chance={"chance" in output ? output.chance : undefined}
               onBrowseResource={onBrowseResource}
+              onMenu={onChipMenu}
             />
           ))}
         </span>
@@ -849,25 +1023,25 @@ function ResourceChip({
   amountText,
   chance,
   onBrowseResource,
+  onMenu,
 }: {
   resource: ResourceAmount;
   hit: boolean;
   amountText: string;
   chance?: number;
   onBrowseResource: (resource: ResourceAmount, mode: "recipes" | "uses") => void;
+  onMenu: (event: ReactMouseEvent, resource: ResourceAmount) => void;
 }) {
   return (
     <button
       type="button"
-      title={`${resource.displayName ?? resource.id}: click for what makes it, right click for what uses it`}
+      title={`${resource.displayName ?? resource.id}: click for what makes it, right click for more`}
       onClick={(event) => {
         event.stopPropagation();
         onBrowseResource({ ...resource, amount: 1 }, "recipes");
       }}
       onContextMenu={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onBrowseResource({ ...resource, amount: 1 }, "uses");
+        onMenu(event, { ...resource, amount: 1 });
       }}
       className={[
         "flex w-full items-center gap-1.5 border py-0.5 pl-0.5 pr-1.5 text-left",
