@@ -10,7 +10,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { ChevronDown, Copy, Cpu, Minus, Plus, Sprout } from "lucide-react";
+import { ChevronDown, Copy, Cpu, Minus, Plus, RefreshCw, Sprout } from "lucide-react";
 import type {
   FactoryNode,
   MachineConfigTierOption,
@@ -196,6 +196,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   const selectedNodeBottlenecks = useFactoryStore((state) => state.selectedNodeBottlenecks);
   const deleteNode = useFactoryStore((state) => state.deleteNode);
   const duplicateNode = useFactoryStore((state) => state.duplicateNode);
+  const beginRecipeRefactor = useFactoryStore((state) => state.beginRecipeRefactor);
   const updateNode = useFactoryStore((state) => state.updateNode);
   const nodeColorPaintMode = useFactoryStore((state) => state.nodeColorPaintMode);
   const pendingResourceConnection = useFactoryStore((state) => state.pendingResourceConnection);
@@ -959,8 +960,14 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           // Tailwind can only emit the ones spelled out in full.
           style={{
             gridTemplateColumns: [
-              // Calm mode drops the delete/clone chrome; the title takes the row.
-              ...(calmMode ? [] : ["24px", "24px"]),
+              // Calm mode drops the delete/clone/refactor chrome; the title
+              // takes the row. Placeholder cards (crop pick, dial-a-rate)
+              // have nothing to refactor, so they keep two buttons.
+              ...(calmMode
+                ? []
+                : isCropFarmPlaceholder || isCustomRateNode
+                  ? ["24px", "24px"]
+                  : ["24px", "24px", "24px"]),
               "minmax(0,1fr)",
               // The tier chip, with its hatch-count sister fused on the left
               // when the machine is a multiblock that takes energy hatches.
@@ -994,6 +1001,20 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               >
                 <Copy aria-hidden className="h-3.5 w-3.5" />
               </button>
+              {!isCropFarmPlaceholder && !isCustomRateNode ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    beginRecipeRefactor(projectNode.id);
+                  }}
+                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
+                  title="Refactor: search for a replacement recipe"
+                  aria-label="Refactor node"
+                >
+                  <RefreshCw aria-hidden className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
             </>
           ) : null}
           <div className="relative min-w-0">

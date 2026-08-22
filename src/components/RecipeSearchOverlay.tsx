@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Search, X } from "lucide-react";
+import { ArrowLeftRight, Plus, Search, Star, X } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent, UIEvent } from "react";
 import type { DatasetResourceIndexEntry, RecipeSummary } from "@/lib/datasets/types";
@@ -63,6 +63,7 @@ export function RecipeSearchOverlay({
   onClausesChange,
   onTakesOpChange,
   onMakesOpChange,
+  onSwapSides,
   recipeMapChips,
   activeRecipeMap,
   onRecipeMapChange,
@@ -93,6 +94,7 @@ export function RecipeSearchOverlay({
   onClausesChange: (clauses: StencilClause[]) => void;
   onTakesOpChange: (op: RecipeQuerySideOp) => void;
   onMakesOpChange: (op: RecipeQuerySideOp) => void;
+  onSwapSides: () => void;
   recipeMapChips: RecipeMapChip[];
   activeRecipeMap: string;
   onRecipeMapChange: (recipeMap: string) => void;
@@ -300,9 +302,16 @@ export function RecipeSearchOverlay({
                 onRemove={removeClause}
                 onOpenPicker={() => setPickerRole(pickerRole === "takes" ? undefined : "takes")}
               />
-              <span className="px-1 text-[20px] font-black leading-6 text-[var(--mc-ink-muted)]">
-                →
-              </span>
+              <button
+                type="button"
+                onClick={onSwapSides}
+                title="Swap sides: takes become makes and makes become takes"
+                aria-label="Swap the takes and makes sides"
+                className="group flex h-8 w-8 shrink-0 items-center justify-center border-2 border-transparent text-[20px] font-black leading-6 text-[var(--mc-ink-muted)] hover:border-[var(--mc-33)] hover:bg-[var(--mc-61)] hover:text-[var(--mc-ink)]"
+              >
+                <span className="group-hover:hidden">→</span>
+                <ArrowLeftRight aria-hidden className="hidden h-4 w-4 group-hover:block" />
+              </button>
               <StencilSide
                 label="Makes"
                 role="makes"
@@ -712,7 +721,11 @@ function MachineChip({
             className="!h-full !w-full"
             iconPixelSize={machineArtPixels(28)}
           />
-        ) : null}
+        ) : (
+          // An empty slot reads as a mistake, so a chip with no machine art
+          // (the All chip) wears a star instead.
+          <Star aria-hidden className="h-4 w-4 text-[var(--mc-ink-muted)]" />
+        )}
       </span>
       <span className="max-w-[220px] truncate text-[var(--mc-ink)]">{label}</span>
       {count !== undefined ? (

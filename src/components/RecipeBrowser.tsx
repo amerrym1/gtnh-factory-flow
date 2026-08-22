@@ -184,6 +184,8 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const maxTier = useFactoryStore((state) => state.maxTierFilter);
   const browserResource = useFactoryStore((state) => state.recipeBrowserResource);
   const browserMode = useFactoryStore((state) => state.recipeBrowserMode);
+  const browserSeed = useFactoryStore((state) => state.recipeBrowserSeed);
+  const refactorNodeId = useFactoryStore((state) => state.recipeBrowserRefactorNodeId);
   const selectedRecipeId = useFactoryStore((state) => state.selectedRecipeId);
   const setRecipeSearch = useFactoryStore((state) => state.setRecipeSearch);
   const setHighlightSearch = useFactoryStore((state) => state.setHighlightSearch);
@@ -192,6 +194,10 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const clearResourceBrowser = useFactoryStore((state) => state.clearResourceBrowser);
   const selectRecipe = useFactoryStore((state) => state.selectRecipe);
   const addNodeForRecipe = useFactoryStore((state) => state.addNodeForRecipeObject);
+  const addConnectedNodeForRecipe = useFactoryStore(
+    (state) => state.addConnectedNodeForRecipeObject,
+  );
+  const refactorNodeWithRecipe = useFactoryStore((state) => state.refactorNodeWithRecipe);
   const beginRecipeAdd = useFactoryStore((state) => state.beginRecipeAdd);
   const resolveRecipeAdd = useFactoryStore((state) => state.resolveRecipeAdd);
   const failRecipeAdd = useFactoryStore((state) => state.failRecipeAdd);
@@ -358,14 +364,23 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const activeRecipeMap = recipeMaps.includes(selectedRecipeMap) ? selectedRecipeMap : "";
 
   // Opening the search seeds the stencil with exactly the question the click
-  // asked: left click = one output condition, right click = one input. Edits
+  // asked: left click = one output condition, right click = one input - or,
+  // for a refactor, every input and output of the card being replaced. Edits
   // made after that carry the browse's key and win while it stays open.
   const browseKey = browserResource
-    ? `${browserResource.kind}:${browserResource.id}:${browserMode}`
+    ? [
+        refactorNodeId ? `refactor:${refactorNodeId}` : "",
+        browserResource.kind,
+        browserResource.id,
+        browserMode,
+      ].join("|")
     : "";
   const seededStencil = useMemo<StencilClause[]>(() => {
     if (!browserResource) {
       return [];
+    }
+    if (browserSeed?.length) {
+      return browserSeed.map((clause) => ({ ...clause }));
     }
     return [
       {
@@ -378,7 +393,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
         dominantColor: browserResource.dominantColor ?? browserResource.iconAtlas?.dominantColor,
       },
     ];
-  }, [browserMode, browserResource]);
+  }, [browserMode, browserResource, browserSeed]);
   const editsApply = stencilEdits?.key === browseKey;
   const stencilClauses = editsApply ? stencilEdits.clauses : seededStencil;
   const takesOp = editsApply ? stencilEdits.takesOp : "any";
@@ -409,6 +424,18 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     },
     [browseKey, stencilClauses, takesOp],
   );
+  const swapStencilSides = useCallback(() => {
+    setStencilEdits({
+      key: browseKey,
+      clauses: stencilClauses.map((clause) => ({
+        ...clause,
+        role: clause.role === "takes" ? "makes" : "takes",
+      })),
+      takesOp: makesOp,
+      makesOp: takesOp,
+    });
+    setRecipePage(0);
+  }, [browseKey, makesOp, stencilClauses, takesOp]);
 
   const recipeTotalAcrossMaps = useMemo(() => {
     const counted = Object.values(recipeMapCounts).reduce((sum, count) => sum + count, 0);
@@ -625,6 +652,8 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       const currentMode = currentState.recipeBrowserResource
         ? currentState.recipeBrowserMode
         : browserMode;
+      const currentRefactorNodeId = currentState.recipeBrowserRefactorNodeId;
+      const anchorNodeId = currentResource?.anchorNodeId;
       const contextResource = getRecipeAddContextResource(
         currentResource,
         currentMode,
@@ -637,7 +666,23 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       const pendingId = beginRecipeAdd(recipeSummary.name);
       try {
         const recipe = await getFullRecipe(recipeSummary.id, Boolean(currentResource));
-        addNodeForRecipe(recipe, contextResource, { machineHandlerId, inputPicks });
+        if (currentRefactorNodeId) {
+          // The refactor's landing: the pick replaces the card it came from.
+          refactorNodeWithRecipe(currentRefactorNodeId, recipe, { machineHandlerId });
+        } else if (anchorNodeId && contextResource) {
+          // Opened from a card's port: the pick lands beside that card and
+          // wires itself to the clicked resource.
+          addConnectedNodeForRecipe(recipe, anchorNodeId, contextResource, {
+            machineHandlerId,
+            inputPicks,
+          });
+        } else {
+          addNodeForRecipe(recipe, contextResource, {
+            machineHandlerId,
+            inputPicks,
+            focusCamera: true,
+          });
+        }
         resolveRecipeAdd(pendingId);
       } catch (error) {
         failRecipeAdd(
@@ -648,12 +693,14 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     },
     [
       activeResource,
+      addConnectedNodeForRecipe,
       addNodeForRecipe,
       beginRecipeAdd,
       browserMode,
       clearResourceBrowser,
       failRecipeAdd,
       getFullRecipe,
+      refactorNodeWithRecipe,
       resolveRecipeAdd,
     ],
   );
@@ -1227,6 +1274,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           onClausesChange={changeStencilClauses}
           onTakesOpChange={changeTakesOp}
           onMakesOpChange={changeMakesOp}
+          onSwapSides={swapStencilSides}
           recipeMapChips={recipeMapChips}
           activeRecipeMap={activeRecipeMap}
           onRecipeMapChange={(recipeMap) => {

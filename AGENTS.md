@@ -141,7 +141,21 @@ gh run watch <run-id> --exit-status
 - Result cards merge duplicate slot entries (nine planks is one line, x9) and
   oredict slots wear their first concrete face; both are display-only.
   Chips that satisfy a stencil condition ring cyan; chips browse on
-  click/right-click like port rows.
+  click/right-click like port rows. The stencil's arrow SWAPS the two sides.
+- WHERE AN ADD LANDS: every spawn runs `nearestFreeSpot` over
+  `projectBlockerRects` (cards, drawers, minimized board cards, and open
+  frames as whole rects - nothing spawns inside a board uninvited) and the
+  camera flies to it (`boardFocusRequest`). An add whose browse came from a
+  card's PORT (`anchorNodeId`) goes through `addConnectedRecipeNodeToState`:
+  beside the anchor, upstream when the click asked who makes, and WIRED on
+  the clicked resource alone (`buildResourceEdgesBetweenNodes`) - never on
+  byproducts, and not at all when the pick no longer touches that resource.
+- REFACTOR: the card header's refresh button (`beginRecipeRefactor`) reopens
+  the search seeded with every consumed input and every output of that card,
+  and the add REPLACES the card in place (`refactorNodeWithRecipe`): wires
+  whose resource still has a port on the new recipe re-dock onto its slots,
+  the rest drop, position/count/board stay. When NO wire would survive, the
+  old card stays and the pick lands beside it instead. All one undo step.
 
 ## Machine Configs And Multiblocks
 

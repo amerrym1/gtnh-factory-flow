@@ -502,7 +502,11 @@ export async function queryDatasetRecipes(versionId: string, request: DatasetRec
       continue;
     }
     const recipeMap = indexes.recipeMaps[recipeIndex];
-    if (clauses.length > 0 && recipeMap && HANDLESS_CRAFTING_MAPS.has(recipeMap)) {
+    if (
+      (clauses.length > 0 || request.allMaps) &&
+      recipeMap &&
+      HANDLESS_CRAFTING_MAPS.has(recipeMap)
+    ) {
       continue;
     }
     matchingAll.push({
@@ -705,7 +709,7 @@ async function queryDatasetRecipesFromLookup(
   const scopedByMap = clauses.length
     ? tierFilteredByMap(
         lookup,
-        dropHandlessCraftingMaps(lookup, getClauseLookupRecipesByMap(catalog, lookup, clauses, request)),
+        getClauseLookupRecipesByMap(catalog, lookup, clauses, request),
         request.maxTier,
       )
     : undefined;
@@ -724,9 +728,15 @@ async function queryDatasetRecipesFromLookup(
   const searchScores = resolved.searchScores;
   // A pure text search has no resource to group by, so the maps come out of what
   // the words matched.
-  const tierCandidatesByMap =
+  let tierCandidatesByMap =
     scopedByMap ??
     tierFilteredByMap(lookup, groupRecipesByMap(lookup, searchScores?.keys() ?? []), request.maxTier);
+  // Every request the recipe SEARCH makes carries clauses or allMaps, so this
+  // covers a stencil emptied down to a typed name too; the legacy wire form
+  // (neither field) keeps its old answers.
+  if (clauses.length > 0 || request.allMaps) {
+    tierCandidatesByMap = dropHandlessCraftingMaps(lookup, tierCandidatesByMap);
+  }
 
   const countedRecipeMaps = [...tierCandidatesByMap.entries()]
     .map(([recipeMapId, recipeIndexes]) => {
