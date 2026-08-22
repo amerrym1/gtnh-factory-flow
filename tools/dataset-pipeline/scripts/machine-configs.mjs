@@ -164,14 +164,6 @@ export function machineConfigControlsForOracleRecipe(machineType, specialValue, 
     );
   }
 
-  if (normalized === "large chemical reactor") {
-    controls.push(
-      heatingCoilControl({
-        tooltip: () => ["Required structure coil", "No runtime speed or EU/t effect"],
-      }),
-    );
-  }
-
   if (normalized === "coke oven" || normalized === "industrial coke oven") {
     controls.push(
       heatingCoilControl({

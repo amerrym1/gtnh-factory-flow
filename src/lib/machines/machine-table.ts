@@ -569,8 +569,15 @@ const MACHINES: Record<string, MachineBehaviour> = {
   },
 
   // -- Perfect overclockers -------------------------------------------------
-  "Large Chemical Reactor": { overclock: OVERCLOCK.perfect() },
-  "Mega Chemical Reactor": { overclock: OVERCLOCK.perfect(), parallels: 256 },
+  // MTELargeChemicalReactor reads its coil only as a structure check (exactly
+  // one, all the same tier); no speed, EU or heat hangs on the tier, so the
+  // dataset's coil knob is hidden rather than shown changing nothing.
+  "Large Chemical Reactor": { overclock: OVERCLOCK.perfect(), hidesControls: ["heatingCoil"] },
+  "Mega Chemical Reactor": {
+    overclock: OVERCLOCK.perfect(),
+    parallels: 256,
+    hidesControls: ["heatingCoil"],
+  },
   "Circuit Assembly Line": { overclock: OVERCLOCK.perfect() },
   Digester: { overclock: OVERCLOCK.perfect() },
   "Elemental Duplicator": {

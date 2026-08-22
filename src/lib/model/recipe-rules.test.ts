@@ -387,6 +387,33 @@ describe("multiblock machine config controls", () => {
       getRecipeCoilTierControl(testRecipe("Chemical Plant"), { coilTier: "kanthal" }),
     ).toBeUndefined();
   });
+
+  it("hides the coil knob on machines whose coil is structure only", () => {
+    // The Large Chemical Reactor requires exactly one coil of any tier and
+    // reads nothing off it; older datasets still carry the scraped control.
+    const coilControl = {
+      id: "heatingCoil",
+      label: "Heating Coil",
+      minimumKey: "cupronickel",
+      defaultKey: "cupronickel",
+      tiers: [
+        {
+          key: "cupronickel",
+          label: "Cupronickel",
+          resource: { kind: "item" as const, id: "coil", amount: 1, displayName: "Coil" },
+        },
+      ],
+    };
+    for (const machineType of ["Large Chemical Reactor", "Mega Chemical Reactor"]) {
+      const recipe = { ...testRecipe(machineType), machineConfigControls: [coilControl] };
+      expect(getRecipeCoilTierControl(recipe, { coilTier: "cupronickel" })).toBeUndefined();
+    }
+    // A machine the table does not hide it on still shows the knob.
+    const shown = { ...testRecipe("Imported Machine"), machineConfigControls: [coilControl] };
+    expect(getRecipeCoilTierControl(shown, { coilTier: "cupronickel" })?.current.key).toBe(
+      "cupronickel",
+    );
+  });
 });
 
 describe("machine handlers and runtime calculations", () => {

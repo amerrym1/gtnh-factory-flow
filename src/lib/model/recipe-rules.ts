@@ -188,6 +188,12 @@ export function getRecipeCoilTierControl(
   recipe: Pick<Recipe, "machineType" | "source" | "nei" | "machineConfigControls">,
   node: { coilTier?: string },
 ) {
+  // The coil rides its own legacy path around dropHiddenControls, so the
+  // table's hidesControls must be honoured here too - the Large Chemical
+  // Reactor's structural coil is any tier and does nothing at runtime.
+  if (getMachineHiddenControlIds(recipe.machineType).includes("heatingCoil")) {
+    return undefined;
+  }
   const control =
     getMachineTableControls(recipe.machineType).find((entry) => entry.id === "heatingCoil") ??
     findMachineConfigControl(recipe, "heatingCoil");

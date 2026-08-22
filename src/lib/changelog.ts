@@ -80,6 +80,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "The Industrial Chemical Bath shows its energy hatch count and runs its 4 parallels per voltage tier.",
       "The Industrial Bending Machine, 3D Copying Machine, Mass Solidifier, Fluid Shaper and L.A.T.E.X. now run at their true speed and parallels too.",
       "The Fluid Shaper offers a width expansion knob, and the L.A.T.E.X. an Elastic Singularity slot.",
+      "The Large Chemical Reactor drops its heating coil setting: any coil works and none change its speed.",
     ],
   },
   {
