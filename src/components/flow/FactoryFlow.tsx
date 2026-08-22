@@ -3903,6 +3903,10 @@ export function FactoryFlow() {
     return true;
   }, [deleteBoardSelection, selectNode, selectedEdgeIds, selectedNodeIds]);
 
+  // The recipe search covers the board; the board's own notices mute while
+  // it does.
+  const recipeSearchOpen = useFactoryStore((state) => Boolean(state.recipeBrowserResource));
+
   /**
    * Whether the selection could become a board: everything in it lives on
    * the canvas, and none of it IS a board. Nothing may sit in two boards
@@ -5416,7 +5420,14 @@ export function FactoryFlow() {
           Unwired goes UNDER the dead loop: a ring is a thing that has gone
           wrong, unfinished wiring is just work still to do. The add chips ride
           on top: they are the most transient thing here. */}
-      <div className="nodrag pointer-events-none absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 flex-col-reverse items-center gap-2">
+      <div
+        className={[
+          "nodrag pointer-events-none absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 flex-col-reverse items-center gap-2 transition-opacity",
+          // The recipe search dims the whole board; these sit level with it
+          // in the stack, so they mute themselves or they shout through it.
+          recipeSearchOpen ? "opacity-20 grayscale [&_*]:pointer-events-none" : "",
+        ].join(" ")}
+      >
         <TourLoopNoticeExample />
         <UnwiredNotice onShow={handleShowNodes} />
         <DeathSpiralNotice onShow={handleShowNodes} />

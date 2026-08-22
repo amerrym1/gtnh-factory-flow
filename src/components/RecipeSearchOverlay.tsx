@@ -265,7 +265,7 @@ export function RecipeSearchOverlay({
         // them, so they stay usable. Once it covers them it has to sit over
         // them, or they clip it instead.
         layout.dodgesSidebars ? "z-30" : "z-50",
-        layout.sheet ? "" : "px-3 py-4",
+        layout.sheet ? "" : "px-3 py-2",
       ].join(" ")}
       onPointerDown={onClose}
       style={
@@ -414,7 +414,7 @@ export function RecipeSearchOverlay({
 
         {/* ===== the stencil: its own detached card, the foot of the T ===== */}
         <div className="flex shrink-0 justify-center pt-3">
-          <div className="relative w-full max-w-[760px] border-4 border-[#23262d] bg-[var(--mc-82)] p-3 text-[var(--mc-ink)] shadow-[0_8px_0_rgba(0,0,0,0.5),inset_1px_1px_0_var(--mc-93)]">
+          <div className="relative w-full max-w-[880px] border-4 border-[#23262d] bg-[var(--mc-82)] p-3 text-[var(--mc-ink)] shadow-[0_8px_0_rgba(0,0,0,0.5),inset_1px_1px_0_var(--mc-93)]">
               <div className="flex items-stretch gap-2">
                 <StencilSide
                   label="Takes"
@@ -596,7 +596,13 @@ function StencilSide({
           />
         </span>
       </div>
-      <div className="flex h-[172px] flex-col gap-1.5 overflow-y-auto">
+      {/* A fixed-height stack so removing a row never moves the card. The
+          scrollbar always has its lane, and its thumb is bright, so a stack
+          deeper than the window says so instead of hiding rows. */}
+      <div
+        className="flex h-[208px] flex-col gap-1.5 overflow-y-auto pr-0.5 [scrollbar-gutter:stable]"
+        style={{ scrollbarColor: "var(--mc-100) var(--mc-61)", scrollbarWidth: "thin" }}
+      >
         {sideClauses.map((clause) => {
           const index = clauses.indexOf(clause);
           return (
@@ -1166,8 +1172,8 @@ function formatChipAmount(resource: ResourceAmount): string {
 const BOARD_SIDEBAR_LEFT = 306;
 const BOARD_SIDEBAR_RIGHT = 330;
 const RECIPE_SEARCH_MIN_WIDTH = 640;
-const RECIPE_SEARCH_MAX_WIDTH = 1520;
-const RECIPE_SEARCH_MAX_HEIGHT = 900;
+const RECIPE_SEARCH_MAX_WIDTH = 1680;
+const RECIPE_SEARCH_MAX_HEIGHT = 1000;
 const RECIPE_SEARCH_COMFORTABLE_WIDTH = 1080;
 const RECIPE_SEARCH_SHEET_BELOW = 700;
 const ZERO_OFFSET = { x: 0, y: 0 };
@@ -1236,7 +1242,7 @@ function readRecipeSearchViewport(): RecipeSearchViewport {
     sheet: false,
     dodgesSidebars,
     width: Math.min(RECIPE_SEARCH_MAX_WIDTH, Math.max(RECIPE_SEARCH_MIN_WIDTH, available)),
-    height: Math.min(RECIPE_SEARCH_MAX_HEIGHT, Math.max(360, viewportHeight - 32)),
+    height: Math.min(RECIPE_SEARCH_MAX_HEIGHT, Math.max(360, viewportHeight - 20)),
     sidebars,
   };
 }
