@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { datasetCacheHeaders } from "@/lib/server/dataset-cache-headers";
 import { queryDatasetRecipes } from "@/lib/server/dataset-query";
+import {
+  MAX_RECIPE_QUERY_CLAUSES,
+  parseRecipeQueryClause,
+  type RecipeQueryClause,
+  type RecipeQuerySideOp,
+} from "@/lib/datasets/recipe-query";
 import type { MachineTier, ResourceKind } from "@/lib/model/types";
 
 export const runtime = "nodejs";
@@ -18,6 +24,7 @@ export async function GET(
     const url = new URL(request.url);
     const resourceKind = url.searchParams.get("resourceKind");
     const resourceId = url.searchParams.get("resourceId");
+    const clauses = parseClauses(url.searchParams.getAll("clause"));
     const result = await queryDatasetRecipes(versionId, {
       query: url.searchParams.get("query") ?? "",
       resource:
@@ -25,6 +32,10 @@ export async function GET(
           ? { kind: resourceKind, id: resourceId }
           : undefined,
       mode: url.searchParams.get("mode") === "uses" ? "uses" : "recipes",
+      clauses: clauses.length > 0 ? clauses : undefined,
+      takesOp: parseSideOp(url.searchParams.get("takesOp")),
+      makesOp: parseSideOp(url.searchParams.get("makesOp")),
+      allMaps: url.searchParams.get("allMaps") === "1",
       recipeMap: url.searchParams.get("recipeMap") || undefined,
       maxTier: parseTierFilter(url.searchParams.get("maxTier")),
       offset: parseOffset(url.searchParams.get("offset")),
@@ -57,5 +68,23 @@ function parseLimit(value: string | null): number {
 
 function parseTierFilter(value: string | null): TierFilter {
   return (value || "all") as TierFilter;
+}
+
+function parseSideOp(value: string | null): RecipeQuerySideOp {
+  return value === "all" ? "all" : "any";
+}
+
+function parseClauses(raw: string[]): RecipeQueryClause[] {
+  const clauses: RecipeQueryClause[] = [];
+  for (const entry of raw) {
+    const parsed = parseRecipeQueryClause(entry);
+    if (parsed && isRecipeResourceKind(parsed.kind)) {
+      clauses.push({ role: parsed.role, kind: parsed.kind, id: parsed.id });
+    }
+    if (clauses.length >= MAX_RECIPE_QUERY_CLAUSES) {
+      break;
+    }
+  }
+  return clauses;
 }
 

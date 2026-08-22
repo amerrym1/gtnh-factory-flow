@@ -1,6 +1,11 @@
 "use client";
 
 import type { MachineTier, Recipe, RecipeOutput, ResourceAmount } from "@/lib/model/types";
+import {
+  serializeRecipeQueryClause,
+  type RecipeQueryClause,
+  type RecipeQuerySideOp,
+} from "./recipe-query";
 import type { SearchCorrection, SearchPhase } from "@/lib/search";
 import type {
   DatasetResourceIndexEntry,
@@ -15,6 +20,12 @@ export interface RecipeDatasetQuery {
   query: string;
   resource?: Pick<ResourceAmount, "kind" | "id">;
   mode: "recipes" | "uses";
+  /** Multi-condition search; when present these replace resource+mode. */
+  clauses?: RecipeQueryClause[];
+  takesOp?: RecipeQuerySideOp;
+  makesOp?: RecipeQuerySideOp;
+  /** Page across every recipe map instead of scoping to one. */
+  allMaps?: boolean;
   recipeMap?: string;
   maxTier: TierFilter;
   offset: number;
@@ -25,6 +36,7 @@ export interface RecipeDatasetQueryResult {
   recipes: RecipeSummary[];
   total: number;
   recipeMaps: string[];
+  recipeMapCounts?: Record<string, number>;
   recipeMapIcons?: Record<string, DatasetResourceIndexEntry>;
   offset: number;
   limit: number;
@@ -185,6 +197,18 @@ export async function queryRecipeDatasetRecipes(
   if (query.resource) {
     url.searchParams.set("resourceKind", query.resource.kind);
     url.searchParams.set("resourceId", query.resource.id);
+  }
+  for (const clause of query.clauses ?? []) {
+    url.searchParams.append("clause", serializeRecipeQueryClause(clause));
+  }
+  if (query.takesOp === "all") {
+    url.searchParams.set("takesOp", "all");
+  }
+  if (query.makesOp === "all") {
+    url.searchParams.set("makesOp", "all");
+  }
+  if (query.allMaps) {
+    url.searchParams.set("allMaps", "1");
   }
 
   return fetchJson<RecipeDatasetQueryResult>(url.toString(), { signal: options.signal });

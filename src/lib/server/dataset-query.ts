@@ -28,6 +28,13 @@ import {
   isVirtualChoiceResource,
 } from "@/lib/model";
 import {
+  MAX_RECIPE_QUERY_CLAUSES,
+  recipeQueryClauseMode,
+  type RecipeQueryClause,
+  type RecipeQueryRole,
+  type RecipeQuerySideOp,
+} from "@/lib/datasets/recipe-query";
+import {
   buildSearchVocabulary,
   buildTextSearchIndex,
   buildTokenSearchIndex,
@@ -438,18 +445,26 @@ function sortResourceMatches(
   );
 }
 
-export async function queryDatasetRecipes(
-  versionId: string,
-  request: {
-    query: string;
-    resource?: Pick<ResourceAmount, "kind" | "id">;
-    mode: "recipes" | "uses";
-    recipeMap?: string;
-    maxTier: TierFilter;
-    offset: number;
-    limit: number;
-  },
-) {
+export interface DatasetRecipeQueryRequest {
+  query: string;
+  resource?: Pick<ResourceAmount, "kind" | "id">;
+  mode: "recipes" | "uses";
+  /**
+   * Multi-condition search: when present these REPLACE resource+mode, which
+   * stay as the single-condition wire form every existing caller speaks.
+   */
+  clauses?: RecipeQueryClause[];
+  takesOp?: RecipeQuerySideOp;
+  makesOp?: RecipeQuerySideOp;
+  /** List and page across every recipe map instead of scoping to one. */
+  allMaps?: boolean;
+  recipeMap?: string;
+  maxTier: TierFilter;
+  offset: number;
+  limit: number;
+}
+
+export async function queryDatasetRecipes(versionId: string, request: DatasetRecipeQueryRequest) {
   const catalog = await loadCatalog(versionId);
   if (catalog.version.recipeLookupIndexPath) {
     return queryDatasetRecipesFromLookup(catalog, request);
@@ -457,11 +472,19 @@ export async function queryDatasetRecipes(
 
   const recipeCatalog = await loadRecipeIndex(versionId);
   const indexes = ensureIndexes(recipeCatalog);
-  const resourceScope = request.resource
-    ? getRecipeResourceScope(recipeCatalog, request.resource, request.mode)
-    : undefined;
-  const candidates = request.resource
-    ? getResourceIndexes(indexes.recipeIndexesByResource, resourceScope!, request.mode)
+  const clauses = normalizedRecipeQueryClauses(request);
+  const candidates = clauses.length
+    ? combineClauseIndexes(
+        clauses.map((clause) => ({
+          role: clause.role,
+          recipeIndexes: getResourceIndexes(
+            indexes.recipeIndexesByResource,
+            getRecipeResourceScope(recipeCatalog, clause, recipeQueryClauseMode(clause.role)),
+            recipeQueryClauseMode(clause.role),
+          ),
+        })),
+        request,
+      )
     : indexes.allRecipeIndexes;
   const resolved = resolveRecipeSearch(
     request.query,
@@ -469,63 +492,64 @@ export async function queryDatasetRecipes(
     (query, options) => scoreRecipeCandidates(indexes.searchIndex, candidates, query, options),
   );
   const searchScores = resolved.searchScores;
-  const eligibleRecipeMaps = request.resource
-    ? getResourceRecipeMaps(indexes.recipeMapsByResource, resourceScope!, request.mode)
-    : [...new Set(indexes.recipeMaps.filter(Boolean))];
-  const sortedRecipeMaps = eligibleRecipeMaps
-    .filter((recipeMap) =>
-      recipeMapHasMatchingIndexedRecipe(indexes, candidates, recipeMap, request.maxTier, {
-        searchScores,
-        scope: resourceScope,
-        mode: request.mode,
-      }),
-    )
-    .sort((a, b) => a.localeCompare(b));
-  const effectiveMap =
-    request.recipeMap && sortedRecipeMaps.includes(request.recipeMap)
-      ? request.recipeMap
-      : request.resource
-        ? sortedRecipeMaps[0]
-        : undefined;
-  const scopedCandidates =
-    request.resource && effectiveMap
-      ? getResourceIndexes(
-          indexes.recipeIndexesByResourceAndMap,
-          resourceScope!,
-          request.mode,
-          effectiveMap,
-        )
-      : candidates;
-  const matching: RankedRecipe[] = [];
+  const matchingAll: RankedRecipe[] = [];
 
-  for (const recipeIndex of scopedCandidates) {
+  for (const recipeIndex of candidates) {
     if (!recipeMatchesTierIndex(indexes, recipeIndex, request.maxTier)) {
       continue;
     }
     if (searchScores && !searchScores.has(recipeIndex)) {
       continue;
     }
-    if (effectiveMap && indexes.recipeMaps[recipeIndex] !== effectiveMap) {
+    const recipeMap = indexes.recipeMaps[recipeIndex];
+    if (clauses.length > 0 && recipeMap && HANDLESS_CRAFTING_MAPS.has(recipeMap)) {
       continue;
     }
-    matching.push({
+    matchingAll.push({
       recipeIndex,
       score: searchScores?.get(recipeIndex) ?? 0,
       iconScore: indexes.iconScores[recipeIndex] ?? 0,
     });
   }
 
+  const sortedRecipeMaps = [
+    ...new Set(
+      matchingAll
+        .map((match) => indexes.recipeMaps[match.recipeIndex])
+        .filter((recipeMap): recipeMap is string => Boolean(recipeMap)),
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+  const effectiveMap = request.allMaps
+    ? undefined
+    : request.recipeMap && sortedRecipeMaps.includes(request.recipeMap)
+      ? request.recipeMap
+      : clauses.length
+        ? sortedRecipeMaps[0]
+        : undefined;
+  const matching = effectiveMap
+    ? matchingAll.filter((match) => indexes.recipeMaps[match.recipeIndex] === effectiveMap)
+    : matchingAll;
+
   const recipeIndexes = rankRecipes(matching)
     .slice(request.offset, request.offset + request.limit)
     .map((match) => match.recipeIndex);
   const recipes = (await getRecipeSummariesByIndex(recipeCatalog, recipeIndexes)).map((recipe) =>
-    applyUsesResourceContext(recipe, recipeCatalog, request.resource),
+    applyClauseResourceContexts(recipe, recipeCatalog, clauses),
   );
+
+  const recipeMapCounts: Record<string, number> = {};
+  for (const match of matchingAll) {
+    const recipeMap = indexes.recipeMaps[match.recipeIndex];
+    if (recipeMap) {
+      recipeMapCounts[recipeMap] = (recipeMapCounts[recipeMap] ?? 0) + 1;
+    }
+  }
 
   return {
     recipes,
     total: matching.length,
     recipeMaps: sortedRecipeMaps,
+    recipeMapCounts,
     recipeMapIcons: Object.fromEntries(
       sortedRecipeMaps
         .map((recipeMap) => [recipeMap, indexes.recipeMapIcons.get(recipeMap)] as const)
@@ -663,35 +687,25 @@ export async function listDatasetCropFarmRecipes(versionId: string) {
 
 async function queryDatasetRecipesFromLookup(
   catalog: LoadedRecipeIndex,
-  request: {
-    query: string;
-    resource?: Pick<ResourceAmount, "kind" | "id">;
-    mode: "recipes" | "uses";
-    recipeMap?: string;
-    maxTier: TierFilter;
-    offset: number;
-    limit: number;
-  },
+  request: DatasetRecipeQueryRequest,
 ) {
   const lookup = await loadRecipeLookupIndex(catalog.version);
   const parsedQuery = parseSearchQuery(request.query);
+  const clauses = normalizedRecipeQueryClauses(request);
 
-  if (!request.resource && parsedQuery.terms.length === 0) {
+  if (clauses.length === 0 && parsedQuery.terms.length === 0) {
     return emptyRecipeQueryResult(request);
   }
 
-  const resourceScope = request.resource
-    ? getRecipeResourceScope(catalog, request.resource, request.mode)
-    : undefined;
   // Only a typed query needs the words index, and building it walks every
   // recipe: browsing a resource must not pay for one.
   const search = parsedQuery.terms.length
     ? await getRecipeSearchIndex(catalog, lookup)
     : undefined;
-  const scopedByMap = resourceScope
+  const scopedByMap = clauses.length
     ? tierFilteredByMap(
         lookup,
-        getLookupRecipesByMap(lookup, resourceScope, request.mode),
+        dropHandlessCraftingMaps(lookup, getClauseLookupRecipesByMap(catalog, lookup, clauses, request)),
         request.maxTier,
       )
     : undefined;
@@ -714,15 +728,26 @@ async function queryDatasetRecipesFromLookup(
     scopedByMap ??
     tierFilteredByMap(lookup, groupRecipesByMap(lookup, searchScores?.keys() ?? []), request.maxTier);
 
-  const sortedRecipeMaps = [...tierCandidatesByMap.entries()]
-    .filter(([, recipeIndexes]) =>
-      recipeIndexes.some((recipeIndex) => !searchScores || searchScores.has(recipeIndex)),
-    )
-    .map(([recipeMapId]) => lookup.recipeMaps[recipeMapId])
-    .filter((recipeMap): recipeMap is string => Boolean(recipeMap))
-    .sort((a, b) => a.localeCompare(b));
-  const effectiveMap =
-    request.recipeMap && sortedRecipeMaps.includes(request.recipeMap)
+  const countedRecipeMaps = [...tierCandidatesByMap.entries()]
+    .map(([recipeMapId, recipeIndexes]) => {
+      const recipeMap = lookup.recipeMaps[recipeMapId];
+      if (!recipeMap) {
+        return undefined;
+      }
+      const count = searchScores
+        ? recipeIndexes.filter((recipeIndex) => searchScores.has(recipeIndex)).length
+        : recipeIndexes.length;
+      return count > 0 ? { recipeMap, count } : undefined;
+    })
+    .filter((entry): entry is { recipeMap: string; count: number } => Boolean(entry))
+    .sort((a, b) => a.recipeMap.localeCompare(b.recipeMap));
+  const sortedRecipeMaps = countedRecipeMaps.map((entry) => entry.recipeMap);
+  const recipeMapCounts = Object.fromEntries(
+    countedRecipeMaps.map((entry) => [entry.recipeMap, entry.count]),
+  );
+  const effectiveMap = request.allMaps
+    ? undefined
+    : request.recipeMap && sortedRecipeMaps.includes(request.recipeMap)
       ? request.recipeMap
       : sortedRecipeMaps[0];
   const effectiveMapId = effectiveMap ? lookup.recipeMapIds.get(effectiveMap) : undefined;
@@ -747,13 +772,14 @@ async function queryDatasetRecipesFromLookup(
     .slice(request.offset, request.offset + request.limit)
     .map((match) => match.recipeIndex);
   const recipes = (await getRecipeSummariesByIndex(catalog, pageRecipeIndexes)).map((recipe) =>
-    applyUsesResourceContext(recipe, catalog, request.resource),
+    applyClauseResourceContexts(recipe, catalog, clauses),
   );
 
   return {
     recipes,
     total: matching.length,
     recipeMaps: sortedRecipeMaps,
+    recipeMapCounts,
     recipeMapIcons: Object.fromEntries(
       sortedRecipeMaps
         .map((recipeMap) => [recipeMap, getRecipeMapIcon(catalog, recipeMap)] as const)
@@ -766,6 +792,157 @@ async function queryDatasetRecipesFromLookup(
     hasMore: request.offset + request.limit < matching.length,
     ...searchOutcome(resolved),
   };
+}
+
+/**
+ * Hand-crafting has no machine to place, so the recipe search does not offer
+ * it: a plan is made of machines, and a crafting-grid recipe on the board
+ * would be a card for a thing the solver cannot run. Only the CLAUSE path
+ * filters these - the legacy single-resource wire form keeps its old answers.
+ */
+const HANDLESS_CRAFTING_MAPS = new Set(["Shaped Crafting", "Shapeless Crafting"]);
+
+function dropHandlessCraftingMaps(
+  lookup: LoadedRecipeLookupIndex,
+  recipesByMap: Map<number, number[]>,
+): Map<number, number[]> {
+  const filtered = new Map<number, number[]>();
+  for (const [recipeMapId, recipeIndexes] of recipesByMap) {
+    const recipeMap = lookup.recipeMaps[recipeMapId];
+    if (recipeMap && HANDLESS_CRAFTING_MAPS.has(recipeMap)) {
+      continue;
+    }
+    filtered.set(recipeMapId, recipeIndexes);
+  }
+  return filtered;
+}
+
+/**
+ * The conditions a request actually asks, whichever wire form it spoke.
+ * Every pre-existing caller still sends one resource and a mode; that is
+ * exactly a one-clause query.
+ */
+function normalizedRecipeQueryClauses(request: DatasetRecipeQueryRequest): RecipeQueryClause[] {
+  if (request.clauses?.length) {
+    return request.clauses.slice(0, MAX_RECIPE_QUERY_CLAUSES);
+  }
+  if (request.resource) {
+    return [
+      {
+        kind: request.resource.kind,
+        id: request.resource.id,
+        role: request.mode === "uses" ? "takes" : "makes",
+      },
+    ];
+  }
+  return [];
+}
+
+/**
+ * Candidate recipes for a clause set, grouped by recipe map.
+ *
+ * Each clause reads the inverted index in its own direction with the same
+ * oredict/cell widening a single browse gets. Within a side "any" unions and
+ * "all" intersects; a recipe must then satisfy BOTH sides to survive, because
+ * the stencil reads as one sentence: takes these, makes those.
+ */
+function getClauseLookupRecipesByMap(
+  catalog: LoadedRecipeIndex,
+  lookup: LoadedRecipeLookupIndex,
+  clauses: RecipeQueryClause[],
+  ops: { takesOp?: RecipeQuerySideOp; makesOp?: RecipeQuerySideOp },
+): Map<number, number[]> {
+  const sides: Array<Map<number, number[]>> = [];
+  for (const role of ["takes", "makes"] as const) {
+    const sideClauses = clauses.filter((clause) => clause.role === role);
+    if (sideClauses.length === 0) {
+      continue;
+    }
+    const op = (role === "takes" ? ops.takesOp : ops.makesOp) ?? "any";
+    const perClause = sideClauses.map((clause) => {
+      const mode = recipeQueryClauseMode(clause.role);
+      return getLookupRecipesByMap(lookup, getRecipeResourceScope(catalog, clause, mode), mode);
+    });
+    sides.push(perClause.reduce(op === "all" ? intersectRecipesByMap : unionRecipesByMap));
+  }
+  return sides.reduce(intersectRecipesByMap);
+}
+
+/** Flat-array version of the side algebra, for the legacy in-memory index path. */
+function combineClauseIndexes(
+  entries: Array<{ role: RecipeQueryRole; recipeIndexes: number[] }>,
+  ops: { takesOp?: RecipeQuerySideOp; makesOp?: RecipeQuerySideOp },
+): number[] {
+  const sides: number[][] = [];
+  for (const role of ["takes", "makes"] as const) {
+    const sideEntries = entries.filter((entry) => entry.role === role);
+    if (sideEntries.length === 0) {
+      continue;
+    }
+    const op = (role === "takes" ? ops.takesOp : ops.makesOp) ?? "any";
+    sides.push(
+      op === "all"
+        ? sideEntries.map((entry) => entry.recipeIndexes).reduce(intersectRecipeIndexes)
+        : [...new Set(sideEntries.flatMap((entry) => entry.recipeIndexes))],
+    );
+  }
+  return sides.reduce(intersectRecipeIndexes);
+}
+
+function intersectRecipeIndexes(left: number[], right: number[]): number[] {
+  const keep = new Set(right);
+  return left.filter((recipeIndex) => keep.has(recipeIndex));
+}
+
+function unionRecipesByMap(
+  left: Map<number, number[]>,
+  right: Map<number, number[]>,
+): Map<number, number[]> {
+  const merged = new Map(left);
+  for (const [recipeMapId, recipeIndexes] of right) {
+    const existing = merged.get(recipeMapId);
+    merged.set(
+      recipeMapId,
+      existing ? [...new Set([...existing, ...recipeIndexes])] : recipeIndexes,
+    );
+  }
+  return merged;
+}
+
+function intersectRecipesByMap(
+  left: Map<number, number[]>,
+  right: Map<number, number[]>,
+): Map<number, number[]> {
+  const merged = new Map<number, number[]>();
+  for (const [recipeMapId, recipeIndexes] of left) {
+    const other = right.get(recipeMapId);
+    if (!other) {
+      continue;
+    }
+    const keep = new Set(other);
+    const kept = recipeIndexes.filter((recipeIndex) => keep.has(recipeIndex));
+    if (kept.length > 0) {
+      merged.set(recipeMapId, kept);
+    }
+  }
+  return merged;
+}
+
+/**
+ * Every clause resource is a concrete context for the returned summaries, so
+ * an oredict slot a Spruce Log satisfies renders as the Spruce Log that was
+ * asked about, exactly as a single-resource browse always has.
+ */
+function applyClauseResourceContexts<T extends RecipeSummary>(
+  recipe: T,
+  catalog: LoadedRecipeIndex,
+  clauses: RecipeQueryClause[],
+): T {
+  let contextualized = recipe;
+  for (const clause of clauses) {
+    contextualized = applyUsesResourceContext(contextualized, catalog, clause);
+  }
+  return contextualized;
 }
 
 function tierFilteredByMap(
@@ -835,6 +1012,7 @@ function emptyRecipeQueryResult(request: { offset: number; limit: number }) {
     recipes: [],
     total: 0,
     recipeMaps: [],
+    recipeMapCounts: {},
     recipeMapIcons: {},
     offset: request.offset,
     limit: request.limit,
@@ -1748,18 +1926,6 @@ function getResourceIndexes(
   return [...new Set(indexes)];
 }
 
-function getResourceRecipeMaps(
-  index: Map<string, string[]>,
-  scope: RecipeResourceScope,
-  mode: "recipes" | "uses",
-): string[] {
-  return [
-    ...new Set(
-      scope.resources.flatMap((resource) => index.get(getResourceModeKey(resource, mode)) ?? []),
-    ),
-  ];
-}
-
 function getLookupRecipesByMap(
   lookup: LoadedRecipeLookupIndex,
   scope: RecipeResourceScope,
@@ -2042,34 +2208,6 @@ function addRecipeMap(index: Map<string, Set<string>>, key: string, recipeMap: s
   } else {
     index.set(key, new Set([recipeMap]));
   }
-}
-
-function recipeMapHasMatchingIndexedRecipe(
-  indexes: QueryIndexes,
-  candidates: number[],
-  recipeMap: string,
-  maxTier: TierFilter,
-  scope: {
-    searchScores: Map<number, number> | undefined;
-    scope?: RecipeResourceScope;
-    mode: "recipes" | "uses";
-  },
-) {
-  const scopedCandidates = scope.scope
-    ? getResourceIndexes(indexes.recipeIndexesByResourceAndMap, scope.scope, scope.mode, recipeMap)
-    : candidates;
-
-  return scopedCandidates.some((recipeIndex) => {
-    if (indexes.recipeMaps[recipeIndex] !== recipeMap) {
-      return false;
-    }
-
-    if (!recipeMatchesTierIndex(indexes, recipeIndex, maxTier)) {
-      return false;
-    }
-
-    return !scope.searchScores || scope.searchScores.has(recipeIndex);
-  });
 }
 
 function getResourceModeKey(

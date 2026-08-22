@@ -118,6 +118,31 @@ gh run watch <run-id> --exit-status
 - Arrows/progress indicators should come from the NEI layout when available.
 - Recipe book search must query the API, not only filter the first loaded page. Pagination must continue beyond the first page, especially for cases like Coke Oven charcoal/nitrogen recipes.
 
+## The Recipe Search (One Screen)
+
+- The recipe book popup is `RecipeSearchOverlay.tsx`: a STENCIL band (takes on
+  the left, makes on the right, ANY/ALL per side, ANY default) over a live
+  grid of compact result cards. There is no NEI canvas in it, no makes/uses
+  mode switch and no category rail - machine chips with counts do that job,
+  "All" (every map at once) being the default. Left click on an item
+  anywhere still opens it with one MAKES condition, right click one TAKES;
+  `browseResource`/`clearResourceBrowser` remain the only doors in and out,
+  and `RecipeBrowser.tsx` still owns all query state (the stencil is edits
+  keyed by the browse that seeded them, so a new browse always starts over).
+- A query is `clauses` (`role:kind:id` wire form, `recipe-query.ts`) plus
+  `takesOp`/`makesOp`/`allMaps` on the same recipes API. The server side is
+  set algebra over the lookup index (`getClauseLookupRecipesByMap`): any =
+  union, all = intersection, sides intersect. Every clause resource gets the
+  concrete-context rewrite (`applyClauseResourceContexts`), and the legacy
+  resource+mode wire form is exactly a one-clause query.
+- Clause queries EXCLUDE Shaped/Shapeless Crafting (`HANDLESS_CRAFTING_MAPS`):
+  hand-crafting has no machine to place. Purging them from the dataset
+  itself is a pipeline decision that has NOT been made.
+- Result cards merge duplicate slot entries (nine planks is one line, x9) and
+  oredict slots wear their first concrete face; both are display-only.
+  Chips that satisfy a stencil condition ring cyan; chips browse on
+  click/right-click like port rows.
+
 ## Machine Configs And Multiblocks
 
 - Machine BEHAVIOUR (speed, EU discount, parallels, overclock style) comes from
