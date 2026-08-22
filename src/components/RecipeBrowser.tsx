@@ -396,8 +396,10 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   }, [browserMode, browserResource, browserSeed]);
   const editsApply = stencilEdits?.key === browseKey;
   const stencilClauses = editsApply ? stencilEdits.clauses : seededStencil;
-  const takesOp = editsApply ? stencilEdits.takesOp : "any";
-  const makesOp = editsApply ? stencilEdits.makesOp : "any";
+  // ALL is the default reading: a fresh stencil holds one condition, where
+  // all and any agree, and every added condition is usually meant as "and".
+  const takesOp = editsApply ? stencilEdits.takesOp : "all";
+  const makesOp = editsApply ? stencilEdits.makesOp : "all";
   const queryClauses = useMemo<RecipeQueryClause[]>(
     () => stencilClauses.map(({ role, kind, id }) => ({ role, kind, id })),
     [stencilClauses],

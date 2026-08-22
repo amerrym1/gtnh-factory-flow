@@ -64,7 +64,7 @@ describe("recipe dataset API route", () => {
       new Request(
         "http://localhost/api/datasets/stable/recipes?" +
           "clause=eats%3Aitem%3Anope&clause=takes%3Adragon%3Anope&clause=broken&" +
-          "clause=makes%3Afluid%3Aoxygen",
+          "clause=makes%3Afluid%3Aoxygen&makesOp=only",
       ),
       { params: Promise.resolve({ versionId: "stable" }) },
     );
@@ -73,6 +73,7 @@ describe("recipe dataset API route", () => {
       "stable",
       expect.objectContaining({
         clauses: [{ role: "makes", kind: "fluid", id: "oxygen" }],
+        makesOp: "only",
         allMaps: false,
       }),
     );

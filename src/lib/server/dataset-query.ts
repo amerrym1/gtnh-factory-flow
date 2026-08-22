@@ -25,7 +25,9 @@ import {
   getRecipePowerTier,
   GT_VOLTAGE_TIERS,
   isOreDictionaryResource,
+  isRecipeInputConsumed,
   isVirtualChoiceResource,
+  resourceMatchesInput,
 } from "@/lib/model";
 import {
   MAX_RECIPE_QUERY_CLAUSES,
@@ -473,7 +475,7 @@ export async function queryDatasetRecipes(versionId: string, request: DatasetRec
   const recipeCatalog = await loadRecipeIndex(versionId);
   const indexes = ensureIndexes(recipeCatalog);
   const clauses = normalizedRecipeQueryClauses(request);
-  const candidates = clauses.length
+  let candidates = clauses.length
     ? combineClauseIndexes(
         clauses.map((clause) => ({
           role: clause.role,
@@ -486,6 +488,13 @@ export async function queryDatasetRecipes(versionId: string, request: DatasetRec
         request,
       )
     : indexes.allRecipeIndexes;
+  if (clauses.length > 0 && hasOnlySide(clauses, request)) {
+    // This path holds every summary in memory already.
+    candidates = candidates.filter((recipeIndex) => {
+      const summary = recipeCatalog.recipes?.[recipeIndex];
+      return !summary || recipeIsOnlyMatch(summary, clauses, request);
+    });
+  }
   const resolved = resolveRecipeSearch(
     request.query,
     () => ensureResourceIndexes(recipeCatalog).vocabulary,
@@ -706,13 +715,16 @@ async function queryDatasetRecipesFromLookup(
   const search = parsedQuery.terms.length
     ? await getRecipeSearchIndex(catalog, lookup)
     : undefined;
-  const scopedByMap = clauses.length
+  let scopedByMap = clauses.length
     ? tierFilteredByMap(
         lookup,
         getClauseLookupRecipesByMap(catalog, lookup, clauses, request),
         request.maxTier,
       )
     : undefined;
+  if (scopedByMap && hasOnlySide(clauses, request)) {
+    scopedByMap = await filterOnlyRecipesByMap(catalog, scopedByMap, clauses, request);
+  }
   const resolved = resolveRecipeSearch(
     request.query,
     () => ensureResourceIndexes(catalog).vocabulary,
@@ -873,9 +885,96 @@ function getClauseLookupRecipesByMap(
       const mode = recipeQueryClauseMode(clause.role);
       return getLookupRecipesByMap(lookup, getRecipeResourceScope(catalog, clause, mode), mode);
     });
-    sides.push(perClause.reduce(op === "all" ? intersectRecipesByMap : unionRecipesByMap));
+    // "only" starts from the same intersection "all" does; the nothing-else
+    // half is checked against the recipes themselves afterwards.
+    sides.push(perClause.reduce(op === "any" ? unionRecipesByMap : intersectRecipesByMap));
   }
   return sides.reduce(intersectRecipesByMap);
+}
+
+/**
+ * The "nothing else" half of ONLY, which set algebra cannot answer: past this
+ * many candidates the exact check would mean reading too many recipe bodies,
+ * so the query degrades to "all" rather than hanging. In practice an ONLY ask
+ * intersects down to far fewer.
+ */
+const ONLY_VERIFY_LIMIT = 5000;
+
+function hasOnlySide(clauses: RecipeQueryClause[], ops: {
+  takesOp?: RecipeQuerySideOp;
+  makesOp?: RecipeQuerySideOp;
+}): boolean {
+  return (
+    (ops.takesOp === "only" && clauses.some((clause) => clause.role === "takes")) ||
+    (ops.makesOp === "only" && clauses.some((clause) => clause.role === "makes"))
+  );
+}
+
+function slotSatisfiedByClauses(slot: ResourceAmount, sideClauses: RecipeQueryClause[]): boolean {
+  return sideClauses.some(
+    (clause) =>
+      (slot.kind === clause.kind && slot.id === clause.id) ||
+      resourceMatchesInput({ kind: clause.kind, id: clause.id }, slot),
+  );
+}
+
+/**
+ * ONLY, read against the recipe itself: every output must be one of the makes
+ * conditions, every CONSUMED input one of the takes conditions. Catalysts and
+ * circuits are not consumed, so "takes only iron dust" still finds recipes
+ * that also want a programmed circuit in the machine.
+ */
+function recipeIsOnlyMatch(
+  summary: RecipeSummary,
+  clauses: RecipeQueryClause[],
+  ops: { takesOp?: RecipeQuerySideOp; makesOp?: RecipeQuerySideOp },
+): boolean {
+  if (ops.makesOp === "only") {
+    const makesClauses = clauses.filter((clause) => clause.role === "makes");
+    if (
+      makesClauses.length > 0 &&
+      !summary.outputs.every((output) => slotSatisfiedByClauses(output, makesClauses))
+    ) {
+      return false;
+    }
+  }
+  if (ops.takesOp === "only") {
+    const takesClauses = clauses.filter((clause) => clause.role === "takes");
+    if (
+      takesClauses.length > 0 &&
+      !summary.inputs.every(
+        (input) => !isRecipeInputConsumed(input) || slotSatisfiedByClauses(input, takesClauses),
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+async function filterOnlyRecipesByMap(
+  catalog: LoadedRecipeIndex,
+  recipesByMap: Map<number, number[]>,
+  clauses: RecipeQueryClause[],
+  ops: { takesOp?: RecipeQuerySideOp; makesOp?: RecipeQuerySideOp },
+): Promise<Map<number, number[]>> {
+  const candidates = flattenRecipeIndexes(recipesByMap);
+  if (candidates.length === 0 || candidates.length > ONLY_VERIFY_LIMIT) {
+    return recipesByMap;
+  }
+
+  const summaries = await getRecipeSummariesByIndexMap(catalog, candidates);
+  const filtered = new Map<number, number[]>();
+  for (const [recipeMapId, recipeIndexes] of recipesByMap) {
+    const kept = recipeIndexes.filter((recipeIndex) => {
+      const summary = summaries.get(recipeIndex);
+      return !summary || recipeIsOnlyMatch(summary, clauses, ops);
+    });
+    if (kept.length > 0) {
+      filtered.set(recipeMapId, kept);
+    }
+  }
+  return filtered;
 }
 
 /** Flat-array version of the side algebra, for the legacy in-memory index path. */
@@ -891,9 +990,9 @@ function combineClauseIndexes(
     }
     const op = (role === "takes" ? ops.takesOp : ops.makesOp) ?? "any";
     sides.push(
-      op === "all"
-        ? sideEntries.map((entry) => entry.recipeIndexes).reduce(intersectRecipeIndexes)
-        : [...new Set(sideEntries.flatMap((entry) => entry.recipeIndexes))],
+      op === "any"
+        ? [...new Set(sideEntries.flatMap((entry) => entry.recipeIndexes))]
+        : sideEntries.map((entry) => entry.recipeIndexes).reduce(intersectRecipeIndexes),
     );
   }
   return sides.reduce(intersectRecipeIndexes);

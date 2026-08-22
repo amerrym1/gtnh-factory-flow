@@ -14,8 +14,12 @@ export interface RecipeQueryClause {
 
 export type RecipeQueryRole = "makes" | "takes";
 
-/** How a side's clauses combine: match on any of them, or demand all. */
-export type RecipeQuerySideOp = "any" | "all";
+/**
+ * How a side's clauses read: "any" matches a recipe touching any one of them,
+ * "all" demands every one of them (extras allowed), and "only" demands every
+ * one of them and nothing else on that side.
+ */
+export type RecipeQuerySideOp = "any" | "all" | "only";
 
 /** More conditions than anyone can mean; the server refuses the excess. */
 export const MAX_RECIPE_QUERY_CLAUSES = 16;

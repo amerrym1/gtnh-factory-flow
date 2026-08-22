@@ -575,22 +575,26 @@ function StencilSide({
         <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--mc-ink)]">
           {label}
         </span>
-        {sideClauses.length > 1 ? (
-          <span className="flex items-center border-2 border-[var(--mc-29)] bg-[var(--mc-55)]">
-            <OpPill
-              label="Any"
-              title={`Match recipes with any of these ${label.toLowerCase()}`}
-              active={op === "any"}
-              onClick={() => onOpChange("any")}
-            />
-            <OpPill
-              label="All"
-              title={`Match only recipes with all of these ${label.toLowerCase()}`}
-              active={op === "all"}
-              onClick={() => onOpChange("all")}
-            />
-          </span>
-        ) : null}
+        <span className="flex items-center border-2 border-[var(--mc-29)] bg-[var(--mc-55)]">
+          <OpPill
+            label="Any"
+            title={`Recipes touching any one of these ${label.toLowerCase()}`}
+            active={op === "any"}
+            onClick={() => onOpChange("any")}
+          />
+          <OpPill
+            label="All"
+            title={`Recipes with every one of these ${label.toLowerCase()}; extras allowed`}
+            active={op === "all"}
+            onClick={() => onOpChange("all")}
+          />
+          <OpPill
+            label="Only"
+            title={`Recipes with exactly these ${label.toLowerCase()} and nothing else`}
+            active={op === "only"}
+            onClick={() => onOpChange("only")}
+          />
+        </span>
       </div>
       <div className="flex h-[172px] flex-col gap-1.5 overflow-y-auto">
         {sideClauses.map((clause) => {

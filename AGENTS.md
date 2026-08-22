@@ -120,9 +120,14 @@ gh run watch <run-id> --exit-status
 
 ## The Recipe Search (One Screen)
 
-- The recipe book popup is `RecipeSearchOverlay.tsx`: a STENCIL band (takes on
-  the left, makes on the right, ANY/ALL per side, ANY default) over a live
-  grid of compact result cards. There is no NEI canvas in it, no makes/uses
+- The recipe book popup is `RecipeSearchOverlay.tsx`: results over a detached
+  STENCIL card (takes on the left, makes on the right). Each side reads
+  ANY / ALL / ONLY, ALL the default: any = touches one of these, all = every
+  one of them with extras allowed, only = exactly these and nothing else.
+  ONLY's nothing-else half is verified against recipe bodies server-side
+  (`recipeIsOnlyMatch`), capped at `ONLY_VERIFY_LIMIT` candidates - past the
+  cap it degrades to all. Non-consumed inputs (circuits, catalysts) never
+  count against takes-ONLY. There is no NEI canvas in it, no makes/uses
   mode switch and no category rail - machine chips with counts do that job,
   "All" (every map at once) being the default. Left click on an item
   anywhere still opens it with one MAKES condition, right click one TAKES;

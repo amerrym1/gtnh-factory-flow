@@ -71,7 +71,7 @@ function parseTierFilter(value: string | null): TierFilter {
 }
 
 function parseSideOp(value: string | null): RecipeQuerySideOp {
-  return value === "all" ? "all" : "any";
+  return value === "all" || value === "only" ? value : "any";
 }
 
 function parseClauses(raw: string[]): RecipeQueryClause[] {

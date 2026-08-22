@@ -201,11 +201,11 @@ export async function queryRecipeDatasetRecipes(
   for (const clause of query.clauses ?? []) {
     url.searchParams.append("clause", serializeRecipeQueryClause(clause));
   }
-  if (query.takesOp === "all") {
-    url.searchParams.set("takesOp", "all");
+  if (query.takesOp && query.takesOp !== "any") {
+    url.searchParams.set("takesOp", query.takesOp);
   }
-  if (query.makesOp === "all") {
-    url.searchParams.set("makesOp", "all");
+  if (query.makesOp && query.makesOp !== "any") {
+    url.searchParams.set("makesOp", query.makesOp);
   }
   if (query.allMaps) {
     url.searchParams.set("allMaps", "1");
