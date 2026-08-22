@@ -2,7 +2,11 @@
 
 import { ArrowLeftRight, Plus, Search, Star, X } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { DragEvent, MouseEvent as ReactMouseEvent, UIEvent } from "react";
+import type {
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+  UIEvent,
+} from "react";
 import type { DatasetResourceIndexEntry, RecipeSummary } from "@/lib/datasets/types";
 import type { RecipeQueryRole, RecipeQuerySideOp } from "@/lib/datasets/recipe-query";
 import {
@@ -35,6 +39,22 @@ export interface StencilClause
     "kind" | "id" | "displayName" | "iconPath" | "iconAtlas" | "dominantColor"
   > {
   role: RecipeQueryRole;
+}
+
+/** A condition row in flight: where the hand holds it and where it would land. */
+interface StencilDrag {
+  index: number;
+  width: number;
+  pitch: number;
+  grabDX: number;
+  grabDY: number;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  active: boolean;
+  overRole: RecipeQueryRole;
+  overSlot: number;
 }
 
 export interface RecipeMapChip {
@@ -192,32 +212,151 @@ export function RecipeSearchOverlay({
 
   // A row dragged onto the other column changes sides; dragged within its own
   // it reorders. Dropping where the same item already sits does nothing.
-  const moveClause = (fromIndex: number, role: RecipeQueryRole, beforeIndex?: number) => {
-    const dragged = clauses[fromIndex];
-    if (!dragged) {
-      return;
-    }
-    const duplicate = clauses.some(
-      (clause, at) =>
-        at !== fromIndex &&
-        clause.role === role &&
-        clause.kind === dragged.kind &&
-        clause.id === dragged.id,
-    );
-    if (duplicate) {
-      return;
-    }
-    const before = beforeIndex !== undefined ? clauses[beforeIndex] : undefined;
-    const rest = clauses.filter((_, at) => at !== fromIndex);
-    const moved = { ...dragged, role };
-    const insertAt = before ? rest.indexOf(before) : -1;
-    if (insertAt >= 0) {
-      rest.splice(insertAt, 0, moved);
+  const moveClause = useCallback(
+    (fromIndex: number, role: RecipeQueryRole, beforeIndex?: number) => {
+      const dragged = clauses[fromIndex];
+      if (!dragged) {
+        return;
+      }
+      const duplicate = clauses.some(
+        (clause, at) =>
+          at !== fromIndex &&
+          clause.role === role &&
+          clause.kind === dragged.kind &&
+          clause.id === dragged.id,
+      );
+      if (duplicate) {
+        return;
+      }
+      const before = beforeIndex !== undefined ? clauses[beforeIndex] : undefined;
+      const rest = clauses.filter((_, at) => at !== fromIndex);
+      const moved = { ...dragged, role };
+      const insertAt = before ? rest.indexOf(before) : -1;
+      if (insertAt >= 0) {
+        rest.splice(insertAt, 0, moved);
+      } else {
+        rest.push(moved);
+      }
+      onClausesChange(rest);
+    },
+    [clauses, onClausesChange],
+  );
+
+  // The condition rows drag by hand, not by the browser's link-ghost: the
+  // lifted row rides the pointer as a floating copy while the rows beneath
+  // slide apart to show exactly where it would land.
+  const [stencilDrag, setStencilDrag] = useState<StencilDrag | undefined>(undefined);
+  const stencilDragRef = useRef<StencilDrag | undefined>(undefined);
+  useEffect(() => {
+    stencilDragRef.current = stencilDrag;
+  }, [stencilDrag]);
+  const sideListsRef = useRef(new Map<RecipeQueryRole, HTMLDivElement>());
+  const registerSideList = useCallback((role: RecipeQueryRole, element: HTMLDivElement | null) => {
+    if (element) {
+      sideListsRef.current.set(role, element);
     } else {
-      rest.push(moved);
+      sideListsRef.current.delete(role);
     }
-    onClausesChange(rest);
-  };
+  }, []);
+
+  const beginRowDrag = useCallback(
+    (index: number, event: ReactPointerEvent<HTMLElement>) => {
+      if (event.button !== 0) {
+        return;
+      }
+      const rect = event.currentTarget.getBoundingClientRect();
+      const clause = clauses[index];
+      if (!clause) {
+        return;
+      }
+      setStencilDrag({
+        index,
+        width: rect.width,
+        pitch: rect.height + 6,
+        grabDX: event.clientX - rect.left,
+        grabDY: event.clientY - rect.top,
+        startX: event.clientX,
+        startY: event.clientY,
+        x: event.clientX,
+        y: event.clientY,
+        active: false,
+        overRole: clause.role,
+        overSlot: 0,
+      });
+    },
+    [clauses],
+  );
+
+  useEffect(() => {
+    if (!stencilDrag) {
+      return;
+    }
+
+    const layoutCount = (role: RecipeQueryRole) => {
+      const draggedIndex = stencilDragRef.current?.index;
+      return clauses.filter((clause, at) => clause.role === role && at !== draggedIndex).length;
+    };
+
+    const onMove = (event: globalThis.PointerEvent) => {
+      setStencilDrag((drag) => {
+        if (!drag) {
+          return drag;
+        }
+        let overRole = drag.overRole;
+        let overSlot = drag.overSlot;
+        for (const [role, element] of sideListsRef.current) {
+          const rect = element.getBoundingClientRect();
+          if (
+            event.clientX >= rect.left - 32 &&
+            event.clientX <= rect.right + 32 &&
+            event.clientY >= rect.top - 32 &&
+            event.clientY <= rect.bottom + 32
+          ) {
+            overRole = role;
+            const within = event.clientY - rect.top + element.scrollTop;
+            overSlot = Math.max(
+              0,
+              Math.min(layoutCount(role), Math.round(within / drag.pitch)),
+            );
+          }
+        }
+        return {
+          ...drag,
+          x: event.clientX,
+          y: event.clientY,
+          active:
+            drag.active ||
+            Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 4,
+          overRole,
+          overSlot,
+        };
+      });
+    };
+
+    const onUp = () => {
+      const drag = stencilDragRef.current;
+      setStencilDrag(undefined);
+      if (!drag?.active) {
+        return;
+      }
+      const layoutRows = clauses.filter(
+        (clause, at) => clause.role === drag.overRole && at !== drag.index,
+      );
+      const before = layoutRows[drag.overSlot];
+      moveClause(drag.index, drag.overRole, before ? clauses.indexOf(before) : undefined);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+    // The listeners live for the length of ONE drag, not one pointer frame:
+    // keying on the boolean keeps every move from re-wiring the window.
+  }, [clauses, moveClause, stencilDrag !== undefined]);
 
   const addClause = (entry: DatasetResourceIndexEntry, role: RecipeQueryRole) => {
     const already = clauses.some(
@@ -424,7 +563,9 @@ export function RecipeSearchOverlay({
                   op={takesOp}
                   onOpChange={onTakesOpChange}
                   onRemove={removeClause}
-                  onDropClause={moveClause}
+                  drag={stencilDrag}
+                  onRowPointerDown={beginRowDrag}
+                  registerListRef={registerSideList}
                   onOpenPicker={() => setPickerRole(pickerRole === "takes" ? undefined : "takes")}
                 />
                 <button
@@ -454,7 +595,9 @@ export function RecipeSearchOverlay({
                   op={makesOp}
                   onOpChange={onMakesOpChange}
                   onRemove={removeClause}
-                  onDropClause={moveClause}
+                  drag={stencilDrag}
+                  onRowPointerDown={beginRowDrag}
+                  registerListRef={registerSideList}
                   onOpenPicker={() => setPickerRole(pickerRole === "makes" ? undefined : "makes")}
                 />
               </div>
@@ -468,6 +611,35 @@ export function RecipeSearchOverlay({
               ) : null}
             </div>
           </div>
+
+          {/* ===== the lifted condition, riding the pointer ===== */}
+          {stencilDrag?.active && clauses[stencilDrag.index] ? (
+            <div
+              className="pointer-events-none fixed z-[60] cursor-grabbing"
+              style={{
+                left: stencilDrag.x - stencilDrag.grabDX,
+                top: stencilDrag.y - stencilDrag.grabDY,
+                width: stencilDrag.width,
+              }}
+            >
+              <span className="flex w-full items-center gap-2 border-2 border-[var(--mc-15)] bg-[var(--mc-61)] py-0.5 pl-0.5 pr-1 shadow-[6px_6px_0_rgba(0,0,0,0.5)]">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]">
+                  <ResourceIcon
+                    resource={{ ...clauses[stencilDrag.index], amount: 1 }}
+                    size="sm"
+                    bare
+                    showAmount={false}
+                    tooltip={false}
+                    className="!h-full !w-full"
+                    iconPixelSize={machineArtPixels(32)}
+                  />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[14px] font-bold text-[var(--mc-ink)]">
+                  {clauses[stencilDrag.index].displayName ?? clauses[stencilDrag.index].id}
+                </span>
+              </span>
+            </div>
+          ) : null}
 
           {/* ===== the chip's right-click menu: every way to use an item ===== */}
           {chipMenu ? (
@@ -518,21 +690,13 @@ export function RecipeSearchOverlay({
   );
 }
 
-/** The wire form a dragged condition row travels as. */
-const CLAUSE_DRAG_TYPE = "application/x-gtnh-stencil-clause";
-
-function readDraggedClauseIndex(event: DragEvent): number | undefined {
-  const raw = event.dataTransfer.getData(CLAUSE_DRAG_TYPE);
-  const index = Number.parseInt(raw, 10);
-  return Number.isInteger(index) ? index : undefined;
-}
-
 /**
- * One column of the stencil card: the side's name and its ANY/ALL switch on
- * top, then a stack of condition rows, then the add slot. The stack scrolls
- * inside a FIXED height, so removing a condition never moves the card and the
- * next X stays under the pointer. Rows drag: within a column to reorder,
- * across the arrow to change sides.
+ * One column of the stencil card: the side's name and its ANY/ALL/ONLY
+ * switch on top, then a stack of condition rows, then the add slot. The
+ * stack scrolls inside a FIXED height, so removing a condition never moves
+ * the card and the next X stays under the pointer. Rows drag by hand: while
+ * one is in flight this column hides it, and the rows below the landing spot
+ * slide down to hold it open.
  */
 function StencilSide({
   label,
@@ -542,7 +706,9 @@ function StencilSide({
   op,
   onOpChange,
   onRemove,
-  onDropClause,
+  drag,
+  onRowPointerDown,
+  registerListRef,
   onOpenPicker,
 }: {
   label: string;
@@ -552,25 +718,20 @@ function StencilSide({
   op: RecipeQuerySideOp;
   onOpChange: (op: RecipeQuerySideOp) => void;
   onRemove: (index: number) => void;
-  onDropClause: (fromIndex: number, role: RecipeQueryRole, beforeIndex?: number) => void;
+  drag?: StencilDrag;
+  onRowPointerDown: (index: number, event: ReactPointerEvent<HTMLElement>) => void;
+  registerListRef: (role: RecipeQueryRole, element: HTMLDivElement | null) => void;
   onOpenPicker: () => void;
 }) {
-  const handleDrop = (event: DragEvent, beforeIndex?: number) => {
-    const fromIndex = readDraggedClauseIndex(event);
-    if (fromIndex === undefined) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    onDropClause(fromIndex, role, beforeIndex);
-  };
+  const dragActive = drag?.active ?? false;
+  const layoutClauses = dragActive
+    ? sideClauses.filter((clause) => clauses.indexOf(clause) !== drag?.index)
+    : sideClauses;
+  const gapAt = dragActive && drag?.overRole === role ? drag.overSlot : undefined;
+  const pitch = drag?.pitch ?? 46;
 
   return (
-    <div
-      className="flex min-w-0 flex-1 flex-col gap-1.5"
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => handleDrop(event)}
-    >
+    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
       <div className="flex h-6 items-center justify-between">
         <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--mc-ink)]">
           {label}
@@ -597,25 +758,22 @@ function StencilSide({
         </span>
       </div>
       {/* A fixed-height stack so removing a row never moves the card. The
-          scrollbar always has its lane, and its thumb is bright, so a stack
+          scrollbar keeps a full-width lane with a bright thumb, so a stack
           deeper than the window says so instead of hiding rows. */}
       <div
-        className="flex h-[208px] flex-col gap-1.5 overflow-y-auto pr-0.5 [scrollbar-gutter:stable]"
-        style={{ scrollbarColor: "var(--mc-100) var(--mc-61)", scrollbarWidth: "thin" }}
+        ref={(element) => registerListRef(role, element)}
+        className="flex h-[208px] flex-col gap-1.5 overflow-y-auto pr-1 [scrollbar-gutter:stable]"
+        style={{ scrollbarColor: "var(--mc-100) var(--mc-55)" }}
       >
-        {sideClauses.map((clause) => {
+        {layoutClauses.map((clause, slot) => {
           const index = clauses.indexOf(clause);
+          const shifted = gapAt !== undefined && slot >= gapAt;
           return (
             <span
               key={`${clause.role}:${clause.kind}:${clause.id}`}
-              draggable
-              onDragStart={(event) => {
-                event.dataTransfer.setData(CLAUSE_DRAG_TYPE, String(index));
-                event.dataTransfer.effectAllowed = "move";
-              }}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => handleDrop(event, index)}
-              className="flex w-full shrink-0 cursor-grab items-center gap-2 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] py-0.5 pl-0.5 pr-1 shadow-[inset_1px_1px_0_var(--mc-85)] active:cursor-grabbing"
+              onPointerDown={(event) => onRowPointerDown(index, event)}
+              style={{ transform: shifted ? `translateY(${pitch}px)` : undefined }}
+              className="flex w-full shrink-0 cursor-grab touch-none select-none items-center gap-2 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] py-0.5 pl-0.5 pr-1 shadow-[inset_1px_1px_0_var(--mc-85)] transition-transform duration-150"
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]">
                 <ResourceIcon
@@ -633,6 +791,7 @@ function StencilSide({
               </span>
               <button
                 type="button"
+                onPointerDown={(event) => event.stopPropagation()}
                 onClick={() => onRemove(index)}
                 aria-label={`Remove ${clause.displayName ?? clause.id} from the search`}
                 title="Remove this condition"
@@ -650,7 +809,8 @@ function StencilSide({
             role === "takes" ? "Add an input to the search" : "Add an output to the search"
           }
           title={role === "takes" ? "Add an input" : "Add an output"}
-          className="flex h-10 w-full shrink-0 items-center justify-center gap-1.5 border-2 border-dashed border-[var(--mc-47)] px-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--mc-ink-muted)] hover:border-[var(--mc-33)] hover:text-[var(--mc-ink)]"
+          style={{ transform: gapAt !== undefined ? `translateY(${pitch}px)` : undefined }}
+          className="flex h-10 w-full shrink-0 items-center justify-center gap-1.5 border-2 border-dashed border-[var(--mc-47)] px-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--mc-ink-muted)] transition-transform duration-150 hover:border-[var(--mc-33)] hover:text-[var(--mc-ink)]"
         >
           <Plus className="h-3.5 w-3.5" />
           {role === "takes" ? "Input" : "Output"}
