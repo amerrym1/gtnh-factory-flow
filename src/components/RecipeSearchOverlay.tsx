@@ -564,19 +564,17 @@ export function RecipeSearchOverlay({
         // A near-black ground: the search is the only thing on screen, and
         // everything on it stands off the dark.
         "pointer-events-auto fixed inset-0 flex items-center justify-center bg-black/70",
-        // While the search steps around the board's sidebars it sits under
-        // them, so they stay usable. Once it covers them it has to sit over
-        // them, or they clip it instead - and on compact it outranks ALL the
-        // app chrome, because full screen means full screen.
-        compact ? "z-[90]" : layout.dodgesSidebars ? "z-30" : "z-50",
+        // The search covers the RIGHT column and spends that room on bigger
+        // recipes; the LEFT column stays live beside it (see the style
+        // below). On compact it outranks ALL the app chrome - full screen
+        // means full screen.
+        compact ? "z-[90]" : "z-50",
         sheet ? "" : "px-3 py-2",
       ].join(" ")}
       onPointerDown={onClose}
-      style={
-        layout.dodgesSidebars && !compact
-          ? { paddingLeft: layout.sidebars.left, paddingRight: layout.sidebars.right }
-          : undefined
-      }
+      // The dim starts where the item browser ends: the left column stays
+      // bright and clickable beside the search, because the two are one tool.
+      style={{ left: sheet ? 0 : layout.leftInset }}
     >
       {/* The section itself does NOT stop the close: only its two solid boxes
           do, so the bare corners beside the stencil card still read as the
@@ -657,7 +655,7 @@ export function RecipeSearchOverlay({
                 style={{
                   gridTemplateColumns: sheet
                     ? "minmax(0, 1fr)"
-                    : "repeat(auto-fill, minmax(400px, 1fr))",
+                    : "repeat(auto-fill, minmax(480px, 1fr))",
                 }}
                 role="status"
                 aria-label="Loading recipes"
@@ -677,7 +675,7 @@ export function RecipeSearchOverlay({
                   style={{
                     gridTemplateColumns: sheet
                       ? "minmax(0, 1fr)"
-                      : "repeat(auto-fill, minmax(400px, 1fr))",
+                      : "repeat(auto-fill, minmax(480px, 1fr))",
                   }}
                 >
                   {recipes.map((recipe) => (
@@ -703,7 +701,7 @@ export function RecipeSearchOverlay({
                     style={{
                       gridTemplateColumns: sheet
                         ? "minmax(0, 1fr)"
-                        : "repeat(auto-fill, minmax(400px, 1fr))",
+                        : "repeat(auto-fill, minmax(480px, 1fr))",
                     }}
                     role="status"
                     aria-label="Loading more recipes"
@@ -1351,7 +1349,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
         "cursor-pointer border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-2 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]",
         selected ? "ring-1 ring-cyan-400" : "",
       ].join(" ")}
-      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 148px" }}
+      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 196px" }}
     >
       <div className="flex items-center gap-2">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]">
@@ -1406,7 +1404,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
       {/* Two fixed halves with the arrow between, exactly the way the machine
           card itself reads: what it takes on the left, what it makes on the
           right, each item on its own line. */}
-      <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_18px_minmax(0,1fr)] items-start gap-x-1">
+      <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] items-start gap-x-1">
         <span className="flex min-w-0 flex-col gap-1">
           {inputChips.map((chip, index) => {
             const picker: ChipMenuPicker | undefined =
@@ -1447,7 +1445,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
             );
           })}
         </span>
-        <span className="flex items-start justify-center pt-1.5 text-[15px] font-black leading-5 text-[var(--mc-ink-muted)]">
+        <span className="flex items-start justify-center pt-2 text-[20px] font-black leading-6 text-[var(--mc-ink-muted)]">
           →
         </span>
         <span className="flex min-w-0 flex-col gap-1">
@@ -1485,8 +1483,8 @@ function SkeletonResultCard({ delay }: { delay: number }) {
       key={key}
       className="flex w-full items-center gap-1.5 border border-[var(--mc-47)] bg-[var(--mc-61)] py-0.5 pl-0.5 pr-1.5"
     >
-      <span className="h-6 w-6 shrink-0 bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-100)]" />
-      <span className={`block h-3 ${nameWidth} bg-[var(--mc-71)]`} />
+      <span className="h-9 w-9 shrink-0 bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-100)]" />
+      <span className={`block h-4 ${nameWidth} bg-[var(--mc-71)]`} />
     </span>
   );
 
@@ -1503,7 +1501,7 @@ function SkeletonResultCard({ delay }: { delay: number }) {
         </span>
         <span className="h-8 w-8 shrink-0 border-2 border-[var(--mc-33)] bg-[var(--mc-61)]" />
       </div>
-      <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_18px_minmax(0,1fr)] items-start gap-x-1">
+      <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] items-start gap-x-1">
         <span className="flex min-w-0 flex-col gap-1">
           {ghostChip("w-24", 0)}
           {ghostChip("w-16", 1)}
@@ -1638,7 +1636,7 @@ function ResourceChip({
         onMenu(event);
       }}
       className={[
-        "flex w-full items-center gap-1.5 border py-0.5 pl-0.5 pr-1.5 text-left",
+        "flex w-full items-center gap-2 border py-0.5 pl-0.5 pr-2 text-left",
         // A slot the stencil asked for says so quietly: the same chip on a
         // faintly blue ground with a faintly blue edge, not a highlighter.
         hit
@@ -1646,7 +1644,7 @@ function ResourceChip({
           : "border-[var(--mc-47)] bg-[var(--mc-61)] hover:border-[var(--mc-33)]",
       ].join(" ")}
     >
-      <span className="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-100)]">
+      <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-100)]">
         <ResourceIcon
           resource={{ ...resource, amount: 1, chance: undefined }}
           size="sm"
@@ -1654,19 +1652,19 @@ function ResourceChip({
           showAmount={false}
           tooltip={false}
           className="!h-full !w-full"
-          iconPixelSize={machineArtPixels(24)}
+          iconPixelSize={machineArtPixels(36)}
         />
         {/* No badge of our own: ResourceIcon already draws the blue plus for
             a slot that accepts several forms. */}
       </span>
-      <span className="min-w-0 flex-1 truncate text-[12px] font-bold text-[var(--mc-ink)]">
+      <span className="min-w-0 flex-1 truncate text-[15px] font-bold text-[var(--mc-ink)]">
         {resource.displayName ?? resource.id}
       </span>
-      <span className="shrink-0 text-[13px] font-bold text-[var(--mc-ink)] tabular-nums">
+      <span className="shrink-0 text-[16px] font-bold text-[var(--mc-ink)] tabular-nums">
         {amountText}
       </span>
       {chance !== undefined && chance < 1 ? (
-        <span className="text-[11px] text-[var(--mc-ink-muted)] tabular-nums">
+        <span className="text-[12px] text-[var(--mc-ink-muted)] tabular-nums">
           {Math.round(chance * 1000) / 10}%
         </span>
       ) : null}
@@ -1763,85 +1761,60 @@ function formatChipAmount(
 
 
 /**
- * How much room the search has, and what shape it should take. Read on every
- * resize, and on the board's own columns changing size, because the overlay
- * steps around them while there is room to.
+ * How much room the search has: everything to the RIGHT of the item browser.
+ *
+ * The left column stays live beside the search - its list, search box and
+ * recents are how queries get seeded, so covering it would cut the tool in
+ * half. The right column is only readouts while the search is open, so the
+ * search covers it and spends the room on bigger recipes.
  */
 const BOARD_SIDEBAR_LEFT = 306;
-const BOARD_SIDEBAR_RIGHT = 330;
 const RECIPE_SEARCH_MIN_WIDTH = 640;
-const RECIPE_SEARCH_MAX_WIDTH = 1680;
-const RECIPE_SEARCH_MAX_HEIGHT = 1000;
-const RECIPE_SEARCH_COMFORTABLE_WIDTH = 1080;
+const RECIPE_SEARCH_MAX_WIDTH = 2200;
+const RECIPE_SEARCH_MAX_HEIGHT = 1200;
 const RECIPE_SEARCH_SHEET_BELOW = 700;
 const ZERO_OFFSET = { x: 0, y: 0 };
 
 interface RecipeSearchViewport {
   /** Filling the screen rather than floating over the board. */
   sheet: boolean;
-  dodgesSidebars: boolean;
+  /** Where the search begins: the item browser keeps everything left of it. */
+  leftInset: number;
   width: number;
   height: number;
-  /** Measured, not assumed: these columns can be collapsed. */
-  sidebars: { left: number; right: number };
 }
 
-function measureBoardSidebars(): { left: number; right: number } {
+function measureLeftSidebar(): number {
   if (typeof document === "undefined") {
-    return { left: BOARD_SIDEBAR_LEFT, right: BOARD_SIDEBAR_RIGHT };
+    return BOARD_SIDEBAR_LEFT;
   }
-
-  const width = (selector: string, fallback: number) => {
-    const element = document.querySelector(selector);
-    return element ? Math.round(element.getBoundingClientRect().width) : fallback;
-  };
-
-  return {
-    left: width('aside[data-help-anchor="browser"]', BOARD_SIDEBAR_LEFT),
-    right: width('aside[data-help-anchor="inspector"]', BOARD_SIDEBAR_RIGHT),
-  };
+  const element = document.querySelector('aside[data-help-anchor="browser"]');
+  return element ? Math.round(element.getBoundingClientRect().width) : BOARD_SIDEBAR_LEFT;
 }
 
 function readRecipeSearchViewport(): RecipeSearchViewport {
   if (typeof window === "undefined") {
-    return {
-      sheet: false,
-      dodgesSidebars: true,
-      width: 960,
-      height: 760,
-      sidebars: { left: BOARD_SIDEBAR_LEFT, right: BOARD_SIDEBAR_RIGHT },
-    };
+    return { sheet: false, leftInset: BOARD_SIDEBAR_LEFT, width: 960, height: 760 };
   }
 
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
-  const sidebars = measureBoardSidebars();
 
   // Too narrow to be a window at all: fill the screen instead of leaving a
-  // panel that is mostly margin.
+  // panel that is mostly margin. The item browser is a drawer here anyway.
   if (viewportWidth < RECIPE_SEARCH_SHEET_BELOW) {
-    return {
-      sheet: true,
-      dodgesSidebars: false,
-      width: viewportWidth,
-      height: viewportHeight,
-      sidebars,
-    };
+    return { sheet: true, leftInset: 0, width: viewportWidth, height: viewportHeight };
   }
 
-  // The board's own sidebars are worth keeping in view, but only while
-  // stepping around them still leaves the search a comfortable size. Below
-  // that it covers them, which is the lesser loss.
-  const besideSidebars = viewportWidth - sidebars.left - sidebars.right - 24;
-  const dodgesSidebars = besideSidebars >= RECIPE_SEARCH_COMFORTABLE_WIDTH;
-  const available = dodgesSidebars ? besideSidebars : viewportWidth - 24;
-
+  const leftInset = measureLeftSidebar();
   return {
     sheet: false,
-    dodgesSidebars,
-    width: Math.min(RECIPE_SEARCH_MAX_WIDTH, Math.max(RECIPE_SEARCH_MIN_WIDTH, available)),
+    leftInset,
+    width: Math.min(
+      RECIPE_SEARCH_MAX_WIDTH,
+      Math.max(RECIPE_SEARCH_MIN_WIDTH, viewportWidth - leftInset - 24),
+    ),
     height: Math.min(RECIPE_SEARCH_MAX_HEIGHT, Math.max(360, viewportHeight - 20)),
-    sidebars,
   };
 }
 
@@ -1852,17 +1825,12 @@ function useRecipeSearchViewport(): RecipeSearchViewport {
     const update = () => setViewport(readRecipeSearchViewport());
 
     window.addEventListener("resize", update);
-    // Hiding a column is not a window resize, and the search has to give back
-    // the room either way.
+    // Collapsing the item browser is not a window resize, and the search
+    // should take the room it gives back.
     const observer = new ResizeObserver(update);
-    for (const selector of [
-      'aside[data-help-anchor="browser"]',
-      'aside[data-help-anchor="inspector"]',
-    ]) {
-      const element = document.querySelector(selector);
-      if (element) {
-        observer.observe(element);
-      }
+    const element = document.querySelector('aside[data-help-anchor="browser"]');
+    if (element) {
+      observer.observe(element);
     }
 
     return () => {
