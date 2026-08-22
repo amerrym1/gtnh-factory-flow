@@ -73,6 +73,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.26.0",
+    date: "2026-08-22",
+    headline: "Six multiblocks get their real math",
+    notes: [
+      "The Industrial Chemical Bath shows its energy hatch count and runs its 4 parallels per voltage tier.",
+      "The Industrial Bending Machine, 3D Copying Machine, Mass Solidifier, Fluid Shaper and L.A.T.E.X. now run at their true speed and parallels too.",
+      "The Fluid Shaper offers a width expansion knob, and the L.A.T.E.X. an Elastic Singularity slot.",
+    ],
+  },
+  {
     version: "2.25.1",
     date: "2026-08-22",
     headline: "Quieter numbers in the search",

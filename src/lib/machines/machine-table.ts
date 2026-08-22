@@ -393,6 +393,16 @@ const PLASMA_MIXER_PARALLEL_CONTROL = countControl(
   "Parallels",
   [1, 2, 4, 8, 16, 32, 64, 128, 256],
 );
+/** Fluid Shaper width expansions, 0 through the structure's 6 maximum. */
+const WIDTH_EXPANSION = "widthExpansion";
+const WIDTH_EXPANSION_CONTROL = countControl(WIDTH_EXPANSION, "Width Expansion", [
+  0, 1, 2, 3, 4, 5, 6,
+]);
+const LATEX_SINGULARITY = "latexSingularity";
+const LATEX_SINGULARITY_CONTROL = choiceControl(LATEX_SINGULARITY, "Controller Slot", [
+  "Empty",
+  "Elastic Singularity",
+]);
 /**
  * The fourteen heating coils and the heat each one gives the machine, for
  * machines whose coil the dataset does not offer as a knob. Keys match the
@@ -538,6 +548,7 @@ const MACHINES: Record<string, MachineBehaviour> = {
     overclock: HEAT_OVERCLOCK,
     heat: { voltageBonus: true },
     parallels: 256,
+    aliases: ["Mega Electric Blast Furnace"],
   },
   Volcanus: {
     overclock: HEAT_OVERCLOCK,
@@ -1002,6 +1013,62 @@ const MACHINES: Record<string, MachineBehaviour> = {
         ),
       ),
     controls: [SPIN_MODE_CONTROL, TURBINE_TIER_CONTROL, SPIN_FUEL_CONTROL],
+  },
+
+  // -- Plain "N parallels per voltage tier" multis the reference never had ---
+  // Each transcribed from its GT5-Unofficial class in
+  // gregtech.common.tileentities.machines.multi; the Fluid Shaper alone is
+  // also in the reference and checked against its fixture.
+  // MTEIndustrialChemicalBath: setSpeedBonus(1F / 5F), 4 * GTUtility.getTier.
+  "Industrial Chemical Bath": {
+    overclock: OVERCLOCK.normal(),
+    speed: 5,
+    parallels: (c) => c.voltageTier * 4,
+  },
+  // MTEIndustrialBendingMachine: setSpeedBonus(1F / 6F), 6 * GTUtility.getTier.
+  "Industrial Bending Machine": {
+    overclock: OVERCLOCK.normal(),
+    speed: 6,
+    parallels: (c) => c.voltageTier * 6,
+  },
+  // MTEIndustrialChisel: setSpeedBonus(1F / 3F), setEuModifier(0.75F),
+  // 16 * GTUtility.getTier.
+  "Industrial 3D Copying Machine": {
+    overclock: OVERCLOCK.normal(),
+    speed: 3,
+    power: 0.75,
+    parallels: (c) => c.voltageTier * 16,
+  },
+  // MTEMassSolidifier: 10 * GTUtility.getTier, setEuModifier(0.8F), and a
+  // momentum speed ramp from 1x to 3x while running.
+  "Mass Solidifier": {
+    overclock: OVERCLOCK.normal(),
+    speed: 3,
+    power: 0.8,
+    parallels: (c) => c.voltageTier * 10,
+    note: "Assumes max speed.",
+  },
+  // MTEFluidShaper: (2 + 3 per width expansion) * GTUtility.getTier,
+  // setEuModifier(0.8F), the same momentum ramp as the Mass Solidifier.
+  "Fluid Shaper": {
+    overclock: OVERCLOCK.normal(),
+    speed: 3,
+    power: 0.8,
+    parallels: (c) => c.voltageTier * (2 + 3 * c.value(WIDTH_EXPANSION)),
+    controls: [WIDTH_EXPANSION_CONTROL],
+    note: "Assumes max speed.",
+  },
+  // MTELatex: setSpeedBonus(1F / 2F), setEuModifier(0.85F), 8 * GTUtility
+  // .getTier doubled by an Elastic Singularity in the controller slot. The
+  // item pipe casings' rubber cost discount changes INPUT amounts, which the
+  // table cannot express.
+  "L.A.T.E.X.": {
+    overclock: OVERCLOCK.normal(),
+    speed: 2,
+    power: 0.85,
+    parallels: (c) => c.voltageTier * (c.tier(LATEX_SINGULARITY) === 1 ? 16 : 8),
+    controls: [LATEX_SINGULARITY_CONTROL],
+    note: "Rubber cost discounts are not counted.",
   },
 };
 
