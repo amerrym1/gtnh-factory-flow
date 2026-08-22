@@ -23,6 +23,7 @@ export type AppFontId =
   | "lexend"
   | "atkinson-hyperlegible"
   | "open-dyslexic"
+  | "andika"
   | "comic-neue"
   | "jetbrains-mono"
   | "system";
@@ -66,6 +67,12 @@ export const APP_FONTS: readonly AppFontOption[] = [
     label: "OpenDyslexic",
     blurb: "Weighted letters made for dyslexic readers.",
     stack: "var(--font-open-dyslexic), ui-sans-serif, system-ui, sans-serif",
+  },
+  {
+    id: "andika",
+    label: "Andika",
+    blurb: "Clear letters made hard to confuse with each other.",
+    stack: "var(--font-andika), ui-sans-serif, system-ui, sans-serif",
   },
   {
     id: "comic-neue",

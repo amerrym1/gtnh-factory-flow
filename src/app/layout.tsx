@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import {
+  Andika,
   Atkinson_Hyperlegible,
   Comic_Neue,
   Inter,
@@ -57,6 +58,13 @@ const atkinson = Atkinson_Hyperlegible({
   display: "swap",
 });
 
+const andika = Andika({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-andika",
+  display: "swap",
+});
+
 const comicNeue = Comic_Neue({
   subsets: ["latin"],
   weight: ["400", "700"],
@@ -72,6 +80,10 @@ const openDyslexic = localFont({
   ],
   variable: "--font-open-dyslexic",
   display: "swap",
+  // OpenDyslexic's x-height runs far past every other face here, so at the
+  // same px size it rendered a size up and overflowed fixed-height chrome.
+  // size-adjust scales the glyphs, not the layout, back into the app's scale.
+  declarations: [{ prop: "size-adjust", value: "82%" }],
 });
 
 /*
@@ -196,7 +208,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${monocraft.variable} ${inter.variable} ${jetbrainsMono.variable} ${lexend.variable} ${atkinson.variable} ${comicNeue.variable} ${openDyslexic.variable} h-full`}
+      className={`${monocraft.variable} ${inter.variable} ${jetbrainsMono.variable} ${lexend.variable} ${atkinson.variable} ${andika.variable} ${comicNeue.variable} ${openDyslexic.variable} h-full`}
       // The boot script above stamps `data-app-font` on this element before
       // React ever renders, and the server markup does not carry it.
       suppressHydrationWarning

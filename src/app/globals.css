@@ -390,6 +390,12 @@ html[data-app-font="open-dyslexic"] {
   --app-font: var(--font-open-dyslexic), ui-sans-serif, system-ui, sans-serif;
 }
 
+html[data-app-font="andika"] {
+  --app-font: var(--font-andika), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* (rules above are switched by the settings dialog; see src/lib/app-font.ts) */
+
 html[data-app-font="comic-neue"] {
   --app-font: var(--font-comic-neue), ui-sans-serif, system-ui, sans-serif;
 }
