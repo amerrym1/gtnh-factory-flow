@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.25.0",
+    date: "2026-08-22",
+    headline: "Settings, starting with the font",
+    notes: [
+      "A gear in the header opens Settings, saved on your device.",
+      "Eight fonts to pick from, including dyslexia friendly ones.",
+      "The update notes popup can be turned off. The What's new dot stays.",
+      "The setup rules button on the board is sliders now, not a second gear.",
+    ],
+  },
+  {
     version: "2.24.0",
     date: "2026-08-22",
     headline: "The recipe book is a search now",
