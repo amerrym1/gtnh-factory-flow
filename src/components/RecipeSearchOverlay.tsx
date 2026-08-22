@@ -1343,7 +1343,11 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
  * could ever have.
  */
 function SkeletonResultCard({ delay }: { delay: number }) {
-  const delayStyle = { animationDelay: `${delay}ms` };
+  // NEGATIVE delay: a positive one leaves the card at full base opacity
+  // until its turn, then snaps it into the cycle - which marched a visible
+  // pop across the grid in reading order. Starting every card mid-cycle
+  // gives the same ripple with nothing to snap.
+  const delayStyle = { animationDelay: `-${delay}ms` };
   const ghostChip = (nameWidth: string, key: number) => (
     <span
       key={key}
