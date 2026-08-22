@@ -766,25 +766,33 @@ textarea {
   background-color: var(--glance-bg, transparent);
 }
 
-/* The fade across the LOD threshold: sinking into the glance is slow enough
-   to read as the board settling into its far view; coming back in is quick,
-   because that is the direction someone is trying to WORK in. `visibility`
-   rides along with a delay only on the way OUT of sight, so whichever side is
-   appearing shows its whole fade and whichever is going stays interactive-
-   invisible only after it has finished going.
+/* The fade across the LOD threshold, and it is the SAME crossing both ways:
+   slow enough to read as the board settling between its two views, going out
+   and coming back. It used to snap back in at a quarter of the time on the
+   grounds that in is the direction someone is trying to work in; what that
+   actually bought was one gesture that answers at two different speeds
+   depending on which way the wheel went. `visibility` rides along with a
+   delay only on the way OUT of sight, so whichever side is appearing shows
+   its whole fade and whichever is going stays interactive-invisible only
+   after it has finished going.
+
+   The two sides move TOGETHER on one clock, one going as the other comes —
+   the step is a single continuous action, not two half-length ones queued up.
+   Sequencing them was tried and it reads as two events: the card empties, sits
+   blank for a beat, and the icon then arrives as a separate arrival.
 
    Scoped to the value-motion class on purpose: the motion switch is the one
    promise that the board holds still, and the image export flips it off
    before capturing — a photograph taken two frames after the detail flip must
    not come out half-faded. */
 .factory-flow-board--value-motion [data-node-detail="glance"] {
-  transition: opacity 220ms ease, visibility 0s 220ms;
+  transition: opacity 560ms ease, visibility 0s 560ms;
 }
 
 .factory-flow-board--value-motion [data-node-glance-root] > *:not([data-node-detail="glance"]),
 .factory-flow-board--value-motion [data-node-glance-root] > [data-tooltip-root] > *,
 .factory-flow-board--value-motion .machine-tab-zone {
-  transition: opacity 220ms ease, visibility 0s;
+  transition: opacity 560ms ease, visibility 0s;
 }
 
 .factory-flow-board--value-motion[data-detail-level="glance"] [data-node-detail="glance"] {
@@ -794,7 +802,14 @@ textarea {
      arrives as a NEW element already at opacity 1, which is why mode
      switches used to pop while the card colour underneath glided. An
      animation runs whenever the rule starts applying, mounts included, so
-     the incoming layer fades in on the same clock as the wash. */
+     the incoming layer fades in on the same clock as the wash.
+
+     It is also, in practice, what draws the fade INTO the glance: an animation
+     is part of the style a transition is measured against, so the transition
+     above finds no change to start from and the animation does the whole job.
+     Keep the two timed alike, and give this NO fill — an animation that holds
+     its end value is one the fade OUT cannot start from, and the icon would
+     vanish on the spot instead of leaving. */
   animation: glance-layer-in 560ms ease;
 }
 
@@ -818,8 +833,8 @@ textarea {
 /* The paper's ruling — the stock dot/line pattern and the ruled/graph
    rulings — sinks out with the rest of the near view: the glance step is lit
    tiles on dark ground, and a grid under them is close-up furniture the far
-   view has no use for. Same clock as the cards, slow out and quick back, and
-   only the motion rules below animate it so an export capture stays clean. */
+   view has no use for. Same clock as the cards, the same both ways, and only
+   the motion rules below animate it so an export capture stays clean. */
 .factory-flow-board[data-detail-level="glance"] .react-flow__background,
 .factory-flow-board[data-detail-level="glance"] .board-ruling {
   opacity: 0;
@@ -828,7 +843,7 @@ textarea {
 
 .factory-flow-board--value-motion .react-flow__background,
 .factory-flow-board--value-motion .board-ruling {
-  transition: opacity 220ms ease, visibility 0s;
+  transition: opacity 560ms ease, visibility 0s;
 }
 
 .factory-flow-board--value-motion[data-detail-level="glance"] .react-flow__background,
