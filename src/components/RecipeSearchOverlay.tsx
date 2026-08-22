@@ -2,6 +2,7 @@
 
 import { ArrowLeftRight, Plus, Search, Star, X } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
@@ -21,6 +22,7 @@ import type { RateUnit } from "@/lib/model/rate-unit";
 import { GT_TIER_COLORS } from "./flow/tier-colors";
 import type { TierFilter } from "@/store/factory-store";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { useIsCompactViewport } from "@/lib/compact-view";
 import { machineArtPixels } from "./flow/MachinePicker";
 import { useMachineHandlerIcons } from "./flow/machine-icons";
 import { ResourceIcon } from "./nei/ResourceIcon";
@@ -168,6 +170,11 @@ export function RecipeSearchOverlay({
 }) {
   const panelRef = useRef<HTMLElement>(null);
   const layout = useRecipeSearchViewport();
+  // A phone (or any window the app calls compact) gets the search FULL
+  // SCREEN, first-class: its own header stack with the close in the top
+  // right, one swipeable row of machine chips, and a shorter stencil.
+  const compact = useIsCompactViewport();
+  const sheet = compact || layout.sheet;
   const [pickerRole, setPickerRole] = useState<RecipeQueryRole | undefined>(undefined);
   const [rateView, setRateView] = useState<RateView>(() => storedRateView);
   const changeRateView = useCallback((view: RateView) => {
@@ -425,7 +432,110 @@ export function RecipeSearchOverlay({
     }
   };
 
-  return (
+  // The same controls wear different clothes on the two layouts, so they are
+  // built once and placed twice.
+  const machineChipRow = (
+    <>
+      <MachineChip
+        label="All"
+        count={totalAcrossMaps}
+        active={!activeRecipeMap}
+        onClick={() => onRecipeMapChange("")}
+      />
+      {recipeMapChips.map((chip) => (
+        <MachineChip
+          key={chip.id}
+          label={chip.label}
+          count={chip.count}
+          icon={chip.icon}
+          active={chip.id === activeRecipeMap}
+          onClick={() => onRecipeMapChange(chip.id)}
+          onHover={() => onRecipeMapHover(chip.id)}
+        />
+      ))}
+    </>
+  );
+  const ratePillGroup = (
+    <span
+      className="flex shrink-0 items-center border-2 border-[var(--mc-29)] bg-[var(--mc-55)]"
+      title="Read the recipes as written, or as rates for one machine at full speed"
+    >
+      {RATE_VIEW_CHOICES.map((choice) => (
+        <OpPill
+          key={choice.view}
+          label={choice.label}
+          title={choice.title}
+          active={rateView === choice.view}
+          onClick={() => changeRateView(choice.view)}
+        />
+      ))}
+    </span>
+  );
+  const nameFilter = (
+    <label
+      className={[
+        "flex min-w-0 items-center gap-2 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]",
+        compact ? "h-10 flex-1" : "h-9 w-[200px]",
+      ].join(" ")}
+    >
+      <Search className="h-4 w-4 shrink-0 text-neutral-500" />
+      <input
+        value={query}
+        onChange={(event) => onQueryChange(event.target.value)}
+        placeholder="Filter by name..."
+        className="min-w-0 flex-1 bg-transparent text-neutral-100 outline-none placeholder:text-neutral-500"
+      />
+      {query ? (
+        <button
+          type="button"
+          onClick={() => onQueryChange("")}
+          className="text-neutral-400 hover:text-white"
+          aria-label="Clear the name filter"
+          title="Clear the name filter"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      ) : null}
+    </label>
+  );
+  const tierSelect = (
+    <select
+      value={maxTier}
+      onChange={(event) => onMaxTierChange(event.target.value as TierFilter)}
+      title="Highest tier"
+      aria-label="Maximum machine tier"
+      className={[
+        "shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1.5 text-sm text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]",
+        compact ? "h-10 w-24" : "h-9 w-28",
+      ].join(" ")}
+    >
+      <option value="all">All tiers</option>
+      {GT_VOLTAGE_TIERS.map((entry) => (
+        <option key={entry.tier} value={entry.tier}>
+          ≤ {entry.tier}
+        </option>
+      ))}
+    </select>
+  );
+  const closeButton = (
+    <button
+      type="button"
+      title="Close recipe search (Esc)"
+      aria-label="Close recipe search"
+      onClick={onClose}
+      className={[
+        "flex shrink-0 cursor-pointer items-center justify-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] text-[var(--mc-ink)] hover:bg-[var(--mc-85)]",
+        compact ? "h-10 w-10" : "absolute right-2 top-2 z-30 h-8 w-8",
+      ].join(" ")}
+    >
+      <X className={compact ? "h-5 w-5" : "h-4 w-4"} />
+    </button>
+  );
+
+  // A PORTAL, not a child: on compact this component mounts inside a drawer,
+  // and a drawer slides on `translate` - which quietly turns every fixed
+  // descendant into a drawer-relative one. Full screen means the body.
+  return createPortal(
     <div
       className={[
         // A near-black ground: the search is the only thing on screen, and
@@ -433,13 +543,14 @@ export function RecipeSearchOverlay({
         "pointer-events-auto fixed inset-0 flex items-center justify-center bg-black/70",
         // While the search steps around the board's sidebars it sits under
         // them, so they stay usable. Once it covers them it has to sit over
-        // them, or they clip it instead.
-        layout.dodgesSidebars ? "z-30" : "z-50",
-        layout.sheet ? "" : "px-3 py-2",
+        // them, or they clip it instead - and on compact it outranks ALL the
+        // app chrome, because full screen means full screen.
+        compact ? "z-[90]" : layout.dodgesSidebars ? "z-30" : "z-50",
+        sheet ? "" : "px-3 py-2",
       ].join(" ")}
       onPointerDown={onClose}
       style={
-        layout.dodgesSidebars
+        layout.dodgesSidebars && !compact
           ? { paddingLeft: layout.sidebars.left, paddingRight: layout.sidebars.right }
           : undefined
       }
@@ -452,8 +563,8 @@ export function RecipeSearchOverlay({
         className="pointer-events-auto relative flex flex-col font-mono"
         aria-label="Recipe search"
         style={{
-          width: layout.sheet ? "100%" : `min(${layout.width}px, 100%)`,
-          height: layout.sheet ? "100%" : `min(${layout.height}px, 100%)`,
+          width: sheet ? "100%" : `min(${layout.width}px, 100%)`,
+          height: sheet ? "100%" : `min(${layout.height}px, 100%)`,
         }}
       >
         {/* The frame is 4px like a board window's, a dark grey one shade off
@@ -462,100 +573,45 @@ export function RecipeSearchOverlay({
           className="relative flex min-h-0 flex-1 flex-col overflow-hidden border-4 border-[#23262d] bg-[#101215] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_rgba(255,255,255,0.05),inset_-2px_-2px_0_rgba(0,0,0,0.6)]"
           onPointerDown={(event) => event.stopPropagation()}
         >
-          <button
-            type="button"
-            title="Close recipe search (Esc)"
-            aria-label="Close recipe search"
-            onClick={onClose}
-            className="absolute right-2 top-2 z-30 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
-          >
-            <X className="h-4 w-4" />
-          </button>
-
-          {/* ===== the head: machine chips scroll on the left, the controls
-                 stand still on the right ===== */}
-          <div className="flex flex-wrap items-start gap-2 py-3 pl-3 pr-12">
-            {/* A busy item can match a hundred machines; the chips get their
-                own scroll and take nothing else with them. */}
-            {/* Cut mid-row on purpose: a third row of chips peeking over the
-                edge is the scroll cue, and the bar only takes its lane when
-                there is something to scroll. */}
-            <div className="recipe-search-scroll flex max-h-[100px] min-w-[240px] flex-1 flex-wrap items-center gap-1.5 overflow-y-auto pr-1">
-              <MachineChip
-                label="All"
-                count={totalAcrossMaps}
-                active={!activeRecipeMap}
-                onClick={() => onRecipeMapChange("")}
-              />
-              {recipeMapChips.map((chip) => (
-                <MachineChip
-                  key={chip.id}
-                  label={chip.label}
-                  count={chip.count}
-                  icon={chip.icon}
-                  active={chip.id === activeRecipeMap}
-                  onClick={() => onRecipeMapChange(chip.id)}
-                  onHover={() => onRecipeMapHover(chip.id)}
-                />
-              ))}
+          {compact ? (
+            /* ===== phone head: search row with the close top right, then one
+                   swipeable row of machine chips, then the rate switch ===== */
+            <div className="flex flex-col gap-2 p-2">
+              <div className="flex items-center gap-2">
+                {nameFilter}
+                {tierSelect}
+                {closeButton}
+              </div>
+              <div className="recipe-search-scroll flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                {machineChipRow}
+              </div>
+              <div className="flex">{ratePillGroup}</div>
             </div>
-            <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
-            <span
-              className="flex items-center border-2 border-[var(--mc-29)] bg-[var(--mc-55)]"
-              title="Read the recipes as written, or as rates for one machine at full speed"
-            >
-              {RATE_VIEW_CHOICES.map((choice) => (
-                <OpPill
-                  key={choice.view}
-                  label={choice.label}
-                  title={choice.title}
-                  active={rateView === choice.view}
-                  onClick={() => changeRateView(choice.view)}
-                />
-              ))}
-            </span>
-            <label className="flex h-9 w-[200px] min-w-0 items-center gap-2 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
-              <Search className="h-4 w-4 shrink-0 text-neutral-500" />
-              <input
-                value={query}
-                onChange={(event) => onQueryChange(event.target.value)}
-                placeholder="Filter by name..."
-                className="min-w-0 flex-1 bg-transparent text-neutral-100 outline-none placeholder:text-neutral-500"
-              />
-              {query ? (
-                <button
-                  type="button"
-                  onClick={() => onQueryChange("")}
-                  className="text-neutral-400 hover:text-white"
-                  aria-label="Clear the name filter"
-                  title="Clear the name filter"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              ) : null}
-            </label>
-            <select
-              value={maxTier}
-              onChange={(event) => onMaxTierChange(event.target.value as TierFilter)}
-              title="Highest tier"
-              aria-label="Maximum machine tier"
-              className="h-9 w-28 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1.5 text-sm text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
-            >
-              <option value="all">All tiers</option>
-              {GT_VOLTAGE_TIERS.map((entry) => (
-                <option key={entry.tier} value={entry.tier}>
-                  ≤ {entry.tier}
-                </option>
-              ))}
-            </select>
-            </div>
-          </div>
+          ) : (
+            <>
+              {closeButton}
+              {/* ===== the head: machine chips scroll on the left, the
+                     controls stand still on the right. Cut mid-row on
+                     purpose: a third row of chips peeking over the edge is
+                     the scroll cue. ===== */}
+              <div className="flex flex-wrap items-start gap-2 py-3 pl-3 pr-12">
+                <div className="recipe-search-scroll flex max-h-[100px] min-w-[240px] flex-1 flex-wrap items-center gap-1.5 overflow-y-auto pr-1">
+                  {machineChipRow}
+                </div>
+                <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
+                  {ratePillGroup}
+                  {nameFilter}
+                  {tierSelect}
+                </div>
+              </div>
+            </>
+          )}
 
           {/* ===== the answers ===== */}
           <div
             className={[
               "recipe-search-scroll min-h-0 flex-1 overflow-y-auto",
-              layout.sheet ? "px-1.5" : "px-3",
+              sheet ? "px-1.5" : "px-3",
             ].join(" ")}
             onScroll={handleResultsScroll}
           >
@@ -580,7 +636,7 @@ export function RecipeSearchOverlay({
                 <div
                   className="grid items-start gap-2"
                   style={{
-                    gridTemplateColumns: layout.sheet
+                    gridTemplateColumns: sheet
                       ? "minmax(0, 1fr)"
                       : "repeat(auto-fill, minmax(400px, 1fr))",
                   }}
@@ -614,12 +670,12 @@ export function RecipeSearchOverlay({
         </div>
 
         {/* ===== the stencil: its own detached card, the foot of the T ===== */}
-        <div className="flex shrink-0 justify-center pt-3">
+        <div className="flex shrink-0 justify-center pt-3 compact:px-2 compact:pb-2 compact:pt-2">
           <div
-            className="relative w-full max-w-[880px] border-4 border-[#23262d] bg-[var(--mc-71)] p-3 text-[var(--mc-ink)] shadow-[0_8px_0_rgba(0,0,0,0.5),inset_1px_1px_0_var(--mc-93)]"
+            className="relative w-full max-w-[880px] border-4 border-[#23262d] bg-[var(--mc-71)] p-3 text-[var(--mc-ink)] shadow-[0_8px_0_rgba(0,0,0,0.5),inset_1px_1px_0_var(--mc-93)] compact:p-2"
             onPointerDown={(event) => event.stopPropagation()}
           >
-              <div className="flex items-stretch gap-2">
+              <div className="flex items-stretch gap-2 compact:gap-1">
                 <StencilSide
                   label="Takes"
                   role="takes"
@@ -638,7 +694,7 @@ export function RecipeSearchOverlay({
                   onClick={onSwapSides}
                   title="Swap sides: takes become makes and makes become takes"
                   aria-label="Swap the takes and makes sides"
-                  className="group flex w-14 shrink-0 items-center justify-center self-center border-2 border-transparent text-[var(--mc-ink-muted)] hover:border-[var(--mc-33)] hover:bg-[var(--mc-71)] hover:text-[var(--mc-ink)]"
+                  className="group flex w-14 shrink-0 items-center justify-center self-center border-2 border-transparent text-[var(--mc-ink-muted)] hover:border-[var(--mc-33)] hover:bg-[var(--mc-71)] hover:text-[var(--mc-ink)] compact:w-9"
                   style={{ height: "72px" }}
                 >
                   <svg
@@ -751,7 +807,8 @@ export function RecipeSearchOverlay({
             </div>
           ) : null}
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -798,7 +855,7 @@ function StencilSide({
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
       <div className="flex h-6 items-center justify-between">
-        <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--mc-ink)]">
+        <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--mc-ink)] compact:text-[10px] compact:tracking-normal">
           {label}
         </span>
         <span className="flex items-center border-2 border-[var(--mc-29)] bg-[var(--mc-55)]">
@@ -827,7 +884,7 @@ function StencilSide({
           deeper than the window says so instead of hiding rows. */}
       <div
         ref={(element) => registerListRef(role, element)}
-        className="recipe-search-scroll flex h-[208px] flex-col gap-1.5 overflow-y-auto pr-1"
+        className="recipe-search-scroll flex h-[208px] flex-col gap-1.5 overflow-y-auto pr-1 compact:h-[124px]"
       >
         {layoutClauses.map((clause, slot) => {
           const index = clauses.indexOf(clause);
@@ -902,7 +959,7 @@ function OpPill({
       title={title}
       aria-pressed={active}
       className={[
-        "h-5 shrink-0 whitespace-nowrap px-1.5 text-[10px] font-bold uppercase tracking-[0.1em]",
+        "h-5 shrink-0 whitespace-nowrap px-1.5 text-[10px] font-bold uppercase tracking-[0.1em] compact:px-1 compact:text-[9px] compact:tracking-normal",
         active
           ? "bg-[var(--mc-85)] text-white shadow-[inset_1px_1px_0_var(--mc-100)]"
           : "text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]",
@@ -992,7 +1049,7 @@ function ItemPickerPopover({
           }}
         />
       </label>
-      <div className="recipe-search-scroll mt-2 grid max-h-[460px] grid-cols-1 gap-1 overflow-y-auto sm:grid-cols-2">
+      <div className="recipe-search-scroll mt-2 grid max-h-[460px] grid-cols-1 gap-1 overflow-y-auto compact:max-h-[max(140px,calc(100vh-320px))] sm:grid-cols-2">
         {loading && results.length === 0 ? (
           <div className="p-2 text-sm text-[var(--mc-ink-muted)]">Searching...</div>
         ) : results.length === 0 ? (
@@ -1049,7 +1106,7 @@ function MachineChip({
       onMouseEnter={onHover}
       aria-pressed={active}
       className={[
-        "flex items-center gap-1.5 border-2 py-0.5 pl-0.5 pr-2 text-[13px] font-bold",
+        "flex shrink-0 items-center gap-1.5 border-2 py-0.5 pl-0.5 pr-2 text-[13px] font-bold",
         active
           ? "border-[var(--mc-15)] bg-[var(--mc-85)] shadow-[inset_2px_2px_0_var(--mc-100),0_0_0_2px_#22d3ee_inset]"
           : "border-[var(--mc-47)] bg-[var(--mc-78)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-47)] hover:bg-[var(--mc-85)]",
