@@ -2,7 +2,7 @@
 
 import { ArrowLeftRight, Plus, Search, Star, X } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent, UIEvent } from "react";
+import type { UIEvent } from "react";
 import type { DatasetResourceIndexEntry, RecipeSummary } from "@/lib/datasets/types";
 import type { RecipeQueryRole, RecipeQuerySideOp } from "@/lib/datasets/recipe-query";
 import {
@@ -50,11 +50,11 @@ export interface RecipeMapChip {
 /**
  * The recipe search: one screen, no browse step.
  *
- * The top band is a STENCIL of the recipe being looked for - inputs on the
- * left, outputs on the right, exactly the way a machine card reads - and the
- * rest of the screen is the answers, updating as the stencil changes. Each
- * side combines its items with ANY (either of these) or ALL (every one of
- * them); a recipe must satisfy both sides.
+ * The screen is a letter T: the answers fill the top, and the STENCIL of the
+ * recipe being looked for sits on its own card at the bottom middle - what it
+ * takes on the left, what it makes on the right, exactly the way a machine
+ * card reads. Each side combines its items with ANY (either of these) or ALL
+ * (every one of them); a recipe must satisfy both sides.
  */
 export function RecipeSearchOverlay({
   clauses,
@@ -69,7 +69,6 @@ export function RecipeSearchOverlay({
   onRecipeMapChange,
   onRecipeMapHover,
   recipes,
-  queryTotal,
   totalAcrossMaps,
   hasMore,
   isLoading,
@@ -100,7 +99,6 @@ export function RecipeSearchOverlay({
   onRecipeMapChange: (recipeMap: string) => void;
   onRecipeMapHover: (recipeMap: string) => void;
   recipes: RecipeSummary[];
-  queryTotal: number;
   totalAcrossMaps: number;
   hasMore: boolean;
   isLoading: boolean;
@@ -124,19 +122,7 @@ export function RecipeSearchOverlay({
 }) {
   const panelRef = useRef<HTMLElement>(null);
   const layout = useRecipeSearchViewport();
-  const [dragOffset, setDragOffset] = useState(ZERO_OFFSET);
   const [pickerRole, setPickerRole] = useState<RecipeQueryRole | undefined>(undefined);
-  const dragRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    originX: number;
-    originY: number;
-  } | null>(null);
-
-  // A screen-filling sheet has nowhere to be dragged to, so it ignores any
-  // offset rather than forgetting it.
-  const appliedOffset = layout.sheet ? ZERO_OFFSET : dragOffset;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -147,42 +133,6 @@ export function RecipeSearchOverlay({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
-
-  const handlePointerDown = (event: PointerEvent<HTMLElement>) => {
-    if (event.button !== 0 || layout.sheet) {
-      return;
-    }
-    event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: dragOffset.x,
-      originY: dragOffset.y,
-    };
-  };
-
-  const handlePointerMove = (event: PointerEvent<HTMLElement>) => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) {
-      return;
-    }
-    setDragOffset(
-      clampDragOffset(
-        {
-          x: drag.originX + event.clientX - drag.startX,
-          y: drag.originY + event.clientY - drag.startY,
-        },
-        panelRef.current,
-      ),
-    );
-  };
-
-  const handlePointerUp = (event: PointerEvent<HTMLElement>) => {
-    if (dragRef.current?.pointerId === event.pointerId) {
-      dragRef.current = null;
-    }
-  };
 
   const removeClause = (index: number) => {
     onClausesChange(clauses.filter((_, at) => at !== index));
@@ -211,8 +161,6 @@ export function RecipeSearchOverlay({
 
   const takesClauses = clauses.filter((clause) => clause.role === "takes");
   const makesClauses = clauses.filter((clause) => clause.role === "makes");
-  const shownTotal = activeRecipeMap ? queryTotal : totalAcrossMaps;
-  const sentence = stencilSentence(takesClauses, makesClauses, takesOp, makesOp, shownTotal === 1);
 
   // Loading more when the bottom of the list scrolls near, so the grid reads
   // as one endless list rather than ending on a button.
@@ -229,9 +177,9 @@ export function RecipeSearchOverlay({
   return (
     <div
       className={[
-        // The dim ground pushes the board back so the search reads as the one
-        // thing on screen.
-        "pointer-events-auto fixed inset-0 flex items-center justify-center bg-black/45",
+        // A near-black ground: the search is the only thing on screen, and
+        // everything on it stands off the dark.
+        "pointer-events-auto fixed inset-0 flex items-center justify-center bg-black/70",
         // While the search steps around the board's sidebars it sits under
         // them, so they stay usable. Once it covers them it has to sit over
         // them, or they clip it instead.
@@ -251,124 +199,23 @@ export function RecipeSearchOverlay({
         aria-label="Recipe search"
         onPointerDown={(event) => event.stopPropagation()}
         style={{
-          transform: `translate(${appliedOffset.x}px, ${appliedOffset.y}px)`,
           width: layout.sheet ? "100%" : `min(${layout.width}px, 100%)`,
           height: layout.sheet ? "100%" : `min(${layout.height}px, 100%)`,
         }}
       >
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden border-2 border-[var(--mc-96)] bg-[var(--mc-78)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]">
-          {/* ===== title bar: the query in words ===== */}
-          <div className="px-2 pt-2">
-            <div
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerUp}
-              className="flex h-11 cursor-move select-none items-center gap-3 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2 shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-29)]"
-            >
-              <span className="min-w-0 flex-1 leading-[1.1]">
-                <span className="block text-[8px] font-bold uppercase tracking-[0.14em] text-[#ececec] [text-shadow:1px_1px_0_#4a4a4a]">
-                  Recipe search
-                </span>
-                <span className="minecraft-title block truncate text-[17px] leading-[20px] text-white [text-shadow:2px_2px_0_var(--mc-24)]">
-                  {sentence
-                    ? `${shownTotal.toLocaleString()} ${shownTotal === 1 ? "recipe" : "recipes"} ${sentence}`
-                    : "Recipe search"}
-                </span>
-              </span>
-              <button
-                type="button"
-                title="Close recipe search (Esc)"
-                aria-label="Close recipe search"
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={onClose}
-                className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center border-2 border-[var(--mc-33)] bg-[var(--mc-71)] text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden border-2 border-[var(--mc-96)] bg-[#101215] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_rgba(255,255,255,0.05),inset_-2px_-2px_0_rgba(0,0,0,0.6)]">
+          <button
+            type="button"
+            title="Close recipe search (Esc)"
+            aria-label="Close recipe search"
+            onClick={onClose}
+            className="absolute right-2 top-2 z-30 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
+          >
+            <X className="h-4 w-4" />
+          </button>
 
-          {/* ===== the stencil band ===== */}
-          <div className="relative px-3 pt-2">
-            <div className="flex flex-wrap items-center gap-2 border-2 border-[var(--mc-15)] bg-[var(--mc-82)] p-2">
-              <StencilSide
-                label="Takes"
-                role="takes"
-                sideClauses={takesClauses}
-                clauses={clauses}
-                op={takesOp}
-                onOpChange={onTakesOpChange}
-                onRemove={removeClause}
-                onOpenPicker={() => setPickerRole(pickerRole === "takes" ? undefined : "takes")}
-              />
-              <button
-                type="button"
-                onClick={onSwapSides}
-                title="Swap sides: takes become makes and makes become takes"
-                aria-label="Swap the takes and makes sides"
-                className="group flex h-8 w-8 shrink-0 items-center justify-center border-2 border-transparent text-[20px] font-black leading-6 text-[var(--mc-ink-muted)] hover:border-[var(--mc-33)] hover:bg-[var(--mc-61)] hover:text-[var(--mc-ink)]"
-              >
-                <span className="group-hover:hidden">→</span>
-                <ArrowLeftRight aria-hidden className="hidden h-4 w-4 group-hover:block" />
-              </button>
-              <StencilSide
-                label="Makes"
-                role="makes"
-                sideClauses={makesClauses}
-                clauses={clauses}
-                op={makesOp}
-                onOpChange={onMakesOpChange}
-                onRemove={removeClause}
-                onOpenPicker={() => setPickerRole(pickerRole === "makes" ? undefined : "makes")}
-              />
-              <label className="ml-auto flex h-9 w-[210px] min-w-0 items-center gap-2 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607] compact:w-full">
-                <Search className="h-4 w-4 shrink-0 text-neutral-500" />
-                <input
-                  value={query}
-                  onChange={(event) => onQueryChange(event.target.value)}
-                  placeholder="Filter by name..."
-                  className="min-w-0 flex-1 bg-transparent text-neutral-100 outline-none placeholder:text-neutral-500"
-                />
-                {query ? (
-                  <button
-                    type="button"
-                    onClick={() => onQueryChange("")}
-                    className="text-neutral-400 hover:text-white"
-                    aria-label="Clear the name filter"
-                    title="Clear the name filter"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                ) : null}
-              </label>
-              <select
-                value={maxTier}
-                onChange={(event) => onMaxTierChange(event.target.value as TierFilter)}
-                title="Highest tier"
-                aria-label="Maximum machine tier"
-                className="h-9 w-28 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1.5 text-sm text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
-              >
-                <option value="all">All tiers</option>
-                {GT_VOLTAGE_TIERS.map((entry) => (
-                  <option key={entry.tier} value={entry.tier}>
-                    ≤ {entry.tier}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {pickerRole ? (
-              <ItemPickerPopover
-                role={pickerRole}
-                onPick={addClause}
-                onClose={() => setPickerRole(undefined)}
-                searchPickerResources={searchPickerResources}
-              />
-            ) : null}
-          </div>
-
-          {/* ===== machine chips ===== */}
-          <div className="flex max-h-[92px] flex-wrap items-center gap-1.5 overflow-y-auto px-3 pt-2">
+          {/* ===== machine chips and the refinements, one quiet strip ===== */}
+          <div className="flex max-h-[104px] flex-wrap items-center gap-1.5 overflow-y-auto py-3 pl-3 pr-12">
             <MachineChip
               label="All"
               count={totalAcrossMaps}
@@ -386,14 +233,47 @@ export function RecipeSearchOverlay({
                 onHover={() => onRecipeMapHover(chip.id)}
               />
             ))}
+            <label className="ml-auto flex h-9 w-[200px] min-w-0 items-center gap-2 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
+              <Search className="h-4 w-4 shrink-0 text-neutral-500" />
+              <input
+                value={query}
+                onChange={(event) => onQueryChange(event.target.value)}
+                placeholder="Filter by name..."
+                className="min-w-0 flex-1 bg-transparent text-neutral-100 outline-none placeholder:text-neutral-500"
+              />
+              {query ? (
+                <button
+                  type="button"
+                  onClick={() => onQueryChange("")}
+                  className="text-neutral-400 hover:text-white"
+                  aria-label="Clear the name filter"
+                  title="Clear the name filter"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </label>
+            <select
+              value={maxTier}
+              onChange={(event) => onMaxTierChange(event.target.value as TierFilter)}
+              title="Highest tier"
+              aria-label="Maximum machine tier"
+              className="h-9 w-28 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1.5 text-sm text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
+            >
+              <option value="all">All tiers</option>
+              {GT_VOLTAGE_TIERS.map((entry) => (
+                <option key={entry.tier} value={entry.tier}>
+                  ≤ {entry.tier}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* ===== the answers ===== */}
           <div
-            className={[
-              "min-h-0 flex-1 overflow-y-auto",
-              layout.sheet ? "p-1.5" : "p-3",
-            ].join(" ")}
+            className={["min-h-0 flex-1 overflow-y-auto", layout.sheet ? "px-1.5" : "px-3"].join(
+              " ",
+            )}
             onScroll={handleResultsScroll}
           >
             {queryError ? (
@@ -402,7 +282,7 @@ export function RecipeSearchOverlay({
               </div>
             ) : clauses.length === 0 && !query.trim() ? (
               <div className="grid min-h-[260px] place-items-center border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-3 text-sm shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-                Add an item to either side of the stencil.
+                Add an item to either side of the card below.
               </div>
             ) : isLoading && recipes.length === 0 ? (
               <div className="border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-3 text-sm shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
@@ -445,13 +325,71 @@ export function RecipeSearchOverlay({
               </>
             )}
           </div>
+
+          {/* ===== the stencil: its own card, bottom middle ===== */}
+          <div className="flex justify-center px-3 pb-3 pt-2">
+            <div className="relative w-full max-w-[760px] border-2 border-[var(--mc-15)] bg-[var(--mc-82)] p-3 shadow-[0_6px_0_rgba(0,0,0,0.45),inset_1px_1px_0_var(--mc-93)]">
+              <div className="flex items-stretch gap-2">
+                <StencilSide
+                  label="Takes"
+                  role="takes"
+                  sideClauses={takesClauses}
+                  clauses={clauses}
+                  op={takesOp}
+                  onOpChange={onTakesOpChange}
+                  onRemove={removeClause}
+                  onOpenPicker={() => setPickerRole(pickerRole === "takes" ? undefined : "takes")}
+                />
+                <button
+                  type="button"
+                  onClick={onSwapSides}
+                  title="Swap sides: takes become makes and makes become takes"
+                  aria-label="Swap the takes and makes sides"
+                  className="group flex w-14 shrink-0 items-center justify-center self-center border-2 border-transparent text-[var(--mc-ink-muted)] hover:border-[var(--mc-33)] hover:bg-[var(--mc-71)] hover:text-[var(--mc-ink)]"
+                  style={{ height: "72px" }}
+                >
+                  <svg
+                    aria-hidden
+                    viewBox="0 0 40 24"
+                    className="h-7 w-11 group-hover:hidden"
+                    fill="none"
+                  >
+                    <path d="M2 12h26" stroke="currentColor" strokeWidth="5" />
+                    <path d="M24 2l14 10-14 10" fill="currentColor" />
+                  </svg>
+                  <ArrowLeftRight aria-hidden className="hidden h-7 w-7 group-hover:block" />
+                </button>
+                <StencilSide
+                  label="Makes"
+                  role="makes"
+                  sideClauses={makesClauses}
+                  clauses={clauses}
+                  op={makesOp}
+                  onOpChange={onMakesOpChange}
+                  onRemove={removeClause}
+                  onOpenPicker={() => setPickerRole(pickerRole === "makes" ? undefined : "makes")}
+                />
+              </div>
+              {pickerRole ? (
+                <ItemPickerPopover
+                  role={pickerRole}
+                  onPick={addClause}
+                  onClose={() => setPickerRole(undefined)}
+                  searchPickerResources={searchPickerResources}
+                />
+              ) : null}
+            </div>
+          </div>
         </div>
       </section>
     </div>
   );
 }
 
-/** One side of the stencil: label, ANY/ALL, its clause chips, and the add slot. */
+/**
+ * One column of the stencil card: the side's name and its ANY/ALL switch on
+ * top, then a stack of condition rows, then the add slot.
+ */
 function StencilSide({
   label,
   role,
@@ -472,34 +410,36 @@ function StencilSide({
   onOpenPicker: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--mc-ink)]">
-        {label}
-      </span>
-      {sideClauses.length > 1 ? (
-        <span className="flex items-center border-2 border-[var(--mc-29)] bg-[var(--mc-55)]">
-          <OpPill
-            label="Any"
-            title={`Match recipes with any of these ${label.toLowerCase()}`}
-            active={op === "any"}
-            onClick={() => onOpChange("any")}
-          />
-          <OpPill
-            label="All"
-            title={`Match only recipes with all of these ${label.toLowerCase()}`}
-            active={op === "all"}
-            onClick={() => onOpChange("all")}
-          />
+    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+      <div className="flex h-6 items-center justify-between">
+        <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--mc-ink)]">
+          {label}
         </span>
-      ) : null}
+        {sideClauses.length > 1 ? (
+          <span className="flex items-center border-2 border-[var(--mc-29)] bg-[var(--mc-55)]">
+            <OpPill
+              label="Any"
+              title={`Match recipes with any of these ${label.toLowerCase()}`}
+              active={op === "any"}
+              onClick={() => onOpChange("any")}
+            />
+            <OpPill
+              label="All"
+              title={`Match only recipes with all of these ${label.toLowerCase()}`}
+              active={op === "all"}
+              onClick={() => onOpChange("all")}
+            />
+          </span>
+        ) : null}
+      </div>
       {sideClauses.map((clause) => {
         const index = clauses.indexOf(clause);
         return (
           <span
             key={`${clause.role}:${clause.kind}:${clause.id}`}
-            className="flex items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] py-0.5 pl-0.5 pr-1 shadow-[inset_1px_1px_0_var(--mc-85)]"
+            className="flex w-full items-center gap-2 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] py-0.5 pl-0.5 pr-1 shadow-[inset_1px_1px_0_var(--mc-85)]"
           >
-            <span className="flex h-7 w-7 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]">
               <ResourceIcon
                 resource={{ ...clause, amount: 1 }}
                 size="sm"
@@ -507,10 +447,10 @@ function StencilSide({
                 showAmount={false}
                 tooltip={false}
                 className="!h-full !w-full"
-                iconPixelSize={machineArtPixels(28)}
+                iconPixelSize={machineArtPixels(32)}
               />
             </span>
-            <span className="max-w-[180px] truncate text-[13px] font-bold">
+            <span className="min-w-0 flex-1 truncate text-[14px] font-bold">
               {clause.displayName ?? clause.id}
             </span>
             <button
@@ -518,9 +458,9 @@ function StencilSide({
               onClick={() => onRemove(index)}
               aria-label={`Remove ${clause.displayName ?? clause.id} from the search`}
               title="Remove this condition"
-              className="flex h-5 w-5 items-center justify-center text-[var(--mc-ink-muted)] hover:text-white"
+              className="flex h-6 w-6 shrink-0 items-center justify-center text-[var(--mc-ink-muted)] hover:text-white"
             >
-              <X className="h-3 w-3" />
+              <X className="h-3.5 w-3.5" />
             </button>
           </span>
         );
@@ -530,7 +470,7 @@ function StencilSide({
         onClick={onOpenPicker}
         aria-label={role === "takes" ? "Add an input to the search" : "Add an output to the search"}
         title={role === "takes" ? "Add an input" : "Add an output"}
-        className="flex h-8 items-center gap-1.5 border-2 border-dashed border-[var(--mc-47)] px-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--mc-ink-muted)] hover:border-[var(--mc-33)] hover:text-[var(--mc-ink)]"
+        className="flex h-10 w-full items-center justify-center gap-1.5 border-2 border-dashed border-[var(--mc-47)] px-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--mc-ink-muted)] hover:border-[var(--mc-33)] hover:text-[var(--mc-ink)]"
       >
         <Plus className="h-3.5 w-3.5" />
         {role === "takes" ? "Input" : "Output"}
@@ -626,7 +566,7 @@ function ItemPickerPopover({
   return (
     <div
       ref={rootRef}
-      className="absolute left-3 right-3 top-full z-20 mt-1 border-2 border-[var(--mc-15)] bg-[var(--mc-61)] p-2 shadow-[6px_6px_0_rgba(0,0,0,0.35)] sm:left-auto sm:w-[640px]"
+      className="absolute bottom-full left-1/2 z-20 mb-2 w-full max-w-[640px] -translate-x-1/2 border-2 border-[var(--mc-15)] bg-[var(--mc-61)] p-2 shadow-[6px_6px_0_rgba(0,0,0,0.45)] sm:w-[640px]"
     >
       <label className="flex h-9 items-center gap-2 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
         <Search className="h-4 w-4 shrink-0 text-neutral-500" />
@@ -1038,26 +978,6 @@ function formatChipAmount(resource: ResourceAmount): string {
   return `×${resource.amount.toLocaleString()}`;
 }
 
-/** "take Iron Dust or Coal Dust and make Steel Ingot", or "" with no conditions. */
-function stencilSentence(
-  takesClauses: StencilClause[],
-  makesClauses: StencilClause[],
-  takesOp: RecipeQuerySideOp,
-  makesOp: RecipeQuerySideOp,
-  singular: boolean,
-): string {
-  const nameOf = (clause: StencilClause) => clause.displayName ?? clause.id;
-  const joinSide = (clauses: StencilClause[], op: RecipeQuerySideOp) =>
-    clauses.map(nameOf).join(op === "all" ? " and " : " or ");
-  const parts: string[] = [];
-  if (takesClauses.length > 0) {
-    parts.push(`${singular ? "takes" : "take"} ${joinSide(takesClauses, takesOp)}`);
-  }
-  if (makesClauses.length > 0) {
-    parts.push(`${singular ? "makes" : "make"} ${joinSide(makesClauses, makesOp)}`);
-  }
-  return parts.join(" and ");
-}
 
 /**
  * How much room the search has, and what shape it should take. Read on every
@@ -1169,20 +1089,4 @@ function useRecipeSearchViewport(): RecipeSearchViewport {
   }, []);
 
   return viewport;
-}
-
-function clampDragOffset(offset: { x: number; y: number }, panel: HTMLElement | null) {
-  if (!panel || typeof window === "undefined") {
-    return offset;
-  }
-
-  const rect = panel.getBoundingClientRect();
-  const margin = 12;
-  const maxX = Math.max(0, (window.innerWidth - rect.width) / 2 - margin);
-  const maxY = Math.max(0, (window.innerHeight - rect.height) / 2 - margin);
-
-  return {
-    x: Math.min(maxX, Math.max(-maxX, offset.x)),
-    y: Math.min(maxY, Math.max(-maxY, offset.y)),
-  };
 }

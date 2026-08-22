@@ -1283,7 +1283,6 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           }}
           onRecipeMapHover={prefetchRecipeMap}
           recipes={filteredRecipes}
-          queryTotal={recipeTotal}
           totalAcrossMaps={recipeTotalAcrossMaps}
           hasMore={recipeHasMore}
           isLoading={recipeQueryLoading}
