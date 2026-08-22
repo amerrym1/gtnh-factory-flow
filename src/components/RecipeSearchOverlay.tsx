@@ -1297,11 +1297,11 @@ function ResourceChip({
       <span className="min-w-0 flex-1 truncate text-[12px] font-bold text-[var(--mc-ink)]">
         {resource.displayName ?? resource.id}
       </span>
-      <span className="shrink-0 text-[11px] text-[var(--mc-ink-muted)] tabular-nums">
+      <span className="shrink-0 text-[13px] font-bold text-[var(--mc-ink)] tabular-nums">
         {amountText}
       </span>
       {chance !== undefined && chance < 1 ? (
-        <span className="text-[10px] text-[var(--mc-ink-muted)] tabular-nums">
+        <span className="text-[11px] text-[var(--mc-ink-muted)] tabular-nums">
           {Math.round(chance * 1000) / 10}%
         </span>
       ) : null}
