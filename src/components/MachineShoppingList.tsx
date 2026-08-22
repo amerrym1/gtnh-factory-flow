@@ -42,6 +42,8 @@ interface BuildLine {
   key: string;
   count: number;
   hatches: number;
+  /** An exotic hatch family's amp badge, worn instead of the count. */
+  hatchChip?: string;
   isMultiblock: boolean;
   tier?: VoltageTier;
   tierIndex: number;
@@ -184,7 +186,7 @@ export function MachineShoppingList() {
         ? (cropsNhHarvesterTierName(crop.tierIndex) as VoltageTier)
         : undefined;
       const buildKey = report
-        ? `${report.tier}|${report.isMultiblock ? report.hatches : "single"}`
+        ? `${report.tier}|${report.isMultiblock ? (report.hatchChip ?? report.hatches) : "single"}`
         : steam
           ? `steam|${steam.highPressure ? "high" : "bronze"}`
           : cropTier
@@ -207,6 +209,7 @@ export function MachineShoppingList() {
             key: `${handler.label}|${buildKey}`,
             count: 0,
             hatches: report?.hatches ?? 1,
+            hatchChip: report?.hatchChip,
             isMultiblock:
               report?.isMultiblock ??
               steam?.isMultiblock ??
@@ -485,7 +488,7 @@ function ListLine({
   count?: number;
   label?: string;
   /** The fused hatch-and-tier chip, when this line is one build. */
-  chip?: Pick<BuildLine, "tier" | "hatches" | "isMultiblock">;
+  chip?: Pick<BuildLine, "tier" | "hatches" | "hatchChip" | "isMultiblock">;
   euT?: number;
   /** A steam machine's figure: what it burns, in L/s, instead of EU/t. */
   steamLs?: number;
@@ -568,7 +571,7 @@ function ListLine({
                   textShadow: `1px 1px 0 ${chipColor.shadow}`,
                 }}
               >
-                {chip.hatches}×
+                {chip.hatchChip ?? `${chip.hatches}×`}
               </span>
             ) : null}
             <span

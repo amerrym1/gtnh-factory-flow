@@ -306,6 +306,13 @@ export interface FactoryNode {
    * hatches.
    */
   energyHatches?: number;
+  /**
+   * Which energy hatch family feeds the machine (`energy-hatches.ts`).
+   * Absent means the regular 2 A hatches above; the exotic families
+   * (multi-amp, laser) carry their whole rating through ONE hatch, so
+   * `energyHatches` is clamped to 1 while one of them is selected.
+   */
+  energyHatchType?: string;
   machineHandlerId?: string;
   coilTier?: string;
   machineConfigTiers?: Record<string, string>;

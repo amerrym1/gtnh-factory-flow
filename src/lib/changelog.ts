@@ -75,10 +75,10 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "2.26.0",
     date: "2026-08-22",
-    headline: "Six multiblocks get their real math",
+    headline: "Multi-amp and laser hatches, and six multiblocks get their real math",
     notes: [
-      "The Industrial Chemical Bath shows its energy hatch count and runs its 4 parallels per voltage tier.",
-      "The Industrial Bending Machine, 3D Copying Machine, Mass Solidifier, Fluid Shaper and L.A.T.E.X. now run at their true speed and parallels too.",
+      "Multiblocks can now run on a multi-amp or laser energy hatch, up to 16,777,216 A through one hatch.",
+      "The Industrial Chemical Bath, Bending Machine, 3D Copying Machine, Mass Solidifier, Fluid Shaper and L.A.T.E.X. run at their true speed and parallels.",
       "The Fluid Shaper offers a width expansion knob, and the L.A.T.E.X. an Elastic Singularity slot.",
       "The Large Chemical Reactor drops its heating coil setting: any coil works and none change its speed.",
     ],

@@ -29,6 +29,11 @@ import {
   type NodeSteamReport,
 } from "@/lib/solver/power-report";
 import { isMultiblockRecipe } from "@/lib/solver/power";
+import {
+  ENERGY_HATCH_TYPES,
+  getEnergyHatchType,
+  STANDARD_ENERGY_HATCH_ID,
+} from "@/lib/machines/energy-hatches";
 import { prefersCuratedMachineMath } from "@/lib/solver/runtime-calculation";
 import {
   applyMachineOutputMultipliers,
@@ -255,6 +260,16 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       ...(previewConfigTier.controlId === "heatingCoil"
         ? { coilTier: previewConfigTier.key }
         : undefined),
+      // Same story for the energy hatch family, which lives on its own field
+      // so the power maths can read it.
+      ...(previewConfigTier.controlId === ENERGY_HATCH_CONTROL_ID
+        ? {
+            energyHatchType:
+              previewConfigTier.key === STANDARD_ENERGY_HATCH_ID
+                ? undefined
+                : previewConfigTier.key,
+          }
+        : undefined),
     };
   }, [previewConfigTier, projectNode]);
   const derived = useMemo(() => {
@@ -288,6 +303,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     const showHatchControl = Boolean(
       powerReport?.isMultiblock && prefersCuratedMachineMath(effectiveRecipe),
     );
+    // Which hatch family feeds the build: the plain 2 A pair, or one exotic
+    // hatch (multi-amp, laser) carrying its whole rating. Offered as a config
+    // row wherever the hatch dial itself shows.
+    const energyHatchType = getEnergyHatchType(projectNode.energyHatchType);
+    const energyHatchTypeControl = showHatchControl
+      ? buildEnergyHatchTypeControl(projectNode.energyHatchType, dataset)
+      : undefined;
     const coilControl = getRecipeCoilTierControl(effectiveRecipe, projectNode);
     const coilResource = coilControl
       ? resolveDatasetMachineConfigResource(coilControl.resource, dataset)
@@ -390,6 +412,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       powerReport,
       steamReport,
       showHatchControl,
+      energyHatchType,
+      energyHatchTypeControl,
     };
   }, [dataset, previewedNode, recipe]);
 
@@ -420,6 +444,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     powerReport,
     steamReport,
     showHatchControl,
+    energyHatchType,
+    energyHatchTypeControl,
   } = derived;
   // The full footer — usage, power, parallel, machines, circuit — does not
   // fit the fixed card width on one line. When power and the parallel chip
@@ -499,8 +525,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     }
   };
   const updateHatches = (direction: -1 | 1) => {
+    // Exotic hatch families are game-limited to one hatch of their rating.
+    const max = getEnergyHatchType(projectNode.energyHatchType).exotic ? 1 : 16;
     const current = powerReport?.hatches ?? 1;
-    const next = Math.min(16, Math.max(1, current + direction));
+    const next = Math.min(max, Math.max(1, current + direction));
     if (next !== current) {
       updateNode(projectNode.id, { energyHatches: next });
     }
@@ -525,6 +553,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // recipe-canvas slots; with the canvas gone they join the regular config
   // panel as icon + dropdown rows (tiers filtered to each slot's category).
   const visibleMachineConfigControls = [
+    ...(energyHatchTypeControl ? [energyHatchTypeControl] : []),
     ...(coilControl && coilResource ? [{ ...coilControl, resource: coilResource }] : []),
     ...tgsToolControls.map((control) => ({
       ...control,
@@ -548,6 +577,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         }
         onSelect={(controlId, nextTier) => {
           setPreviewConfigTier(undefined);
+          if (controlId === ENERGY_HATCH_CONTROL_ID) {
+            updateNode(projectNode.id, {
+              energyHatchType: nextTier === STANDARD_ENERGY_HATCH_ID ? undefined : nextTier,
+            });
+            return;
+          }
           if (controlId === "heatingCoil") {
             updateCoilTier(nextTier);
             return;
@@ -901,7 +936,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           word={
             powerReport
               ? powerReport.isMultiblock
-                ? `${powerReport.hatches}× ${powerReport.tier}`
+                ? energyHatchType.exotic
+                  ? `${energyHatchType.chip} ${powerReport.tier}`
+                  : `${powerReport.hatches}× ${powerReport.tier}`
                 : powerReport.tier
               : steamReport
                 ? steamReport.highPressure
@@ -969,9 +1006,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   ? ["24px", "24px"]
                   : ["24px", "24px", "24px"]),
               "minmax(0,1fr)",
-              // The tier chip, with its hatch-count sister fused on the left
-              // when the machine is a multiblock that takes energy hatches.
-              ...(tierControl ? [showHatchControl ? "78px" : "50px"] : []),
+              // The tier chip, with its hatch sister fused on the left when
+              // the machine is a multiblock that takes energy hatches. The
+              // pair sizes to content: a laser hatch's amp rating is wider
+              // than a plain hatch count.
+              ...(tierControl ? [showHatchControl ? "max-content" : "50px"] : []),
             ].join(" "),
           }}
         >
@@ -1132,17 +1171,25 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     updateHatches(-1);
                   }}
                   // The tier chip's sister: same paint, fused on its left
-                  // (no right border), so "2x MV" reads as one fact.
-                  className="nodrag h-6 w-[28px] border-2 border-r-0 text-[11px] font-bold leading-[18px] shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+                  // (no right border), so "2x MV" reads as one fact. An
+                  // exotic hatch wears its amp rating instead of a count -
+                  // there is only ever one of it.
+                  className="nodrag h-6 min-w-[28px] whitespace-nowrap border-2 border-r-0 px-0.5 text-[11px] font-bold leading-[18px] shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
                   style={{
                     backgroundColor: tierColor.background,
                     borderColor: tierColor.border,
                     color: tierColor.text,
                     textShadow: `1px 1px 0 ${tierColor.shadow}`,
                   }}
-                  aria-label={`${powerReport?.hatches ?? 1} energy hatches`}
+                  aria-label={
+                    energyHatchType.exotic
+                      ? energyHatchType.label
+                      : `${powerReport?.hatches ?? 1} energy hatches`
+                  }
                 >
-                  {powerReport?.hatches ?? 1}×
+                  {energyHatchType.exotic
+                    ? energyHatchType.chip
+                    : `${powerReport?.hatches ?? 1}×`}
                 </button>
               ) : null}
               <button
@@ -3189,6 +3236,50 @@ function resolveDatasetMachineConfigResource(
   };
 }
 
+const ENERGY_HATCH_CONTROL_ID = "energyHatchType";
+
+/**
+ * The energy hatch family as a config-panel row: each option wears the real
+ * hatch item's icon (a representative tier - the icon names the FAMILY, the
+ * tier chip already names the tier). Selection lands on the node's own
+ * `energyHatchType` field, not the generic config map, because the power
+ * maths read it.
+ */
+function buildEnergyHatchTypeControl(
+  selectedId: string | undefined,
+  dataset: ReturnType<typeof useFactoryStore.getState>["dataset"],
+): MachineConfigTierControl {
+  const tiers = ENERGY_HATCH_TYPES.map((type) => ({
+    key: type.id,
+    label: type.label,
+    resource: resolveDatasetMachineConfigResource(
+      {
+        kind: "item" as const,
+        id: type.resourceId,
+        amount: 1,
+        displayName: type.label,
+        tooltip: type.exotic
+          ? [
+              `${type.amps.toLocaleString("en-US")} A through one hatch (${type.minTier}+)`,
+              "Wireless variants supply the same amps",
+            ]
+          : ["2 A per hatch; a lone hatch works at 1 A"],
+      },
+      dataset,
+    ),
+  }));
+  const current =
+    tiers.find((tier) => tier.key === (selectedId ?? STANDARD_ENERGY_HATCH_ID)) ?? tiers[0];
+  return {
+    id: ENERGY_HATCH_CONTROL_ID,
+    label: "Energy Hatch",
+    minimum: tiers[0],
+    current,
+    tiers,
+    resource: current.resource,
+  };
+}
+
 function isTreeGrowthSimulatorToolControl(control: MachineConfigTierControl) {
   return (
     /^tgsToolSlot\d+$/.test(control.id) ||
@@ -4281,12 +4372,21 @@ function PowerStoryContent({
         <div>
           {report.isMultiblock ? (
             <>
-              {report.hatches}× <StoryTierChip tier={report.tier} /> energy{" "}
-              {report.hatches === 1 ? "hatch gets" : "hatches get"} you{" "}
+              {report.hatchTypeLabel ? (
+                <>
+                  A <StoryTierChip tier={report.tier} /> {report.hatchTypeLabel} gets you
+                </>
+              ) : (
+                <>
+                  {report.hatches}× <StoryTierChip tier={report.tier} /> energy{" "}
+                  {report.hatches === 1 ? "hatch gets" : "hatches get"} you
+                </>
+              )}{" "}
               <span className="whitespace-nowrap">
                 <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span>
               </span>{" "}
-              to spend{report.amps > 1 ? ` (${report.amps} A)` : ""}
+              to spend
+              {report.amps > 1 ? ` (${formatCompact(report.amps)} A)` : ""}
             </>
           ) : (
             <>
