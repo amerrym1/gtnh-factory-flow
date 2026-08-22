@@ -20,7 +20,12 @@ import {
 import type { MachineTier, ResourceAmount } from "@/lib/model/types";
 import type { RateUnit } from "@/lib/model/rate-unit";
 import { GT_TIER_COLORS } from "./flow/tier-colors";
-import type { TierFilter } from "@/store/factory-store";
+import type { RecipeInputPicks, TierFilter } from "@/store/factory-store";
+import {
+  applyAlternativeCycleFace,
+  getAlternativeCycleFaces,
+  type AlternativeCycleFace,
+} from "@/lib/nei/alternative-cycle";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useIsCompactViewport } from "@/lib/compact-view";
 import { machineArtPixels } from "./flow/MachinePicker";
@@ -68,6 +73,13 @@ const RATE_VIEW_CHOICES: Array<{ view: RateView; label: string; title: string }>
 
 /** Survives close and reopen: the reading you chose is a preference, not a query. */
 let storedRateView: RateView = "recipe";
+
+/** Offered by a chip whose slot accepts several forms: the menu lists them. */
+interface ChipMenuPicker {
+  faces: AlternativeCycleFace[];
+  currentId: string;
+  onPick: (face: AlternativeCycleFace) => void;
+}
 
 /** A condition row in flight: where the hand holds it and where it would land. */
 interface StencilDrag {
@@ -182,7 +194,14 @@ export function RecipeSearchOverlay({
     setRateView(view);
   }, []);
   const [chipMenu, setChipMenu] = useState<
-    { x: number; y: number; resource: ResourceAmount } | undefined
+    | {
+        x: number;
+        y: number;
+        resource: ResourceAmount;
+        /** Set when the chip's slot accepts several forms: pick one here. */
+        picker?: ChipMenuPicker;
+      }
+    | undefined
   >(undefined);
 
   useEffect(() => {
@@ -211,15 +230,19 @@ export function RecipeSearchOverlay({
     return () => window.removeEventListener("pointerdown", dismiss);
   }, [chipMenu]);
 
-  const openChipMenu = useCallback((event: ReactMouseEvent, resource: ResourceAmount) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setChipMenu({
-      x: Math.min(event.clientX, window.innerWidth - 230),
-      y: Math.min(event.clientY, window.innerHeight - 190),
-      resource,
-    });
-  }, []);
+  const openChipMenu = useCallback(
+    (event: ReactMouseEvent, resource: ResourceAmount, picker?: ChipMenuPicker) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setChipMenu({
+        x: Math.min(event.clientX, window.innerWidth - 230),
+        y: Math.min(event.clientY, window.innerHeight - (picker ? 330 : 190)),
+        resource,
+        picker,
+      });
+    },
+    [],
+  );
 
   const removeClause = (index: number) => {
     onClausesChange(clauses.filter((_, at) => at !== index));
@@ -831,6 +854,45 @@ export function RecipeSearchOverlay({
                   {item.label}
                 </button>
               ))}
+              {chipMenu.picker ? (
+                <>
+                  <div className="mx-2 my-1 border-t-2 border-[var(--mc-47)]" />
+                  <div className="px-2 py-1 text-[11px] font-bold text-[var(--mc-ink-muted)]">
+                    This slot also takes
+                  </div>
+                  <div className="recipe-search-scroll max-h-[180px] overflow-y-auto">
+                    {chipMenu.picker.faces.map((face) => (
+                      <button
+                        key={`${face.kind}:${face.id}`}
+                        type="button"
+                        onClick={() => {
+                          chipMenu.picker?.onPick(face);
+                          setChipMenu(undefined);
+                        }}
+                        className={[
+                          "flex w-full items-center gap-2 px-2 py-1 text-left text-[13px] font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)]",
+                          face.id === chipMenu.picker?.currentId ? "bg-[var(--mc-71)]" : "",
+                        ].join(" ")}
+                      >
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-100)]">
+                          <ResourceIcon
+                            resource={{ ...face, amount: 1 }}
+                            size="sm"
+                            bare
+                            showAmount={false}
+                            tooltip={false}
+                            className="!h-full !w-full"
+                            iconPixelSize={machineArtPixels(24)}
+                          />
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {face.displayName ?? face.id}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : null}
             </div>
           ) : null}
       </section>
@@ -1190,10 +1252,14 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
   contextResource?: PreviewContextResource;
   selected: boolean;
   onSelectRecipe: (recipeId: string) => void;
-  onAdd: (recipe: RecipeSummary, machineHandlerId?: string) => void | Promise<void>;
+  onAdd: (
+    recipe: RecipeSummary,
+    machineHandlerId?: string,
+    inputPicks?: RecipeInputPicks,
+  ) => void | Promise<void>;
   onPrefetch?: (recipeId: string) => void;
   onBrowseResource: (resource: ResourceAmount, mode: "recipes" | "uses") => void;
-  onChipMenu: (event: ReactMouseEvent, resource: ResourceAmount) => void;
+  onChipMenu: (event: ReactMouseEvent, resource: ResourceAmount, picker?: ChipMenuPicker) => void;
   rateView: RateView;
 }) {
   const machineIcons = useMachineHandlerIcons();
@@ -1214,9 +1280,44 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
   // Crafting-grid recipes arrive one slot at a time (nine separate Iron
   // Plates), and oredict slots arrive wearing their oredict name. The chips
   // read as a shopping list instead: same items merged with their amounts
-  // summed, oredict slots wearing their first concrete face.
-  const inputChips = useMemo(() => mergeChipResources(preview.inputs), [preview]);
+  // summed, many-form slots wearing a face - the first by default, or the
+  // one PICKED here. Picks ride onto the board with the add.
+  const [inputPicks, setInputPicks] = useState<RecipeInputPicks>({});
+  const inputChips = useMemo(() => {
+    const merged = new Map<string, { raw: (typeof preview.inputs)[number]; indexes: number[] }>();
+    preview.inputs.forEach((input, index) => {
+      const key = [input.kind, input.id, input.consumed === false ? "nc" : "c"].join("|");
+      const entry = merged.get(key);
+      if (entry) {
+        entry.raw = { ...entry.raw, amount: entry.raw.amount + input.amount };
+        entry.indexes.push(index);
+      } else {
+        merged.set(key, { raw: { ...input }, indexes: [index] });
+      }
+    });
+    return [...merged.values()].map(({ raw, indexes }) => {
+      const faces = getAlternativeCycleFaces(raw);
+      const face = inputPicks[indexes[0]] ?? faces[0];
+      return {
+        raw,
+        indexes,
+        faces,
+        resource: face ? applyAlternativeCycleFace(raw, face) : raw,
+      };
+    });
+  }, [inputPicks, preview]);
   const outputChips = useMemo(() => mergeChipResources(preview.outputs), [preview]);
+  // A merged chip stands for every slot it swallowed, so a pick lands on all
+  // of their indexes at once.
+  const pickFace = useCallback((indexes: number[], face: AlternativeCycleFace) => {
+    setInputPicks((previous) => {
+      const next = { ...previous };
+      for (const index of indexes) {
+        next[index] = face;
+      }
+      return next;
+    });
+  }, []);
 
   // A pointer that settles on a card is probably about to press its plus, so
   // the full recipe starts travelling now. The short fuse keeps a pointer
@@ -1243,7 +1344,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
   return (
     <article
       onClick={() => onSelectRecipe(recipe.id)}
-      onDoubleClick={() => void onAdd(recipe)}
+      onDoubleClick={() => void onAdd(recipe, undefined, inputPicks)}
       onPointerEnter={armPrefetch}
       onPointerLeave={cancelPrefetch}
       className={[
@@ -1295,7 +1396,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
           aria-label="Add recipe node"
           onClick={(event) => {
             event.stopPropagation();
-            void onAdd(recipe);
+            void onAdd(recipe, undefined, inputPicks);
           }}
           className="flex h-8 w-8 shrink-0 items-center justify-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] text-neutral-100 shadow-[inset_1px_1px_0_var(--mc-85)] hover:border-cyan-400 hover:text-cyan-200"
         >
@@ -1307,20 +1408,44 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
           right, each item on its own line. */}
       <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_18px_minmax(0,1fr)] items-start gap-x-1">
         <span className="flex min-w-0 flex-col gap-1">
-          {inputChips.map((input, index) => (
-            <ResourceChip
-              key={`in-${index}`}
-              resource={input}
-              hit={takesClauses.some((clause) => clauseMatchesInput(clause, input))}
-              amountText={
-                input.consumed === false
-                  ? "NC"
-                  : formatChipAmount(input, rateView, recipe.durationTicks)
-              }
-              onBrowseResource={onBrowseResource}
-              onMenu={onChipMenu}
-            />
-          ))}
+          {inputChips.map((chip, index) => {
+            const picker: ChipMenuPicker | undefined =
+              chip.faces.length > 1
+                ? {
+                    faces: chip.faces,
+                    currentId: chip.resource.id,
+                    onPick: (face) => pickFace(chip.indexes, face),
+                  }
+                : undefined;
+            return (
+              <ResourceChip
+                key={`in-${index}`}
+                resource={chip.resource}
+                hit={takesClauses.some((clause) => clauseMatchesInput(clause, chip.raw))}
+                amountText={
+                  chip.raw.consumed === false
+                    ? "NC"
+                    : formatChipAmount(chip.resource, rateView, recipe.durationTicks)
+                }
+                hasAlternatives={chip.faces.length > 1}
+                onCycle={
+                  chip.faces.length > 1
+                    ? (step) => {
+                        const at = Math.max(
+                          0,
+                          chip.faces.findIndex((face) => face.id === chip.resource.id),
+                        );
+                        const next =
+                          chip.faces[(at + step + chip.faces.length) % chip.faces.length];
+                        pickFace(chip.indexes, next);
+                      }
+                    : undefined
+                }
+                onBrowseResource={onBrowseResource}
+                onMenu={(event) => onChipMenu(event, { ...chip.resource, amount: 1 }, picker)}
+              />
+            );
+          })}
         </span>
         <span className="flex items-start justify-center pt-1.5 text-[15px] font-black leading-5 text-[var(--mc-ink-muted)]">
           →
@@ -1334,7 +1459,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
               amountText={formatChipAmount(output, rateView, recipe.durationTicks)}
               chance={"chance" in output ? output.chance : undefined}
               onBrowseResource={onBrowseResource}
-              onMenu={onChipMenu}
+              onMenu={(event) => onChipMenu(event, { ...output, amount: 1 })}
             />
           ))}
         </span>
@@ -1413,6 +1538,8 @@ function ResourceChip({
   hit,
   amountText,
   chance,
+  hasAlternatives = false,
+  onCycle,
   onBrowseResource,
   onMenu,
 }: {
@@ -1420,19 +1547,49 @@ function ResourceChip({
   hit: boolean;
   amountText: string;
   chance?: number;
+  /** The slot accepts several forms; the icon wears the classic blue plus. */
+  hasAlternatives?: boolean;
+  /** Wheel over the chip steps through the forms, and the choice sticks. */
+  onCycle?: (step: 1 | -1) => void;
   onBrowseResource: (resource: ResourceAmount, mode: "recipes" | "uses") => void;
-  onMenu: (event: ReactMouseEvent, resource: ResourceAmount) => void;
+  onMenu: (event: ReactMouseEvent) => void;
 }) {
+  // The wheel listener is attached by hand, non-passive: React's synthetic
+  // wheel cannot preventDefault, and without it every cycle also scrolls the
+  // results behind the chip.
+  const rootRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const element = rootRef.current;
+    if (!element || !onCycle) {
+      return;
+    }
+    const onWheel = (event: WheelEvent) => {
+      if (!event.deltaY) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      onCycle(event.deltaY > 0 ? 1 : -1);
+    };
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => element.removeEventListener("wheel", onWheel);
+  }, [onCycle]);
+
   return (
     <button
+      ref={rootRef}
       type="button"
-      title={`${resource.displayName ?? resource.id}: click for what makes it, right click for more`}
+      title={
+        hasAlternatives
+          ? `${resource.displayName ?? resource.id}: scroll to switch what fills this slot, right click for more`
+          : `${resource.displayName ?? resource.id}: click for what makes it, right click for more`
+      }
       onClick={(event) => {
         event.stopPropagation();
         onBrowseResource({ ...resource, amount: 1 }, "recipes");
       }}
       onContextMenu={(event) => {
-        onMenu(event, { ...resource, amount: 1 });
+        onMenu(event);
       }}
       className={[
         "flex w-full items-center gap-1.5 border py-0.5 pl-0.5 pr-1.5 text-left",
@@ -1443,7 +1600,7 @@ function ResourceChip({
           : "border-[var(--mc-47)] bg-[var(--mc-61)] hover:border-[var(--mc-33)]",
       ].join(" ")}
     >
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-100)]">
+      <span className="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-100)]">
         <ResourceIcon
           resource={{ ...resource, amount: 1, chance: undefined }}
           size="sm"
@@ -1453,6 +1610,8 @@ function ResourceChip({
           className="!h-full !w-full"
           iconPixelSize={machineArtPixels(24)}
         />
+        {/* No badge of our own: ResourceIcon already draws the blue plus for
+            a slot that accepts several forms. */}
       </span>
       <span className="min-w-0 flex-1 truncate text-[12px] font-bold text-[var(--mc-ink)]">
         {resource.displayName ?? resource.id}
