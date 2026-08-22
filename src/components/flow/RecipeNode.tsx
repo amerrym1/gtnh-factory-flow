@@ -10,7 +10,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { ChevronDown, Copy, Cpu, Minus, Plus, RefreshCw, Sprout } from "lucide-react";
+import { ChevronDown, Copy, Cpu, Minus, Plus, RefreshCw, Sprout, Zap } from "lucide-react";
 import type {
   FactoryNode,
   MachineConfigTierOption,
@@ -31,11 +31,11 @@ import {
 import { isMultiblockRecipe } from "@/lib/solver/power";
 import {
   energyHatchTypeExistsAtTier,
-  energyHatchTypesForTier,
   getEnergyHatchType,
   STANDARD_ENERGY_HATCH_ID,
 } from "@/lib/machines/energy-hatches";
-import { useEnergyHatchIcons, type EnergyHatchIcon } from "./use-energy-hatch-icons";
+import { energyHatchCatalogKey, useEnergyHatchCatalog } from "./use-energy-hatch-catalog";
+import { EnergyHatchMenu } from "./EnergyHatchMenu";
 import { prefersCuratedMachineMath } from "@/lib/solver/runtime-calculation";
 import {
   applyMachineOutputMultipliers,
@@ -193,6 +193,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     key: string;
   }>();
   const [isCropMenuOpen, setCropMenuOpen] = useState(false);
+  const [isHatchMenuOpen, setHatchMenuOpen] = useState(false);
   const recipeSearch = useFactoryStore((state) => state.highlightSearch);
   // The right panel's PEAK/AVG switch drives the card's power figures too,
   // so the board and the power list always tell one story.
@@ -208,7 +209,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   const nodeColorPaintMode = useFactoryStore((state) => state.nodeColorPaintMode);
   const pendingResourceConnection = useFactoryStore((state) => state.pendingResourceConnection);
   const dataset = useFactoryStore((state) => state.dataset);
-  const energyHatchIcons = useEnergyHatchIcons(dataset?.datasetVersionId);
+  const energyHatchCatalog = useEnergyHatchCatalog(dataset?.datasetVersionId);
   const isSearchHighlighted = recipeContainsSearchResource(recipe, recipeSearch);
   const isFlowResourceHighlighted = recipeContainsResourceKey(
     recipe,
@@ -263,16 +264,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       ...(previewConfigTier.controlId === "heatingCoil"
         ? { coilTier: previewConfigTier.key }
         : undefined),
-      // Same story for the energy hatch family, which lives on its own field
-      // so the power maths can read it.
-      ...(previewConfigTier.controlId === ENERGY_HATCH_CONTROL_ID
-        ? {
-            energyHatchType:
-              previewConfigTier.key === STANDARD_ENERGY_HATCH_ID
-                ? undefined
-                : previewConfigTier.key,
-          }
-        : undefined),
     };
   }, [previewConfigTier, projectNode]);
   const derived = useMemo(() => {
@@ -307,17 +298,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       powerReport?.isMultiblock && prefersCuratedMachineMath(effectiveRecipe),
     );
     // Which hatch family feeds the build: the plain 2 A pair, or one exotic
-    // hatch (multi-amp, laser) carrying its whole rating. Offered as a config
-    // row wherever the hatch dial itself shows.
+    // hatch (multi-amp, laser) carrying its whole rating. Picked in the
+    // chip's own menu, top right, where the count and tier already live.
     const energyHatchType = getEnergyHatchType(projectNode.energyHatchType);
-    const energyHatchTypeControl =
-      showHatchControl && tierControl
-        ? buildEnergyHatchTypeControl(
-            projectNode.energyHatchType,
-            tierControl.current,
-            energyHatchIcons,
-          )
-        : undefined;
     const coilControl = getRecipeCoilTierControl(effectiveRecipe, projectNode);
     const coilResource = coilControl
       ? resolveDatasetMachineConfigResource(coilControl.resource, dataset)
@@ -421,9 +404,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       steamReport,
       showHatchControl,
       energyHatchType,
-      energyHatchTypeControl,
     };
-  }, [dataset, energyHatchIcons, previewedNode, recipe]);
+  }, [dataset, previewedNode, recipe]);
 
   const {
     machineHandlers,
@@ -453,8 +435,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     steamReport,
     showHatchControl,
     energyHatchType,
-    energyHatchTypeControl,
   } = derived;
+  // The chip's own art: the concrete hatch item this tier-and-family pair
+  // names, from the once-per-dataset catalog.
+  const hatchChipEntry = tierControl
+    ? energyHatchCatalog.get(energyHatchCatalogKey(tierControl.current, energyHatchType.id))
+    : undefined;
   // The full footer — usage, power, parallel, machines, circuit — does not
   // fit the fixed card width on one line. When power and the parallel chip
   // would share the row, the parallel chip steps UP: into the config panel's
@@ -569,7 +555,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // recipe-canvas slots; with the canvas gone they join the regular config
   // panel as icon + dropdown rows (tiers filtered to each slot's category).
   const visibleMachineConfigControls = [
-    ...(energyHatchTypeControl ? [energyHatchTypeControl] : []),
     ...(coilControl && coilResource ? [{ ...coilControl, resource: coilResource }] : []),
     ...tgsToolControls.map((control) => ({
       ...control,
@@ -593,12 +578,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         }
         onSelect={(controlId, nextTier) => {
           setPreviewConfigTier(undefined);
-          if (controlId === ENERGY_HATCH_CONTROL_ID) {
-            updateNode(projectNode.id, {
-              energyHatchType: nextTier === STANDARD_ENERGY_HATCH_ID ? undefined : nextTier,
-            });
-            return;
-          }
           if (controlId === "heatingCoil") {
             updateCoilTier(nextTier);
             return;
@@ -1161,13 +1140,14 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             ) : null}
           </div>
           {tierControl && tierColor ? (
-            // The fused chip pair is ONE hover surface telling the whole
+            // The fused chip trio is ONE hover surface telling the whole
             // power story - the same panel the footer's POWER cell shows -
-            // so tier, hatches and power all speak one language. The native
+            // so count, hatch and tier all speak one language. The native
             // titles survive only where there is no report to tell it.
+            <div className="relative">
             <MinecraftTooltip
               content={
-                powerReport ? (
+                powerReport && !isHatchMenuOpen ? (
                   <PowerStoryContent
                     report={powerReport}
                     utilization={result?.utilization}
@@ -1178,38 +1158,68 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             >
             <div className="flex">
               {showHatchControl ? (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    updateHatches(1);
-                  }}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    updateHatches(-1);
-                  }}
-                  // The tier chip's sister: same paint, fused on its left
-                  // (no right border), so "2x MV" reads as one fact. An
-                  // exotic hatch wears its amp rating instead of a count -
-                  // there is only ever one of it.
-                  className="nodrag h-6 min-w-[28px] whitespace-nowrap border-2 border-r-0 px-0.5 text-[11px] font-bold leading-[18px] shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
-                  style={{
-                    backgroundColor: tierColor.background,
-                    borderColor: tierColor.border,
-                    color: tierColor.text,
-                    textShadow: `1px 1px 0 ${tierColor.shadow}`,
-                  }}
-                  aria-label={
-                    energyHatchType.exotic
-                      ? energyHatchType.label
-                      : `${powerReport?.hatches ?? 1} energy hatches`
-                  }
-                >
-                  {energyHatchType.exotic
-                    ? energyHatchType.chip
-                    : `${powerReport?.hatches ?? 1}×`}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      updateHatches(1);
+                    }}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      updateHatches(-1);
+                    }}
+                    // The tier chip's sister: same paint, fused on its left
+                    // (no right border), so "2x MV" reads as one fact. An
+                    // exotic hatch wears its amp rating instead of a count -
+                    // there is only ever one of it.
+                    className="nodrag h-6 min-w-[28px] whitespace-nowrap border-2 border-r-0 px-0.5 text-[11px] font-bold leading-[18px] shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+                    style={{
+                      backgroundColor: tierColor.background,
+                      borderColor: tierColor.border,
+                      color: tierColor.text,
+                      textShadow: `1px 1px 0 ${tierColor.shadow}`,
+                    }}
+                    aria-label={
+                      energyHatchType.exotic
+                        ? energyHatchType.label
+                        : `${powerReport?.hatches ?? 1} energy hatches`
+                    }
+                  >
+                    {energyHatchType.exotic
+                      ? energyHatchType.chip
+                      : `${powerReport?.hatches ?? 1}×`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setHatchMenuOpen((open) => !open);
+                    }}
+                    // The hatch itself, between count and tier: the item this
+                    // build drinks through. Clicking opens the full picker.
+                    className="nodrag flex h-6 w-6 items-center justify-center border-2 border-r-0 shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+                    style={{
+                      backgroundColor: tierColor.background,
+                      borderColor: tierColor.border,
+                    }}
+                    aria-label="Pick energy hatch"
+                  >
+                    {hatchChipEntry && (hatchChipEntry.iconPath || hatchChipEntry.iconAtlas) ? (
+                      <ResourceIcon
+                        resource={{ kind: "item", amount: 1, ...hatchChipEntry }}
+                        bare
+                        tooltip={false}
+                        showAmount={false}
+                        showConsumedState={false}
+                        className="!h-5 !w-5 shrink-0"
+                      />
+                    ) : (
+                      <Zap className="h-3.5 w-3.5" style={{ color: tierColor.text }} />
+                    )}
+                  </button>
+                </>
               ) : null}
               <button
                 type="button"
@@ -1236,6 +1246,22 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               </button>
             </div>
             </MinecraftTooltip>
+            {isHatchMenuOpen && showHatchControl ? (
+              <EnergyHatchMenu
+                currentTier={tierControl.current}
+                currentFamilyId={energyHatchType.id}
+                catalog={energyHatchCatalog}
+                onPick={(familyId, tier) => {
+                  updateNode(projectNode.id, {
+                    overclockTier: tier,
+                    energyHatchType: familyId === STANDARD_ENERGY_HATCH_ID ? undefined : familyId,
+                  });
+                  setHatchMenuOpen(false);
+                }}
+                onClose={() => setHatchMenuOpen(false)}
+              />
+            ) : null}
+            </div>
           ) : null}
         </div>
         </div>
@@ -3252,56 +3278,6 @@ function resolveDatasetMachineConfigResource(
     iconPath: indexed.iconPath ?? configuredResource.iconPath,
     iconAtlas: indexed.iconAtlas ?? configuredResource.iconAtlas,
     dominantColor: indexed.dominantColor ?? configuredResource.dominantColor,
-  };
-}
-
-const ENERGY_HATCH_CONTROL_ID = "energyHatchType";
-
-/**
- * The energy hatch family as a config-panel row: each option wears the real
- * hatch item's icon (a representative tier - the icon names the FAMILY, the
- * tier chip already names the tier), fetched once per dataset by
- * `useEnergyHatchIcons`. Only families that exist at the card's current tier
- * are offered - there is no 64A hatch below EV and no laser below IV.
- * Selection lands on the node's own `energyHatchType` field, not the generic
- * config map, because the power maths read it.
- */
-function buildEnergyHatchTypeControl(
-  selectedId: string | undefined,
-  currentTier: string,
-  icons: Map<string, EnergyHatchIcon>,
-): MachineConfigTierControl {
-  const tiers = energyHatchTypesForTier(currentTier).map((type) => {
-    const icon = icons.get(type.id);
-    return {
-      key: type.id,
-      label: type.label,
-      resource: {
-        kind: "item" as const,
-        id: type.resourceId,
-        amount: 1,
-        displayName: type.label,
-        iconPath: icon?.iconPath,
-        iconAtlas: icon?.iconAtlas,
-        dominantColor: icon?.dominantColor,
-        tooltip: type.exotic
-          ? [
-              `${type.amps.toLocaleString("en-US")} A through one hatch (${type.minTier}+)`,
-              "Wireless variants supply the same amps",
-            ]
-          : ["2 A per hatch; a lone hatch works at 1 A"],
-      },
-    };
-  });
-  const current =
-    tiers.find((tier) => tier.key === (selectedId ?? STANDARD_ENERGY_HATCH_ID)) ?? tiers[0];
-  return {
-    id: ENERGY_HATCH_CONTROL_ID,
-    label: "Energy Hatch",
-    minimum: tiers[0],
-    current,
-    tiers,
-    resource: current.resource,
   };
 }
 
