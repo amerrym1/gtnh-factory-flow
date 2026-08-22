@@ -1261,25 +1261,27 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
             />
           ) : null}
         </span>
+        {/* The tier wears the board's own chip paint, full header height -
+            the same standing as the add button, on the left. */}
+        {tierColor ? (
+          <span
+            className="flex h-9 min-w-9 shrink-0 items-center justify-center border-2 px-1 text-[13px] font-bold shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)]"
+            style={{
+              backgroundColor: tierColor.background,
+              borderColor: tierColor.border,
+              color: tierColor.text,
+              textShadow: `1px 1px 0 ${tierColor.shadow}`,
+            }}
+          >
+            {recipe.minimumTier}
+          </span>
+        ) : null}
         <span className="min-w-0 flex-1 leading-[1.15]">
           <span className="block truncate text-[15px] font-bold text-[var(--mc-ink)]">
             {machineLabel}
           </span>
-          <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--mc-ink-muted)]">
-            {tierColor ? (
-              <span
-                className="shrink-0 border px-1 text-[10px] font-bold leading-[14px] shadow-[inset_1px_1px_0_rgba(255,255,255,0.55),inset_-1px_-1px_0_rgba(0,0,0,0.45)]"
-                style={{
-                  backgroundColor: tierColor.background,
-                  borderColor: tierColor.border,
-                  color: tierColor.text,
-                  textShadow: `1px 1px 0 ${tierColor.shadow}`,
-                }}
-              >
-                {recipe.minimumTier}
-              </span>
-            ) : null}
-            <span className="truncate">{stats}</span>
+          <span className="mt-0.5 block truncate text-[11px] text-[var(--mc-ink-muted)]">
+            {stats}
           </span>
         </span>
         <button
