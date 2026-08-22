@@ -1291,6 +1291,56 @@ img {
   }
 }
 
+/*
+   The recipe search's loading state: ghost result cards in the real card
+   anatomy, breathing in a staggered wave, each with its arrow filling like a
+   furnace's progress bar. The wave reads as work happening; the shapes say
+   what is about to appear.
+*/
+@keyframes recipe-search-skeleton-breathe {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+@keyframes recipe-search-arrow-fill {
+  0% {
+    clip-path: inset(0 100% 0 0);
+    opacity: 1;
+  }
+  70% {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+    opacity: 0;
+  }
+}
+
+.recipe-search-skeleton {
+  animation: recipe-search-skeleton-breathe 1.3s ease-in-out infinite;
+}
+
+.recipe-search-arrow-fill {
+  animation: recipe-search-arrow-fill 1.3s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recipe-search-skeleton,
+  .recipe-search-arrow-fill {
+    animation: none;
+  }
+
+  .recipe-search-skeleton {
+    opacity: 0.6;
+  }
+}
+
 .nei-tab-strip {
   scrollbar-width: none;
 }

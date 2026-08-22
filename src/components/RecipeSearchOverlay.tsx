@@ -624,8 +624,19 @@ export function RecipeSearchOverlay({
                 Add an item to either side of the card below.
               </div>
             ) : isLoading && recipes.length === 0 ? (
-              <div className="border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-3 text-sm shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-                Loading recipes...
+              <div
+                className="grid items-start gap-2"
+                style={{
+                  gridTemplateColumns: sheet
+                    ? "minmax(0, 1fr)"
+                    : "repeat(auto-fill, minmax(400px, 1fr))",
+                }}
+                role="status"
+                aria-label="Loading recipes"
+              >
+                {Array.from({ length: sheet ? 4 : 9 }, (_, index) => (
+                  <SkeletonResultCard key={index} delay={index * 110} />
+                ))}
               </div>
             ) : recipes.length === 0 ? (
               <div className="grid min-h-[260px] place-items-center border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-3 text-sm shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
@@ -659,8 +670,19 @@ export function RecipeSearchOverlay({
                   ))}
                 </div>
                 {isLoading ? (
-                  <div className="mt-3 border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-3 text-center text-sm shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-                    Loading recipes...
+                  <div
+                    className="mt-2 grid items-start gap-2"
+                    style={{
+                      gridTemplateColumns: sheet
+                        ? "minmax(0, 1fr)"
+                        : "repeat(auto-fill, minmax(400px, 1fr))",
+                    }}
+                    role="status"
+                    aria-label="Loading more recipes"
+                  >
+                    {Array.from({ length: sheet ? 1 : 3 }, (_, index) => (
+                      <SkeletonResultCard key={index} delay={index * 110} />
+                    ))}
                   </div>
                 ) : null}
               </>
@@ -1313,6 +1335,66 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
     </article>
   );
 });
+
+/**
+ * A ghost result card: the real card's anatomy with nothing in it yet,
+ * breathing on a stagger while the answers travel. Its arrow fills over and
+ * over like a furnace's progress bar - the one loading animation this app
+ * could ever have.
+ */
+function SkeletonResultCard({ delay }: { delay: number }) {
+  const delayStyle = { animationDelay: `${delay}ms` };
+  const ghostChip = (nameWidth: string, key: number) => (
+    <span
+      key={key}
+      className="flex w-full items-center gap-1.5 border border-[var(--mc-47)] bg-[var(--mc-61)] py-0.5 pl-0.5 pr-1.5"
+    >
+      <span className="h-6 w-6 shrink-0 bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-100)]" />
+      <span className={`block h-3 ${nameWidth} bg-[var(--mc-71)]`} />
+    </span>
+  );
+
+  return (
+    <div
+      className="recipe-search-skeleton border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-2 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
+      style={delayStyle}
+    >
+      <div className="flex items-center gap-2">
+        <span className="h-9 w-9 shrink-0 bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]" />
+        <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <span className="block h-3.5 w-36 bg-[var(--mc-61)]" />
+          <span className="block h-2.5 w-24 bg-[var(--mc-61)]" />
+        </span>
+        <span className="h-8 w-8 shrink-0 border-2 border-[var(--mc-33)] bg-[var(--mc-61)]" />
+      </div>
+      <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_18px_minmax(0,1fr)] items-start gap-x-1">
+        <span className="flex min-w-0 flex-col gap-1">
+          {ghostChip("w-24", 0)}
+          {ghostChip("w-16", 1)}
+        </span>
+        <span className="relative flex items-start justify-center pt-2 text-[var(--mc-47)]">
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="none" aria-hidden="true">
+            <path d="M1 6h9" stroke="currentColor" strokeWidth="3" />
+            <path d="M8 1l7 5-7 5" fill="currentColor" />
+          </svg>
+          <svg
+            width="16"
+            height="12"
+            viewBox="0 0 16 12"
+            fill="none"
+            aria-hidden="true"
+            className="recipe-search-arrow-fill absolute left-1/2 top-2 -translate-x-1/2 text-[#4cc3d9]"
+            style={delayStyle}
+          >
+            <path d="M1 6h9" stroke="currentColor" strokeWidth="3" />
+            <path d="M8 1l7 5-7 5" fill="currentColor" />
+          </svg>
+        </span>
+        <span className="flex min-w-0 flex-col gap-1">{ghostChip("w-20", 0)}</span>
+      </div>
+    </div>
+  );
+}
 
 /** A named item chip inside a result: icon, name, amount. Clicks browse it. */
 function ResourceChip({
