@@ -17,6 +17,7 @@ import {
   resourceMatchesInput,
 } from "@/lib/model";
 import type { MachineTier, ResourceAmount } from "@/lib/model/types";
+import type { RateUnit } from "@/lib/model/rate-unit";
 import { GT_TIER_COLORS } from "./flow/tier-colors";
 import type { TierFilter } from "@/store/factory-store";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
@@ -40,6 +41,31 @@ export interface StencilClause
   > {
   role: RecipeQueryRole;
 }
+
+/**
+ * How the result cards read their numbers: the recipe as written (amounts per
+ * craft), or as rates over the recipe's own duration - one machine, full
+ * speed, no overclock, exactly the nameplate figures a card gets on the board.
+ */
+type RateView = "recipe" | RateUnit;
+
+const RATE_VIEW_UNITS: Record<RateUnit, { multiplier: number; per: string }> = {
+  tick: { multiplier: 1 / 20, per: "t" },
+  second: { multiplier: 1, per: "s" },
+  minute: { multiplier: 60, per: "min" },
+  hour: { multiplier: 3600, per: "hr" },
+};
+
+const RATE_VIEW_CHOICES: Array<{ view: RateView; label: string; title: string }> = [
+  { view: "recipe", label: "Recipe", title: "Amounts per craft, as the recipe is written" },
+  { view: "tick", label: "/t", title: "Rates per tick, one machine at full speed" },
+  { view: "second", label: "/s", title: "Rates per second, one machine at full speed" },
+  { view: "minute", label: "/min", title: "Rates per minute, one machine at full speed" },
+  { view: "hour", label: "/hr", title: "Rates per hour, one machine at full speed" },
+];
+
+/** Survives close and reopen: the reading you chose is a preference, not a query. */
+let storedRateView: RateView = "recipe";
 
 /** A condition row in flight: where the hand holds it and where it would land. */
 interface StencilDrag {
@@ -143,6 +169,11 @@ export function RecipeSearchOverlay({
   const panelRef = useRef<HTMLElement>(null);
   const layout = useRecipeSearchViewport();
   const [pickerRole, setPickerRole] = useState<RecipeQueryRole | undefined>(undefined);
+  const [rateView, setRateView] = useState<RateView>(() => storedRateView);
+  const changeRateView = useCallback((view: RateView) => {
+    storedRateView = view;
+    setRateView(view);
+  }, []);
   const [chipMenu, setChipMenu] = useState<
     { x: number; y: number; resource: ResourceAmount } | undefined
   >(undefined);
@@ -436,26 +467,49 @@ export function RecipeSearchOverlay({
             <X className="h-4 w-4" />
           </button>
 
-          {/* ===== machine chips and the refinements, one quiet strip ===== */}
-          <div className="flex max-h-[104px] flex-wrap items-center gap-1.5 overflow-y-auto py-3 pl-3 pr-12">
-            <MachineChip
-              label="All"
-              count={totalAcrossMaps}
-              active={!activeRecipeMap}
-              onClick={() => onRecipeMapChange("")}
-            />
-            {recipeMapChips.map((chip) => (
+          {/* ===== the head: machine chips scroll on the left, the controls
+                 stand still on the right ===== */}
+          <div className="flex flex-wrap items-start gap-2 py-3 pl-3 pr-12">
+            {/* A busy item can match a hundred machines; the chips get their
+                own scroll and take nothing else with them. */}
+            <div
+              className="flex max-h-[84px] min-w-[240px] flex-1 flex-wrap items-center gap-1.5 overflow-y-auto pr-1 [scrollbar-gutter:stable]"
+              style={{ scrollbarColor: "var(--mc-100) var(--mc-25)" }}
+            >
               <MachineChip
-                key={chip.id}
-                label={chip.label}
-                count={chip.count}
-                icon={chip.icon}
-                active={chip.id === activeRecipeMap}
-                onClick={() => onRecipeMapChange(chip.id)}
-                onHover={() => onRecipeMapHover(chip.id)}
+                label="All"
+                count={totalAcrossMaps}
+                active={!activeRecipeMap}
+                onClick={() => onRecipeMapChange("")}
               />
-            ))}
-            <label className="ml-auto flex h-9 w-[200px] min-w-0 items-center gap-2 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
+              {recipeMapChips.map((chip) => (
+                <MachineChip
+                  key={chip.id}
+                  label={chip.label}
+                  count={chip.count}
+                  icon={chip.icon}
+                  active={chip.id === activeRecipeMap}
+                  onClick={() => onRecipeMapChange(chip.id)}
+                  onHover={() => onRecipeMapHover(chip.id)}
+                />
+              ))}
+            </div>
+            <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <span
+              className="flex items-center border-2 border-[var(--mc-29)] bg-[var(--mc-55)]"
+              title="Read the recipes as written, or as rates for one machine at full speed"
+            >
+              {RATE_VIEW_CHOICES.map((choice) => (
+                <OpPill
+                  key={choice.view}
+                  label={choice.label}
+                  title={choice.title}
+                  active={rateView === choice.view}
+                  onClick={() => changeRateView(choice.view)}
+                />
+              ))}
+            </span>
+            <label className="flex h-9 w-[200px] min-w-0 items-center gap-2 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
               <Search className="h-4 w-4 shrink-0 text-neutral-500" />
               <input
                 value={query}
@@ -489,6 +543,7 @@ export function RecipeSearchOverlay({
                 </option>
               ))}
             </select>
+            </div>
           </div>
 
           {/* ===== the answers ===== */}
@@ -537,6 +592,7 @@ export function RecipeSearchOverlay({
                       onPrefetch={onPrefetch}
                       onBrowseResource={onBrowseResource}
                       onChipMenu={openChipMenu}
+                      rateView={rateView}
                     />
                   ))}
                 </div>
@@ -1034,6 +1090,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
   onPrefetch,
   onBrowseResource,
   onChipMenu,
+  rateView,
 }: {
   recipe: RecipeSummary;
   takesClauses: StencilClause[];
@@ -1045,6 +1102,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
   onPrefetch?: (recipeId: string) => void;
   onBrowseResource: (resource: ResourceAmount, mode: "recipes" | "uses") => void;
   onChipMenu: (event: ReactMouseEvent, resource: ResourceAmount) => void;
+  rateView: RateView;
 }) {
   const machineIcons = useMachineHandlerIcons();
   const preview = useMemo(
@@ -1160,7 +1218,11 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
               key={`in-${index}`}
               resource={input}
               hit={takesClauses.some((clause) => clauseMatchesInput(clause, input))}
-              amountText={input.consumed === false ? "NC" : formatChipAmount(input)}
+              amountText={
+                input.consumed === false
+                  ? "NC"
+                  : formatChipAmount(input, rateView, recipe.durationTicks)
+              }
               onBrowseResource={onBrowseResource}
               onMenu={onChipMenu}
             />
@@ -1175,7 +1237,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
               key={`out-${index}`}
               resource={output}
               hit={makesClauses.some((clause) => clauseMatchesOutput(clause, output))}
-              amountText={formatChipAmount(output)}
+              amountText={formatChipAmount(output, rateView, recipe.durationTicks)}
               chance={"chance" in output ? output.chance : undefined}
               onBrowseResource={onBrowseResource}
               onMenu={onChipMenu}
@@ -1316,11 +1378,22 @@ function clauseMatchesOutput(clause: StencilClause, output: ResourceAmount): boo
   );
 }
 
-function formatChipAmount(resource: ResourceAmount): string {
-  if (resource.kind === "fluid") {
-    return `${resource.amount.toLocaleString()} L`;
+function formatChipAmount(
+  resource: ResourceAmount,
+  rateView: RateView,
+  durationTicks: number,
+): string {
+  if (rateView === "recipe" || durationTicks <= 0) {
+    if (resource.kind === "fluid") {
+      return `${resource.amount.toLocaleString()} L`;
+    }
+    return `×${resource.amount.toLocaleString()}`;
   }
-  return `×${resource.amount.toLocaleString()}`;
+
+  const unit = RATE_VIEW_UNITS[rateView];
+  const value = ((resource.amount * 20) / durationTicks) * unit.multiplier;
+  const text = formatRate(value, value >= 100 ? 0 : value >= 10 ? 1 : 2);
+  return resource.kind === "fluid" ? `${text} L/${unit.per}` : `${text}/${unit.per}`;
 }
 
 
