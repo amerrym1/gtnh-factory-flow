@@ -54,7 +54,7 @@ export interface StencilClause
  * craft), or as rates over the recipe's own duration - one machine, full
  * speed, no overclock, exactly the nameplate figures a card gets on the board.
  */
-type RateView = "recipe" | RateUnit;
+type RateView = "recipe" | RateUnit | "ratio";
 
 const RATE_VIEW_UNITS: Record<RateUnit, { multiplier: number; per: string }> = {
   tick: { multiplier: 1 / 20, per: "t" },
@@ -69,7 +69,21 @@ const RATE_VIEW_CHOICES: Array<{ view: RateView; label: string; title: string }>
   { view: "second", label: "/s", title: "Rates per second, one machine at full speed" },
   { view: "minute", label: "/min", title: "Rates per minute, one machine at full speed" },
   { view: "hour", label: "/hr", title: "Rates per hour, one machine at full speed" },
+  {
+    view: "ratio",
+    label: "Ratio",
+    title: "Amounts reduced to lowest terms; time plays no part",
+  },
 ];
+
+function greatestCommonDivisor(left: number, right: number): number {
+  let a = left;
+  let b = right;
+  while (b > 0) {
+    [a, b] = [b, a % b];
+  }
+  return a;
+}
 
 /** Survives close and reopen: the reading you chose is a preference, not a query. */
 let storedRateView: RateView = "recipe";
@@ -1305,6 +1319,29 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
     });
   }, [inputPicks, preview]);
   const outputChips = useMemo(() => mergeChipResources(preview.outputs), [preview]);
+  // The RATIO reading: every counted amount over their shared divisor, so
+  // 2 dust into 2 ingots says 1 and 1. Catalysts stay out of the arithmetic,
+  // and any non-whole amount (a substitute's scaled cost) leaves the recipe
+  // unreduced rather than lying about it.
+  const ratioDivisor = useMemo(() => {
+    if (rateView !== "ratio") {
+      return 1;
+    }
+    let divisor = 0;
+    const amounts = [
+      ...inputChips
+        .filter((chip) => chip.raw.consumed !== false)
+        .map((chip) => chip.resource.amount),
+      ...outputChips.map((output) => output.amount),
+    ];
+    for (const amount of amounts) {
+      if (!Number.isInteger(amount) || amount <= 0) {
+        return 1;
+      }
+      divisor = greatestCommonDivisor(divisor, amount);
+    }
+    return divisor > 0 ? divisor : 1;
+  }, [inputChips, outputChips, rateView]);
   // A merged chip stands for every slot it swallowed, so a pick lands on all
   // of their indexes at once.
   const pickFace = useCallback((indexes: number[], face: AlternativeCycleFace) => {
@@ -1423,7 +1460,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
                 amountText={
                   chip.raw.consumed === false
                     ? "NC"
-                    : formatChipAmount(chip.resource, rateView, recipe.durationTicks)
+                    : formatChipAmount(chip.resource, rateView, recipe.durationTicks, ratioDivisor)
                 }
                 hasAlternatives={chip.faces.length > 1}
                 onCycle={
@@ -1454,7 +1491,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
               key={`out-${index}`}
               resource={output}
               hit={makesClauses.some((clause) => clauseMatchesOutput(clause, output))}
-              amountText={formatChipAmount(output, rateView, recipe.durationTicks)}
+              amountText={formatChipAmount(output, rateView, recipe.durationTicks, ratioDivisor)}
               chance={"chance" in output ? output.chance : undefined}
               onBrowseResource={onBrowseResource}
               onMenu={(event) => onChipMenu(event, { ...output, amount: 1 })}
@@ -1745,7 +1782,17 @@ function formatChipAmount(
   resource: ResourceAmount,
   rateView: RateView,
   durationTicks: number,
+  ratioDivisor = 1,
 ): string {
+  // Ratio: lowest terms, no time, no unit prefix - a 1:1 recipe says 1 and 1,
+  // not x1 and x1. Fluids keep their L so a litre never reads as an item.
+  if (rateView === "ratio") {
+    const reduced = resource.amount / ratioDivisor;
+    return resource.kind === "fluid"
+      ? `${reduced.toLocaleString()} L`
+      : reduced.toLocaleString();
+  }
+
   if (rateView === "recipe" || durationTicks <= 0) {
     if (resource.kind === "fluid") {
       return `${resource.amount.toLocaleString()} L`;
