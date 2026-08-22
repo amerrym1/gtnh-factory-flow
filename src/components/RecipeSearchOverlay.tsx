@@ -1575,10 +1575,51 @@ function ResourceChip({
     return () => element.removeEventListener("wheel", onWheel);
   }, [onCycle]);
 
+  // A finger has no right button and iOS never fires contextmenu, so a held
+  // press opens the same menu by hand - the port rows' own 450ms rule.
+  const pressTimerRef = useRef<number | undefined>(undefined);
+  const pressStartRef = useRef<{ x: number; y: number } | undefined>(undefined);
+  const longPressFiredRef = useRef(false);
+  const clearPress = () => {
+    pressStartRef.current = undefined;
+    if (pressTimerRef.current !== undefined) {
+      window.clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = undefined;
+    }
+  };
+  useEffect(() => clearPress, []);
+
   return (
     <button
       ref={rootRef}
       type="button"
+      onPointerDown={(event) => {
+        if (event.pointerType !== "touch") {
+          return;
+        }
+        const at = { clientX: event.clientX, clientY: event.clientY };
+        clearPress();
+        pressStartRef.current = { x: event.clientX, y: event.clientY };
+        longPressFiredRef.current = false;
+        pressTimerRef.current = window.setTimeout(() => {
+          pressTimerRef.current = undefined;
+          longPressFiredRef.current = true;
+          onMenu({
+            ...at,
+            preventDefault: () => undefined,
+            stopPropagation: () => undefined,
+          } as ReactMouseEvent);
+        }, 450);
+      }}
+      onPointerMove={(event) => {
+        // A finger always jitters; only a real slide cancels the press.
+        const start = pressStartRef.current;
+        if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) {
+          clearPress();
+        }
+      }}
+      onPointerUp={clearPress}
+      onPointerCancel={clearPress}
       title={
         hasAlternatives
           ? `${resource.displayName ?? resource.id}: scroll to switch what fills this slot, right click for more`
@@ -1586,6 +1627,11 @@ function ResourceChip({
       }
       onClick={(event) => {
         event.stopPropagation();
+        // The tap that ends a long press is not a second gesture.
+        if (longPressFiredRef.current) {
+          longPressFiredRef.current = false;
+          return;
+        }
         onBrowseResource({ ...resource, amount: 1 }, "recipes");
       }}
       onContextMenu={(event) => {
