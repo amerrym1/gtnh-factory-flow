@@ -622,7 +622,7 @@ export async function queryDatasetRecipes(versionId: string, request: DatasetRec
     ? matchingAll.filter((match) => indexes.recipeMaps[match.recipeIndex] === effectiveMap)
     : matchingAll;
 
-  const recipeIndexes = rankRecipes(matching)
+  const recipeIndexes = rankRecipes(await applyFocusScores(recipeCatalog, matching, clauses))
     .slice(request.offset, request.offset + request.limit)
     .map((match) => match.recipeIndex);
   const recipes = (await getRecipeSummariesByIndex(recipeCatalog, recipeIndexes)).map((recipe) =>
@@ -660,6 +660,14 @@ interface RankedRecipe {
   recipeIndex: number;
   score: number;
   iconScore: number;
+  /**
+   * How much of the recipe is ABOUT the asked-for items: the matched share of
+   * its outputs (and consumed inputs), averaged over the sides that carry
+   * conditions. A recipe making only diamond dust scores 1; a recipe with a
+   * hundred outputs where one is diamond dust scores a rounding error, and
+   * sorts accordingly.
+   */
+  focus?: number;
 }
 
 /**
@@ -674,9 +682,61 @@ function rankRecipes(matches: RankedRecipe[]): RankedRecipe[] {
     (left, right) =>
       Number(right.iconScore > 0) - Number(left.iconScore > 0) ||
       right.score - left.score ||
+      (right.focus ?? 0) - (left.focus ?? 0) ||
       right.iconScore - left.iconScore ||
       left.recipeIndex - right.recipeIndex,
   );
+}
+
+/** {@link RankedRecipe.focus}, read against one recipe body. */
+function recipeFocusScore(
+  summary: RecipeSummary,
+  clauses: RecipeQueryClause[],
+): number {
+  const makesClauses = clauses.filter((clause) => clause.role === "makes");
+  const takesClauses = clauses.filter((clause) => clause.role === "takes");
+  let total = 0;
+  let sides = 0;
+  if (makesClauses.length > 0 && summary.outputs.length > 0) {
+    const matched = summary.outputs.filter((output) =>
+      slotSatisfiedByClauses(output, makesClauses),
+    ).length;
+    total += matched / summary.outputs.length;
+    sides += 1;
+  }
+  if (takesClauses.length > 0) {
+    const consumed = summary.inputs.filter(isRecipeInputConsumed);
+    if (consumed.length > 0) {
+      const matched = consumed.filter((input) =>
+        slotSatisfiedByClauses(input, takesClauses),
+      ).length;
+      total += matched / consumed.length;
+      sides += 1;
+    }
+  }
+  return sides > 0 ? total / sides : 0;
+}
+
+/**
+ * Focus scores for a whole result set, with the same honest cap the ONLY
+ * check uses: past it the bodies stay unread and the order stands.
+ */
+async function applyFocusScores(
+  catalog: LoadedRecipeIndex,
+  matching: RankedRecipe[],
+  clauses: RecipeQueryClause[],
+): Promise<RankedRecipe[]> {
+  if (clauses.length === 0 || matching.length === 0 || matching.length > ONLY_VERIFY_LIMIT) {
+    return matching;
+  }
+  const summaries = await getRecipeSummariesByIndexMap(
+    catalog,
+    matching.map((match) => match.recipeIndex),
+  );
+  return matching.map((match) => {
+    const summary = summaries.get(match.recipeIndex);
+    return summary ? { ...match, focus: recipeFocusScore(summary, clauses) } : match;
+  });
 }
 
 /**
@@ -869,7 +929,7 @@ async function queryDatasetRecipesFromLookup(
     });
   }
 
-  const pageRecipeIndexes = rankRecipes(matching)
+  const pageRecipeIndexes = rankRecipes(await applyFocusScores(catalog, matching, clauses))
     .slice(request.offset, request.offset + request.limit)
     .map((match) => match.recipeIndex);
   const recipes = (await getRecipeSummariesByIndex(catalog, pageRecipeIndexes)).map((recipe) =>
