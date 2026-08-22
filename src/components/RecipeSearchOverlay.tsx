@@ -598,10 +598,15 @@ export function RecipeSearchOverlay({
                 <div className="recipe-search-scroll flex max-h-[100px] min-w-[240px] flex-1 flex-wrap items-center gap-1.5 overflow-y-auto pr-1">
                   {machineChipRow}
                 </div>
-                <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
+                {/* Two short rows instead of one long one: the filter and
+                    tier up top, the rate switch beneath - so the machine
+                    chips keep the width almost to the corner. */}
+                <div className="ml-auto flex shrink-0 flex-col items-end gap-2">
+                  <div className="flex items-center gap-2">
+                    {nameFilter}
+                    {tierSelect}
+                  </div>
                   {ratePillGroup}
-                  {nameFilter}
-                  {tierSelect}
                 </div>
               </div>
             </>
