@@ -1300,19 +1300,27 @@ img {
 @keyframes recipe-search-skeleton-breathe {
   0%,
   100% {
-    opacity: 0.4;
+    opacity: 0.55;
   }
   50% {
-    opacity: 0.95;
+    opacity: 0.9;
   }
 }
 
+/*
+   Seamless loop: the overlay is INVISIBLE at both ends of the cycle, so the
+   restart never snaps - it eases in empty, wipes across, and eases out full.
+*/
 @keyframes recipe-search-arrow-fill {
   0% {
     clip-path: inset(0 100% 0 0);
+    opacity: 0;
+  }
+  14% {
+    clip-path: inset(0 88% 0 0);
     opacity: 1;
   }
-  70% {
+  68% {
     clip-path: inset(0 0 0 0);
     opacity: 1;
   }
@@ -1323,11 +1331,11 @@ img {
 }
 
 .recipe-search-skeleton {
-  animation: recipe-search-skeleton-breathe 1.3s ease-in-out infinite;
+  animation: recipe-search-skeleton-breathe 1.8s ease-in-out infinite;
 }
 
 .recipe-search-arrow-fill {
-  animation: recipe-search-arrow-fill 1.3s ease-in-out infinite;
+  animation: recipe-search-arrow-fill 1.8s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
