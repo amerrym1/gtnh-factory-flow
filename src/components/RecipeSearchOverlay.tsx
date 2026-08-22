@@ -1278,8 +1278,10 @@ function ResourceChip({
       }}
       className={[
         "flex w-full items-center gap-1.5 border py-0.5 pl-0.5 pr-1.5 text-left",
+        // A slot the stencil asked for says so quietly: the same chip on a
+        // faintly blue ground with a faintly blue edge, not a highlighter.
         hit
-          ? "border-cyan-400 bg-[var(--mc-61)]"
+          ? "border-[#3a525e] bg-[#283239]"
           : "border-[var(--mc-47)] bg-[var(--mc-61)] hover:border-[var(--mc-33)]",
       ].join(" ")}
     >
