@@ -685,7 +685,7 @@ const READ_THE_BOARD: TourLesson = {
       title: "Setup rules",
       rows: [
         {
-          text: "The gear holds two rules. *Free inputs*: anything short of stock takes the rest from off the setup.",
+          text: "The clipboard holds two rules. *Free inputs*: anything short of stock takes the rest from off the setup.",
         },
         {
           text: "*Free outputs*: anything with nowhere to go leaves the setup instead of backing up.",

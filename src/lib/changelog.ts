@@ -97,9 +97,11 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "2.23.0",
     date: "2026-08-21",
-    headline: "Setup rules, on the gear",
+    // Reworded when the icon changed: the entry said "gear", and pointing
+    // archive readers at an icon the button no longer wears helps nobody.
+    headline: "Setup rules, one button",
     notes: [
-      "New gear button, top left, holding two rules for the whole setup.",
+      "New button, top left, holding two rules for the whole setup.",
       "Free inputs: anything short of stock takes the rest from off the setup.",
       "Free outputs: anything with nowhere to go leaves instead of backing up.",
       "The wand is gone. A plan saved with sketch mode opens with both rules on.",
