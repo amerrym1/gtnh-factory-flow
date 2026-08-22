@@ -64,7 +64,7 @@ import {
   Undo2,
   Wallpaper,
   Check,
-  ClipboardList,
+  SlidersHorizontal,
   X,
   Zap,
   type LucideIcon,
@@ -6104,9 +6104,10 @@ const RATE_UNIT_CHOICES: Array<{ unit: RateUnit; label: string; title: string }>
 ];
 
 /**
- * The setup's two rules, on a clipboard beside the tidy-up button. (Not a
- * gear: the header's settings button wears that now, and two gears meaning
- * two different things is a trap.)
+ * The setup's two rules, on a sliders icon beside the tidy-up button. Not a
+ * gear (the header's settings button wears that now, and two gears meaning
+ * two different things is a trap) and not a clipboard (which read as a copy
+ * button). Sliders are the one other glyph everybody reads as "settings".
  *
  * They are the only settings that change what the SOLVE is allowed to assume,
  * so they get a sheet with a sentence each rather than a mystery toggle: a
@@ -6187,7 +6188,7 @@ const SetupRulesButton = memo(function SetupRulesButton() {
         title="Setup rules"
         aria-label="Setup rules"
       >
-        <ClipboardList className="h-4 w-4" />
+        <SlidersHorizontal className="h-4 w-4" />
       </button>
       {open ? (
         <div className="absolute left-0 top-[calc(100%+6px)] z-30 flex w-[320px] flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">

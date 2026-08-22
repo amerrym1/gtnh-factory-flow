@@ -22,7 +22,7 @@ import {
   TriangleAlert,
   Undo2,
   Upload,
-  ClipboardList,
+  SlidersHorizontal,
   Zap,
 } from "lucide-react";
 import { Fragment, memo, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
@@ -171,7 +171,7 @@ const CALLOUTS: Array<{
       { icon: Undo2, text: "Undo and redo" },
       { chip: "/s", text: "Rates per tick, second, minute or hour" },
       { icon: Trash, text: "Place *farm*, *trash can*, *custom rate*" },
-      { icon: ClipboardList, text: "*Setup rules*: free inputs and free outputs" },
+      { icon: SlidersHorizontal, text: "*Setup rules*: free inputs and free outputs" },
       { icon: Network, text: "*Auto-arrange* the whole board" },
     ],
   },
