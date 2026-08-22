@@ -472,10 +472,10 @@ export function RecipeSearchOverlay({
           <div className="flex flex-wrap items-start gap-2 py-3 pl-3 pr-12">
             {/* A busy item can match a hundred machines; the chips get their
                 own scroll and take nothing else with them. */}
-            <div
-              className="flex max-h-[84px] min-w-[240px] flex-1 flex-wrap items-center gap-1.5 overflow-y-auto pr-1 [scrollbar-gutter:stable]"
-              style={{ scrollbarColor: "var(--mc-100) var(--mc-25)" }}
-            >
+            {/* Cut mid-row on purpose: a third row of chips peeking over the
+                edge is the scroll cue, and the bar only takes its lane when
+                there is something to scroll. */}
+            <div className="recipe-search-scroll flex max-h-[100px] min-w-[240px] flex-1 flex-wrap items-center gap-1.5 overflow-y-auto pr-1">
               <MachineChip
                 label="All"
                 count={totalAcrossMaps}
@@ -548,9 +548,10 @@ export function RecipeSearchOverlay({
 
           {/* ===== the answers ===== */}
           <div
-            className={["min-h-0 flex-1 overflow-y-auto", layout.sheet ? "px-1.5" : "px-3"].join(
-              " ",
-            )}
+            className={[
+              "recipe-search-scroll min-h-0 flex-1 overflow-y-auto",
+              layout.sheet ? "px-1.5" : "px-3",
+            ].join(" ")}
             onScroll={handleResultsScroll}
           >
             {queryError ? (
@@ -609,7 +610,7 @@ export function RecipeSearchOverlay({
 
         {/* ===== the stencil: its own detached card, the foot of the T ===== */}
         <div className="flex shrink-0 justify-center pt-3">
-          <div className="relative w-full max-w-[880px] border-4 border-[#23262d] bg-[var(--mc-82)] p-3 text-[var(--mc-ink)] shadow-[0_8px_0_rgba(0,0,0,0.5),inset_1px_1px_0_var(--mc-93)]">
+          <div className="relative w-full max-w-[880px] border-4 border-[#23262d] bg-[var(--mc-71)] p-3 text-[var(--mc-ink)] shadow-[0_8px_0_rgba(0,0,0,0.5),inset_1px_1px_0_var(--mc-93)]">
               <div className="flex items-stretch gap-2">
                 <StencilSide
                   label="Takes"
@@ -818,8 +819,7 @@ function StencilSide({
           deeper than the window says so instead of hiding rows. */}
       <div
         ref={(element) => registerListRef(role, element)}
-        className="flex h-[208px] flex-col gap-1.5 overflow-y-auto pr-1 [scrollbar-gutter:stable]"
-        style={{ scrollbarColor: "var(--mc-100) var(--mc-55)" }}
+        className="recipe-search-scroll flex h-[208px] flex-col gap-1.5 overflow-y-auto pr-1"
       >
         {layoutClauses.map((clause, slot) => {
           const index = clauses.indexOf(clause);
@@ -984,7 +984,7 @@ function ItemPickerPopover({
           }}
         />
       </label>
-      <div className="mt-2 grid max-h-[460px] grid-cols-1 gap-1 overflow-y-auto sm:grid-cols-2">
+      <div className="recipe-search-scroll mt-2 grid max-h-[460px] grid-cols-1 gap-1 overflow-y-auto sm:grid-cols-2">
         {loading && results.length === 0 ? (
           <div className="p-2 text-sm text-[var(--mc-ink-muted)]">Searching...</div>
         ) : results.length === 0 ? (

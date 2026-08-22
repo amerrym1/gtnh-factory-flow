@@ -1256,6 +1256,41 @@ img {
   border-radius: 8px;
 }
 
+/*
+   The recipe search's scrollers: a wide bar that is ALWAYS there, dark track
+   visibly recessed, bright grab bar. Paired with overflow-y: scroll on the
+   containers so the lane shows even before anything overflows. Firefox gets
+   the colours through scrollbar-color; Chromium turns that off (auto) so the
+   webkit sizing below applies.
+*/
+.recipe-search-scroll {
+  scrollbar-color: var(--mc-100) var(--mc-25);
+}
+
+@supports selector(::-webkit-scrollbar) {
+  .recipe-search-scroll {
+    scrollbar-color: auto;
+  }
+
+  .recipe-search-scroll::-webkit-scrollbar {
+    width: 14px;
+  }
+
+  .recipe-search-scroll::-webkit-scrollbar-track {
+    background: var(--mc-33);
+    border: 2px solid var(--mc-15);
+  }
+
+  .recipe-search-scroll::-webkit-scrollbar-thumb {
+    background: var(--mc-100);
+    border: 2px solid var(--mc-33);
+  }
+
+  .recipe-search-scroll::-webkit-scrollbar-thumb:hover {
+    background: #71747e;
+  }
+}
+
 .nei-tab-strip {
   scrollbar-width: none;
 }
