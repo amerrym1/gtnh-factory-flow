@@ -53,7 +53,6 @@ import {
   formatRate,
   applyMachineHandlerToRecipe,
   GT_OVERCLOCK_TIERS,
-  getHighestFiniteVoltageTier,
   getRecipeMachineHandlers,
   getRecipeMachineConfigTierControls,
   getRecipeCoilTierControl,
@@ -3334,16 +3333,7 @@ function getAdjacentTier(current: VoltageTier, floor: VoltageTier | undefined, d
 }
 
 function resolveVoltageTier(value: string, defaultTier: VoltageTier): VoltageTier {
-  const tier = GT_OVERCLOCK_TIERS.find((entry) => entry.tier === value)?.tier;
-  if (tier) {
-    return tier;
-  }
-
-  if (value === "MAX") {
-    return getHighestFiniteVoltageTier();
-  }
-
-  return tier ?? defaultTier;
+  return GT_OVERCLOCK_TIERS.find((entry) => entry.tier === value)?.tier ?? defaultTier;
 }
 
 function resolveDatasetMachineConfigResource(

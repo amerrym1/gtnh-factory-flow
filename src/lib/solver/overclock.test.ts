@@ -90,7 +90,7 @@ const NITROBENZENE = {
 };
 
 describe("GT overclocking", () => {
-  it("treats MAX as a filter/display tier instead of an extra overclock voltage", () => {
+  it("treats MAX as a real tier: GTValues.V[14], one overclock step past UXV", () => {
     const stats = getOverclockedRecipeStats(
       {
         minimumTier: "MV",
@@ -103,9 +103,9 @@ describe("GT overclocking", () => {
       },
     );
 
-    expect(stats.tier).toBe("UXV");
-    expect(stats.overclockSteps).toBe(11);
-    expect(stats.eut).toBe(120 * 4 ** 11);
+    expect(stats.tier).toBe("MAX");
+    expect(stats.overclockSteps).toBe(12);
+    expect(stats.eut).toBe(120 * 4 ** 12);
   });
 
   it("spends the voltage budget on parallels before overclocks", () => {

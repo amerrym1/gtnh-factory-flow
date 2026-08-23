@@ -976,6 +976,19 @@ const MACHINES: Record<string, MachineBehaviour> = {
     note: "Eternal coils are needed for more than 15 slices.",
   },
 
+  // MTEMassFabricator, in-game "Matter Fabrication CPU" (dataset map
+  // gtpp.recipe.matterfab2 is named "Matter Fabricator"): setEuModifier(0.8F)
+  // and enablePerfectOverclock(). getMaxParallelRecipes() is 64 in scrap mode
+  // and 8 x voltage tier in UU mode; the reference reads the mode off the
+  // recipe, and the scrap-to-UU-Amplifier recipes are exactly the LV ones.
+  "Matter Fabricator": {
+    aliases: ["Matter Fabrication CPU"],
+    overclock: OVERCLOCK.perfect(),
+    speed: 1,
+    power: 0.8,
+    parallels: (c) => (c.recipeVoltageTier === 1 ? 64 : 8 * c.voltageTier),
+  },
+
   // -- Remaining machines whose formulas need no recipe metadata -----------
   "Pseudostable Black Hole Containment Field": {
     overclock: OVERCLOCK.normal(),

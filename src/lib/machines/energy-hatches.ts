@@ -166,9 +166,9 @@ export function getEnergyHatchType(id: string | undefined): EnergyHatchType {
 
 /**
  * The families that exist at this hatch tier: there is no 64A hatch below EV
- * and no laser below IV, and each laser rating starts at its own tier. Every
- * family runs to UXV, the highest tier the chip offers, so only the floor
- * needs guarding.
+ * and no laser below IV, and each laser rating starts at its own tier. Only
+ * the floor is guarded; at MAX the game itself only mints the wireless
+ * standard hatch, a distinction the planner does not draw.
  */
 export function energyHatchTypesForTier(tier: string): EnergyHatchType[] {
   const ordinal = getVoltageTierIndex(tier as Exclude<MachineTier, "DEMO">);
