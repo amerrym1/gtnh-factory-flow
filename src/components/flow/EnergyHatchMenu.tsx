@@ -130,7 +130,7 @@ function MenuShell({
       ref={panelRef}
       // "nowheel" stops React Flow from zooming the canvas when scrolling the
       // list: its native wheel handler runs before React's synthetic one.
-      className="nodrag nowheel fixed z-[9999] overflow-y-auto border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1.5 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),4px_4px_0_rgba(0,0,0,0.35)]"
+      className="nodrag nowheel fixed z-[9999] flex flex-col border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1.5 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),4px_4px_0_rgba(0,0,0,0.35)]"
       style={{
         width,
         left: Math.max(8, Math.min(anchor.x - width, window.innerWidth - width - 8)),
@@ -268,7 +268,7 @@ export function EnergySupplyMenu({
         <span className="text-right">Amps</span>
         <span className="text-right">EU/t</span>
       </div>
-      <div className="recipe-search-scroll max-h-[320px] overflow-y-scroll pr-1">
+      <div className="recipe-search-scroll min-h-0 max-h-[320px] flex-1 overflow-y-scroll pr-1">
         {options.map((option, index) => {
           const selected =
             option.familyId === currentFamilyId &&
@@ -347,7 +347,7 @@ export function EnergyTierMenu({
 
   return (
     <MenuShell anchor={anchor} width={190} maxHeight={480} onClose={onClose}>
-      <div>
+      <div className="recipe-search-scroll min-h-0 flex-1 overflow-y-auto">
         {GT_OVERCLOCK_TIERS.map(({ tier, maxEuT }) => {
           const color = GT_TIER_COLORS[tier];
           const selected = tier === currentTier;
