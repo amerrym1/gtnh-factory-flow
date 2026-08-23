@@ -80,6 +80,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Crafting table recipes now appear in the recipe search, and their cards run on the Auto Workbench: 2048 EU a craft, faster each tier up to EV.",
       "The crafting table stays available on the card as the free, instant choice.",
       "The machine buttons in the search are now toggles: turn any machine's recipes off, and All selects or clears the lot.",
+      "Right click on a card's voltage chip lowers the tier: no shift needed.",
     ],
   },
   {

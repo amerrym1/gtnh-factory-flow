@@ -1226,11 +1226,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   onContextMenu={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    // Only SHIFT-right-click steps back; plain does nothing
-                    // (swapped by the inversion setting).
-                    if (event.shiftKey !== areChipClicksInverted()) {
-                      stepSupply(-1);
-                    }
+                    // Right click steps back, with or without shift: the
+                    // browser menu is suppressed anyway, so a plain right
+                    // click as a dead gesture only read as broken.
+                    stepSupply(-1);
                   }}
                   data-hatch-menu-anchor
                   // Wheel over the chip steps the supply: the one cycling
@@ -1280,9 +1279,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 onContextMenu={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
-                  if (event.shiftKey !== areChipClicksInverted()) {
-                    updateTier(-1);
-                  }
+                  // Right click steps the tier down, with or without shift:
+                  // requiring shift left plain right click doing nothing,
+                  // which read as broken (and Firefox forces its own menu on
+                  // shift-right-click, so plain is the one that always works).
+                  updateTier(-1);
                 }}
                 data-hatch-menu-anchor
                 onWheel={(event) => {

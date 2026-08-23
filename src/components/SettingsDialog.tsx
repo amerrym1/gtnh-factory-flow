@@ -173,8 +173,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               <span className="min-w-0 flex-1">
                 <span className="block text-base leading-tight text-fg">Swap chip clicks</span>
                 <span className="mt-0.5 block text-xs text-fg-muted">
-                  On, clicking a power chip steps it and right click steps back; shift-click opens
-                  the dropdown. Off, clicking opens the dropdown and shift steps.
+                  On, clicking a power chip steps it and shift-click opens the dropdown. Off,
+                  clicking opens the dropdown and shift-click steps. Right click always steps back.
                 </span>
               </span>
               <Check
