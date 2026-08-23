@@ -39,6 +39,49 @@ interface MenuRow {
 }
 
 /**
+ * The hatch's art at a hard size, zoomed INTO the sprite. The rendered
+ * machine sprites are 256px canvases whose block fills only the middle ~45%,
+ * so the image is drawn at 220% of the window and the margin cropped away -
+ * the block itself fills the box. Sized with a class on the window and
+ * percentages on the img, never ResourceIcon's size overrides: this project
+ * is Tailwind v4, where the legacy `!h-*` prefix classes those overrides used
+ * generate no CSS at all (which is how every earlier "bigger icons" pass
+ * changed nothing but the crop window).
+ */
+export function EnergyHatchArt({
+  entry,
+  boxClass,
+}: {
+  entry?: EnergyHatchCatalogEntry;
+  boxClass: string;
+}) {
+  return (
+    <span
+      className={`relative flex shrink-0 items-center justify-center overflow-hidden ${boxClass}`}
+    >
+      {entry?.iconPath ? (
+        <img
+          src={entry.iconPath}
+          alt={entry.displayName}
+          draggable={false}
+          className="minecraft-pixel-art h-[220%] w-[220%] max-w-none object-contain"
+        />
+      ) : entry?.iconAtlas ? (
+        <ResourceIcon
+          resource={{ kind: "item", amount: 1, ...entry }}
+          bare
+          tooltip={false}
+          showAmount={false}
+          showConsumedState={false}
+        />
+      ) : (
+        <Zap className="h-[55%] w-[55%] opacity-60" />
+      )}
+    </span>
+  );
+}
+
+/**
  * The energy hatch picker: one table of every buildable hatch, real item
  * icons, a family tab rail, and the power numbers each one means - amps and
  * the EU/t budget it hands the machine. Picking a row sets the card's tier
@@ -187,20 +230,7 @@ export function EnergyHatchMenu({
               }`}
             >
               <span className="flex min-w-0 items-center gap-1.5">
-                <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden">
-                  {entry && (entry.iconPath || entry.iconAtlas) ? (
-                    <ResourceIcon
-                      resource={{ kind: "item", amount: 1, ...entry }}
-                      bare
-                      tooltip={false}
-                      showAmount={false}
-                      showConsumedState={false}
-                      className="!h-14 !w-14 shrink-0"
-                    />
-                  ) : (
-                    <Zap className="h-8 w-8 opacity-60" />
-                  )}
-                </span>
+                <EnergyHatchArt entry={entry} boxClass="h-14 w-14" />
                 <span
                   className="shrink-0 border px-1.5 text-[12px] leading-[17px]"
                   style={{

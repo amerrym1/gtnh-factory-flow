@@ -35,7 +35,7 @@ import {
   STANDARD_ENERGY_HATCH_ID,
 } from "@/lib/machines/energy-hatches";
 import { energyHatchCatalogKey, useEnergyHatchCatalog } from "./use-energy-hatch-catalog";
-import { EnergyHatchMenu } from "./EnergyHatchMenu";
+import { EnergyHatchArt, EnergyHatchMenu } from "./EnergyHatchMenu";
 import { prefersCuratedMachineMath } from "@/lib/solver/runtime-calculation";
 import {
   applyMachineOutputMultipliers,
@@ -1213,15 +1213,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     }}
                     aria-label="Pick energy hatch"
                   >
-                    {hatchChipEntry && (hatchChipEntry.iconPath || hatchChipEntry.iconAtlas) ? (
-                      <ResourceIcon
-                        resource={{ kind: "item", amount: 1, ...hatchChipEntry }}
-                        bare
-                        tooltip={false}
-                        showAmount={false}
-                        showConsumedState={false}
-                        className="!h-8 !w-8 shrink-0"
-                      />
+                    {hatchChipEntry ? (
+                      <EnergyHatchArt entry={hatchChipEntry} boxClass="h-7 w-8" />
                     ) : (
                       <Zap className="h-3.5 w-3.5" style={{ color: tierColor.text }} />
                     )}
