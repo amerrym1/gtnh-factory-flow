@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.27.0",
+    date: "2026-08-22",
+    headline: "Pick your power in two clicks",
+    notes: [
+      "The hatch chip is two dropdowns now: one for the tier, one for the supply.",
+      "The supply list shows every way to power the machine at that tier, with its amps and EU/t.",
+    ],
+  },
+  {
     version: "2.26.0",
     date: "2026-08-22",
     headline: "Multi-amp and laser hatches, and six multiblocks get their real math",

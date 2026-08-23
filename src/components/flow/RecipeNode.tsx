@@ -35,7 +35,7 @@ import {
   STANDARD_ENERGY_HATCH_ID,
 } from "@/lib/machines/energy-hatches";
 import { energyHatchCatalogKey, useEnergyHatchCatalog } from "./use-energy-hatch-catalog";
-import { EnergyHatchArt, EnergyHatchMenu } from "./EnergyHatchMenu";
+import { EnergyHatchArt, EnergySupplyMenu, EnergyTierMenu } from "./EnergyHatchMenu";
 import { prefersCuratedMachineMath } from "@/lib/solver/runtime-calculation";
 import {
   applyMachineOutputMultipliers,
@@ -193,10 +193,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     key: string;
   }>();
   const [isCropMenuOpen, setCropMenuOpen] = useState(false);
-  // Screen coords of the hatch chip's corner while its picker is open; the
-  // menu is a fixed body portal, so it needs a place, not just a flag.
-  const [hatchMenuAnchor, setHatchMenuAnchor] = useState<{ x: number; y: number }>();
-  const isHatchMenuOpen = hatchMenuAnchor !== undefined;
+  // Screen coords of each chip's corner while its dropdown is open; the
+  // menus are fixed body portals, so they need a place, not just a flag.
+  const [supplyMenuAnchor, setSupplyMenuAnchor] = useState<{ x: number; y: number }>();
+  const [tierMenuAnchor, setTierMenuAnchor] = useState<{ x: number; y: number }>();
+  const isHatchMenuOpen = supplyMenuAnchor !== undefined || tierMenuAnchor !== undefined;
   const recipeSearch = useFactoryStore((state) => state.highlightSearch);
   // The right panel's PEAK/AVG switch drives the card's power figures too,
   // so the board and the power list always tell one story.
@@ -527,15 +528,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           ? undefined
           : { energyHatchType: undefined }),
       });
-    }
-  };
-  const updateHatches = (direction: -1 | 1) => {
-    // Exotic hatch families are game-limited to one hatch of their rating.
-    const max = getEnergyHatchType(projectNode.energyHatchType).exotic ? 1 : 16;
-    const current = powerReport?.hatches ?? 1;
-    const next = Math.min(max, Math.max(1, current + direction));
-    if (next !== current) {
-      updateNode(projectNode.id, { energyHatches: next });
     }
   };
   const updateCoilTier = (nextTier: string) => {
@@ -1161,70 +1153,55 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             >
             <div className="flex">
               {showHatchControl ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      updateHatches(1);
-                    }}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      updateHatches(-1);
-                    }}
-                    // The tier chip's sister: same paint, fused on its left
-                    // (no right border), so "2x MV" reads as one fact. An
-                    // exotic hatch wears its amp rating instead of a count -
-                    // there is only ever one of it.
-                    className="nodrag flex h-6 min-w-[28px] items-center justify-center whitespace-nowrap border-2 border-r-0 px-0.5 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
-                    style={{
-                      backgroundColor: tierColor.background,
-                      borderColor: tierColor.border,
-                      color: tierColor.text,
-                      textShadow: `1px 1px 0 ${tierColor.shadow}`,
-                    }}
-                    aria-label={
-                      energyHatchType.exotic
-                        ? energyHatchType.label
-                        : `${powerReport?.hatches ?? 1} energy hatches`
-                    }
-                  >
+                // The SUPPLY dropdown's chip: what powers the build (count
+                // and item, or an exotic's amp badge), fused left of the
+                // tier. Clicking opens every concrete supply at this tier.
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setTierMenuAnchor(undefined);
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setSupplyMenuAnchor((open) =>
+                      open ? undefined : { x: rect.right, y: rect.bottom },
+                    );
+                  }}
+                  data-hatch-menu-anchor
+                  className="nodrag flex h-6 items-center justify-center gap-0.5 whitespace-nowrap border-2 border-r-0 px-0.5 text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+                  style={{
+                    backgroundColor: tierColor.background,
+                    borderColor: tierColor.border,
+                    color: tierColor.text,
+                    textShadow: `1px 1px 0 ${tierColor.shadow}`,
+                  }}
+                  aria-label="Pick energy supply"
+                >
+                  <span className="pb-[3px]">
                     {energyHatchType.exotic
                       ? energyHatchType.chip
                       : `${powerReport?.hatches ?? 1}×`}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      const rect = event.currentTarget.getBoundingClientRect();
-                      setHatchMenuAnchor((open) =>
-                        open ? undefined : { x: rect.right, y: rect.bottom },
-                      );
-                    }}
-                    // The hatch itself, between count and tier: the item this
-                    // build drinks through. Clicking opens the full picker.
-                    data-hatch-menu-anchor
-                    className="nodrag flex h-6 w-6 items-center justify-center border-2 border-r-0 shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
-                    style={{
-                      backgroundColor: tierColor.background,
-                      borderColor: tierColor.border,
-                    }}
-                    aria-label="Pick energy hatch"
-                  >
-                    {hatchChipEntry ? (
-                      <EnergyHatchArt entry={hatchChipEntry} boxClass="h-8 w-8" />
-                    ) : (
-                      <Zap className="h-3.5 w-3.5" style={{ color: tierColor.text }} />
-                    )}
-                  </button>
-                </>
+                  </span>
+                  {hatchChipEntry ? (
+                    <EnergyHatchArt entry={hatchChipEntry} boxClass="h-7 w-7" />
+                  ) : (
+                    <Zap className="h-3.5 w-3.5" style={{ color: tierColor.text }} />
+                  )}
+                </button>
               ) : null}
               <button
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
+                  // The TIER dropdown on multiblocks; singleblocks keep the
+                  // classic cycle (no hatches, no second dropdown to match).
+                  if (showHatchControl) {
+                    setSupplyMenuAnchor(undefined);
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setTierMenuAnchor((open) =>
+                      open ? undefined : { x: rect.right, y: rect.bottom },
+                    );
+                    return;
+                  }
                   updateTier(1);
                 }}
                 onContextMenu={(event) => {
@@ -1232,6 +1209,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   event.stopPropagation();
                   updateTier(-1);
                 }}
+                data-hatch-menu-anchor
                 className="nodrag flex h-6 w-[50px] items-center justify-center border-2 px-1 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
                 style={{
                   backgroundColor: tierColor.background,
@@ -1246,20 +1224,38 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               </button>
             </div>
             </MinecraftTooltip>
-            {hatchMenuAnchor && showHatchControl ? (
-              <EnergyHatchMenu
-                anchor={hatchMenuAnchor}
-                currentTier={tierControl.current}
+            {supplyMenuAnchor && showHatchControl ? (
+              <EnergySupplyMenu
+                anchor={supplyMenuAnchor}
+                tier={tierControl.current}
                 currentFamilyId={energyHatchType.id}
+                currentHatches={powerReport?.hatches ?? 1}
                 catalog={energyHatchCatalog}
-                onPick={(familyId, tier) => {
+                onPick={(familyId, hatches) => {
+                  updateNode(projectNode.id, {
+                    energyHatchType: familyId === STANDARD_ENERGY_HATCH_ID ? undefined : familyId,
+                    energyHatches: hatches,
+                  });
+                  setSupplyMenuAnchor(undefined);
+                }}
+                onClose={() => setSupplyMenuAnchor(undefined)}
+              />
+            ) : null}
+            {tierMenuAnchor && showHatchControl ? (
+              <EnergyTierMenu
+                anchor={tierMenuAnchor}
+                currentTier={tierControl.current}
+                minimumTier={powerReport?.minimumTier}
+                onPick={(tier) => {
                   updateNode(projectNode.id, {
                     overclockTier: tier,
-                    energyHatchType: familyId === STANDARD_ENERGY_HATCH_ID ? undefined : familyId,
+                    ...(energyHatchTypeExistsAtTier(projectNode.energyHatchType, tier)
+                      ? undefined
+                      : { energyHatchType: undefined }),
                   });
-                  setHatchMenuAnchor(undefined);
+                  setTierMenuAnchor(undefined);
                 }}
-                onClose={() => setHatchMenuAnchor(undefined)}
+                onClose={() => setTierMenuAnchor(undefined)}
               />
             ) : null}
             </div>

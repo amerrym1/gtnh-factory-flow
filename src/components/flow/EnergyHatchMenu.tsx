@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Zap } from "lucide-react";
-import { ENERGY_HATCH_TYPES, type EnergyHatchType } from "@/lib/machines/energy-hatches";
+import {
+  ENERGY_HATCH_TYPES,
+  getEnergyHatchType,
+  STANDARD_ENERGY_HATCH_ID,
+} from "@/lib/machines/energy-hatches";
 import { GT_OVERCLOCK_TIERS, getVoltageTierIndex } from "@/lib/model/tiers";
 import type { MachineTier } from "@/lib/model/types";
 import { formatCompact } from "@/lib/model";
@@ -17,27 +21,6 @@ import {
 
 type VoltageTier = Exclude<MachineTier, "DEMO">;
 
-const TABS = [
-  { id: "all", label: "All" },
-  { id: "standard", label: "Hatches" },
-  { id: "multiamp", label: "Multi-Amp" },
-  { id: "laser", label: "Lasers" },
-] as const;
-type TabId = (typeof TABS)[number]["id"];
-
-function familyTab(type: EnergyHatchType): TabId {
-  if (!type.exotic) {
-    return "standard";
-  }
-  return type.id.startsWith("laser") ? "laser" : "multiamp";
-}
-
-interface MenuRow {
-  tier: VoltageTier;
-  type: EnergyHatchType;
-  entry?: EnergyHatchCatalogEntry;
-}
-
 /**
  * The hatch's art at a hard size, zoomed INTO the sprite. The rendered
  * machine sprites are 256px canvases whose block fills only the middle ~45%,
@@ -45,8 +28,7 @@ interface MenuRow {
  * the block itself fills the box. Sized with a class on the window and
  * percentages on the img, never ResourceIcon's size overrides: this project
  * is Tailwind v4, where the legacy `!h-*` prefix classes those overrides used
- * generate no CSS at all (which is how every earlier "bigger icons" pass
- * changed nothing but the crop window).
+ * generate no CSS at all.
  */
 export function EnergyHatchArt({
   entry,
@@ -82,37 +64,27 @@ export function EnergyHatchArt({
 }
 
 /**
- * The energy hatch picker: one table of every buildable hatch, real item
- * icons, a family tab rail, and the power numbers each one means - amps and
- * the EU/t budget it hands the machine. Picking a row sets the card's tier
- * AND hatch family in one move, because in the game that pair is one block.
+ * The floating shell both dropdowns share: a fixed body portal at tooltip
+ * depth (the only layer above the marching-dash canvas and neighbouring
+ * cards), anchored under its chip, closed by Escape, any press outside, or
+ * any scroll outside - a fixed panel over a moving board must never be left
+ * stranded where the chip used to be.
  */
-export function EnergyHatchMenu({
+function MenuShell({
   anchor,
-  currentTier,
-  currentFamilyId,
-  catalog,
-  onPick,
+  width,
+  maxHeight,
   onClose,
+  children,
 }: {
-  /** Screen coordinates of the chip's bottom-right corner. */
   anchor: { x: number; y: number };
-  currentTier: string;
-  currentFamilyId: string;
-  catalog: EnergyHatchCatalog;
-  onPick: (familyId: string, tier: VoltageTier) => void;
+  width: number;
+  maxHeight: number;
   onClose: () => void;
+  children: ReactNode;
 }) {
-  const [tab, setTab] = useState<TabId>(() =>
-    familyTab(ENERGY_HATCH_TYPES.find((type) => type.id === currentFamilyId) ?? ENERGY_HATCH_TYPES[0]),
-  );
   const panelRef = useRef<HTMLDivElement>(null);
-  const selectedRef = useRef<HTMLButtonElement>(null);
 
-  // Escape, any press outside the panel, and any scroll outside it all close
-  // the menu: it is a FIXED body portal (the only layer above the marching
-  // dashes and neighbouring cards), so a board pan or zoom would otherwise
-  // leave it stranded where the chip used to be.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -145,121 +117,221 @@ export function EnergyHatchMenu({
     };
   }, [onClose]);
 
-  // The list opens with the current build in view.
-  useEffect(() => {
-    selectedRef.current?.scrollIntoView({ block: "center" });
-  }, [tab]);
-
-  const rows = useMemo(() => {
-    const built: MenuRow[] = [];
-    for (const { tier } of GT_OVERCLOCK_TIERS) {
-      for (const type of ENERGY_HATCH_TYPES) {
-        if (tab !== "all" && familyTab(type) !== tab) {
-          continue;
-        }
-        const entry = catalog.get(energyHatchCatalogKey(tier, type.id));
-        // With the catalog loaded, existence is what the dataset says; before
-        // it arrives (or offline) the registrations' floor stands in.
-        const exists =
-          catalog.size > 0
-            ? entry !== undefined
-            : getVoltageTierIndex(type.minTier as VoltageTier) <= getVoltageTierIndex(tier);
-        if (exists) {
-          built.push({ tier, type, entry });
-        }
-      }
-    }
-    return built;
-  }, [catalog, tab]);
-
-  // A body portal at tooltip depth: inside the node's own layer the panel
-  // sat under the marching-dash canvas and under later-painted cards.
-  const PANEL_WIDTH = 500;
-  const PANEL_MAX_HEIGHT = 660;
   return createPortal(
     <div
       ref={panelRef}
       // "nowheel" stops React Flow from zooming the canvas when scrolling the
       // list: its native wheel handler runs before React's synthetic one.
-      className="nodrag nowheel fixed z-[9999] w-[500px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-2 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),4px_4px_0_rgba(0,0,0,0.35)]"
+      className="nodrag nowheel fixed z-[9999] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1.5 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),4px_4px_0_rgba(0,0,0,0.35)]"
       style={{
-        left: Math.max(8, Math.min(anchor.x - PANEL_WIDTH, window.innerWidth - PANEL_WIDTH - 8)),
-        top: Math.max(8, Math.min(anchor.y + 4, window.innerHeight - PANEL_MAX_HEIGHT - 8)),
+        width,
+        left: Math.max(8, Math.min(anchor.x - width, window.innerWidth - width - 8)),
+        top: Math.max(8, Math.min(anchor.y + 4, window.innerHeight - maxHeight - 8)),
       }}
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
       onWheel={(event) => event.stopPropagation()}
     >
-      <div className="mb-1 flex gap-1">
-        {TABS.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            onClick={() => setTab(entry.id)}
-            className={`h-7 flex-1 whitespace-nowrap border px-1 text-[11px] font-bold uppercase tracking-[0.08em] leading-none ${
-              tab === entry.id
-                ? "border-[var(--mc-15)] bg-[var(--mc-100)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-54)]"
-                : "border-[var(--mc-33)] bg-[var(--mc-64)] text-[var(--mc-ink-muted)] hover:bg-[var(--mc-71)]"
-            }`}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
-      {/* Column heads: what the block is, then the two power facts. */}
-      <div className="mb-0.5 grid grid-cols-[minmax(0,1fr)_64px_92px] gap-x-1.5 border-b-2 border-[var(--mc-47)] px-1 pb-1 pr-[18px] text-[10px] font-bold uppercase tracking-[0.1em] leading-none text-[var(--mc-ink-muted)]">
-        <span>Hatch</span>
+      {children}
+    </div>,
+    document.body,
+  );
+}
+
+/** One concrete way to power the machine: a family plus a hatch count. */
+export interface EnergySupplyOption {
+  familyId: string;
+  hatches: number;
+  label: string;
+  amps: number;
+  entry?: EnergyHatchCatalogEntry;
+}
+
+/** The regular hatch counts offered; the game's common cap is two, GT++ takes more. */
+const REGULAR_COUNTS = [1, 2, 3, 4, 6, 8, 12, 16];
+
+export function energySupplyOptionsForTier(
+  tier: string,
+  catalog: EnergyHatchCatalog,
+): EnergySupplyOption[] {
+  const ordinal = getVoltageTierIndex(tier as VoltageTier);
+  const options: EnergySupplyOption[] = REGULAR_COUNTS.map((count) => ({
+    familyId: STANDARD_ENERGY_HATCH_ID,
+    hatches: count,
+    label: `${count}× Energy Hatch`,
+    // setProcessingLogicPower: a lone regular hatch works at 1 amp; two or
+    // more work at 2 amps each.
+    amps: count <= 1 ? 1 : 2 * count,
+    entry: catalog.get(energyHatchCatalogKey(tier, STANDARD_ENERGY_HATCH_ID)),
+  }));
+  for (const type of ENERGY_HATCH_TYPES) {
+    if (!type.exotic) {
+      continue;
+    }
+    const entry = catalog.get(energyHatchCatalogKey(tier, type.id));
+    const exists =
+      catalog.size > 0
+        ? entry !== undefined
+        : getVoltageTierIndex(type.minTier as VoltageTier) <= ordinal;
+    if (exists) {
+      options.push({ familyId: type.id, hatches: 1, label: type.label, amps: type.amps, entry });
+    }
+  }
+  return options;
+}
+
+/**
+ * The second dropdown: every concrete supply at the chip's tier, amps beside
+ * each. "4 A" alone names two different builds (a pair of regular hatches, or
+ * one 4A multi-amp hatch) and the two differ in the parallel maths - summed
+ * regular hatches raise the voltage ordinal, one exotic hatch does not - so
+ * the rows carry the build's NAME and the amps ride as the figure.
+ */
+export function EnergySupplyMenu({
+  anchor,
+  tier,
+  currentFamilyId,
+  currentHatches,
+  catalog,
+  onPick,
+  onClose,
+}: {
+  anchor: { x: number; y: number };
+  tier: string;
+  currentFamilyId: string;
+  currentHatches: number;
+  catalog: EnergyHatchCatalog;
+  onPick: (familyId: string, hatches: number) => void;
+  onClose: () => void;
+}) {
+  const options = useMemo(() => energySupplyOptionsForTier(tier, catalog), [tier, catalog]);
+  const voltage = GT_OVERCLOCK_TIERS.find((entry) => entry.tier === tier)?.maxEuT ?? 0;
+  const selectedRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: "center" });
+  }, []);
+
+  return (
+    <MenuShell anchor={anchor} width={360} maxHeight={470} onClose={onClose}>
+      <div className="mb-0.5 grid grid-cols-[minmax(0,1fr)_44px_64px] gap-x-1.5 border-b-2 border-[var(--mc-47)] px-1 pb-1 pr-[18px] text-[10px] font-bold uppercase tracking-[0.1em] leading-none text-[var(--mc-ink-muted)]">
+        <span>Supply</span>
         <span className="text-right">Amps</span>
         <span className="text-right">EU/t</span>
       </div>
-      <div className="recipe-search-scroll max-h-[520px] overflow-y-scroll pr-1">
-        {rows.map(({ tier, type, entry }) => {
-          const selected = tier === currentTier && type.id === currentFamilyId;
-          const color = GT_TIER_COLORS[tier];
-          const voltage = GT_OVERCLOCK_TIERS.find((t) => t.tier === tier)?.maxEuT ?? 0;
+      <div className="recipe-search-scroll max-h-[380px] overflow-y-scroll pr-1">
+        {options.map((option, index) => {
+          const selected =
+            option.familyId === currentFamilyId &&
+            (option.familyId !== STANDARD_ENERGY_HATCH_ID || option.hatches === currentHatches);
+          const firstExotic =
+            index > 0 &&
+            option.familyId !== STANDARD_ENERGY_HATCH_ID &&
+            options[index - 1].familyId === STANDARD_ENERGY_HATCH_ID;
           return (
             <button
-              key={`${tier}|${type.id}`}
+              key={`${option.familyId}|${option.hatches}`}
               ref={selected ? selectedRef : undefined}
               type="button"
-              onClick={() => onPick(type.id, tier)}
-              className={`grid w-full grid-cols-[minmax(0,1fr)_64px_92px] items-center gap-x-1.5 border py-0.5 pl-0.5 pr-1 text-left text-[14px] font-bold leading-5 ${
+              onClick={() => onPick(option.familyId, option.hatches)}
+              className={`grid w-full grid-cols-[minmax(0,1fr)_44px_64px] items-center gap-x-1.5 border py-0.5 pl-0.5 pr-1 text-left text-[13px] font-bold leading-5 ${
+                firstExotic ? "mt-1 border-t-2 border-t-[var(--mc-47)]" : ""
+              } ${
                 selected
                   ? "border-[var(--selection)] bg-[var(--mc-85)] text-[var(--mc-ink)]"
                   : "border-transparent text-[var(--mc-ink)] hover:border-[var(--mc-33)] hover:bg-[var(--mc-85)]"
               }`}
             >
               <span className="flex min-w-0 items-center gap-1.5">
-                <EnergyHatchArt entry={entry} boxClass="-my-[14px] -ml-1 h-20 w-20" />
-                <span
-                  className="shrink-0 border px-1.5 text-[12px] leading-[17px]"
-                  style={{
-                    backgroundColor: color.background,
-                    borderColor: color.border,
-                    color: color.text,
-                    textShadow: `1px 1px 0 ${color.shadow}`,
-                  }}
-                >
-                  {tier}
-                </span>
-                <span className="truncate">{type.label}</span>
+                <EnergyHatchArt entry={option.entry} boxClass="-my-1 h-9 w-9" />
+                <span className="truncate">{option.label}</span>
               </span>
               <span className="whitespace-nowrap text-right tabular-nums">
-                {formatCompact(type.amps)}
+                {formatCompact(option.amps)}
               </span>
               <span className="whitespace-nowrap text-right tabular-nums text-[var(--mc-ink-muted)]">
-                {formatCompact(voltage * type.amps)}
+                {formatCompact(voltage * option.amps)}
               </span>
             </button>
           );
         })}
       </div>
-      {/* The two rules the numbers above assume, in one breath. */}
-      <div className="mt-1 border-t border-[var(--mc-54)] px-1 pt-1 text-[12px] leading-5 text-[var(--mc-ink-muted)]">
-        Regular hatches: one works at 1 A, two or more at 2 A each; set how many with the count
-        button. Multi-amp and laser hatches: exactly one, of its whole rating.
+      <div className="mt-1 border-t border-[var(--mc-54)] px-1 pt-1 text-[11px] leading-4 text-[var(--mc-ink-muted)]">
+        Multi-amp and laser hatches: exactly one, of its whole rating. Most machines take up to
+        two regular hatches.
       </div>
-    </div>,
-    document.body,
+    </MenuShell>
   );
+}
+
+/**
+ * The first dropdown: the tier, each row wearing its colour and the voltage
+ * it means. Rows below the recipe's floor still show, dimmed - an
+ * under-tiered hatch is a real build the power report judges.
+ */
+export function EnergyTierMenu({
+  anchor,
+  currentTier,
+  minimumTier,
+  onPick,
+  onClose,
+}: {
+  anchor: { x: number; y: number };
+  currentTier: string;
+  minimumTier?: string;
+  onPick: (tier: VoltageTier) => void;
+  onClose: () => void;
+}) {
+  const selectedRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: "center" });
+  }, []);
+  const minimumOrdinal =
+    minimumTier !== undefined ? getVoltageTierIndex(minimumTier as VoltageTier) : undefined;
+
+  return (
+    <MenuShell anchor={anchor} width={190} maxHeight={440} onClose={onClose}>
+      <div className="recipe-search-scroll max-h-[400px] overflow-y-scroll pr-1">
+        {GT_OVERCLOCK_TIERS.map(({ tier, maxEuT }) => {
+          const color = GT_TIER_COLORS[tier];
+          const selected = tier === currentTier;
+          const belowMinimum =
+            minimumOrdinal !== undefined && getVoltageTierIndex(tier) < minimumOrdinal;
+          return (
+            <button
+              key={tier}
+              ref={selected ? selectedRef : undefined}
+              type="button"
+              onClick={() => onPick(tier)}
+              className={`flex w-full items-center justify-between gap-1.5 border px-1 py-0.5 text-left text-[12px] font-bold leading-5 ${
+                selected
+                  ? "border-[var(--selection)] bg-[var(--mc-85)]"
+                  : "border-transparent hover:border-[var(--mc-33)] hover:bg-[var(--mc-85)]"
+              } ${belowMinimum ? "opacity-50" : ""}`}
+            >
+              <span
+                className="w-11 shrink-0 border px-1 text-center text-[11px] leading-[16px]"
+                style={{
+                  backgroundColor: color.background,
+                  borderColor: color.border,
+                  color: color.text,
+                  textShadow: `1px 1px 0 ${color.shadow}`,
+                }}
+              >
+                {tier}
+              </span>
+              <span className="whitespace-nowrap text-right tabular-nums text-[var(--mc-ink-muted)]">
+                {formatCompact(maxEuT)} EU/t
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </MenuShell>
+  );
+}
+
+/** The supply chip's short reading: "2×" for regular hatches, the amp badge otherwise. */
+export function energySupplyChipText(familyId: string | undefined, hatches: number): string {
+  const type = getEnergyHatchType(familyId);
+  return type.exotic ? type.chip : `${hatches}×`;
 }
