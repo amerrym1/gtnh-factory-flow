@@ -35,7 +35,12 @@ import {
   STANDARD_ENERGY_HATCH_ID,
 } from "@/lib/machines/energy-hatches";
 import { energyHatchCatalogKey, useEnergyHatchCatalog } from "./use-energy-hatch-catalog";
-import { EnergyHatchArt, EnergySupplyMenu, EnergyTierMenu } from "./EnergyHatchMenu";
+import {
+  EnergyHatchArt,
+  EnergySupplyMenu,
+  EnergyTierMenu,
+  energySupplyOptionsForTier,
+} from "./EnergyHatchMenu";
 import { prefersCuratedMachineMath } from "@/lib/solver/runtime-calculation";
 import {
   applyMachineOutputMultipliers,
@@ -197,6 +202,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // menus are fixed body portals, so they need a place, not just a flag.
   const [supplyMenuAnchor, setSupplyMenuAnchor] = useState<{ x: number; y: number }>();
   const [tierMenuAnchor, setTierMenuAnchor] = useState<{ x: number; y: number }>();
+  // Hovering a dropdown row shows the card AS IF it were picked, through the
+  // same previewed-node channel the config knobs use.
+  const [hatchMenuPreview, setHatchMenuPreview] = useState<
+    { kind: "tier"; tier: string } | { kind: "supply"; familyId: string; hatches: number }
+  >();
   const isHatchMenuOpen = supplyMenuAnchor !== undefined || tierMenuAnchor !== undefined;
   const recipeSearch = useFactoryStore((state) => state.highlightSearch);
   // The right panel's PEAK/AVG switch drives the card's power figures too,
@@ -254,22 +264,39 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // search. It also rebuilt `overclockedRecipe` each time, whose fresh identity
   // defeated NeiRecipeWindow's memo and re-ran the whole NEI pipeline downstream.
   const previewedNode = useMemo(() => {
-    if (!previewConfigTier) {
+    if (!previewConfigTier && !hatchMenuPreview) {
       return projectNode;
     }
     return {
       ...projectNode,
-      machineConfigTiers: {
-        ...(projectNode.machineConfigTiers ?? {}),
-        [previewConfigTier.controlId]: previewConfigTier.key,
-      },
-      // The coil knob still has its own legacy field; a preview that only
-      // wrote the generic map would show nothing on a heating coil.
-      ...(previewConfigTier.controlId === "heatingCoil"
-        ? { coilTier: previewConfigTier.key }
+      ...(previewConfigTier
+        ? {
+            machineConfigTiers: {
+              ...(projectNode.machineConfigTiers ?? {}),
+              [previewConfigTier.controlId]: previewConfigTier.key,
+            },
+            // The coil knob still has its own legacy field; a preview that
+            // only wrote the generic map would show nothing on a heating coil.
+            ...(previewConfigTier.controlId === "heatingCoil"
+              ? { coilTier: previewConfigTier.key }
+              : undefined),
+          }
+        : undefined),
+      // The dropdowns' hover-simulate: the row under the pointer, worn live.
+      ...(hatchMenuPreview?.kind === "tier"
+        ? { overclockTier: hatchMenuPreview.tier }
+        : undefined),
+      ...(hatchMenuPreview?.kind === "supply"
+        ? {
+            energyHatchType:
+              hatchMenuPreview.familyId === STANDARD_ENERGY_HATCH_ID
+                ? undefined
+                : hatchMenuPreview.familyId,
+            energyHatches: hatchMenuPreview.hatches,
+          }
         : undefined),
     };
-  }, [previewConfigTier, projectNode]);
+  }, [hatchMenuPreview, previewConfigTier, projectNode]);
   const derived = useMemo(() => {
     const projectNode = previewedNode;
     const machineHandlers = getRecipeMachineHandlers(recipe);
@@ -527,6 +554,30 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         ...(energyHatchTypeExistsAtTier(projectNode.energyHatchType, nextTier)
           ? undefined
           : { energyHatchType: undefined }),
+      });
+    }
+  };
+  // Shift-click on the supply chip walks the supply ladder without the menu:
+  // regular counts first, then the exotic hatches, in the menu's own order.
+  const stepSupply = (direction: -1 | 1) => {
+    if (!tierControl) {
+      return;
+    }
+    const options = energySupplyOptionsForTier(tierControl.current, energyHatchCatalog);
+    const currentIndex = options.findIndex(
+      (option) =>
+        option.familyId === energyHatchType.id &&
+        (option.familyId !== STANDARD_ENERGY_HATCH_ID ||
+          option.hatches === (powerReport?.hatches ?? 1)),
+    );
+    const next =
+      options[
+        Math.min(options.length - 1, Math.max(0, (currentIndex < 0 ? 0 : currentIndex) + direction))
+      ];
+    if (next) {
+      updateNode(projectNode.id, {
+        energyHatchType: next.familyId === STANDARD_ENERGY_HATCH_ID ? undefined : next.familyId,
+        energyHatches: next.hatches,
       });
     }
   };
@@ -1160,11 +1211,21 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
+                    // Shift-click steps to the next supply without the menu.
+                    if (event.shiftKey) {
+                      stepSupply(1);
+                      return;
+                    }
                     setTierMenuAnchor(undefined);
                     const rect = event.currentTarget.getBoundingClientRect();
                     setSupplyMenuAnchor((open) =>
-                      open ? undefined : { x: rect.right, y: rect.bottom },
+                      open ? undefined : { x: rect.right, y: rect.top },
                     );
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    stepSupply(-1);
                   }}
                   data-hatch-menu-anchor
                   className="nodrag flex h-6 items-center justify-center gap-0.5 whitespace-nowrap border-2 border-r-0 px-0.5 text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
@@ -1193,12 +1254,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 onClick={(event) => {
                   event.stopPropagation();
                   // The TIER dropdown on multiblocks; singleblocks keep the
-                  // classic cycle (no hatches, no second dropdown to match).
-                  if (showHatchControl) {
+                  // classic cycle, and shift-click cycles everywhere.
+                  if (showHatchControl && !event.shiftKey) {
                     setSupplyMenuAnchor(undefined);
                     const rect = event.currentTarget.getBoundingClientRect();
                     setTierMenuAnchor((open) =>
-                      open ? undefined : { x: rect.right, y: rect.bottom },
+                      open ? undefined : { x: rect.right, y: rect.top },
                     );
                     return;
                   }
@@ -1236,9 +1297,16 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     energyHatchType: familyId === STANDARD_ENERGY_HATCH_ID ? undefined : familyId,
                     energyHatches: hatches,
                   });
+                  setHatchMenuPreview(undefined);
                   setSupplyMenuAnchor(undefined);
                 }}
-                onClose={() => setSupplyMenuAnchor(undefined)}
+                onPreview={(option) =>
+                  setHatchMenuPreview(option ? { kind: "supply", ...option } : undefined)
+                }
+                onClose={() => {
+                  setHatchMenuPreview(undefined);
+                  setSupplyMenuAnchor(undefined);
+                }}
               />
             ) : null}
             {tierMenuAnchor && showHatchControl ? (
@@ -1253,9 +1321,16 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                       ? undefined
                       : { energyHatchType: undefined }),
                   });
+                  setHatchMenuPreview(undefined);
                   setTierMenuAnchor(undefined);
                 }}
-                onClose={() => setTierMenuAnchor(undefined)}
+                onPreview={(tier) =>
+                  setHatchMenuPreview(tier ? { kind: "tier", tier } : undefined)
+                }
+                onClose={() => {
+                  setHatchMenuPreview(undefined);
+                  setTierMenuAnchor(undefined);
+                }}
               />
             ) : null}
             </div>

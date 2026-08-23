@@ -122,11 +122,14 @@ function MenuShell({
       ref={panelRef}
       // "nowheel" stops React Flow from zooming the canvas when scrolling the
       // list: its native wheel handler runs before React's synthetic one.
-      className="nodrag nowheel fixed z-[9999] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1.5 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),4px_4px_0_rgba(0,0,0,0.35)]"
+      // The panel opens UPWARD from the chip's top edge, so the card's own
+      // ports stay visible while the hover-preview repaints them.
+      className="nodrag nowheel fixed z-[9999] overflow-y-auto border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1.5 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),4px_4px_0_rgba(0,0,0,0.35)]"
       style={{
         width,
         left: Math.max(8, Math.min(anchor.x - width, window.innerWidth - width - 8)),
-        top: Math.max(8, Math.min(anchor.y + 4, window.innerHeight - maxHeight - 8)),
+        bottom: Math.max(8, window.innerHeight - anchor.y + 4),
+        maxHeight: Math.min(maxHeight, anchor.y - 16),
       }}
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
@@ -194,6 +197,7 @@ export function EnergySupplyMenu({
   currentHatches,
   catalog,
   onPick,
+  onPreview,
   onClose,
 }: {
   anchor: { x: number; y: number };
@@ -202,6 +206,8 @@ export function EnergySupplyMenu({
   currentHatches: number;
   catalog: EnergyHatchCatalog;
   onPick: (familyId: string, hatches: number) => void;
+  /** Hovering a row shows the card as if it were picked. */
+  onPreview?: (option?: { familyId: string; hatches: number }) => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -209,12 +215,12 @@ export function EnergySupplyMenu({
   // Type what you want: "64" or "64a" lands on the 64A hatch, "2" on the
   // pair, "laser" on the lasers - Dagger's direct-input ask.
   const options = useMemo(() => {
-    const needle = query.trim().toLowerCase().replace(/s+/g, "");
+    const needle = query.trim().toLowerCase().replace(/\s+/g, "");
     if (!needle) {
       return allOptions;
     }
     return allOptions.filter((option) => {
-      const label = option.label.toLowerCase().replace(/s+/g, "");
+      const label = option.label.toLowerCase().replace(/\s+/g, "");
       const amps = String(option.amps);
       return (
         label.includes(needle) ||
@@ -264,6 +270,8 @@ export function EnergySupplyMenu({
               ref={selected ? selectedRef : undefined}
               type="button"
               onClick={() => onPick(option.familyId, option.hatches)}
+              onMouseEnter={() => onPreview?.({ familyId: option.familyId, hatches: option.hatches })}
+              onMouseLeave={() => onPreview?.(undefined)}
               className={`grid w-full grid-cols-[minmax(0,1fr)_44px_64px] items-center gap-x-1.5 border py-0.5 pl-0.5 pr-1 text-left text-[13px] font-bold leading-5 ${
                 firstExotic ? "mt-1 border-t-2 border-t-[var(--mc-47)]" : ""
               } ${
@@ -273,7 +281,7 @@ export function EnergySupplyMenu({
               }`}
             >
               <span className="flex min-w-0 items-center gap-1.5">
-                <EnergyHatchArt entry={option.entry} boxClass="-my-1 h-9 w-9" />
+                <EnergyHatchArt entry={option.entry} boxClass="-my-2.5 h-14 w-14" />
                 <span className="truncate">{option.label}</span>
               </span>
               <span
@@ -309,12 +317,15 @@ export function EnergyTierMenu({
   currentTier,
   minimumTier,
   onPick,
+  onPreview,
   onClose,
 }: {
   anchor: { x: number; y: number };
   currentTier: string;
   minimumTier?: string;
   onPick: (tier: VoltageTier) => void;
+  /** Hovering a row shows the card as if it were picked. */
+  onPreview?: (tier?: VoltageTier) => void;
   onClose: () => void;
 }) {
   const selectedRef = useRef<HTMLButtonElement>(null);
@@ -325,8 +336,8 @@ export function EnergyTierMenu({
     minimumTier !== undefined ? getVoltageTierIndex(minimumTier as VoltageTier) : undefined;
 
   return (
-    <MenuShell anchor={anchor} width={190} maxHeight={440} onClose={onClose}>
-      <div className="recipe-search-scroll max-h-[400px] overflow-y-scroll pr-1">
+    <MenuShell anchor={anchor} width={190} maxHeight={480} onClose={onClose}>
+      <div>
         {GT_OVERCLOCK_TIERS.map(({ tier, maxEuT }) => {
           const color = GT_TIER_COLORS[tier];
           const selected = tier === currentTier;
@@ -338,6 +349,8 @@ export function EnergyTierMenu({
               ref={selected ? selectedRef : undefined}
               type="button"
               onClick={() => onPick(tier)}
+              onMouseEnter={() => onPreview?.(tier)}
+              onMouseLeave={() => onPreview?.(undefined)}
               className={`flex w-full items-center justify-between gap-1.5 border px-1 py-0.5 text-left text-[12px] font-bold leading-5 ${
                 selected
                   ? "border-[var(--selection)] bg-[var(--mc-85)]"
