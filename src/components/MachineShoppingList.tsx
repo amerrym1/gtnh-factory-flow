@@ -339,18 +339,20 @@ export function MachineShoppingList() {
     <div className="flex min-h-0 shrink-0 basis-[40%] flex-col border-t-2 border-[var(--mc-47)]">
       <div className="border-b border-[var(--mc-47)] bg-[var(--mc-71)] px-2 py-1">
         <div className="flex w-full items-center gap-2">
-          <span className="text-sm font-bold uppercase tracking-wider">Power</span>
-          {hasEu || hasSteam ? <DrawModePill average={average} /> : null}
+          <span className="text-sm font-bold uppercase tracking-wider">Machines</span>
           {/* ONE energy rides the title line. Two do not fit the column
               beside the title and the pill, so the pair moves to a line of
               its own below — decided by what the board HAS, never by
               measured width, so a figure animating near the edge cannot
               bounce the header between one line and two. */}
-          {hasEu !== hasSteam ? (
-            <span className="ml-auto shrink-0 text-[13px] font-bold tabular-nums">
-              {steamFigure ?? euFigure}
-            </span>
-          ) : null}
+          <span className="ml-auto flex shrink-0 items-center gap-2">
+            {hasEu || hasSteam ? <DrawModePill average={average} /> : null}
+            {hasEu !== hasSteam ? (
+              <span className="shrink-0 text-[13px] font-bold tabular-nums">
+                {steamFigure ?? euFigure}
+              </span>
+            ) : null}
+          </span>
         </div>
         {hasEu && hasSteam ? (
           <span className="flex items-baseline justify-end gap-2 text-[13px] font-bold tabular-nums">
@@ -542,15 +544,48 @@ function ListLine({
     (hatchType ? (hatchType.exotic ? hatchType.amps : getHatchAmps(chip?.hatches ?? 1)) : undefined);
   const hatchPoolEuT =
     chip?.tier && hatchAmps !== undefined ? getVoltageTierMaxEuT(chip.tier) * hatchAmps : 0;
+  const tierBadge =
+    chip?.tier && chipColor ? (
+      <span
+        className="border px-1 text-[10px] font-bold leading-[15px]"
+        style={{
+          backgroundColor: chipColor.background,
+          borderColor: chipColor.border,
+          color: chipColor.text,
+          textShadow: `1px 1px 0 ${chipColor.shadow}`,
+        }}
+      >
+        {chip.tier}
+      </span>
+    ) : null;
   const hatchStory =
     chip?.tier && hatchAmps !== undefined ? (
       <div className="w-max max-w-[280px]">
-        <div className="text-[13px] font-semibold text-white">
-          {hatchType
-            ? hatchType.exotic
-              ? `${chip.tier} ${hatchType.label}`
-              : `${chip.hatches}× ${chip.tier} Energy Hatch`
-            : `${chip.tier} Machine`}
+        {count !== undefined ? (
+          <div className="text-[13px] font-semibold text-white">
+            {count}× {count === 1 ? "machine" : "machines"}
+          </div>
+        ) : null}
+        <div className="mt-0.5 flex items-center gap-1.5 text-[13px] font-semibold text-white">
+          {hatchType ? (
+            hatchType.exotic ? (
+              <>
+                {tierBadge}
+                <span>{hatchType.label}</span>
+              </>
+            ) : (
+              <>
+                <span>{chip.hatches}×</span>
+                {tierBadge}
+                <span>Energy Hatch</span>
+              </>
+            )
+          ) : (
+            <>
+              {tierBadge}
+              <span>Machine</span>
+            </>
+          )}
         </div>
         <div className="mt-0.5 text-[11px] leading-4 text-slate-300">
           {formatCompact(hatchAmps)} A:{" "}
