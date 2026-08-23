@@ -193,7 +193,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     key: string;
   }>();
   const [isCropMenuOpen, setCropMenuOpen] = useState(false);
-  const [isHatchMenuOpen, setHatchMenuOpen] = useState(false);
+  // Screen coords of the hatch chip's corner while its picker is open; the
+  // menu is a fixed body portal, so it needs a place, not just a flag.
+  const [hatchMenuAnchor, setHatchMenuAnchor] = useState<{ x: number; y: number }>();
+  const isHatchMenuOpen = hatchMenuAnchor !== undefined;
   const recipeSearch = useFactoryStore((state) => state.highlightSearch);
   // The right panel's PEAK/AVG switch drives the card's power figures too,
   // so the board and the power list always tell one story.
@@ -1195,10 +1198,14 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      setHatchMenuOpen((open) => !open);
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setHatchMenuAnchor((open) =>
+                        open ? undefined : { x: rect.right, y: rect.bottom },
+                      );
                     }}
                     // The hatch itself, between count and tier: the item this
                     // build drinks through. Clicking opens the full picker.
+                    data-hatch-menu-anchor
                     className="nodrag flex h-6 w-6 items-center justify-center border-2 border-r-0 shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
                     style={{
                       backgroundColor: tierColor.background,
@@ -1246,8 +1253,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               </button>
             </div>
             </MinecraftTooltip>
-            {isHatchMenuOpen && showHatchControl ? (
+            {hatchMenuAnchor && showHatchControl ? (
               <EnergyHatchMenu
+                anchor={hatchMenuAnchor}
                 currentTier={tierControl.current}
                 currentFamilyId={energyHatchType.id}
                 catalog={energyHatchCatalog}
@@ -1256,9 +1264,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     overclockTier: tier,
                     energyHatchType: familyId === STANDARD_ENERGY_HATCH_ID ? undefined : familyId,
                   });
-                  setHatchMenuOpen(false);
+                  setHatchMenuAnchor(undefined);
                 }}
-                onClose={() => setHatchMenuOpen(false)}
+                onClose={() => setHatchMenuAnchor(undefined)}
               />
             ) : null}
             </div>

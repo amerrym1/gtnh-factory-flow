@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Zap } from "lucide-react";
 import { ENERGY_HATCH_TYPES, type EnergyHatchType } from "@/lib/machines/energy-hatches";
 import { GT_OVERCLOCK_TIERS, getVoltageTierIndex } from "@/lib/model/tiers";
@@ -44,12 +45,15 @@ interface MenuRow {
  * AND hatch family in one move, because in the game that pair is one block.
  */
 export function EnergyHatchMenu({
+  anchor,
   currentTier,
   currentFamilyId,
   catalog,
   onPick,
   onClose,
 }: {
+  /** Screen coordinates of the chip's bottom-right corner. */
+  anchor: { x: number; y: number };
   currentTier: string;
   currentFamilyId: string;
   catalog: EnergyHatchCatalog;
@@ -62,23 +66,39 @@ export function EnergyHatchMenu({
   const panelRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLButtonElement>(null);
 
-  // Escape and any press outside the panel both close it.
+  // Escape, any press outside the panel, and any scroll outside it all close
+  // the menu: it is a FIXED body portal (the only layer above the marching
+  // dashes and neighbouring cards), so a board pan or zoom would otherwise
+  // leave it stranded where the chip used to be.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         onClose();
       }
     };
+    // The anchor button is "inside": it runs its own toggle, and closing here
+    // first would make that toggle reopen the menu instead.
+    const outside = (target: EventTarget | null) =>
+      panelRef.current &&
+      !panelRef.current.contains(target as Node) &&
+      !(target instanceof Element && target.closest("[data-hatch-menu-anchor]"));
     const onPointer = (event: PointerEvent) => {
-      if (panelRef.current && !panelRef.current.contains(event.target as Node)) {
+      if (outside(event.target)) {
+        onClose();
+      }
+    };
+    const onWheel = (event: WheelEvent) => {
+      if (outside(event.target)) {
         onClose();
       }
     };
     document.addEventListener("keydown", onKey);
     document.addEventListener("pointerdown", onPointer, true);
+    document.addEventListener("wheel", onWheel, true);
     return () => {
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("pointerdown", onPointer, true);
+      document.removeEventListener("wheel", onWheel, true);
     };
   }, [onClose]);
 
@@ -109,12 +129,20 @@ export function EnergyHatchMenu({
     return built;
   }, [catalog, tab]);
 
-  return (
+  // A body portal at tooltip depth: inside the node's own layer the panel
+  // sat under the marching-dash canvas and under later-painted cards.
+  const PANEL_WIDTH = 400;
+  const PANEL_MAX_HEIGHT = 500;
+  return createPortal(
     <div
       ref={panelRef}
       // "nowheel" stops React Flow from zooming the canvas when scrolling the
       // list: its native wheel handler runs before React's synthetic one.
-      className="nodrag nowheel absolute right-0 top-7 z-[140] w-[400px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1.5 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),4px_4px_0_rgba(0,0,0,0.35)]"
+      className="nodrag nowheel fixed z-[9999] w-[400px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1.5 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),4px_4px_0_rgba(0,0,0,0.35)]"
+      style={{
+        left: Math.max(8, Math.min(anchor.x - PANEL_WIDTH, window.innerWidth - PANEL_WIDTH - 8)),
+        top: Math.max(8, Math.min(anchor.y + 4, window.innerHeight - PANEL_MAX_HEIGHT - 8)),
+      }}
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
       onWheel={(event) => event.stopPropagation()}
@@ -201,6 +229,7 @@ export function EnergyHatchMenu({
         Regular hatches: one works at 1 A, two or more at 2 A each; set how many with the count
         button. Multi-amp and laser hatches: exactly one, of its whole rating.
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
