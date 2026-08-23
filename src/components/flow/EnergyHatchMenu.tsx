@@ -131,14 +131,14 @@ export function EnergyHatchMenu({
 
   // A body portal at tooltip depth: inside the node's own layer the panel
   // sat under the marching-dash canvas and under later-painted cards.
-  const PANEL_WIDTH = 440;
-  const PANEL_MAX_HEIGHT = 500;
+  const PANEL_WIDTH = 500;
+  const PANEL_MAX_HEIGHT = 620;
   return createPortal(
     <div
       ref={panelRef}
       // "nowheel" stops React Flow from zooming the canvas when scrolling the
       // list: its native wheel handler runs before React's synthetic one.
-      className="nodrag nowheel fixed z-[9999] w-[440px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-2 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),4px_4px_0_rgba(0,0,0,0.35)]"
+      className="nodrag nowheel fixed z-[9999] w-[500px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-2 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),4px_4px_0_rgba(0,0,0,0.35)]"
       style={{
         left: Math.max(8, Math.min(anchor.x - PANEL_WIDTH, window.innerWidth - PANEL_WIDTH - 8)),
         top: Math.max(8, Math.min(anchor.y + 4, window.innerHeight - PANEL_MAX_HEIGHT - 8)),
@@ -153,7 +153,7 @@ export function EnergyHatchMenu({
             key={entry.id}
             type="button"
             onClick={() => setTab(entry.id)}
-            className={`h-6 flex-1 whitespace-nowrap border px-1 text-[10px] font-bold uppercase leading-none ${
+            className={`h-7 flex-1 whitespace-nowrap border px-1 text-[11px] font-bold uppercase leading-none ${
               tab === entry.id
                 ? "border-[var(--mc-15)] bg-[var(--mc-100)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-54)]"
                 : "border-[var(--mc-33)] bg-[var(--mc-64)] text-[var(--mc-ink-muted)] hover:bg-[var(--mc-71)]"
@@ -164,12 +164,12 @@ export function EnergyHatchMenu({
         ))}
       </div>
       {/* Column heads: what the block is, then the two power facts. */}
-      <div className="grid grid-cols-[minmax(0,1fr)_56px_80px] gap-x-1.5 px-1 pb-1 text-[10px] font-bold uppercase leading-none text-[var(--mc-ink-muted)]">
+      <div className="grid grid-cols-[minmax(0,1fr)_64px_92px] gap-x-1.5 px-1 pb-1 pr-3.5 text-[11px] font-bold uppercase leading-none text-[var(--mc-ink-muted)]">
         <span>Hatch</span>
         <span className="text-right">Amps</span>
         <span className="text-right">EU/t</span>
       </div>
-      <div className="max-h-[380px] overflow-y-auto">
+      <div className="max-h-[480px] overflow-y-auto pr-1.5">
         {rows.map(({ tier, type, entry }) => {
           const selected = tier === currentTier && type.id === currentFamilyId;
           const color = GT_TIER_COLORS[tier];
@@ -180,14 +180,14 @@ export function EnergyHatchMenu({
               ref={selected ? selectedRef : undefined}
               type="button"
               onClick={() => onPick(type.id, tier)}
-              className={`grid w-full grid-cols-[minmax(0,1fr)_56px_80px] items-center gap-x-1.5 border px-1 py-1 text-left text-[12px] font-bold leading-4 ${
+              className={`grid w-full grid-cols-[minmax(0,1fr)_64px_92px] items-center gap-x-1.5 border px-1 py-1 text-left text-[13px] font-bold leading-5 ${
                 selected
                   ? "border-[var(--selection)] bg-[var(--mc-85)] text-[var(--mc-ink)]"
                   : "border-transparent text-[var(--mc-ink)] hover:border-[var(--mc-33)] hover:bg-[var(--mc-85)]"
               }`}
             >
               <span className="flex min-w-0 items-center gap-1.5">
-                <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center overflow-hidden">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden">
                   {entry && (entry.iconPath || entry.iconAtlas) ? (
                     <ResourceIcon
                       resource={{ kind: "item", amount: 1, ...entry }}
@@ -195,14 +195,14 @@ export function EnergyHatchMenu({
                       tooltip={false}
                       showAmount={false}
                       showConsumedState={false}
-                      className="!h-[30px] !w-[30px] shrink-0"
+                      className="!h-9 !w-9 shrink-0"
                     />
                   ) : (
-                    <Zap className="h-5 w-5 opacity-60" />
+                    <Zap className="h-6 w-6 opacity-60" />
                   )}
                 </span>
                 <span
-                  className="shrink-0 border px-1 text-[10px] leading-[14px]"
+                  className="shrink-0 border px-1.5 text-[12px] leading-[17px]"
                   style={{
                     backgroundColor: color.background,
                     borderColor: color.border,
@@ -225,7 +225,7 @@ export function EnergyHatchMenu({
         })}
       </div>
       {/* The two rules the numbers above assume, in one breath. */}
-      <div className="mt-1 border-t border-[var(--mc-54)] px-1 pt-1 text-[11px] leading-4 text-[var(--mc-ink-muted)]">
+      <div className="mt-1 border-t border-[var(--mc-54)] px-1 pt-1 text-[12px] leading-5 text-[var(--mc-ink-muted)]">
         Regular hatches: one works at 1 A, two or more at 2 A each; set how many with the count
         button. Multi-amp and laser hatches: exactly one, of its whole rating.
       </div>
