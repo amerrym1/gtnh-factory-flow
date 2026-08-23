@@ -35,6 +35,7 @@ import {
   STANDARD_ENERGY_HATCH_ID,
 } from "@/lib/machines/energy-hatches";
 import { energyHatchCatalogKey, useEnergyHatchCatalog } from "./use-energy-hatch-catalog";
+import { areChipClicksInverted } from "@/lib/chip-clicks";
 import {
   EnergyHatchArt,
   EnergySupplyMenu,
@@ -1211,8 +1212,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
-                    // Shift-click steps to the next supply without the menu.
-                    if (event.shiftKey) {
+                    // Shift-click steps to the next supply without the menu
+                    // (or plain click, when the setting inverts the pair).
+                    if (event.shiftKey !== areChipClicksInverted()) {
                       stepSupply(1);
                       return;
                     }
@@ -1225,8 +1227,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   onContextMenu={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    // Only SHIFT-right-click steps back; plain does nothing.
-                    if (event.shiftKey) {
+                    // Only SHIFT-right-click steps back; plain does nothing
+                    // (swapped by the inversion setting).
+                    if (event.shiftKey !== areChipClicksInverted()) {
                       stepSupply(-1);
                     }
                   }}
@@ -1258,7 +1261,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   event.stopPropagation();
                   // The TIER dropdown on multiblocks; singleblocks keep the
                   // classic cycle, and shift-click cycles everywhere.
-                  if (showHatchControl && !event.shiftKey) {
+                  if (showHatchControl && event.shiftKey === areChipClicksInverted()) {
                     setSupplyMenuAnchor(undefined);
                     const rect = event.currentTarget.getBoundingClientRect();
                     setTierMenuAnchor((open) =>
@@ -1271,7 +1274,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 onContextMenu={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
-                  if (event.shiftKey) {
+                  if (event.shiftKey !== areChipClicksInverted()) {
                     updateTier(-1);
                   }
                 }}
