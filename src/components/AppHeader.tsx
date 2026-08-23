@@ -12,6 +12,7 @@ import { AppMenu } from "./AppMenu";
 import { BoardActions } from "./BoardActions";
 import { ExportImageDialog } from "./export/ExportImageDialog";
 import { ChangelogDialog } from "./ChangelogDialog";
+import { DevMenu } from "./DevMenu";
 import { SettingsDialog } from "./SettingsDialog";
 import { HeaderLinks, ReportBugButton, SupportButton, WhatsNewButton } from "./HeaderLinks";
 import { WhatsNewPreview } from "./WhatsNewPreview";
@@ -30,8 +31,10 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
   // Captured at the moment of the click, because opening the notes marks them
   // read: without this the divider would have nothing above it.
   const [unseenVersions, setUnseenVersions] = useState<Set<string>>();
-  // Shift-click either what's-new control. See WhatsNewPreview.
+  // Shift-click the What's new button. See WhatsNewPreview.
   const [isPreviewOpen, setPreviewOpen] = useState(false);
+  // Shift-click the version chip. See DevMenu.
+  const [isDevMenuOpen, setDevMenuOpen] = useState(false);
   // The share dialog lives up here rather than in BoardActions so the compact
   // menu can close behind it without unmounting it. The export dialog for the
   // same reason.
@@ -54,10 +57,11 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
         <button
           type="button"
           onClick={(event) => {
-            // Shift-click is the way in to the update-popup preview. Undiscovered
-            // by accident, and the ordinary click is unchanged.
+            // Shift-click is the way in to the dev menu (the perf readout,
+            // the update-popup preview). Undiscovered by accident, and the
+            // ordinary click is unchanged.
             if (event.shiftKey) {
-              setPreviewOpen(true);
+              setDevMenuOpen(true);
               return;
             }
             setUnseenVersions(new Set(unseenEntries().map((entry) => entry.version)));
@@ -89,6 +93,12 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
         />
       ) : null}
       {isPreviewOpen ? <WhatsNewPreview onClose={() => setPreviewOpen(false)} /> : null}
+      {isDevMenuOpen ? (
+        <DevMenu
+          onClose={() => setDevMenuOpen(false)}
+          onPreviewUpdatePopup={() => setPreviewOpen(true)}
+        />
+      ) : null}
       {isShareOpen ? <SharePlanDialog onClose={() => setShareOpen(false)} /> : null}
       {isExportOpen ? <ExportImageDialog onClose={() => setExportOpen(false)} /> : null}
       {isSettingsOpen ? <SettingsDialog onClose={() => setSettingsOpen(false)} /> : null}

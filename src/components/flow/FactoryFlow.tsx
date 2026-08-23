@@ -5564,7 +5564,8 @@ export function FactoryFlow() {
         onAutoArrange={handleAutoArrange}
       />
       <BoardHelp compact={isCompact} />
-      {/* Ctrl+Alt+P. Sits above the help button; see PerfHud.tsx. */}
+      {/* Toggled from the dev menu (shift-click the version chip). Sits above
+          the help button; see PerfHud.tsx. */}
       <PerfHud />
       {overwritePicking ? (
         <div

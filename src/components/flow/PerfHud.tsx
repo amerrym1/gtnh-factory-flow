@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
 import { edgePulseCount } from "./edge-pulse";
 
 /**
  * The performance readout, bottom left of the board.
  *
- * Ctrl+Alt+P toggles it and the choice persists. Everything it shows comes
- * from its own rAF sampler and is written straight into the DOM with
- * textContent a few times a second - a HUD that re-rendered React per frame
- * would bend the very numbers it reports (and break the board's own rule:
- * nothing O(anything) per frame goes through React).
+ * Switched on from the dev menu (shift-click the version chip in the top
+ * bar); the choice persists. Everything it shows comes from its own rAF
+ * sampler and is written straight into the DOM with textContent a few times
+ * a second - a HUD that re-rendered React per frame would bend the very
+ * numbers it reports (and break the board's own rule: nothing O(anything)
+ * per frame goes through React).
  *
  * Readings:
  *  - live frame time and rate over the last half second
@@ -21,6 +22,47 @@ import { edgePulseCount } from "./edge-pulse";
  */
 const PERF_HUD_STORAGE_KEY = "gtnh-factory-flow.perf-hud";
 
+let perfHudState: boolean | undefined;
+const perfHudListeners = new Set<() => void>();
+
+export function isPerfHudEnabled(): boolean {
+  if (perfHudState === undefined) {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    try {
+      perfHudState = window.localStorage.getItem(PERF_HUD_STORAGE_KEY) === "1";
+    } catch {
+      // Blocked storage never blocks the board.
+      perfHudState = false;
+    }
+  }
+  return perfHudState;
+}
+
+export function setPerfHudEnabled(next: boolean) {
+  perfHudState = next;
+  try {
+    window.localStorage.setItem(PERF_HUD_STORAGE_KEY, next ? "1" : "0");
+  } catch {
+    // Same bargain as above.
+  }
+  for (const listener of perfHudListeners) {
+    listener();
+  }
+}
+
+function subscribePerfHud(listener: () => void) {
+  perfHudListeners.add(listener);
+  return () => {
+    perfHudListeners.delete(listener);
+  };
+}
+
+function serverPerfHudSnapshot() {
+  return false;
+}
+
 /** How often the text refreshes. The sampler itself runs every frame. */
 const HUD_REFRESH_MS = 250;
 const LIVE_WINDOW_MS = 500;
@@ -28,31 +70,7 @@ const STATS_WINDOW_MS = 5_000;
 const STUTTER_WINDOW_MS = 60_000;
 
 export function PerfHud() {
-  const [enabled, setEnabled] = useState(false);
-
-  useEffect(() => {
-    try {
-      setEnabled(window.localStorage.getItem(PERF_HUD_STORAGE_KEY) === "1");
-    } catch {
-      // Blocked storage never blocks the board.
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.ctrlKey && event.altKey && (event.key === "p" || event.key === "P")) {
-        event.preventDefault();
-        setEnabled((previous) => {
-          const next = !previous;
-          try {
-            window.localStorage.setItem(PERF_HUD_STORAGE_KEY, next ? "1" : "0");
-          } catch {
-            // Same bargain as above.
-          }
-          return next;
-        });
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  const enabled = useSyncExternalStore(subscribePerfHud, isPerfHudEnabled, serverPerfHudSnapshot);
 
   const lineLiveRef = useRef<HTMLDivElement | null>(null);
   const lineStatsRef = useRef<HTMLDivElement | null>(null);
