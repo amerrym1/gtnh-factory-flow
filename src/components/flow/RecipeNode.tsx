@@ -1177,7 +1177,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     // (no right border), so "2x MV" reads as one fact. An
                     // exotic hatch wears its amp rating instead of a count -
                     // there is only ever one of it.
-                    className="nodrag h-6 min-w-[28px] whitespace-nowrap border-2 border-r-0 px-0.5 text-[11px] font-bold leading-[18px] shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+                    className="nodrag flex h-6 min-w-[28px] items-center justify-center whitespace-nowrap border-2 border-r-0 px-0.5 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
                     style={{
                       backgroundColor: tierColor.background,
                       borderColor: tierColor.border,
@@ -1206,7 +1206,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     // The hatch itself, between count and tier: the item this
                     // build drinks through. Clicking opens the full picker.
                     data-hatch-menu-anchor
-                    className="nodrag flex h-6 w-10 items-center justify-center border-2 border-r-0 shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+                    className="nodrag flex h-6 w-8 items-center justify-center border-2 border-r-0 shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
                     style={{
                       backgroundColor: tierColor.background,
                       borderColor: tierColor.border,
@@ -1214,7 +1214,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     aria-label="Pick energy hatch"
                   >
                     {hatchChipEntry ? (
-                      <EnergyHatchArt entry={hatchChipEntry} boxClass="h-7 w-8" />
+                      <EnergyHatchArt entry={hatchChipEntry} boxClass="h-7 w-7" />
                     ) : (
                       <Zap className="h-3.5 w-3.5" style={{ color: tierColor.text }} />
                     )}
@@ -1232,7 +1232,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   event.stopPropagation();
                   updateTier(-1);
                 }}
-                className="nodrag h-6 w-[50px] border-2 px-1 text-[11px] font-bold leading-[18px] shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+                className="nodrag flex h-6 w-[50px] items-center justify-center border-2 px-1 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
                 style={{
                   backgroundColor: tierColor.background,
                   borderColor: tierColor.border,

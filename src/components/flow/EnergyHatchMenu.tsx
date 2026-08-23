@@ -175,7 +175,7 @@ export function EnergyHatchMenu({
   // A body portal at tooltip depth: inside the node's own layer the panel
   // sat under the marching-dash canvas and under later-painted cards.
   const PANEL_WIDTH = 500;
-  const PANEL_MAX_HEIGHT = 620;
+  const PANEL_MAX_HEIGHT = 660;
   return createPortal(
     <div
       ref={panelRef}
@@ -212,7 +212,7 @@ export function EnergyHatchMenu({
         <span className="text-right">Amps</span>
         <span className="text-right">EU/t</span>
       </div>
-      <div className="recipe-search-scroll max-h-[480px] overflow-y-scroll pr-1">
+      <div className="recipe-search-scroll max-h-[520px] overflow-y-scroll pr-1">
         {rows.map(({ tier, type, entry }) => {
           const selected = tier === currentTier && type.id === currentFamilyId;
           const color = GT_TIER_COLORS[tier];
@@ -230,7 +230,7 @@ export function EnergyHatchMenu({
               }`}
             >
               <span className="flex min-w-0 items-center gap-1.5">
-                <EnergyHatchArt entry={entry} boxClass="h-14 w-14" />
+                <EnergyHatchArt entry={entry} boxClass="h-[72px] w-[72px]" />
                 <span
                   className="shrink-0 border px-1.5 text-[12px] leading-[17px]"
                   style={{
