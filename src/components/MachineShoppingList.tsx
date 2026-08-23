@@ -55,6 +55,8 @@ interface BuildLine {
   hatchChip?: string;
   /** The family itself, so the row can wear the hatch item's art. */
   hatchTypeId?: string;
+  /** Working amps of the build, singleblocks included (arc furnaces run 3). */
+  amps?: number;
   isMultiblock: boolean;
   tier?: VoltageTier;
   tierIndex: number;
@@ -224,6 +226,7 @@ export function MachineShoppingList() {
             hatchTypeId: report?.isMultiblock
               ? getEnergyHatchType(node.energyHatchType).id
               : undefined,
+            amps: report?.amps,
             isMultiblock:
               report?.isMultiblock ??
               steam?.isMultiblock ??
@@ -508,7 +511,7 @@ function ListLine({
   count?: number;
   label?: string;
   /** The fused hatch-and-tier chip, when this line is one build. */
-  chip?: Pick<BuildLine, "tier" | "hatches" | "hatchChip" | "hatchTypeId" | "isMultiblock">;
+  chip?: Pick<BuildLine, "tier" | "hatches" | "hatchChip" | "hatchTypeId" | "amps" | "isMultiblock">;
   euT?: number;
   /** Both modes' figures at once, for the chip's tooltip. */
   peakEuT?: number;
@@ -530,21 +533,24 @@ function ListLine({
     chip?.isMultiblock && chip.tier
       ? hatchCatalog.get(energyHatchCatalogKey(chip.tier, chip.hatchTypeId ?? "standard"))
       : undefined;
-  // What the chip means, in one breath: the hatch, its amps, the EU/t they buy.
+  // What the line's build means, in one breath: what supplies the power, its
+  // amps, the EU/t they buy, and both draw figures. Singleblocks get the same
+  // story with the machine itself in the hatch's place.
   const hatchType = chip?.isMultiblock ? getEnergyHatchType(chip.hatchTypeId) : undefined;
-  const hatchAmps = hatchType
-    ? hatchType.exotic
-      ? hatchType.amps
-      : getHatchAmps(chip?.hatches ?? 1)
-    : 0;
-  const hatchPoolEuT = hatchType && chip?.tier ? getVoltageTierMaxEuT(chip.tier) * hatchAmps : 0;
+  const hatchAmps =
+    chip?.amps ??
+    (hatchType ? (hatchType.exotic ? hatchType.amps : getHatchAmps(chip?.hatches ?? 1)) : undefined);
+  const hatchPoolEuT =
+    chip?.tier && hatchAmps !== undefined ? getVoltageTierMaxEuT(chip.tier) * hatchAmps : 0;
   const hatchStory =
-    hatchType && chip?.tier ? (
+    chip?.tier && hatchAmps !== undefined ? (
       <div className="w-max max-w-[280px]">
         <div className="text-[13px] font-semibold text-white">
-          {hatchType.exotic
-            ? `${chip.tier} ${hatchType.label}`
-            : `${chip.hatches}× ${chip.tier} Energy Hatch`}
+          {hatchType
+            ? hatchType.exotic
+              ? `${chip.tier} ${hatchType.label}`
+              : `${chip.hatches}× ${chip.tier} Energy Hatch`
+            : `${chip.tier} Machine`}
         </div>
         <div className="mt-0.5 text-[11px] leading-4 text-slate-300">
           {formatCompact(hatchAmps)} A:{" "}
@@ -564,9 +570,11 @@ function ListLine({
       </div>
     ) : undefined;
 
-  // No hover panel on these lines: the row already says everything it knows,
-  // and a tooltip repeating it was noise in the way of the scrollbar.
+  // The whole LINE answers the hover, not just the chip: the build's power
+  // story is about the row, and a target the width of a chip made the panel
+  // feel like a secret.
   return (
+    <MinecraftTooltip content={hatchStory}>
       <button
         type="button"
         onClick={onClick}
@@ -624,7 +632,6 @@ function ListLine({
              tier, one paint job, so the panel and the board read as one.
              Always in the right-hand column, so every chip on the list sits
              on one line however the rows around it are shaped. */
-          <MinecraftTooltip content={hatchStory}>
           <span className="flex shrink-0 items-center">
             {chip.isMultiblock ? (
               <>
@@ -664,7 +671,6 @@ function ListLine({
               {chip.tier}
             </span>
           </span>
-          </MinecraftTooltip>
         ) : null}
       <span
         className={[
@@ -715,5 +721,6 @@ function ListLine({
         )}
         </span>
       </button>
+    </MinecraftTooltip>
   );
 }
