@@ -986,7 +986,83 @@ let gridSolveInputsStamp = 0;
 let gridSolveCheckedStamp = -1;
 let gridSolveCheckedEpoch = -1;
 
+function pointListsEqual(
+  a: Array<{ x: number; y: number }> | undefined,
+  b: Array<{ x: number; y: number }> | undefined,
+) {
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b || a.length !== b.length) {
+    return (a?.length ?? 0) === (b?.length ?? 0);
+  }
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index].x !== b[index].x || a[index].y !== b[index].y) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function idListsEqual(a: string[] | undefined, b: string[] | undefined) {
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b || a.length !== b.length) {
+    return (a?.length ?? 0) === (b?.length ?? 0);
+  }
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function gridRouteEdgeInputsEqual(a: GridRouteEdgeInput[], b: GridRouteEdgeInput[]) {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let index = 0; index < a.length; index += 1) {
+    const left = a[index];
+    const right = b[index];
+    if (left === right) {
+      continue;
+    }
+    if (
+      left.edgeId !== right.edgeId ||
+      left.order !== right.order ||
+      left.sourceNodeId !== right.sourceNodeId ||
+      left.targetNodeId !== right.targetNodeId ||
+      left.sourceHandleId !== right.sourceHandleId ||
+      left.targetHandleId !== right.targetHandleId ||
+      left.sourceSlotEndpoint !== right.sourceSlotEndpoint ||
+      left.targetSlotEndpoint !== right.targetSlotEndpoint ||
+      left.sourceStorageEndpoint !== right.sourceStorageEndpoint ||
+      left.targetStorageEndpoint !== right.targetStorageEndpoint ||
+      left.routingWidth !== right.routingWidth ||
+      !pointListsEqual(left.waypoints, right.waypoints) ||
+      !idListsEqual(left.throughBoardIds, right.throughBoardIds) ||
+      !idListsEqual(left.homeBoardIds, right.homeBoardIds)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function publishGridRouteEdges(edges: GridRouteEdgeInput[], freeDock: boolean) {
+  // The edges memo rebuilds on hover, search keystrokes and solver results —
+  // none of which move a wire. Bumping the stamp unconditionally forced the
+  // full signature rebuild (O(edges × perimeter) endpoint resolution in free
+  // dock) just to discover nothing changed; a field-wise compare here is
+  // O(edges) and keeps the fast-path gate honest.
+  if (
+    freeDock === publishedGridFreeDock &&
+    gridRouteEdgeInputsEqual(publishedGridRouteEdges, edges)
+  ) {
+    return;
+  }
   publishedGridRouteEdges = edges;
   publishedGridFreeDock = freeDock;
   gridSolveInputsStamp += 1;
@@ -1140,39 +1216,57 @@ function ensureGridSolve() {
   const requests: GridRouteRequest[] = [];
   const orderByEdge = new Map<string, number>();
   const parts: string[] = [];
+  // Free-dock endpoint resolution enumerates the whole card perimeter (~64
+  // candidates per endpoint), yet its signature never contains those coords —
+  // they derive purely from the card rects the sweep hash already covers. So
+  // in free-dock mode the signature is built FIRST from the inputs alone and
+  // resolution is deferred until it actually differs; only fixed-port mode
+  // (1-4 anchors, and lazily-arriving slot measurements that must go in the
+  // signature) still resolves up front.
+  const freeDock = publishedGridFreeDock;
+  const deferredInputs: GridRouteEdgeInput[] = [];
   for (const input of publishedGridRouteEdges) {
-    const sources = resolveGridRouteEndpoints(input, "source");
-    const targets = resolveGridRouteEndpoints(input, "target");
-    if (sources.length === 0 || targets.length === 0) {
-      continue;
-    }
-    requests.push({
-      edgeId: input.edgeId,
-      order: input.order,
-      sources,
-      targets,
-      strokeWidth: Math.min(input.routingWidth, LANE_CAPACITY),
-      waypoints: input.waypoints,
-      exemptObstacleIds: input.throughBoardIds,
-      homeObstacleIds: input.homeBoardIds,
-    });
-    orderByEdge.set(input.edgeId, input.order);
-    // Free-dock candidates derive purely from the card rects, and the sweep
-    // hash already covers those — identity suffices. Fixed-port anchors also
-    // depend on lazily-arriving slot measurements, so their coords go in.
     const waypointPart =
       input.waypoints && input.waypoints.length > 0
         ? `|wp:${input.waypoints
             .map((point) => `${Math.round(point.x)},${Math.round(point.y)}`)
             .join("+")}`
         : "";
-    const describe = publishedGridFreeDock
-      ? waypointPart
-      : `${waypointPart}|${sources
-          .map((endpoint) => `${Math.round(endpoint.x)},${Math.round(endpoint.y)}`)
-          .join("+")}|${targets
-          .map((endpoint) => `${Math.round(endpoint.x)},${Math.round(endpoint.y)}`)
-          .join("+")}`;
+    let describe: string;
+    if (freeDock) {
+      // Same skip rule the resolver applies: an unmeasured node yields no
+      // candidates in free-dock mode, and nothing else can empty them.
+      if (
+        !getMeasuredNodeBoundsById(input.sourceNodeId) ||
+        !getMeasuredNodeBoundsById(input.targetNodeId)
+      ) {
+        continue;
+      }
+      deferredInputs.push(input);
+      describe = waypointPart;
+    } else {
+      const sources = resolveGridRouteEndpoints(input, "source");
+      const targets = resolveGridRouteEndpoints(input, "target");
+      if (sources.length === 0 || targets.length === 0) {
+        continue;
+      }
+      requests.push({
+        edgeId: input.edgeId,
+        order: input.order,
+        sources,
+        targets,
+        strokeWidth: Math.min(input.routingWidth, LANE_CAPACITY),
+        waypoints: input.waypoints,
+        exemptObstacleIds: input.throughBoardIds,
+        homeObstacleIds: input.homeBoardIds,
+      });
+      orderByEdge.set(input.edgeId, input.order);
+      describe = `${waypointPart}|${sources
+        .map((endpoint) => `${Math.round(endpoint.x)},${Math.round(endpoint.y)}`)
+        .join("+")}|${targets
+        .map((endpoint) => `${Math.round(endpoint.x)},${Math.round(endpoint.y)}`)
+        .join("+")}`;
+    }
     // Frame exemptions are a routing input like a waypoint: adopting a card
     // changes no endpoint and moves no obstacle, yet its wires must reroute.
     const throughPart =
@@ -1205,6 +1299,26 @@ function ensureGridSolve() {
     return;
   }
   gridSolveSignature = signature;
+
+  // The signature actually moved: now pay for the free-dock perimeters.
+  for (const input of deferredInputs) {
+    const sources = resolveGridRouteEndpoints(input, "source");
+    const targets = resolveGridRouteEndpoints(input, "target");
+    if (sources.length === 0 || targets.length === 0) {
+      continue;
+    }
+    requests.push({
+      edgeId: input.edgeId,
+      order: input.order,
+      sources,
+      targets,
+      strokeWidth: Math.min(input.routingWidth, LANE_CAPACITY),
+      waypoints: input.waypoints,
+      exemptObstacleIds: input.throughBoardIds,
+      homeObstacleIds: input.homeBoardIds,
+    });
+    orderByEdge.set(input.edgeId, input.order);
+  }
 
   const obstacles = [
     ...sweep.bounds.map((entry) => ({ id: entry.id, ...entry.bounds })),
