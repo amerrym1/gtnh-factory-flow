@@ -153,7 +153,7 @@ export function EnergyHatchMenu({
             key={entry.id}
             type="button"
             onClick={() => setTab(entry.id)}
-            className={`h-7 flex-1 whitespace-nowrap border px-1 text-[11px] font-bold uppercase leading-none ${
+            className={`h-7 flex-1 whitespace-nowrap border px-1 text-[11px] font-bold uppercase tracking-[0.08em] leading-none ${
               tab === entry.id
                 ? "border-[var(--mc-15)] bg-[var(--mc-100)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-54)]"
                 : "border-[var(--mc-33)] bg-[var(--mc-64)] text-[var(--mc-ink-muted)] hover:bg-[var(--mc-71)]"
@@ -164,12 +164,12 @@ export function EnergyHatchMenu({
         ))}
       </div>
       {/* Column heads: what the block is, then the two power facts. */}
-      <div className="grid grid-cols-[minmax(0,1fr)_64px_92px] gap-x-1.5 px-1 pb-1 pr-3.5 text-[11px] font-bold uppercase leading-none text-[var(--mc-ink-muted)]">
+      <div className="mb-0.5 grid grid-cols-[minmax(0,1fr)_64px_92px] gap-x-1.5 border-b-2 border-[var(--mc-47)] px-1 pb-1 pr-[18px] text-[10px] font-bold uppercase tracking-[0.1em] leading-none text-[var(--mc-ink-muted)]">
         <span>Hatch</span>
         <span className="text-right">Amps</span>
         <span className="text-right">EU/t</span>
       </div>
-      <div className="max-h-[480px] overflow-y-auto pr-1.5">
+      <div className="recipe-search-scroll max-h-[480px] overflow-y-scroll pr-1">
         {rows.map(({ tier, type, entry }) => {
           const selected = tier === currentTier && type.id === currentFamilyId;
           const color = GT_TIER_COLORS[tier];
@@ -187,7 +187,7 @@ export function EnergyHatchMenu({
               }`}
             >
               <span className="flex min-w-0 items-center gap-1.5">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden">
                   {entry && (entry.iconPath || entry.iconAtlas) ? (
                     <ResourceIcon
                       resource={{ kind: "item", amount: 1, ...entry }}
@@ -195,10 +195,10 @@ export function EnergyHatchMenu({
                       tooltip={false}
                       showAmount={false}
                       showConsumedState={false}
-                      className="!h-9 !w-9 shrink-0"
+                      className="!h-11 !w-11 shrink-0"
                     />
                   ) : (
-                    <Zap className="h-6 w-6 opacity-60" />
+                    <Zap className="h-7 w-7 opacity-60" />
                   )}
                 </span>
                 <span
