@@ -220,7 +220,10 @@ function normalizeGregtech(domain) {
         },
       });
 
-      if (recipeMap.id === "gt.recipe.canner") {
+      // 2.9 keeps cell fills/empties in the canner map; 2.8.4 and earlier
+      // had them in their own fluidcanner map. The fluid-touch filter inside
+      // keeps food canning out either way.
+      if (recipeMap.id === "gt.recipe.canner" || recipeMap.id === "gt.recipe.fluidcanner") {
         addTankRecipe(rawRecipe, inputs, outputs);
       }
     }
