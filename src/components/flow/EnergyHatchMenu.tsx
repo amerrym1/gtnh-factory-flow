@@ -180,14 +180,14 @@ export function EnergyHatchMenu({
               ref={selected ? selectedRef : undefined}
               type="button"
               onClick={() => onPick(type.id, tier)}
-              className={`grid w-full grid-cols-[minmax(0,1fr)_64px_92px] items-center gap-x-1.5 border px-1 py-1 text-left text-[13px] font-bold leading-5 ${
+              className={`grid w-full grid-cols-[minmax(0,1fr)_64px_92px] items-center gap-x-1.5 border px-1 py-1 text-left text-[14px] font-bold leading-5 ${
                 selected
                   ? "border-[var(--selection)] bg-[var(--mc-85)] text-[var(--mc-ink)]"
                   : "border-transparent text-[var(--mc-ink)] hover:border-[var(--mc-33)] hover:bg-[var(--mc-85)]"
               }`}
             >
               <span className="flex min-w-0 items-center gap-1.5">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden">
+                <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden">
                   {entry && (entry.iconPath || entry.iconAtlas) ? (
                     <ResourceIcon
                       resource={{ kind: "item", amount: 1, ...entry }}
@@ -195,10 +195,10 @@ export function EnergyHatchMenu({
                       tooltip={false}
                       showAmount={false}
                       showConsumedState={false}
-                      className="!h-11 !w-11 shrink-0"
+                      className="!h-14 !w-14 shrink-0"
                     />
                   ) : (
-                    <Zap className="h-7 w-7 opacity-60" />
+                    <Zap className="h-8 w-8 opacity-60" />
                   )}
                 </span>
                 <span
