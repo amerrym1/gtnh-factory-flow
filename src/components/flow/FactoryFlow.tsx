@@ -130,6 +130,7 @@ import {
 } from "@/lib/designs/design-camera";
 import { isEditableKeyboardTarget } from "./keyboard";
 import { BoardHelp } from "./BoardHelp";
+import { PerfHud } from "./PerfHud";
 import {
   ANNOTATION_DEFAULT_ARROW,
   ANNOTATION_DEFAULT_BOX,
@@ -5563,6 +5564,8 @@ export function FactoryFlow() {
         onAutoArrange={handleAutoArrange}
       />
       <BoardHelp compact={isCompact} />
+      {/* Ctrl+Alt+P. Sits above the help button; see PerfHud.tsx. */}
+      <PerfHud />
       {overwritePicking ? (
         <div
           className={[
