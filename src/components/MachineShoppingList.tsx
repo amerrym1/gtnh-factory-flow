@@ -375,6 +375,8 @@ export function MachineShoppingList() {
                 label={group.label}
                 chip={uniform ? build : undefined}
                 euT={uniform ? (average ? build?.avgEuT : build?.euT) : undefined}
+                peakEuT={uniform ? build?.euT : undefined}
+                averageEuT={uniform ? build?.avgEuT : undefined}
                 steamLs={uniform ? (average ? build?.avgSteamLs : build?.steamLs) : undefined}
                 state={uniform ? (build?.state ?? "ok") : "ok"}
                 wash={uniform ? build?.tier : undefined}
@@ -399,6 +401,8 @@ export function MachineShoppingList() {
                       }
                       chip={buildLine}
                       euT={average ? buildLine.avgEuT : buildLine.euT}
+                      peakEuT={buildLine.euT}
+                      averageEuT={buildLine.avgEuT}
                       steamLs={average ? buildLine.avgSteamLs : buildLine.steamLs}
                       state={buildLine.state}
                       wash={buildLine.tier}
@@ -488,6 +492,8 @@ function ListLine({
   label,
   chip,
   euT,
+  peakEuT,
+  averageEuT,
   steamLs,
   state,
   wash,
@@ -504,6 +510,9 @@ function ListLine({
   /** The fused hatch-and-tier chip, when this line is one build. */
   chip?: Pick<BuildLine, "tier" | "hatches" | "hatchChip" | "hatchTypeId" | "isMultiblock">;
   euT?: number;
+  /** Both modes' figures at once, for the chip's tooltip. */
+  peakEuT?: number;
+  averageEuT?: number;
   /** A steam machine's figure: what it burns, in L/s, instead of EU/t. */
   steamLs?: number;
   state: NodePowerState;
@@ -539,8 +548,19 @@ function ListLine({
         </div>
         <div className="mt-0.5 text-[11px] leading-4 text-slate-300">
           {formatCompact(hatchAmps)} A:{" "}
-          <span className="font-bold text-white">{formatCompact(hatchPoolEuT)} EU/t</span> to spend
+          <span className="font-bold text-white">{formatCompact(hatchPoolEuT)} EU/t</span>
         </div>
+        {peakEuT !== undefined ? (
+          <>
+            <div className="text-[11px] leading-4 text-slate-300">
+              PEAK <span className="font-bold text-white">{formatCompact(peakEuT)} EU/t</span>
+            </div>
+            <div className="text-[11px] leading-4 text-slate-300">
+              AVG{" "}
+              <span className="font-bold text-white">{formatCompact(averageEuT ?? 0)} EU/t</span>
+            </div>
+          </>
+        ) : null}
       </div>
     ) : undefined;
 
