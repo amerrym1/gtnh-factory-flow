@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.28.0",
+    date: "2026-08-23",
+    headline: "The coke ovens get their names right",
+    notes: [
+      "Charcoal and coke recipes now show under the Industrial Coke Oven, and the brick Coke Oven stands on its own.",
+      "The Matter Fabrication CPU runs perfect overclocks with its real parallels.",
+      "Machines can be set to MAX voltage.",
+      "Only GTNH 2.9 is offered in the game version list for now.",
+    ],
+  },
+  {
     version: "2.27.0",
     date: "2026-08-22",
     headline: "Pick your power in two clicks",
