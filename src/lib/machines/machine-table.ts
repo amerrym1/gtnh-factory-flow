@@ -951,17 +951,27 @@ const MACHINES: Record<string, MachineBehaviour> = {
     speed: 6,
     parallels: (c) => c.voltageTier * 4,
   },
-  "Coke Oven": {
-    aliases: ["Industrial Coke Oven"],
+  "Industrial Coke Oven": {
+    // "Coke Oven" is what datasets before the gtpp.recipe.cokeoven rename
+    // called this machine, so saved plans still carry it. The Railcraft brick
+    // Coke Oven shares that name but never the slices control, which is what
+    // the parallels guard below keys on.
+    aliases: ["Coke Oven"],
     overclock: OVERCLOCK.normal(),
     // Coils are a 2% EU discount each, compounding, and nothing else:
     // MTEIndustrialCokeOven bills 0.98^(coil tier + 1), cupronickel included.
     power: (c) => 0.98 ** (c.tier(COIL) + 1),
     parallels: (c) => {
+      const slices = c.value(COKE_SLICES);
+      if (slices === 0) {
+        // No slices control means this is the Railcraft brick Coke Oven
+        // matched through the legacy alias: one op at a time.
+        return 1;
+      }
       const heatProof = c.tier(COKE_CASING) === 1;
       const base = heatProof ? 32 : 16;
       const perSlice = heatProof ? 16 : 8;
-      return base + (c.value(COKE_SLICES) - 1) * perSlice;
+      return base + (slices - 1) * perSlice;
     },
     note: "Eternal coils are needed for more than 15 slices.",
   },

@@ -76,6 +76,12 @@ function registerMachineHandlerIcons(templates) {
   }
 }
 const recipeSignatures = new Set();
+// The game names two different maps "Coke Oven": gtpp.recipe.cokeoven is the
+// Industrial Coke Oven's map (GTNH deliberately registers every Pyrolyse Oven
+// recipe into it too), while gt.recipe.cokeoven mirrors the Railcraft brick
+// Coke Oven. Left to their localized names they fold into one misleading
+// "Coke Oven" family, so the ICO map wears its machine's name instead.
+const RECIPE_MAP_DISPLAY_NAMES = new Map([["gtpp.recipe.cokeoven", "Industrial Coke Oven"]]);
 const oreDictionaryAlternativesByName = new Map();
 const oreDictionary = normalizeOreDictionary(findDomain("oreDictionary")?.entries ?? {});
 
@@ -124,7 +130,8 @@ console.log(`Wrote ${dataset.recipes.length} oracle recipe(s) to ${outputPath}.`
 
 function normalizeGregtech(domain) {
   for (const recipeMap of domain?.recipeMaps ?? []) {
-    const machineType = text(recipeMap.name, recipeMap.id ?? "GregTech");
+    const machineType =
+      RECIPE_MAP_DISPLAY_NAMES.get(recipeMap.id) ?? text(recipeMap.name, recipeMap.id ?? "GregTech");
     recipeMaps.add(machineType);
     setRecipeMapIcon(machineType, recipeMap.icon);
     if (recipeMap.id === "gt.recipe.furnace") {

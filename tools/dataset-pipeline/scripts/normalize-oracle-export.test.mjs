@@ -381,3 +381,86 @@ describe("mining worldgen becomes source recipes", () => {
     );
   });
 });
+
+describe("the two maps the game both calls Coke Oven", () => {
+  const rawRecipe = (id, itemInputs, itemOutputs) => ({
+    id,
+    durationTicks: 1800,
+    eut: 0,
+    itemInputs,
+    itemOutputs,
+    fluidInputs: [],
+    fluidOutputs: [],
+  });
+  let dataset;
+
+  beforeAll(() => {
+    dataset = normalize({
+      schemaVersion: 1,
+      exporter: "gtnh-oracle",
+      format: "dev.gtnhplanner.oracle.v1",
+      generatedAt: "2026-08-08T05:00:00.000Z",
+      minecraftVersion: "1.7.10",
+      loadedMods: [],
+      adapters: [],
+      recipeCount: 2,
+      domains: [
+        {
+          id: "gregtech",
+          recipeMaps: [
+            {
+              id: "gtpp.recipe.cokeoven",
+              name: "Coke Oven",
+              sourceClass: "gregtech.api.recipe.RecipeMap",
+              recipes: [
+                rawRecipe(
+                  "ico-1",
+                  [item("minecraft:log", 16, "Oak Log")],
+                  [item("minecraft:coal@1", 20, "Charcoal")],
+                ),
+              ],
+            },
+            {
+              id: "gt.recipe.cokeoven",
+              name: "Coke Oven",
+              sourceClass: "gregtech.api.recipe.RecipeMap",
+              recipes: [
+                rawRecipe(
+                  "brick-1",
+                  [item("minecraft:log", 1, "Oak Log")],
+                  [item("minecraft:coal@1", 1, "Charcoal")],
+                ),
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("names the Industrial Coke Oven's map after the machine", () => {
+    const ico = dataset.recipes.find(
+      (recipe) => recipe.source?.rawRecipeId === "gtpp.recipe.cokeoven:ico-1",
+    );
+
+    expect(ico.machineType).toBe("Industrial Coke Oven");
+    expect((ico.machineConfigControls ?? []).map((control) => control.id)).toEqual(
+      expect.arrayContaining(["heatingCoil", "cokeOvenCasing", "cokeOvenSlices"]),
+    );
+  });
+
+  it("leaves the Railcraft brick oven's map alone, without the ICO's knobs", () => {
+    const brick = dataset.recipes.find(
+      (recipe) => recipe.source?.rawRecipeId === "gt.recipe.cokeoven:brick-1",
+    );
+
+    expect(brick.machineType).toBe("Coke Oven");
+    expect(brick.machineConfigControls ?? []).toEqual([]);
+  });
+
+  it("keeps the two families apart in the map list", () => {
+    expect(dataset.recipeMaps).toEqual(
+      expect.arrayContaining(["Industrial Coke Oven", "Coke Oven"]),
+    );
+  });
+});
