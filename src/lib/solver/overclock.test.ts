@@ -308,6 +308,33 @@ describe("GT overclocking", () => {
     expect(stats.eut).toBe(8);
   });
 
+  it("runs crafting recipes on the Auto Workbench: 2048 EU a craft, one per tick from EV", () => {
+    // MTEElectricAutoWorkbench: every craft costs a flat 2048 EU and input is
+    // capped at the tier's voltage, so the LV seed is 64 ticks at 32 EU/t and
+    // each tier is a perfect step. Three steps reach the one-craft-per-tick
+    // ceiling at EV; past that the game neither speeds up nor charges more.
+    const crafting = {
+      machineType: "Shaped Crafting",
+      minimumTier: "NONE",
+      durationTicks: 1,
+      eut: 0,
+      source: { recipeMap: "Shaped Crafting" },
+    };
+
+    for (const [tier, ticks, eut] of [
+      ["LV", 64, 32],
+      ["MV", 16, 128],
+      ["HV", 4, 512],
+      ["EV", 1, 2048],
+      ["IV", 1, 2048],
+      ["UV", 1, 2048],
+    ] as const) {
+      const stats = getOverclockedRecipeStats(crafting, { overclockTier: tier });
+
+      expect([tier, stats.durationTicks, stats.eut]).toEqual([tier, ticks, eut]);
+    }
+  });
+
   it("bills the arc furnace family triple, on triple amps", () => {
     // The one basic-machine line registered with setMachineEUtMultiplier(3)
     // and setMachineAmperage(3). The written 30 EU/t really draws 90.

@@ -172,9 +172,15 @@ Working notes for future agents on GTNH Factory Flow.
   union, all = intersection, sides intersect. Every clause resource gets the
   concrete-context rewrite (`applyClauseResourceContexts`), and the legacy
   resource+mode wire form is exactly a one-clause query.
-- Clause queries EXCLUDE Shaped/Shapeless Crafting (`HANDLESS_CRAFTING_MAPS`):
-  hand-crafting has no machine to place. Purging them from the dataset
-  itself is a pipeline decision that has NOT been made.
+- Clause queries EXCLUDE Shaped/Shapeless Crafting (`HANDLESS_CRAFTING_MAPS`)
+  by DEFAULT; the search's "Hand crafting" toggle (persisted, off unless
+  turned on) sends `handCrafting=1` and lets those maps through. A placed
+  crafting card offers GT++'s Auto Workbench as its machine, synthesized in
+  `recipe-rules.ts` (LV seed 64t/32EU, the "Auto Workbench" machine-table
+  entry caps its perfect overclocks at EV's one craft per tick - transcribed
+  from MTEElectricAutoWorkbench: flat 2048 EU per craft), with the instant
+  hand-craft as the second handler. Purging the crafting maps from the
+  dataset itself is a pipeline decision that has NOT been made.
 - Result cards merge duplicate slot entries (nine planks is one line, x9) and
   oredict slots wear their first concrete face; both are display-only.
   Chips that satisfy a stencil condition ring cyan; chips browse on

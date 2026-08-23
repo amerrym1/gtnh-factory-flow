@@ -26,6 +26,8 @@ export interface RecipeDatasetQuery {
   makesOp?: RecipeQuerySideOp;
   /** Page across every recipe map instead of scoping to one. */
   allMaps?: boolean;
+  /** Offer the Shaped/Shapeless Crafting maps too (the hand-crafting toggle). */
+  handCrafting?: boolean;
   recipeMap?: string;
   maxTier: TierFilter;
   offset: number;
@@ -209,6 +211,9 @@ export async function queryRecipeDatasetRecipes(
   }
   if (query.allMaps) {
     url.searchParams.set("allMaps", "1");
+  }
+  if (query.handCrafting) {
+    url.searchParams.set("handCrafting", "1");
   }
 
   return fetchJson<RecipeDatasetQueryResult>(url.toString(), { signal: options.signal });

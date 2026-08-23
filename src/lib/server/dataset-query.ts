@@ -19,6 +19,7 @@ import type {
   ResourceAmount,
 } from "@/lib/model/types";
 import {
+  AUTO_WORKBENCH_HANDLER_ID,
   enrichPassiveProductionRecipe,
   getFilledCellFluidEquivalent,
   isFluidEquivalentToFilledCell,
@@ -224,9 +225,27 @@ export async function getDatasetCatalog(versionId: string) {
     oreDictionary: {},
     recipeMaps: catalog.recipeMaps,
     recipeMapIcons: catalog.recipeMapIcons,
-    machineHandlerIcons: catalog.machineHandlerIcons,
+    machineHandlerIcons: withAutoWorkbenchIcon(catalog),
     generatedAt: catalog.version.publishedAt,
   };
+}
+
+/**
+ * The Auto Workbench handler is synthesized client-side for the crafting maps
+ * (recipe-rules.ts), so no exported handler family ever minted its icon. The
+ * machine is a real dataset item; hand its LV face to the synthesized family
+ * here so crafting cards draw a machine chip like everything else.
+ */
+function withAutoWorkbenchIcon(catalog: LoadedRecipeIndex): MachineHandlerIconEntry[] | undefined {
+  const icons = catalog.machineHandlerIcons ?? [];
+  if (icons.some((entry) => entry.familyId === AUTO_WORKBENCH_HANDLER_ID)) {
+    return catalog.machineHandlerIcons;
+  }
+  const face = catalog.resources.find((resource) => resource.displayName === "Auto Workbench (LV)");
+  if (!face) {
+    return catalog.machineHandlerIcons;
+  }
+  return [...icons, { familyId: AUTO_WORKBENCH_HANDLER_ID, resource: { ...face, amount: 1 } }];
 }
 
 function getMachineConfigResources(catalog: LoadedRecipeIndex): DatasetResourceIndexEntry[] {
@@ -539,6 +558,8 @@ export interface DatasetRecipeQueryRequest {
   makesOp?: RecipeQuerySideOp;
   /** List and page across every recipe map instead of scoping to one. */
   allMaps?: boolean;
+  /** Offer the Shaped/Shapeless Crafting maps too (the hand-crafting toggle). */
+  handCrafting?: boolean;
   recipeMap?: string;
   maxTier: TierFilter;
   offset: number;
@@ -592,6 +613,7 @@ export async function queryDatasetRecipes(versionId: string, request: DatasetRec
     const recipeMap = indexes.recipeMaps[recipeIndex];
     if (
       (clauses.length > 0 || request.allMaps) &&
+      !request.handCrafting &&
       recipeMap &&
       HANDLESS_CRAFTING_MAPS.has(recipeMap)
     ) {
@@ -899,7 +921,7 @@ async function queryDatasetRecipesFromLookup(
   // Every request the recipe SEARCH makes carries clauses or allMaps, so this
   // covers a stencil emptied down to a typed name too; the legacy wire form
   // (neither field) keeps its old answers.
-  if (clauses.length > 0 || request.allMaps) {
+  if ((clauses.length > 0 || request.allMaps) && !request.handCrafting) {
     tierCandidatesByMap = dropHandlessCraftingMaps(lookup, tierCandidatesByMap);
   }
 
@@ -970,10 +992,12 @@ async function queryDatasetRecipesFromLookup(
 }
 
 /**
- * Hand-crafting has no machine to place, so the recipe search does not offer
- * it: a plan is made of machines, and a crafting-grid recipe on the board
- * would be a card for a thing the solver cannot run. Only the CLAUSE path
- * filters these - the legacy single-resource wire form keeps its old answers.
+ * The crafting-grid maps are hidden by default: most chains want machines,
+ * and the crafting registries drown the results. The search's hand-crafting
+ * toggle (`request.handCrafting`) opts back in, and a placed crafting card
+ * offers GT++'s Auto Workbench as its machine (see recipe-rules.ts). Only
+ * the CLAUSE path filters these - the legacy single-resource wire form keeps
+ * its old answers.
  */
 const HANDLESS_CRAFTING_MAPS = new Set(["Shaped Crafting", "Shapeless Crafting"]);
 

@@ -55,7 +55,20 @@ describe("recipe dataset API route", () => {
         takesOp: "all",
         makesOp: "any",
         allMaps: true,
+        handCrafting: false,
       }),
+    );
+  });
+
+  it("parses the hand-crafting toggle", async () => {
+    await GET(
+      new Request("http://localhost/api/datasets/stable/recipes?allMaps=1&handCrafting=1"),
+      { params: Promise.resolve({ versionId: "stable" }) },
+    );
+
+    expect(queryDatasetRecipes).toHaveBeenCalledWith(
+      "stable",
+      expect.objectContaining({ allMaps: true, handCrafting: true }),
     );
   });
 

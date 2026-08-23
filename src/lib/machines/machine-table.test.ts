@@ -309,6 +309,10 @@ describe("curated machine table", () => {
         "Steam Blender",
         "Steam Fuser",
         "Steam Hearth",
+        // GT++'s Electric Auto Workbench, from MTEElectricAutoWorkbench in
+        // gtPlusPlus.xmod.gregtech.common.tileentities.automation; not a
+        // recipe-map machine, so the reference never covered it.
+        "Auto Workbench",
       ].map(normalizeMachineName),
     );
     // Every entry must trace back to a reference definition or a direct source

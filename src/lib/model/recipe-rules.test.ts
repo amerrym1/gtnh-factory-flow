@@ -169,6 +169,22 @@ describe("recipe machine handlers", () => {
     }
   });
 
+  it("offers the Auto Workbench first on crafting-grid recipes", () => {
+    // The crafting maps export no handlers; the two choices are synthesized:
+    // the machine a plan places, then the crafting table's instant hand-craft.
+    for (const machineType of ["Shaped Crafting", "Shapeless Crafting"]) {
+      const handlers = getRecipeMachineHandlers(testRecipe(machineType, "NONE"));
+
+      expect(handlers.map((handler) => handler.label)).toEqual(["Auto Workbench", machineType]);
+      expect(handlers[0]).toMatchObject({
+        minimumTier: "LV",
+        durationTicks: 64,
+        eut: 32,
+        kind: "single",
+      });
+    }
+  });
+
   it("applies the selected handler to the effective recipe", () => {
     const recipe = {
       ...testRecipe("Shaped Crafting", "NONE"),

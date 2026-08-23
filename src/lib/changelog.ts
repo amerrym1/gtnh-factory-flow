@@ -73,6 +73,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.30.0",
+    date: "2026-08-23",
+    headline: "Crafting recipes, on a real machine",
+    notes: [
+      "A Hand crafting switch in the recipe search shows crafting table recipes.",
+      "Placed crafting cards run on the Auto Workbench: 2048 EU a craft, faster each tier up to EV.",
+      "The crafting table stays available on the card as the free, instant choice.",
+    ],
+  },
+  {
     version: "2.29.0",
     date: "2026-08-23",
     headline: "Cells, tanks and trash",

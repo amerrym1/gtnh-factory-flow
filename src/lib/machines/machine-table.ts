@@ -1020,6 +1020,21 @@ const MACHINES: Record<string, MachineBehaviour> = {
     power: 3,
     amperage: 3,
   },
+  /**
+   * GT++'s Electric Auto Workbench (MTEElectricAutoWorkbench, LV through UV):
+   * the placeable machine that runs crafting-grid recipes. In normal crafting
+   * mode every craft costs a flat 2048 EU, input is capped at the tier's
+   * voltage, and a successful craft re-runs the next tick, so the machine is
+   * exactly a perfect-overclocking singleblock: recipe-rules.ts seeds its
+   * handler at LV's 2048/32 = 64 ticks and 32 EU/t, and each tier quarters
+   * the duration at unchanged energy per craft. Three steps reach the one-
+   * craft-per-tick ceiling at EV; past that the game neither speeds up nor
+   * charges more, hence the cap.
+   */
+  "Auto Workbench": {
+    kind: "single",
+    overclock: OVERCLOCK.perfect(3),
+  },
 
   // -- Steam multiblocks -----------------------------------------------------
   // All eight share STEAM_MULTIBLOCK's logic; see its comment. The dataset

@@ -11,6 +11,7 @@ import type {
 import type { DatasetResourceIndexEntry, RecipeSummary } from "@/lib/datasets/types";
 import type { RecipeQueryRole, RecipeQuerySideOp } from "@/lib/datasets/recipe-query";
 import {
+  AUTO_WORKBENCH_HANDLER_ID,
   GT_VOLTAGE_TIERS,
   formatRate,
   getRecipeMachineHandlers,
@@ -151,6 +152,8 @@ export function RecipeSearchOverlay({
   onQueryChange,
   maxTier,
   onMaxTierChange,
+  handCrafting,
+  onHandCraftingChange,
   selectedRecipeId,
   onSelectRecipe,
   onAdd,
@@ -181,6 +184,8 @@ export function RecipeSearchOverlay({
   onQueryChange: (query: string) => void;
   maxTier: TierFilter;
   onMaxTierChange: (tier: TierFilter) => void;
+  handCrafting: boolean;
+  onHandCraftingChange: (on: boolean) => void;
   selectedRecipeId?: string;
   onSelectRecipe: (recipeId: string) => void;
   onAdd: (recipe: RecipeSummary, machineHandlerId?: string) => void | Promise<void>;
@@ -554,6 +559,26 @@ export function RecipeSearchOverlay({
       ))}
     </select>
   );
+  // Hand crafting is hidden by default: the results are for machines to
+  // place. Turned on, the crafting-grid maps join the chips, and a placed
+  // crafting card runs on the Auto Workbench.
+  const handCraftingToggle = (
+    <button
+      type="button"
+      onClick={() => onHandCraftingChange(!handCrafting)}
+      aria-pressed={handCrafting}
+      title="Show crafting table recipes. Placed cards run on the Auto Workbench."
+      className={[
+        "flex shrink-0 items-center gap-1.5 whitespace-nowrap border-2 px-2 text-[11px] font-bold uppercase tracking-[0.08em]",
+        compact ? "h-10" : "h-6",
+        handCrafting
+          ? "border-[var(--mc-85)] bg-[var(--mc-85)] text-white shadow-[inset_1px_1px_0_var(--mc-100)]"
+          : "border-[var(--mc-33)] bg-[#17191d] text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]",
+      ].join(" ")}
+    >
+      Hand crafting
+    </button>
+  );
   const closeButton = (
     <button
       type="button"
@@ -620,7 +645,10 @@ export function RecipeSearchOverlay({
               <div className="recipe-search-scroll flex items-center gap-1.5 overflow-x-auto pb-0.5">
                 {machineChipRow}
               </div>
-              <div className="flex">{ratePillGroup}</div>
+              <div className="flex items-center gap-2">
+                {ratePillGroup}
+                {handCraftingToggle}
+              </div>
             </div>
           ) : (
             <>
@@ -641,7 +669,10 @@ export function RecipeSearchOverlay({
                     {nameFilter}
                     {tierSelect}
                   </div>
-                  {ratePillGroup}
+                  <div className="flex items-center gap-2">
+                    {handCraftingToggle}
+                    {ratePillGroup}
+                  </div>
                 </div>
               </div>
             </>
@@ -1280,15 +1311,27 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
     [contextResource, recipe],
   );
   const handlers = useMemo(() => getRecipeMachineHandlers(preview), [preview]);
-  const machineLabel = handlers[0]?.label ?? recipe.machineType;
-  const machineIcon = handlers[0] ? machineIcons.get(handlers[0].id) : undefined;
-  const seconds = recipe.durationTicks / 20;
+  const primary = handlers[0];
+  const machineLabel = primary?.label ?? recipe.machineType;
+  const machineIcon = primary ? machineIcons.get(primary.id) : undefined;
+  // A dataset recipe is written in its primary machine's numbers already; the
+  // synthesized Auto Workbench is the one handler that brings its own (the
+  // crafting maps are exported instant), so the card and its rate views read
+  // the workbench's LV seed instead of claiming twenty crafts a second.
+  const isAutoWorkbench = primary?.id === AUTO_WORKBENCH_HANDLER_ID;
+  const durationTicks =
+    isAutoWorkbench && primary.durationTicks !== undefined
+      ? primary.durationTicks
+      : recipe.durationTicks;
+  const eut = isAutoWorkbench ? (primary.eut ?? recipe.eut) : recipe.eut;
+  const minimumTier = isAutoWorkbench ? primary.minimumTier : recipe.minimumTier;
+  const seconds = durationTicks / 20;
   const stats = [
     `${formatRate(seconds, seconds >= 10 ? 0 : 1)}s`,
-    recipe.eut > 0 ? `${recipe.eut.toLocaleString()} EU/t` : "no power",
+    eut > 0 ? `${eut.toLocaleString()} EU/t` : "no power",
   ].join(" · ");
   const tierColor =
-    recipe.eut > 0 ? GT_TIER_COLORS[recipe.minimumTier as Exclude<MachineTier, "DEMO">] : undefined;
+    eut > 0 ? GT_TIER_COLORS[minimumTier as Exclude<MachineTier, "DEMO">] : undefined;
   // Crafting-grid recipes arrive one slot at a time (nine separate Iron
   // Plates), and oredict slots arrive wearing their oredict name. The chips
   // read as a shopping list instead: same items merged with their amounts
@@ -1414,7 +1457,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
               textShadow: `1px 1px 0 ${tierColor.shadow}`,
             }}
           >
-            {recipe.minimumTier}
+            {minimumTier}
           </span>
         ) : null}
         <span className="min-w-0 flex-1 leading-[1.15]">
@@ -1460,7 +1503,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
                 amountText={
                   chip.raw.consumed === false
                     ? { text: "NC" }
-                    : formatChipAmount(chip.resource, rateView, recipe.durationTicks, ratioDivisor)
+                    : formatChipAmount(chip.resource, rateView, durationTicks, ratioDivisor)
                 }
                 hasAlternatives={chip.faces.length > 1}
                 onCycle={
@@ -1491,7 +1534,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
               key={`out-${index}`}
               resource={output}
               hit={makesClauses.some((clause) => clauseMatchesOutput(clause, output))}
-              amountText={formatChipAmount(output, rateView, recipe.durationTicks, ratioDivisor)}
+              amountText={formatChipAmount(output, rateView, durationTicks, ratioDivisor)}
               chance={"chance" in output ? output.chance : undefined}
               onBrowseResource={onBrowseResource}
               onMenu={(event) => onChipMenu(event, { ...output, amount: 1 })}

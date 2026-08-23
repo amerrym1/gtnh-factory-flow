@@ -94,6 +94,8 @@ const RESOURCE_WHEEL_PAGE_DELTA = 80;
 const RESOURCE_VIEW_STORAGE_KEY = "gtnh-factory-flow.resource-view.v1";
 /** Whether the filter block under the search box is folded away. */
 const RESOURCE_FILTERS_STORAGE_KEY = "gtnh-factory-flow.resource-filters.v1";
+/** Whether the search also offers the Shaped/Shapeless Crafting maps. */
+const HAND_CRAFTING_STORAGE_KEY = "gtnh-factory-flow.hand-crafting.v1";
 
 type ResourceSortMode = "relevance" | "name" | "mod" | "made" | "uses";
 type ResourceViewMode = "list" | "grid";
@@ -217,6 +219,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const [resourceView, setResourceView] = useState<ResourceViewMode>("list");
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [resourceFilter, setResourceFilter] = useState<ResourceFilterMode>("all");
+  const [handCrafting, setHandCrafting] = useState(false);
   // The master switch: what the whole left panel is FOR right now — finding
   // items to build with, stamping saved blueprints, or browsing the network's
   // shared setups. One at a time, full column each; the old bottom-strip
@@ -465,6 +468,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             makesOp,
             recipeMap,
             maxTier,
+            handCrafting,
             offset: page * RECIPE_QUERY_LIMIT,
             limit: RECIPE_QUERY_LIMIT,
           })
@@ -473,6 +477,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       activeRecipeQuery,
       activeResource,
       browserMode,
+      handCrafting,
       makesOp,
       maxTier,
       queryClauses,
@@ -533,6 +538,21 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     window.localStorage.setItem(RESOURCE_FILTERS_STORAGE_KEY, open ? "open" : "folded");
   }, []);
 
+  // Hidden is the default; turning hand crafting on is a saved preference,
+  // applied deferred for the same SSR-agreement reason as the view above.
+  useEffect(() => {
+    if (window.localStorage.getItem(HAND_CRAFTING_STORAGE_KEY) === "on") {
+      return deferStateUpdate(() => setHandCrafting(true));
+    }
+    return undefined;
+  }, []);
+
+  const changeHandCrafting = useCallback((on: boolean) => {
+    setHandCrafting(on);
+    setRecipePage(0);
+    window.localStorage.setItem(HAND_CRAFTING_STORAGE_KEY, on ? "on" : "off");
+  }, []);
+
   const prefetchRecipeMap = useCallback(
     (recipeMap: string) => {
       if (!selectedDatasetVersion) {
@@ -573,6 +593,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           allMaps: recipeMap ? undefined : true,
           recipeMap: recipeMap || undefined,
           maxTier,
+          handCrafting: handCrafting || undefined,
           offset: 0,
           limit: RECIPE_QUERY_LIMIT,
         },
@@ -594,6 +615,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       browserMode,
       datasetManifestUrl,
       getRecipeQueryKey,
+      handCrafting,
       makesOp,
       maxTier,
       queryClauses,
@@ -929,6 +951,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           allMaps: activeRecipeMap ? undefined : true,
           recipeMap: activeRecipeMap || undefined,
           maxTier,
+          handCrafting: handCrafting || undefined,
           offset: recipePage * RECIPE_QUERY_LIMIT,
           limit: RECIPE_QUERY_LIMIT,
         },
@@ -977,6 +1000,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     browserMode,
     datasetManifestUrl,
     getRecipeQueryKey,
+    handCrafting,
     makesOp,
     maxTier,
     queryClauses,
@@ -1297,6 +1321,8 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           }}
           maxTier={maxTier}
           onMaxTierChange={setMaxTier}
+          handCrafting={handCrafting}
+          onHandCraftingChange={changeHandCrafting}
           selectedRecipeId={selectedRecipeId}
           onSelectRecipe={selectRecipe}
           onAdd={handleAddRecipe}
@@ -2230,6 +2256,7 @@ function getRecipeQueryCacheKey({
   makesOp,
   recipeMap,
   maxTier,
+  handCrafting,
   offset,
   limit,
 }: {
@@ -2242,6 +2269,7 @@ function getRecipeQueryCacheKey({
   makesOp: RecipeQuerySideOp;
   recipeMap: string;
   maxTier: TierFilter;
+  handCrafting: boolean;
   offset: number;
   limit: number;
 }) {
@@ -2255,6 +2283,7 @@ function getRecipeQueryCacheKey({
     makesOp,
     recipeMap,
     maxTier,
+    handCrafting ? "hand" : "",
     offset,
     limit,
   ].join("|");

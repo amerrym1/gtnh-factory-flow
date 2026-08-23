@@ -36,6 +36,7 @@ export async function GET(
       takesOp: parseSideOp(url.searchParams.get("takesOp")),
       makesOp: parseSideOp(url.searchParams.get("makesOp")),
       allMaps: url.searchParams.get("allMaps") === "1",
+      handCrafting: url.searchParams.get("handCrafting") === "1",
       recipeMap: url.searchParams.get("recipeMap") || undefined,
       maxTier: parseTierFilter(url.searchParams.get("maxTier")),
       offset: parseOffset(url.searchParams.get("offset")),
