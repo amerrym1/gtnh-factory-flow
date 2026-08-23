@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -37,6 +38,7 @@ export function MinecraftTooltip({
   const [position, setPosition] = useState<{ x: number; y: number } | undefined>();
   const frameRef = useRef<number | undefined>(undefined);
   const pendingPositionRef = useRef<{ x: number; y: number } | undefined>(undefined);
+  const pointerRef = useRef<{ x: number; y: number } | undefined>(undefined);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLSpanElement | null>(null);
 
@@ -61,6 +63,35 @@ export function MinecraftTooltip({
       target.closest("button, input, select, textarea") !== null,
     [],
   );
+
+  const clampToViewport = useCallback(
+    (pointerX: number, pointerY: number) => {
+      const panelWidth = panelRef.current?.offsetWidth ?? (hasContent ? 340 : 320);
+      const panelHeight = panelRef.current?.offsetHeight ?? (hasContent ? 240 : 80);
+      return {
+        x: Math.max(4, Math.min(pointerX + 12, window.innerWidth - panelWidth - 8)),
+        y: Math.max(4, Math.min(pointerY + 12, window.innerHeight - panelHeight - 8)),
+      };
+    },
+    [hasContent],
+  );
+
+  // The first placement of a fresh tooltip clamps against an ESTIMATED panel
+  // size, and near a screen edge the estimate lands the panel a hundred-odd
+  // pixels from where the measured clamp will. Re-clamping here, before the
+  // browser paints, means nobody ever sees the estimate's position - which
+  // used to read as the tooltip jittering sideways while the pointer crossed
+  // list rows, each row remounting the panel at the estimate first.
+  useLayoutEffect(() => {
+    const pointer = pointerRef.current;
+    if (!position || !pointer || !panelRef.current) {
+      return;
+    }
+    const corrected = clampToViewport(pointer.x, pointer.y);
+    if (Math.abs(corrected.x - position.x) >= 2 || Math.abs(corrected.y - position.y) >= 2) {
+      setPosition(corrected);
+    }
+  }, [clampToViewport, position]);
 
   const handleMouseMove = (event: MouseEvent) => {
     if (lines.length === 0 && !hasContent) {
@@ -94,13 +125,11 @@ export function MinecraftTooltip({
     }
 
     // Clamp to the measured panel so wide or tall tooltips stay fully on
-    // screen; before the first paint we fall back to a generous estimate.
-    const panelWidth = panelRef.current?.offsetWidth ?? (hasContent ? 340 : 320);
-    const panelHeight = panelRef.current?.offsetHeight ?? (hasContent ? 240 : 80);
-    pendingPositionRef.current = {
-      x: Math.max(4, Math.min(event.clientX + 12, window.innerWidth - panelWidth - 8)),
-      y: Math.max(4, Math.min(event.clientY + 12, window.innerHeight - panelHeight - 8)),
-    };
+    // screen; before the first paint we fall back to a generous estimate,
+    // and the layout effect below re-clamps against the real size before
+    // anything is painted.
+    pointerRef.current = { x: event.clientX, y: event.clientY };
+    pendingPositionRef.current = clampToViewport(event.clientX, event.clientY);
 
     if (frameRef.current !== undefined) {
       return;
