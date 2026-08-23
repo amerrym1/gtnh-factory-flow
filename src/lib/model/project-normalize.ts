@@ -21,8 +21,10 @@ export function normalizeLoadedProject(project: FactoryProject): FactoryProject 
         releaseCustomRates(
           dropDuplicateEdges(
             dropCrossFormConnections(
-              dropImpossibleEnergyHatchTypes(
-                normalizeProjectFuelProfiles(renameOpvTier(adoptSetupRules(project))),
+              migrateTrashCansToDrawers(
+                dropImpossibleEnergyHatchTypes(
+                  normalizeProjectFuelProfiles(renameOpvTier(adoptSetupRules(project))),
+                ),
               ),
             ),
           ),
@@ -30,6 +32,89 @@ export function normalizeLoadedProject(project: FactoryProject): FactoryProject 
       ),
     ),
   );
+}
+
+/**
+ * The trash can NODE became the trash position on a drawer's drain pill
+ * (2026-08-23), so old plans convert on the way in: every wire into a can
+ * becomes a wire into a trash-mode drawer of that wire's own resource, one
+ * drawer per resource (a can drank anything; a drawer holds one thing).
+ * Display fields come from the feeding recipe's own output slot, so the
+ * drawer wears the real icon. Cans with no wires did nothing and are
+ * dropped, along with the placeholder recipes. Deterministic ids keep the
+ * migration idempotent and stable across reloads.
+ */
+function migrateTrashCansToDrawers(project: FactoryProject): FactoryProject {
+  const trashRecipeIds = new Set(
+    project.recipes.filter((recipe) => isTrashRecipe(recipe)).map((recipe) => recipe.id),
+  );
+  if (trashRecipeIds.size === 0) {
+    return project;
+  }
+  const trashNodes = project.nodes.filter((node) => trashRecipeIds.has(node.recipeId));
+  if (trashNodes.length === 0) {
+    return {
+      ...project,
+      recipes: project.recipes.filter((recipe) => !isTrashRecipe(recipe)),
+    };
+  }
+
+  const recipesById = new Map(project.recipes.map((recipe) => [recipe.id, recipe]));
+  const nodesById = new Map(project.nodes.map((node) => [node.id, node]));
+  const storages = [...(project.storages ?? [])];
+  const edges = [...project.edges];
+
+  for (const can of trashNodes) {
+    const drawerByResource = new Map<string, string>();
+    let placed = 0;
+    for (let index = 0; index < edges.length; index += 1) {
+      const edge = edges[index]!;
+      if (edge.target !== can.id) {
+        continue;
+      }
+      const resourceKey = `${edge.resourceKind}:${edge.resourceId}`;
+      let drawerId = drawerByResource.get(resourceKey);
+      if (!drawerId) {
+        drawerId = `trash-${can.id}-${placed}`;
+        // The wire knows the ids; the feeder's own output slot knows the face.
+        const sourceNode = nodesById.get(edge.source);
+        const sourceRecipe = sourceNode ? recipesById.get(sourceNode.recipeId) : undefined;
+        const face = sourceRecipe?.outputs.find(
+          (output) => output.kind === edge.resourceKind && output.id === edge.resourceId,
+        );
+        storages.push({
+          id: drawerId,
+          kind: edge.resourceKind,
+          resourceId: edge.resourceId,
+          drainMode: "trash",
+          colorTag: can.colorTag,
+          displayName: face?.displayName ?? edge.label,
+          iconPath: face?.iconPath,
+          iconAtlas: face?.iconAtlas,
+          dominantColor: face?.dominantColor,
+          pocketId: can.pocketId,
+          // The can's spot, then a tile-height step per extra resource.
+          position: { x: can.position.x, y: can.position.y + placed * 100 },
+        });
+        drawerByResource.set(resourceKey, drawerId);
+        placed += 1;
+      }
+      edges[index] = {
+        ...edge,
+        target: drawerId,
+        targetHandle: `input:${edge.resourceKind}:${encodeURIComponent(edge.resourceId)}`,
+      };
+    }
+  }
+
+  const trashNodeIds = new Set(trashNodes.map((node) => node.id));
+  return {
+    ...project,
+    recipes: project.recipes.filter((recipe) => !isTrashRecipe(recipe)),
+    nodes: project.nodes.filter((node) => !trashNodeIds.has(node.id)),
+    storages,
+    edges: edges.filter((edge) => !trashNodeIds.has(edge.source) && !trashNodeIds.has(edge.target)),
+  };
 }
 
 /**

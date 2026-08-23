@@ -666,7 +666,12 @@ Working notes for future agents on GTNH Factory Flow.
   trash. A TRASH drawer is the byproduct's shape (free disposal, no demand)
   with the books voided (`applyTrashedOutputBalances` covers it alongside
   the legacy trash can nodes): what it eats is neither shipped nor spare.
-  The toolbar's trash can spawner is gone; old trash can nodes still work.
+  The toolbar's trash can spawner is gone, and old plans CONVERT on load:
+  `migrateTrashCansToDrawers` in project-normalize.ts turns every wired can
+  into trash-mode drawers (one per resource, since a can drank anything and
+  a drawer holds one thing) and drops unwired cans. The can node type,
+  `connectTrash` and the solver's trash-role plumbing remain as dead-path
+  safety for projects that never pass the normalize funnel.
 - Stage chain, each optimum locked as a row before the next: max total act;
   progressive max-min FAIRNESS over acts (the game's round-robin split - a
   big asker cannot crush a small one); recycle-before-import; ship-before-
