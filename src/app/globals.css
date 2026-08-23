@@ -668,18 +668,12 @@ textarea {
   will-change: transform;
 }
 
-/* The shadows go out while the camera ZOOMS - and only zooms. A drop-shadow
-   rasterises each node's painted silhouette and re-rasterises it at every
-   new zoom scale, so a pinch re-ran a hundred filter passes per frame; the
-   edge layer's one filter scales with its area, which is the whole board.
-   A pure PAN never re-rasterises a composited filter, so panning keeps the
-   shadows - hiding them there bought nothing and read as the board losing
-   its depth every time the hand moved. The class is set from the move
-   handler the moment the zoom value actually changes. */
-.factory-flow-board--zooming .react-flow__node,
-.factory-flow-board--zooming .react-flow__edges {
-  filter: none !important;
-}
+/* NO gesture hides the drop-shadows. A pan never re-rasterises a composited
+   filter, and during a zoom the compositor scales the existing raster and
+   only re-rasterises at rest - so switching the filters off mid-gesture
+   (tried for both pan and zoom, 2026-08-23) saved close to nothing and read
+   as the board losing its depth every time the camera moved. Do not bring
+   the gate back without profiling first. */
 
 .factory-flow-board .react-flow__node {
   contain: layout style;

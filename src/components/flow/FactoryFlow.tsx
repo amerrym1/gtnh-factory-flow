@@ -3726,12 +3726,6 @@ export function FactoryFlow() {
     );
   }, [setFlowViewportCenter]);
 
-  // The `--zooming` class turns the drop-shadow filters off (globals.css):
-  // only a SCALE change re-rasterises them, so a pure pan keeps its shadows.
-  // Written imperatively from the move stream — this must not re-render the
-  // board per gesture frame.
-  const moveStartZoomRef = useRef<number | undefined>(undefined);
-
   const handleMoveStart = useCallback(() => {
     // Panning or zooming drops the map. React Flow culls off-screen nodes, so
     // a map held across a move would arrive at freshly mounted cards that were
@@ -3739,21 +3733,7 @@ export function FactoryFlow() {
     // something you do while reading one node's neighbourhood.
     clearHopMap();
     boardRef.current?.classList.add("factory-flow-board--moving");
-    moveStartZoomRef.current = flowInstanceRef.current?.getViewport().zoom;
   }, []);
-
-  const handleMove = useCallback(
-    (_: unknown, viewport: BoardCamera) => {
-      if (moveStartZoomRef.current === undefined) {
-        moveStartZoomRef.current = viewport.zoom;
-        return;
-      }
-      if (viewport.zoom !== moveStartZoomRef.current) {
-        boardRef.current?.classList.add("factory-flow-board--zooming");
-      }
-    },
-    [],
-  );
 
   /**
    * Every camera move ends here, the board's own included, which is where the
@@ -3766,8 +3746,6 @@ export function FactoryFlow() {
   const handleMoveEnd = useCallback(
     (event: MouseEvent | TouchEvent | null, viewport: BoardCamera) => {
       boardRef.current?.classList.remove("factory-flow-board--moving");
-      boardRef.current?.classList.remove("factory-flow-board--zooming");
-      moveStartZoomRef.current = undefined;
       updateFlowViewportCenter();
 
       if (event) {
@@ -5436,7 +5414,6 @@ export function FactoryFlow() {
         onConnectEnd={handleConnectEnd}
         onInit={handleInit}
         onMoveStart={handleMoveStart}
-        onMove={handleMove}
         onMoveEnd={handleMoveEnd}
         // React Flow styles its own controls and minimap off this; the app has
         // no light palette to switch to.
