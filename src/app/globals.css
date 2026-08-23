@@ -668,6 +668,16 @@ textarea {
   will-change: transform;
 }
 
+/* The shadows go out while the camera moves. A drop-shadow rasterises each
+   node's painted silhouette and re-rasterises it at every new zoom scale, so
+   a pinch re-ran a hundred filter passes per frame; the edge layer's one
+   filter scales with its area, which is the whole board. Nobody reads depth
+   cueing mid-gesture, and the marks all come back on move end. */
+.factory-flow-board--moving .react-flow__node,
+.factory-flow-board--moving .react-flow__edges {
+  filter: none !important;
+}
+
 .factory-flow-board .react-flow__node {
   contain: layout style;
   /* Everything on the paper casts a shadow. drop-shadow follows each node's
@@ -1662,16 +1672,20 @@ img {
 /* The quiet one: the card itself, a ring only. Width is constant and only
    colour and halo move, for the reason the dead-loop ring documents at
    length - a ring that thins below a device pixel at glance zoom does not
-   dim, it vanishes and comes back. */
+   dim, it vanishes and comes back.
+
+   The breath is two STACKED shadows cross-faded by opacity, not an animated
+   box-shadow: box-shadow is a paint property, so animating it repainted
+   every marked card (and re-ran its drop-shadow filter) sixty times a
+   second, forever, on an idle board. The dim ring sits on the element, the
+   lit ring on a ::after whose opacity fades - compositor-only, same read. */
 @keyframes unwired-ring-breathe {
   0%,
   100% {
-    box-shadow: 0 0 0 var(--unwired-ring) rgba(200, 210, 224, 0.25);
+    opacity: 0;
   }
   50% {
-    box-shadow:
-      0 0 0 var(--unwired-ring) rgba(238, 242, 248, 0.85),
-      0 0 var(--unwired-halo) 2px rgba(220, 230, 244, 0.28);
+    opacity: 1;
   }
 }
 
@@ -1691,6 +1705,17 @@ img {
   pointer-events: none;
   --unwired-ring: 2px;
   --unwired-halo: 12px;
+  box-shadow: 0 0 0 var(--unwired-ring) rgba(200, 210, 224, 0.25);
+}
+
+.unwired-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow:
+    0 0 0 var(--unwired-ring) rgba(238, 242, 248, 0.85),
+    0 0 var(--unwired-halo) 2px rgba(220, 230, 244, 0.28);
+  opacity: 0;
   animation: unwired-ring-breathe var(--board-pulse) ease-in-out infinite;
 }
 
@@ -1727,6 +1752,9 @@ img {
   .unwired-ring {
     box-shadow: 0 0 0 var(--unwired-ring) rgba(238, 242, 248, 0.85);
   }
+  .unwired-ring::after {
+    content: none;
+  }
 }
 
 .factory-flow-board--calm .recipe-node-shell[data-verdict="unwired"] .flow-port--bind,
@@ -1737,6 +1765,10 @@ img {
 
 .factory-flow-board--calm .unwired-ring {
   box-shadow: 0 0 0 var(--unwired-ring) #7b8b9c;
+}
+
+.factory-flow-board--calm .unwired-ring::after {
+  content: none;
 }
 
 /* The one state whose wash is cool. See --verdict-clogged-ink. */
@@ -1788,17 +1820,17 @@ img {
    where the compositor has anything left to draw. The mark did not dim, it
    disappeared and came back, which reads as a rendering fault rather than as
    a pulse. Nothing that has to survive zoom-out may animate its size. */
+/* Same two-layer bargain as the unwired ring: the dim shadow lives on the
+   element, the lit one on a ::after, and only the ::after's OPACITY animates.
+   An animated box-shadow is a paint property - it repainted every ring card
+   and its drop-shadow filter every frame, forever. */
 @keyframes dead-loop-breathe {
   0%,
   100% {
-    box-shadow:
-      0 0 0 var(--dead-loop-ring) #a83b3b,
-      0 0 var(--dead-loop-halo) 1px rgba(200, 60, 60, 0.25);
+    opacity: 0;
   }
   50% {
-    box-shadow:
-      0 0 0 var(--dead-loop-ring) #ff6b6b,
-      0 0 var(--dead-loop-halo-lit) 6px rgba(255, 90, 90, 0.6);
+    opacity: 1;
   }
 }
 
@@ -1810,6 +1842,19 @@ img {
   --dead-loop-ring: 3px;
   --dead-loop-halo: 10px;
   --dead-loop-halo-lit: 24px;
+  box-shadow:
+    0 0 0 var(--dead-loop-ring) #a83b3b,
+    0 0 var(--dead-loop-halo) 1px rgba(200, 60, 60, 0.25);
+}
+
+.dead-loop-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow:
+    0 0 0 var(--dead-loop-ring) #ff6b6b,
+    0 0 var(--dead-loop-halo-lit) 6px rgba(255, 90, 90, 0.6);
+  opacity: 0;
   animation: dead-loop-breathe var(--board-pulse) ease-in-out infinite;
 }
 
@@ -1818,14 +1863,10 @@ img {
 @keyframes clog-lock-breathe {
   0%,
   100% {
-    box-shadow:
-      0 0 0 var(--dead-loop-ring) #3d7291,
-      0 0 var(--dead-loop-halo) 1px rgba(111, 178, 214, 0.25);
+    opacity: 0;
   }
   50% {
-    box-shadow:
-      0 0 0 var(--dead-loop-ring) #6fb2d6,
-      0 0 var(--dead-loop-halo-lit) 6px rgba(120, 190, 230, 0.6);
+    opacity: 1;
   }
 }
 
@@ -1837,6 +1878,19 @@ img {
   --dead-loop-ring: 3px;
   --dead-loop-halo: 10px;
   --dead-loop-halo-lit: 24px;
+  box-shadow:
+    0 0 0 var(--dead-loop-ring) #3d7291,
+    0 0 var(--dead-loop-halo) 1px rgba(111, 178, 214, 0.25);
+}
+
+.clog-lock-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow:
+    0 0 0 var(--dead-loop-ring) #6fb2d6,
+    0 0 var(--dead-loop-halo-lit) 6px rgba(120, 190, 230, 0.6);
+  opacity: 0;
   animation: clog-lock-breathe var(--board-pulse) ease-in-out infinite;
 }
 
@@ -1887,16 +1941,21 @@ img {
    movement: hold it at the bright end rather than dropping the signal. */
 @media (prefers-reduced-motion: reduce) {
   .dead-loop-ring {
-    animation: none;
     box-shadow:
       0 0 0 var(--dead-loop-ring) #ff6b6b,
       0 0 var(--dead-loop-halo-lit) 4px rgba(255, 90, 90, 0.4);
   }
+  .dead-loop-ring::after {
+    content: none;
+  }
 }
 
 .factory-flow-board--calm .dead-loop-ring {
-  animation: none;
   box-shadow: 0 0 0 var(--dead-loop-ring) #7b8b9c;
+}
+
+.factory-flow-board--calm .dead-loop-ring::after {
+  content: none;
 }
 
 /* The ring's wires, on the SAME clock as its cards: the whole circle has to
