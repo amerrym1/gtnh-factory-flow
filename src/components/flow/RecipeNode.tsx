@@ -1234,7 +1234,14 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     }
                   }}
                   data-hatch-menu-anchor
-                  className="nodrag flex h-6 items-center justify-center gap-0.5 whitespace-nowrap border-2 border-r-0 px-0.5 text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+                  // Wheel over the chip steps the supply: the one cycling
+                  // gesture every browser honours (Firefox forces its menu on
+                  // shift-right-click and cannot be overridden).
+                  onWheel={(event) => {
+                    event.stopPropagation();
+                    stepSupply(event.deltaY < 0 ? 1 : -1);
+                  }}
+                  className="nodrag nowheel flex h-6 items-center justify-center gap-0.5 whitespace-nowrap border-2 border-r-0 px-0.5 text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
                   style={{
                     backgroundColor: tierColor.background,
                     borderColor: tierColor.border,
@@ -1279,7 +1286,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   }
                 }}
                 data-hatch-menu-anchor
-                className="nodrag flex h-6 w-[50px] items-center justify-center border-2 px-1 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+                onWheel={(event) => {
+                  event.stopPropagation();
+                  updateTier(event.deltaY < 0 ? 1 : -1);
+                }}
+                className="nodrag nowheel flex h-6 w-[50px] items-center justify-center border-2 px-1 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
                 style={{
                   backgroundColor: tierColor.background,
                   borderColor: tierColor.border,
