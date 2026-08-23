@@ -293,10 +293,7 @@ export function EnergySupplyMenu({
         })}
       </div>
       <div className="mt-1 border-t border-[var(--mc-54)] px-1 pt-1 text-[11px] leading-4 text-[var(--mc-ink-muted)]">
-        A single energy hatch accepts 2 A from cables into its internal buffer; that is different
-        from what the multiblock's recipe logic gets. A lone hatch feeds recipes at 1 A, and the
-        second hatch unlocks the full 2 A each. Multi-amp and laser hatches: exactly one, of its
-        whole rating.
+        One hatch feeds recipes 1 A, two or more feed 2 A each; exotic hatches: one only.
       </div>
     </MenuShell>
   );
