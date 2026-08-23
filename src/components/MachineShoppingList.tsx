@@ -29,6 +29,12 @@ import {
 } from "@/lib/solver/power-report";
 import { useWorkspaceView, writeWorkspaceView } from "@/lib/workspace-view";
 import { useFactoryStore } from "@/store/factory-store";
+import { getEnergyHatchType } from "@/lib/machines/energy-hatches";
+import { EnergyHatchArt } from "@/components/flow/EnergyHatchMenu";
+import {
+  energyHatchCatalogKey,
+  useEnergyHatchCatalog,
+} from "@/components/flow/use-energy-hatch-catalog";
 
 type VoltageTier = Exclude<MachineTier, "DEMO">;
 
@@ -44,6 +50,8 @@ interface BuildLine {
   hatches: number;
   /** An exotic hatch family's amp badge, worn instead of the count. */
   hatchChip?: string;
+  /** The family itself, so the row can wear the hatch item's art. */
+  hatchTypeId?: string;
   isMultiblock: boolean;
   tier?: VoltageTier;
   tierIndex: number;
@@ -210,6 +218,9 @@ export function MachineShoppingList() {
             count: 0,
             hatches: report?.hatches ?? 1,
             hatchChip: report?.hatchChip,
+            hatchTypeId: report?.isMultiblock
+              ? getEnergyHatchType(node.energyHatchType).id
+              : undefined,
             isMultiblock:
               report?.isMultiblock ??
               steam?.isMultiblock ??
@@ -488,7 +499,7 @@ function ListLine({
   count?: number;
   label?: string;
   /** The fused hatch-and-tier chip, when this line is one build. */
-  chip?: Pick<BuildLine, "tier" | "hatches" | "hatchChip" | "isMultiblock">;
+  chip?: Pick<BuildLine, "tier" | "hatches" | "hatchChip" | "hatchTypeId" | "isMultiblock">;
   euT?: number;
   /** A steam machine's figure: what it burns, in L/s, instead of EU/t. */
   steamLs?: number;
@@ -499,6 +510,14 @@ function ListLine({
 }) {
   const stalled = state !== "ok";
   const chipColor = chip?.tier ? GT_TIER_COLORS[chip.tier] : undefined;
+  // The hatch item the build drinks through, for the chip's middle seat -
+  // the same art the card's own chip wears.
+  const datasetVersionId = useFactoryStore((store) => store.dataset?.datasetVersionId);
+  const hatchCatalog = useEnergyHatchCatalog(chip?.isMultiblock ? datasetVersionId : undefined);
+  const hatchEntry =
+    chip?.isMultiblock && chip.tier
+      ? hatchCatalog.get(energyHatchCatalogKey(chip.tier, chip.hatchTypeId ?? "standard"))
+      : undefined;
 
   // No hover panel on these lines: the row already says everything it knows,
   // and a tooltip repeating it was noise in the way of the scrollbar.
@@ -560,19 +579,32 @@ function ListLine({
              tier, one paint job, so the panel and the board read as one.
              Always in the right-hand column, so every chip on the list sits
              on one line however the rows around it are shaped. */
-          <span className="flex shrink-0">
+          <span className="flex shrink-0 items-center">
             {chip.isMultiblock ? (
-              <span
-                className="h-5 border-2 border-r-0 px-1 text-[11px] font-bold leading-4"
-                style={{
-                  backgroundColor: chipColor.background,
-                  borderColor: chipColor.border,
-                  color: chipColor.text,
-                  textShadow: `1px 1px 0 ${chipColor.shadow}`,
-                }}
-              >
-                {chip.hatchChip ?? `${chip.hatches}×`}
-              </span>
+              <>
+                <span
+                  className="flex h-5 items-center border-2 border-r-0 px-1 pb-[2px] text-[11px] font-bold leading-none"
+                  style={{
+                    backgroundColor: chipColor.background,
+                    borderColor: chipColor.border,
+                    color: chipColor.text,
+                    textShadow: `1px 1px 0 ${chipColor.shadow}`,
+                  }}
+                >
+                  {chip.hatchChip ?? `${chip.hatches}×`}
+                </span>
+                {hatchEntry ? (
+                  <span
+                    className="flex h-5 w-5 items-center justify-center border-2 border-r-0"
+                    style={{
+                      backgroundColor: chipColor.background,
+                      borderColor: chipColor.border,
+                    }}
+                  >
+                    <EnergyHatchArt entry={hatchEntry} boxClass="h-6 w-6" />
+                  </span>
+                ) : null}
+              </>
             ) : null}
             <span
               className="h-5 border-2 px-1.5 text-[11px] font-bold leading-4"
