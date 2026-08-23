@@ -26,8 +26,13 @@ export function MinecraftTooltip({
   children,
 }: {
   label?: string | string[];
-  /** Rich panel body; wins over `label` and brings its own typography. */
-  content?: ReactNode;
+  /**
+   * Rich panel body; wins over `label` and brings its own typography. Pass a
+   * THUNK when the body is expensive to build: it is invoked only while the
+   * tooltip is actually open, so a card with eight port tooltips does not
+   * build eight discarded panels on every render.
+   */
+  content?: ReactNode | (() => ReactNode);
   children: ReactNode;
 }) {
   const lines = useMemo(
@@ -237,7 +242,7 @@ export function MinecraftTooltip({
                 className="pointer-events-none fixed z-[9999] max-w-[640px] border-2 border-[#2a005f] bg-[#100010] px-3 py-2.5 text-white shadow-[inset_1px_1px_0_rgba(255,255,255,0.18),inset_-1px_-1px_0_rgba(0,0,0,0.8)]"
                 style={{ left: position.x, top: position.y }}
               >
-                {content}
+                {typeof content === "function" ? content() : content}
               </div>
             ) : (
               <div

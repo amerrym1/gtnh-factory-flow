@@ -478,7 +478,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
             matter which pixel of a small tile the pointer found. The span is
             display:contents, so the flex column underneath lays out as if it
             were not there. */}
-        <MinecraftTooltip content={renderStorageHoverContent(storage, role)}>
+        <MinecraftTooltip content={() => renderStorageHoverContent(storage, role)}>
         <div
           data-storage-shape={role}
           className="storage-shape-content relative z-10 flex min-h-0 flex-1 flex-col"

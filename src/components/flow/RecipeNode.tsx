@@ -2466,7 +2466,7 @@ function PlugBlock({ nodeId, port }: { nodeId: string; port: RailPort }) {
   return (
     <MinecraftTooltip
       label={`${port.displayName}: who takes it`}
-      content={renderPlugHoverContent(port, nodeId)}
+      content={() => renderPlugHoverContent(port, nodeId)}
     >
       <span
         className={["flow-plug nodrag", `flow-plug--${plug.state}`].join(" ")}
@@ -2886,7 +2886,7 @@ export function PortChip({
       </span>
       <MinecraftTooltip
         label={port.resource?.tooltip ?? port.displayName}
-        content={renderPortHoverContent(port, nodeId)}
+        content={() => renderPortHoverContent(port, nodeId)}
       >
         <Handle
           id={port.handleId}
