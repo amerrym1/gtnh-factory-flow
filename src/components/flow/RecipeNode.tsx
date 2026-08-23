@@ -1206,7 +1206,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     // The hatch itself, between count and tier: the item this
                     // build drinks through. Clicking opens the full picker.
                     data-hatch-menu-anchor
-                    className="nodrag flex h-6 w-8 items-center justify-center border-2 border-r-0 shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+                    className="nodrag flex h-6 w-6 items-center justify-center border-2 border-r-0 shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
                     style={{
                       backgroundColor: tierColor.background,
                       borderColor: tierColor.border,
@@ -1214,7 +1214,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     aria-label="Pick energy hatch"
                   >
                     {hatchChipEntry ? (
-                      <EnergyHatchArt entry={hatchChipEntry} boxClass="h-7 w-7" />
+                      <EnergyHatchArt entry={hatchChipEntry} boxClass="h-8 w-8" />
                     ) : (
                       <Zap className="h-3.5 w-3.5" style={{ color: tierColor.text }} />
                     )}
