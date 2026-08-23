@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.30.1",
+    date: "2026-08-23",
+    headline: "A faster, smoother board",
+    notes: [
+      "Panning and zooming big plans now runs at your screen's full speed.",
+      "The moving dashes stay on their wires instead of trailing behind them.",
+      "Card shadows no longer blink out while the camera moves.",
+      "Hovering, searching and dragging all cost less on large factories.",
+    ],
+  },
+  {
     version: "2.30.0",
     date: "2026-08-23",
     headline: "Crafting recipes, on a real machine",
