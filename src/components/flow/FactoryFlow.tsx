@@ -2162,28 +2162,48 @@ export function FactoryFlow() {
   // are ink the wires pass straight through, so their fingerprint buys only
   // a cheap geometry refresh; folding both into one fingerprint was how
   // dragging a NOTE made six hundred wires re-check their routes.
-  const describeNodeGeometry = (node: BoardFlowNode) =>
-    `${node.id}:${node.position.x},${node.position.y},${Math.round(
-      node.measured?.width ?? node.width ?? 0,
-    )}x${Math.round(node.measured?.height ?? node.height ?? 0)}`;
-  const obstacleGeometryFingerprint = useMemo(
-    () =>
-      flowNodes
-        .filter((node) => node.type !== "annotationNode")
-        .map(describeNodeGeometry)
-        .join(";"),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [flowNodes],
-  );
-  const annotationGeometryFingerprint = useMemo(
-    () =>
-      flowNodes
-        .filter((node) => node.type === "annotationNode")
-        .map(describeNodeGeometry)
-        .join(";"),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [flowNodes],
-  );
+  // The fingerprints are only ever compared (they gate the geometry-publish
+  // effects below), so they are two independent 32-bit rolling hashes rather
+  // than strings: `flowNodes` changes identity every drag frame, and the old
+  // filter().map().join() chains allocated a string per node per frame.
+  // Positions are quantised at 1/8 px — exact for grid positions, far below
+  // any real move — and the paired hash keeps a collision astronomically
+  // unlikely.
+  const geometryFingerprints = useMemo(() => {
+    let obstacleA = 0;
+    let obstacleB = 0;
+    let annotationA = 0;
+    let annotationB = 0;
+    for (const node of flowNodes) {
+      const width = Math.round(node.measured?.width ?? node.width ?? 0);
+      const height = Math.round(node.measured?.height ?? node.height ?? 0);
+      const quantX = (node.position.x * 8) | 0;
+      const quantY = (node.position.y * 8) | 0;
+      let hashA = 0;
+      let hashB = 0;
+      const id = node.id;
+      for (let index = 0; index < id.length; index += 1) {
+        const code = id.charCodeAt(index);
+        hashA = (hashA * 31 + code) | 0;
+        hashB = (hashB * 37 + code) | 0;
+      }
+      hashA = (((((((hashA * 31 + quantX) | 0) * 31 + quantY) | 0) * 31 + width) | 0) * 31 + height) | 0;
+      hashB = (((((((hashB * 37 + quantX) | 0) * 37 + quantY) | 0) * 37 + width) | 0) * 37 + height) | 0;
+      if (node.type !== "annotationNode") {
+        obstacleA = (obstacleA * 31 + hashA) | 0;
+        obstacleB = (obstacleB * 37 + hashB) | 0;
+      } else {
+        annotationA = (annotationA * 31 + hashA) | 0;
+        annotationB = (annotationB * 37 + hashB) | 0;
+      }
+    }
+    return {
+      obstacle: `${obstacleA}:${obstacleB}`,
+      annotation: `${annotationA}:${annotationB}`,
+    };
+  }, [flowNodes]);
+  const obstacleGeometryFingerprint = geometryFingerprints.obstacle;
+  const annotationGeometryFingerprint = geometryFingerprints.annotation;
   const flowNodesRef = useRef(flowNodes);
   flowNodesRef.current = flowNodes;
   // Synced in an effect rather than during render, and declared ABOVE the
@@ -2854,6 +2874,11 @@ export function FactoryFlow() {
           groups.set(key, { representativeId: edge.id, ids: [edge.id] });
         }
       }
+      // One map, not a linear find per grouped id — that was O(edges²) on a
+      // board of many same-resource crossings with no solver results yet.
+      const projectRateByEdgeId = new Map(
+        project.edges.map((entry) => [entry.id, entry.ratePerSecond]),
+      );
       for (const group of groups.values()) {
         if (group.ids.length < 2) {
           continue;
@@ -2864,10 +2889,7 @@ export function FactoryFlow() {
         for (const id of group.ids) {
           transferred += transferredById.get(id) ?? 0;
           const edgeResult = result.edges[id];
-          demand +=
-            edgeResult?.demandPerSecond ??
-            project.edges.find((entry) => entry.id === id)?.ratePerSecond ??
-            0;
+          demand += edgeResult?.demandPerSecond ?? projectRateByEdgeId.get(id) ?? 0;
           if (id !== group.representativeId) {
             channelSkip.add(id);
           }
@@ -6921,17 +6943,16 @@ const HopMapController = memo(function HopMapController({
     };
 
     const handleMove = (event: MouseEvent) => {
-      const target = event.target;
-      const nodeElement =
-        target instanceof Element ? target.closest(".react-flow__node") : undefined;
-      const nodeId = nodeElement?.getAttribute("data-id");
+      // The cheap attribute checks come first: this runs on EVERY mousemove
+      // at every zoom, and the closest() ancestor walk is only worth doing
+      // once the board is actually in the one mode that wants the map.
       // A held wire owns the board; distance from the card under it is not the
       // question being asked.
       if (isWiringConnection()) {
         cancel();
         return;
       }
-      if (!nodeId || board.getAttribute(NODE_DETAIL_ATTRIBUTE) !== "glance") {
+      if (board.getAttribute(NODE_DETAIL_ATTRIBUTE) !== "glance") {
         cancel();
         return;
       }
@@ -6939,6 +6960,14 @@ const HopMapController = memo(function HopMapController({
       // hover means "show me this card's rates" and the map would paint over
       // the answer. Read live off the board attribute, like the glance state.
       if (board.getAttribute("data-glance-mode") !== "status") {
+        cancel();
+        return;
+      }
+      const target = event.target;
+      const nodeElement =
+        target instanceof Element ? target.closest(".react-flow__node") : undefined;
+      const nodeId = nodeElement?.getAttribute("data-id");
+      if (!nodeId) {
         cancel();
         return;
       }

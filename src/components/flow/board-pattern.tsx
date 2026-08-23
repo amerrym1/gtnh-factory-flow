@@ -1,7 +1,7 @@
 "use client";
 
 import { useStore } from "@xyflow/react";
-import { useId } from "react";
+import { memo, useId } from "react";
 import { BOARD_GRID } from "@/lib/board-grid";
 import type { CanvasGrainLayer } from "./canvas-themes";
 
@@ -14,7 +14,7 @@ import type { CanvasGrainLayer } from "./canvas-themes";
  * and line widths stay one screen pixel at every zoom, the same trick the
  * stock line variant uses.
  */
-export function RuledBackground({
+export const RuledBackground = memo(function RuledBackground({
   mode,
   color,
 }: {
@@ -82,7 +82,7 @@ export function RuledBackground({
       <rect width="100%" height="100%" fill={`url(#${patternId})`} />
     </svg>
   );
-}
+});
 
 /**
  * The paper's tooth, inked ON the board: each grain layer is a tileable
@@ -96,7 +96,14 @@ export function RuledBackground({
  * Zoomed far out the tile shrinks toward per-pixel fizz, so the whole layer
  * fades below 0.5 zoom and is gone by 0.2 — tooth is a close-up reading.
  */
-export function GrainBackground({ layers }: { layers: CanvasGrainLayer[] }) {
+/* Both backgrounds are memoised: FactoryFlow re-renders every drag frame,
+   and without memo each frame reconciled the whole SVG pattern tree even
+   though the transform (their own subscription) had not moved. */
+export const GrainBackground = memo(function GrainBackground({
+  layers,
+}: {
+  layers: CanvasGrainLayer[];
+}) {
   const [translateX, translateY, zoom] = useStore((state) => state.transform);
   const baseId = useId();
   const fade = Math.max(0, Math.min(1, (zoom - 0.2) / 0.3));
@@ -140,4 +147,4 @@ export function GrainBackground({ layers }: { layers: CanvasGrainLayer[] }) {
       ))}
     </svg>
   );
-}
+});
