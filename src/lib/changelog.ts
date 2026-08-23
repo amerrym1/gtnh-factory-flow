@@ -77,9 +77,9 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-08-23",
     headline: "Crafting recipes, on a real machine",
     notes: [
-      "A Hand crafting switch in the recipe search shows crafting table recipes.",
-      "Placed crafting cards run on the Auto Workbench: 2048 EU a craft, faster each tier up to EV.",
+      "Crafting table recipes now appear in the recipe search, and their cards run on the Auto Workbench: 2048 EU a craft, faster each tier up to EV.",
       "The crafting table stays available on the card as the free, instant choice.",
+      "The machine buttons in the search are now toggles: turn any machine's recipes off, and All selects or clears the lot.",
     ],
   },
   {

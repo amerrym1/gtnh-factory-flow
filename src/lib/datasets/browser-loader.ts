@@ -16,6 +16,11 @@ import type {
 
 type TierFilter = "all" | Exclude<MachineTier, "DEMO">;
 
+export interface RecipeMapSelection {
+  mode: "exclude" | "include";
+  maps: string[];
+}
+
 export interface RecipeDatasetQuery {
   query: string;
   resource?: Pick<ResourceAmount, "kind" | "id">;
@@ -26,8 +31,11 @@ export interface RecipeDatasetQuery {
   makesOp?: RecipeQuerySideOp;
   /** Page across every recipe map instead of scoping to one. */
   allMaps?: boolean;
-  /** Offer the Shaped/Shapeless Crafting maps too (the hand-crafting toggle). */
-  handCrafting?: boolean;
+  /**
+   * The machine chips' multi-select: "exclude" lists the unselected maps,
+   * "include" the selected ones (empty include = none). Absent means all.
+   */
+  mapSelection?: RecipeMapSelection;
   recipeMap?: string;
   maxTier: TierFilter;
   offset: number;
@@ -212,8 +220,11 @@ export async function queryRecipeDatasetRecipes(
   if (query.allMaps) {
     url.searchParams.set("allMaps", "1");
   }
-  if (query.handCrafting) {
-    url.searchParams.set("handCrafting", "1");
+  if (query.mapSelection) {
+    url.searchParams.set("mapMode", query.mapSelection.mode);
+    for (const map of query.mapSelection.maps) {
+      url.searchParams.append("map", map);
+    }
   }
 
   return fetchJson<RecipeDatasetQueryResult>(url.toString(), { signal: options.signal });

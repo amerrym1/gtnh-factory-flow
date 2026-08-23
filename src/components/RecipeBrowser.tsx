@@ -20,6 +20,7 @@ import {
   queryRecipeDatasetRecipes,
   type RecipeDatasetResourceQueryResult,
   type RecipeDatasetQueryResult,
+  type RecipeMapSelection,
 } from "@/lib/datasets/browser-loader";
 import type {
   RecipeQueryClause,
@@ -94,8 +95,8 @@ const RESOURCE_WHEEL_PAGE_DELTA = 80;
 const RESOURCE_VIEW_STORAGE_KEY = "gtnh-factory-flow.resource-view.v1";
 /** Whether the filter block under the search box is folded away. */
 const RESOURCE_FILTERS_STORAGE_KEY = "gtnh-factory-flow.resource-filters.v1";
-/** Whether the search also offers the Shaped/Shapeless Crafting maps. */
-const HAND_CRAFTING_STORAGE_KEY = "gtnh-factory-flow.hand-crafting.v1";
+/** The machine chips' multi-select: which maps' recipes the search shows. */
+const MAP_SELECTION_STORAGE_KEY = "gtnh-factory-flow.machine-map-selection.v1";
 
 type ResourceSortMode = "relevance" | "name" | "mod" | "made" | "uses";
 type ResourceViewMode = "list" | "grid";
@@ -203,7 +204,6 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const beginRecipeAdd = useFactoryStore((state) => state.beginRecipeAdd);
   const resolveRecipeAdd = useFactoryStore((state) => state.resolveRecipeAdd);
   const failRecipeAdd = useFactoryStore((state) => state.failRecipeAdd);
-  const [selectedRecipeMap, setSelectedRecipeMap] = useState("");
   const [recipePage, setRecipePage] = useState(0);
   const [recipeBookSearch, setRecipeBookSearch] = useState("");
   const [filteredRecipes, setFilteredRecipes] = useState<RecipeSummary[]>([]);
@@ -219,7 +219,11 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const [resourceView, setResourceView] = useState<ResourceViewMode>("list");
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [resourceFilter, setResourceFilter] = useState<ResourceFilterMode>("all");
-  const [handCrafting, setHandCrafting] = useState(false);
+  // The machine chips' selection. Absent means everything is selected (the
+  // default); "exclude" carries the unselected chips, "include" the selected
+  // ones. Stored rather than derived so a map unselected on one search stays
+  // unselected on the next, even across searches where it never appears.
+  const [mapSelection, setMapSelection] = useState<RecipeMapSelection | undefined>(undefined);
   // The master switch: what the whole left panel is FOR right now — finding
   // items to build with, stamping saved blueprints, or browsing the network's
   // shared setups. One at a time, full column each; the old bottom-strip
@@ -360,11 +364,21 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   );
 
   const recipeMapChips = useMemo<RecipeMapChip[]>(
-    () => recipeMapTabs.map((tab) => ({ ...tab, count: recipeMapCounts[tab.id] })),
-    [recipeMapCounts, recipeMapTabs],
+    () =>
+      recipeMapTabs.map((tab) => ({
+        ...tab,
+        count: recipeMapCounts[tab.id],
+        selected: isMapSelectedIn(mapSelection, tab.id),
+      })),
+    [mapSelection, recipeMapCounts, recipeMapTabs],
   );
 
-  const activeRecipeMap = recipeMaps.includes(selectedRecipeMap) ? selectedRecipeMap : "";
+  // The All chip reads from what is on screen: lit when every listed chip is
+  // selected, whatever out-of-view maps the stored selection also carries.
+  const allRecipeMapsSelected = useMemo(
+    () => recipeMaps.every((recipeMap) => isMapSelectedIn(mapSelection, recipeMap)),
+    [mapSelection, recipeMaps],
+  );
 
   // Opening the search seeds the stencil with exactly the question the click
   // asked: left click = one output condition, right click = one input - or,
@@ -456,7 +470,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   );
 
   const getRecipeQueryKey = useCallback(
-    (recipeMap: string, page: number) =>
+    (selection: RecipeMapSelection | undefined, page: number) =>
       selectedDatasetVersion
         ? getRecipeQueryCacheKey({
             versionId: getDatasetVersionCacheKey(selectedDatasetVersion),
@@ -466,9 +480,8 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             clauses: queryClauses,
             takesOp,
             makesOp,
-            recipeMap,
+            mapSelection: selection,
             maxTier,
-            handCrafting,
             offset: page * RECIPE_QUERY_LIMIT,
             limit: RECIPE_QUERY_LIMIT,
           })
@@ -477,7 +490,6 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       activeRecipeQuery,
       activeResource,
       browserMode,
-      handCrafting,
       makesOp,
       maxTier,
       queryClauses,
@@ -538,34 +550,56 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     window.localStorage.setItem(RESOURCE_FILTERS_STORAGE_KEY, open ? "open" : "folded");
   }, []);
 
-  // Hidden is the default; turning hand crafting on is a saved preference,
-  // applied deferred for the same SSR-agreement reason as the view above.
+  // Everything selected is the default; a trimmed selection is a saved
+  // preference, applied deferred for the same SSR-agreement reason as the
+  // view above.
   useEffect(() => {
-    if (window.localStorage.getItem(HAND_CRAFTING_STORAGE_KEY) === "on") {
-      return deferStateUpdate(() => setHandCrafting(true));
+    const stored = readStoredMapSelection();
+    if (stored) {
+      return deferStateUpdate(() => setMapSelection(stored));
     }
     return undefined;
   }, []);
 
-  const changeHandCrafting = useCallback((on: boolean) => {
-    setHandCrafting(on);
+  const changeMapSelection = useCallback((selection: RecipeMapSelection | undefined) => {
+    setMapSelection(selection);
     setRecipePage(0);
-    window.localStorage.setItem(HAND_CRAFTING_STORAGE_KEY, on ? "on" : "off");
+    if (selection) {
+      window.localStorage.setItem(MAP_SELECTION_STORAGE_KEY, JSON.stringify(selection));
+    } else {
+      window.localStorage.removeItem(MAP_SELECTION_STORAGE_KEY);
+    }
   }, []);
 
-  const prefetchRecipeMap = useCallback(
+  const toggleRecipeMap = useCallback(
+    (recipeMap: string) => {
+      changeMapSelection(toggledMapSelection(mapSelection, recipeMap, recipeMaps));
+    },
+    [changeMapSelection, mapSelection, recipeMaps],
+  );
+
+  // The All chip is select-all / select-none: lit, a click clears the board;
+  // unlit, a click selects everything (and forgets stored exclusions).
+  const toggleAllRecipeMaps = useCallback(() => {
+    changeMapSelection(allRecipeMapsSelected ? { mode: "include", maps: [] } : undefined);
+  }, [allRecipeMapsSelected, changeMapSelection]);
+
+  // A pointer over a chip is probably about to toggle it, so the answer that
+  // toggle would show starts travelling now.
+  const prefetchRecipeMapToggle = useCallback(
     (recipeMap: string) => {
       if (!selectedDatasetVersion) {
         return;
       }
 
       const query = activeRecipeQuery;
-      // Map tabs only exist inside the book, which only opens on a resource.
+      // Map chips only exist inside the book, which only opens on a resource.
       if (!activeResource) {
         return;
       }
 
-      const cacheKey = getRecipeQueryKey(recipeMap, 0);
+      const nextSelection = toggledMapSelection(mapSelection, recipeMap, recipeMaps);
+      const cacheKey = getRecipeQueryKey(nextSelection, 0);
       if (
         !cacheKey ||
         getCachedRecipeQuery(recipeQueryCacheRef.current, cacheKey) ||
@@ -590,10 +624,9 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           clauses: queryClauses.length > 0 ? queryClauses : undefined,
           takesOp,
           makesOp,
-          allMaps: recipeMap ? undefined : true,
-          recipeMap: recipeMap || undefined,
+          allMaps: true,
+          mapSelection: nextSelection,
           maxTier,
-          handCrafting: handCrafting || undefined,
           offset: 0,
           limit: RECIPE_QUERY_LIMIT,
         },
@@ -603,7 +636,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           trimRecipeQueryCache(recipeQueryCacheRef.current);
         })
         .catch(() => {
-          // Prefetch is opportunistic; normal tab selection will surface real errors.
+          // Prefetch is opportunistic; the real toggle will surface real errors.
         })
         .finally(() => {
           pendingRecipePrefetchesRef.current.delete(cacheKey);
@@ -615,10 +648,11 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       browserMode,
       datasetManifestUrl,
       getRecipeQueryKey,
-      handCrafting,
       makesOp,
+      mapSelection,
       maxTier,
       queryClauses,
+      recipeMaps,
       selectedDatasetVersion,
       takesOp,
     ],
@@ -864,7 +898,6 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     takesOp,
     makesOp,
     selectedDatasetVersion?.id,
-    selectedRecipeMap,
   ]);
 
   useEffect(() => {
@@ -901,7 +934,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       });
     }
 
-    const cacheKey = getRecipeQueryKey(activeRecipeMap, recipePage);
+    const cacheKey = getRecipeQueryKey(mapSelection, recipePage);
     const cached = getCachedRecipeQuery(recipeQueryCacheRef.current, cacheKey);
     if (cached) {
       return scheduleAfterPaint(() => {
@@ -948,10 +981,9 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           clauses: queryClauses.length > 0 ? queryClauses : undefined,
           takesOp,
           makesOp,
-          allMaps: activeRecipeMap ? undefined : true,
-          recipeMap: activeRecipeMap || undefined,
+          allMaps: true,
+          mapSelection,
           maxTier,
-          handCrafting: handCrafting || undefined,
           offset: recipePage * RECIPE_QUERY_LIMIT,
           limit: RECIPE_QUERY_LIMIT,
         },
@@ -994,14 +1026,13 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       cancelAfterPaint();
     };
   }, [
-    activeRecipeMap,
     activeRecipeQuery,
     activeResource,
     browserMode,
     datasetManifestUrl,
     getRecipeQueryKey,
-    handCrafting,
     makesOp,
+    mapSelection,
     maxTier,
     queryClauses,
     recipePage,
@@ -1303,12 +1334,10 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           onMakesOpChange={changeMakesOp}
           onSwapSides={swapStencilSides}
           recipeMapChips={recipeMapChips}
-          activeRecipeMap={activeRecipeMap}
-          onRecipeMapChange={(recipeMap) => {
-            setSelectedRecipeMap(recipeMap);
-            setRecipePage(0);
-          }}
-          onRecipeMapHover={prefetchRecipeMap}
+          allRecipeMapsSelected={allRecipeMapsSelected}
+          onToggleRecipeMap={toggleRecipeMap}
+          onToggleAllRecipeMaps={toggleAllRecipeMaps}
+          onRecipeMapHover={prefetchRecipeMapToggle}
           recipes={filteredRecipes}
           totalAcrossMaps={recipeTotalAcrossMaps}
           hasMore={recipeHasMore}
@@ -1321,8 +1350,6 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           }}
           maxTier={maxTier}
           onMaxTierChange={setMaxTier}
-          handCrafting={handCrafting}
-          onHandCraftingChange={changeHandCrafting}
           selectedRecipeId={selectedRecipeId}
           onSelectRecipe={selectRecipe}
           onAdd={handleAddRecipe}
@@ -2254,9 +2281,8 @@ function getRecipeQueryCacheKey({
   clauses,
   takesOp,
   makesOp,
-  recipeMap,
+  mapSelection,
   maxTier,
-  handCrafting,
   offset,
   limit,
 }: {
@@ -2267,9 +2293,8 @@ function getRecipeQueryCacheKey({
   clauses: RecipeQueryClause[];
   takesOp: RecipeQuerySideOp;
   makesOp: RecipeQuerySideOp;
-  recipeMap: string;
+  mapSelection: RecipeMapSelection | undefined;
   maxTier: TierFilter;
-  handCrafting: boolean;
   offset: number;
   limit: number;
 }) {
@@ -2281,12 +2306,75 @@ function getRecipeQueryCacheKey({
     clauses.map((clause) => `${clause.role}:${clause.kind}:${clause.id}`).join(","),
     takesOp,
     makesOp,
-    recipeMap,
+    mapSelection ? `${mapSelection.mode}:${[...mapSelection.maps].sort().join(",")}` : "all",
     maxTier,
-    handCrafting ? "hand" : "",
     offset,
     limit,
   ].join("|");
+}
+
+/** Whether the chips' selection shows this map's recipes. Absent means all. */
+function isMapSelectedIn(selection: RecipeMapSelection | undefined, recipeMap: string): boolean {
+  if (!selection) {
+    return true;
+  }
+  const listed = selection.maps.includes(recipeMap);
+  return selection.mode === "exclude" ? !listed : listed;
+}
+
+/**
+ * One chip's toggle. Exclusions and inclusions are edited in place so a map
+ * unselected on an earlier search survives this one; the only normalisations
+ * are back to "all" - an emptied exclusion list, or an include list that has
+ * grown to cover every chip on screen.
+ */
+function toggledMapSelection(
+  selection: RecipeMapSelection | undefined,
+  recipeMap: string,
+  visibleMaps: string[],
+): RecipeMapSelection | undefined {
+  if (!selection) {
+    return { mode: "exclude", maps: [recipeMap] };
+  }
+  const listed = selection.maps.includes(recipeMap);
+  const maps = listed
+    ? selection.maps.filter((map) => map !== recipeMap)
+    : [...selection.maps, recipeMap];
+  if (selection.mode === "exclude") {
+    return maps.length > 0 ? { mode: "exclude", maps } : undefined;
+  }
+  if (visibleMaps.every((map) => maps.includes(map))) {
+    return undefined;
+  }
+  return { mode: "include", maps };
+}
+
+function readStoredMapSelection(): RecipeMapSelection | undefined {
+  try {
+    const stored = window.localStorage.getItem(MAP_SELECTION_STORAGE_KEY);
+    if (!stored) {
+      return undefined;
+    }
+    const parsed: unknown = JSON.parse(stored);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "mode" in parsed &&
+      (parsed.mode === "exclude" || parsed.mode === "include") &&
+      "maps" in parsed &&
+      Array.isArray(parsed.maps)
+    ) {
+      const maps = parsed.maps.filter((map): map is string => typeof map === "string");
+      // An empty exclusion list is just "all"; keep the state canonical.
+      if (parsed.mode === "exclude" && maps.length === 0) {
+        return undefined;
+      }
+      return { mode: parsed.mode, maps };
+    }
+  } catch {
+    // A stale or foreign value reads as the default.
+  }
+  return undefined;
 }
 
 function getResourceQueryCacheKey({

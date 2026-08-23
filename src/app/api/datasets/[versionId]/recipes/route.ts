@@ -36,7 +36,7 @@ export async function GET(
       takesOp: parseSideOp(url.searchParams.get("takesOp")),
       makesOp: parseSideOp(url.searchParams.get("makesOp")),
       allMaps: url.searchParams.get("allMaps") === "1",
-      handCrafting: url.searchParams.get("handCrafting") === "1",
+      mapSelection: parseMapSelection(url.searchParams),
       recipeMap: url.searchParams.get("recipeMap") || undefined,
       maxTier: parseTierFilter(url.searchParams.get("maxTier")),
       offset: parseOffset(url.searchParams.get("offset")),
@@ -73,6 +73,21 @@ function parseTierFilter(value: string | null): TierFilter {
 
 function parseSideOp(value: string | null): RecipeQuerySideOp {
   return value === "all" || value === "only" ? value : "any";
+}
+
+/**
+ * The machine chips' multi-select. `mapMode=exclude` lists unselected maps in
+ * `map=` params, `mapMode=include` lists the selected ones (none is a valid
+ * include list); absent means everything is selected.
+ */
+function parseMapSelection(
+  params: URLSearchParams,
+): { mode: "exclude" | "include"; maps: string[] } | undefined {
+  const mode = params.get("mapMode");
+  if (mode !== "exclude" && mode !== "include") {
+    return undefined;
+  }
+  return { mode, maps: params.getAll("map") };
 }
 
 function parseClauses(raw: string[]): RecipeQueryClause[] {

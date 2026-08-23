@@ -558,12 +558,35 @@ export interface DatasetRecipeQueryRequest {
   makesOp?: RecipeQuerySideOp;
   /** List and page across every recipe map instead of scoping to one. */
   allMaps?: boolean;
-  /** Offer the Shaped/Shapeless Crafting maps too (the hand-crafting toggle). */
-  handCrafting?: boolean;
+  /**
+   * The machine chips' multi-select: which maps' recipes the RESULTS show.
+   * The map list and per-map counts always cover everything that matched, so
+   * an unselected chip keeps its count. "exclude" lists the unselected maps
+   * (the everyday shape: all on except a few); "include" lists the selected
+   * ones, and empty include is a valid "none selected". Absent means all.
+   */
+  mapSelection?: RecipeMapSelection;
   recipeMap?: string;
   maxTier: TierFilter;
   offset: number;
   limit: number;
+}
+
+export interface RecipeMapSelection {
+  mode: "exclude" | "include";
+  maps: string[];
+}
+
+/** Whether the chips' selection shows this map's recipes in the results. */
+function isRecipeMapSelected(
+  selection: RecipeMapSelection | undefined,
+  recipeMap: string | undefined,
+): boolean {
+  if (!selection || !recipeMap) {
+    return true;
+  }
+  const listed = selection.maps.includes(recipeMap);
+  return selection.mode === "exclude" ? !listed : listed;
 }
 
 export async function queryDatasetRecipes(versionId: string, request: DatasetRecipeQueryRequest) {
@@ -610,15 +633,6 @@ export async function queryDatasetRecipes(versionId: string, request: DatasetRec
     if (searchScores && !searchScores.has(recipeIndex)) {
       continue;
     }
-    const recipeMap = indexes.recipeMaps[recipeIndex];
-    if (
-      (clauses.length > 0 || request.allMaps) &&
-      !request.handCrafting &&
-      recipeMap &&
-      HANDLESS_CRAFTING_MAPS.has(recipeMap)
-    ) {
-      continue;
-    }
     matchingAll.push({
       recipeIndex,
       score: searchScores?.get(recipeIndex) ?? 0,
@@ -642,7 +656,11 @@ export async function queryDatasetRecipes(versionId: string, request: DatasetRec
         : undefined;
   const matching = effectiveMap
     ? matchingAll.filter((match) => indexes.recipeMaps[match.recipeIndex] === effectiveMap)
-    : matchingAll;
+    : request.mapSelection
+      ? matchingAll.filter((match) =>
+          isRecipeMapSelected(request.mapSelection, indexes.recipeMaps[match.recipeIndex]),
+        )
+      : matchingAll;
 
   const recipeIndexes = rankRecipes(await applyFocusScores(recipeCatalog, matching, clauses))
     .slice(request.offset, request.offset + request.limit)
@@ -915,16 +933,9 @@ async function queryDatasetRecipesFromLookup(
   const searchScores = resolved.searchScores;
   // A pure text search has no resource to group by, so the maps come out of what
   // the words matched.
-  let tierCandidatesByMap =
+  const tierCandidatesByMap =
     scopedByMap ??
     tierFilteredByMap(lookup, groupRecipesByMap(lookup, searchScores?.keys() ?? []), request.maxTier);
-  // Every request the recipe SEARCH makes carries clauses or allMaps, so this
-  // covers a stencil emptied down to a typed name too; the legacy wire form
-  // (neither field) keeps its old answers.
-  if ((clauses.length > 0 || request.allMaps) && !request.handCrafting) {
-    tierCandidatesByMap = dropHandlessCraftingMaps(lookup, tierCandidatesByMap);
-  }
-
   const countedRecipeMaps = [...tierCandidatesByMap.entries()]
     .map(([recipeMapId, recipeIndexes]) => {
       const recipeMap = lookup.recipeMaps[recipeMapId];
@@ -948,10 +959,19 @@ async function queryDatasetRecipesFromLookup(
       ? request.recipeMap
       : sortedRecipeMaps[0];
   const effectiveMapId = effectiveMap ? lookup.recipeMapIds.get(effectiveMap) : undefined;
+  // The chips' selection narrows the RESULTS only: the counted map list above
+  // deliberately still covers everything, so an unselected chip keeps its count.
+  const selectedByMap = request.mapSelection
+    ? new Map(
+        [...tierCandidatesByMap.entries()].filter(([recipeMapId]) =>
+          isRecipeMapSelected(request.mapSelection, lookup.recipeMaps[recipeMapId]),
+        ),
+      )
+    : tierCandidatesByMap;
   const scopedCandidates =
     effectiveMapId !== undefined
       ? (tierCandidatesByMap.get(effectiveMapId) ?? [])
-      : flattenRecipeIndexes(tierCandidatesByMap);
+      : flattenRecipeIndexes(selectedByMap);
   const matching: RankedRecipe[] = [];
 
   for (const recipeIndex of scopedCandidates) {
@@ -989,31 +1009,6 @@ async function queryDatasetRecipesFromLookup(
     hasMore: request.offset + request.limit < matching.length,
     ...searchOutcome(resolved),
   };
-}
-
-/**
- * The crafting-grid maps are hidden by default: most chains want machines,
- * and the crafting registries drown the results. The search's hand-crafting
- * toggle (`request.handCrafting`) opts back in, and a placed crafting card
- * offers GT++'s Auto Workbench as its machine (see recipe-rules.ts). Only
- * the CLAUSE path filters these - the legacy single-resource wire form keeps
- * its old answers.
- */
-const HANDLESS_CRAFTING_MAPS = new Set(["Shaped Crafting", "Shapeless Crafting"]);
-
-function dropHandlessCraftingMaps(
-  lookup: LoadedRecipeLookupIndex,
-  recipesByMap: Map<number, number[]>,
-): Map<number, number[]> {
-  const filtered = new Map<number, number[]>();
-  for (const [recipeMapId, recipeIndexes] of recipesByMap) {
-    const recipeMap = lookup.recipeMaps[recipeMapId];
-    if (recipeMap && HANDLESS_CRAFTING_MAPS.has(recipeMap)) {
-      continue;
-    }
-    filtered.set(recipeMapId, recipeIndexes);
-  }
-  return filtered;
 }
 
 /**

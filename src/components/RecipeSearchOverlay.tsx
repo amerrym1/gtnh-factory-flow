@@ -116,6 +116,8 @@ export interface RecipeMapChip {
   id: string;
   label: string;
   count?: number;
+  /** Whether this map's recipes are in the results; a chip click toggles it. */
+  selected: boolean;
   icon?: Pick<
     ResourceAmount,
     "kind" | "id" | "amount" | "displayName" | "iconPath" | "iconAtlas" | "dominantColor"
@@ -140,8 +142,9 @@ export function RecipeSearchOverlay({
   onMakesOpChange,
   onSwapSides,
   recipeMapChips,
-  activeRecipeMap,
-  onRecipeMapChange,
+  allRecipeMapsSelected,
+  onToggleRecipeMap,
+  onToggleAllRecipeMaps,
   onRecipeMapHover,
   recipes,
   totalAcrossMaps,
@@ -152,8 +155,6 @@ export function RecipeSearchOverlay({
   onQueryChange,
   maxTier,
   onMaxTierChange,
-  handCrafting,
-  onHandCraftingChange,
   selectedRecipeId,
   onSelectRecipe,
   onAdd,
@@ -172,8 +173,9 @@ export function RecipeSearchOverlay({
   onMakesOpChange: (op: RecipeQuerySideOp) => void;
   onSwapSides: () => void;
   recipeMapChips: RecipeMapChip[];
-  activeRecipeMap: string;
-  onRecipeMapChange: (recipeMap: string) => void;
+  allRecipeMapsSelected: boolean;
+  onToggleRecipeMap: (recipeMap: string) => void;
+  onToggleAllRecipeMaps: () => void;
   onRecipeMapHover: (recipeMap: string) => void;
   recipes: RecipeSummary[];
   totalAcrossMaps: number;
@@ -184,8 +186,6 @@ export function RecipeSearchOverlay({
   onQueryChange: (query: string) => void;
   maxTier: TierFilter;
   onMaxTierChange: (tier: TierFilter) => void;
-  handCrafting: boolean;
-  onHandCraftingChange: (on: boolean) => void;
   selectedRecipeId?: string;
   onSelectRecipe: (recipeId: string) => void;
   onAdd: (recipe: RecipeSummary, machineHandlerId?: string) => void | Promise<void>;
@@ -476,13 +476,19 @@ export function RecipeSearchOverlay({
 
   // The same controls wear different clothes on the two layouts, so they are
   // built once and placed twice.
+  // The chips are a multi-select: each one toggles its machine's recipes in
+  // or out of the results, and All is select-all / select-none. Unselecting
+  // a chip while All is lit keeps everything else selected.
   const machineChipRow = (
     <>
       <MachineChip
         label="All"
         count={totalAcrossMaps}
-        active={!activeRecipeMap}
-        onClick={() => onRecipeMapChange("")}
+        active={allRecipeMapsSelected}
+        title={
+          allRecipeMapsSelected ? "Unselect every machine" : "Select every machine"
+        }
+        onClick={onToggleAllRecipeMaps}
       />
       {recipeMapChips.map((chip) => (
         <MachineChip
@@ -490,8 +496,9 @@ export function RecipeSearchOverlay({
           label={chip.label}
           count={chip.count}
           icon={chip.icon}
-          active={chip.id === activeRecipeMap}
-          onClick={() => onRecipeMapChange(chip.id)}
+          active={chip.selected}
+          title={chip.selected ? "Hide these recipes" : "Show these recipes"}
+          onClick={() => onToggleRecipeMap(chip.id)}
           onHover={() => onRecipeMapHover(chip.id)}
         />
       ))}
@@ -559,26 +566,6 @@ export function RecipeSearchOverlay({
       ))}
     </select>
   );
-  // Hand crafting is hidden by default: the results are for machines to
-  // place. Turned on, the crafting-grid maps join the chips, and a placed
-  // crafting card runs on the Auto Workbench.
-  const handCraftingToggle = (
-    <button
-      type="button"
-      onClick={() => onHandCraftingChange(!handCrafting)}
-      aria-pressed={handCrafting}
-      title="Show crafting table recipes. Placed cards run on the Auto Workbench."
-      className={[
-        "flex shrink-0 items-center gap-1.5 whitespace-nowrap border-2 px-2 text-[11px] font-bold uppercase tracking-[0.08em]",
-        compact ? "h-10" : "h-6",
-        handCrafting
-          ? "border-[var(--mc-85)] bg-[var(--mc-85)] text-white shadow-[inset_1px_1px_0_var(--mc-100)]"
-          : "border-[var(--mc-33)] bg-[#17191d] text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]",
-      ].join(" ")}
-    >
-      Hand crafting
-    </button>
-  );
   const closeButton = (
     <button
       type="button"
@@ -645,10 +632,7 @@ export function RecipeSearchOverlay({
               <div className="recipe-search-scroll flex items-center gap-1.5 overflow-x-auto pb-0.5">
                 {machineChipRow}
               </div>
-              <div className="flex items-center gap-2">
-                {ratePillGroup}
-                {handCraftingToggle}
-              </div>
+              <div className="flex">{ratePillGroup}</div>
             </div>
           ) : (
             <>
@@ -669,10 +653,7 @@ export function RecipeSearchOverlay({
                     {nameFilter}
                     {tierSelect}
                   </div>
-                  <div className="flex items-center gap-2">
-                    {handCraftingToggle}
-                    {ratePillGroup}
-                  </div>
+                  {ratePillGroup}
                 </div>
               </div>
             </>
@@ -1223,6 +1204,7 @@ function MachineChip({
   active,
   onClick,
   onHover,
+  title,
 }: {
   label: string;
   count?: number;
@@ -1230,6 +1212,7 @@ function MachineChip({
   active: boolean;
   onClick: () => void;
   onHover?: () => void;
+  title?: string;
 }) {
   return (
     <button
@@ -1237,6 +1220,7 @@ function MachineChip({
       onClick={onClick}
       onMouseEnter={onHover}
       aria-pressed={active}
+      title={title}
       className={[
         "flex shrink-0 items-center gap-1.5 border-2 py-0.5 pl-0.5 pr-2 text-[13px] font-bold",
         active

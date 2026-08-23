@@ -172,11 +172,17 @@ Working notes for future agents on GTNH Factory Flow.
   union, all = intersection, sides intersect. Every clause resource gets the
   concrete-context rewrite (`applyClauseResourceContexts`), and the legacy
   resource+mode wire form is exactly a one-clause query.
-- Clause queries EXCLUDE Shaped/Shapeless Crafting (`HANDLESS_CRAFTING_MAPS`)
-  by DEFAULT; the search's "Hand crafting" toggle (persisted, off unless
-  turned on) sends `handCrafting=1` and lets those maps through. A placed
-  crafting card offers GT++'s Auto Workbench as its machine, synthesized in
-  `recipe-rules.ts` (LV seed 64t/32EU, the "Auto Workbench" machine-table
+- The machine chips are a MULTI-SELECT (Jack, 2026-08-23): every map is
+  selected by default, a chip click toggles just that map, and All is
+  select-all/select-none - unselecting one map unlights All but keeps the
+  rest. The selection persists (`gtnh-factory-flow.machine-map-selection.v1`,
+  exclusions survive searches where the map never appears) and rides the
+  recipes API as `mapMode=exclude|include` plus repeated `map=` params;
+  the map list and per-map counts always cover everything that matched, so
+  an unselected chip keeps its count. There is no per-map scoping any more
+  and no crafting-map special case: Shaped/Shapeless Crafting are ordinary
+  maps whose machine is GT++'s Auto Workbench, synthesized in
+  `recipe-rules.ts` (LV seed 64t/32EU; the "Auto Workbench" machine-table
   entry caps its perfect overclocks at EV's one craft per tick - transcribed
   from MTEElectricAutoWorkbench: flat 2048 EU per craft), with the instant
   hand-craft as the second handler. Purging the crafting maps from the

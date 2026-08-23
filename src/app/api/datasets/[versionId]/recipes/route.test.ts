@@ -55,20 +55,36 @@ describe("recipe dataset API route", () => {
         takesOp: "all",
         makesOp: "any",
         allMaps: true,
-        handCrafting: false,
+        mapSelection: undefined,
       }),
     );
   });
 
-  it("parses the hand-crafting toggle", async () => {
+  it("parses the machine chips' map selection", async () => {
     await GET(
-      new Request("http://localhost/api/datasets/stable/recipes?allMaps=1&handCrafting=1"),
+      new Request(
+        "http://localhost/api/datasets/stable/recipes?allMaps=1&mapMode=exclude&" +
+          "map=Shaped%20Crafting&map=Assembler",
+      ),
       { params: Promise.resolve({ versionId: "stable" }) },
     );
 
     expect(queryDatasetRecipes).toHaveBeenCalledWith(
       "stable",
-      expect.objectContaining({ allMaps: true, handCrafting: true }),
+      expect.objectContaining({
+        allMaps: true,
+        mapSelection: { mode: "exclude", maps: ["Shaped Crafting", "Assembler"] },
+      }),
+    );
+
+    // An empty include list is a real state: nothing selected.
+    await GET(new Request("http://localhost/api/datasets/stable/recipes?allMaps=1&mapMode=include"), {
+      params: Promise.resolve({ versionId: "stable" }),
+    });
+
+    expect(queryDatasetRecipes).toHaveBeenLastCalledWith(
+      "stable",
+      expect.objectContaining({ mapSelection: { mode: "include", maps: [] } }),
     );
   });
 
