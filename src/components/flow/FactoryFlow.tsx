@@ -1,8 +1,6 @@
 "use client";
 
 import {
-  Background,
-  BackgroundVariant,
   BaseEdge,
   EdgeLabelRenderer,
   ConnectionMode,
@@ -183,7 +181,7 @@ import {
   type GlanceMode,
 } from "./board-view";
 import { CANVAS_THEMES, getCanvasTheme, type CanvasTheme } from "./canvas-themes";
-import { GrainBackground, RuledBackground } from "./board-pattern";
+import { GrainBackground, RuledBackground, TiledBackground } from "./board-pattern";
 import {
   MotionNumberText,
   readBoardMotionSnapshot,
@@ -396,14 +394,6 @@ const CANVAS_PATTERN_LABEL: Record<CanvasPattern, string> = {
   ruled: "Background: ruled lines",
   graph: "Background: graph paper",
   none: "Background: blank",
-};
-const CANVAS_PATTERN_VARIANT: Record<
-  Exclude<CanvasPattern, "none" | "ruled" | "graph">,
-  (typeof BackgroundVariant)[keyof typeof BackgroundVariant]
-> = {
-  dots: BackgroundVariant.Dots,
-  lines: BackgroundVariant.Lines,
-  cross: BackgroundVariant.Cross,
 };
 
 /** Module-level so the board never re-renders on a fresh object identity. */
@@ -3736,6 +3726,12 @@ export function FactoryFlow() {
     );
   }, [setFlowViewportCenter]);
 
+  // The `--zooming` class turns the drop-shadow filters off (globals.css):
+  // only a SCALE change re-rasterises them, so a pure pan keeps its shadows.
+  // Written imperatively from the move stream — this must not re-render the
+  // board per gesture frame.
+  const moveStartZoomRef = useRef<number | undefined>(undefined);
+
   const handleMoveStart = useCallback(() => {
     // Panning or zooming drops the map. React Flow culls off-screen nodes, so
     // a map held across a move would arrive at freshly mounted cards that were
@@ -3743,7 +3739,21 @@ export function FactoryFlow() {
     // something you do while reading one node's neighbourhood.
     clearHopMap();
     boardRef.current?.classList.add("factory-flow-board--moving");
+    moveStartZoomRef.current = flowInstanceRef.current?.getViewport().zoom;
   }, []);
+
+  const handleMove = useCallback(
+    (_: unknown, viewport: BoardCamera) => {
+      if (moveStartZoomRef.current === undefined) {
+        moveStartZoomRef.current = viewport.zoom;
+        return;
+      }
+      if (viewport.zoom !== moveStartZoomRef.current) {
+        boardRef.current?.classList.add("factory-flow-board--zooming");
+      }
+    },
+    [],
+  );
 
   /**
    * Every camera move ends here, the board's own included, which is where the
@@ -3756,6 +3766,8 @@ export function FactoryFlow() {
   const handleMoveEnd = useCallback(
     (event: MouseEvent | TouchEvent | null, viewport: BoardCamera) => {
       boardRef.current?.classList.remove("factory-flow-board--moving");
+      boardRef.current?.classList.remove("factory-flow-board--zooming");
+      moveStartZoomRef.current = undefined;
       updateFlowViewportCenter();
 
       if (event) {
@@ -5424,6 +5436,7 @@ export function FactoryFlow() {
         onConnectEnd={handleConnectEnd}
         onInit={handleInit}
         onMoveStart={handleMoveStart}
+        onMove={handleMove}
         onMoveEnd={handleMoveEnd}
         // React Flow styles its own controls and minimap off this; the app has
         // no light palette to switch to.
@@ -5520,16 +5533,16 @@ export function FactoryFlow() {
             color={canvasTheme.patternColor}
           />
         ) : (
-          <Background
-            variant={CANVAS_PATTERN_VARIANT[boardView.canvasPattern]}
+          // Our own compositor-friendly copy of the stock Background: the
+          // stock one repaints the whole viewport every pan frame (see
+          // TiledBackground in board-pattern.tsx). Same ink, no repaint.
+          <TiledBackground
+            variant={boardView.canvasPattern}
             gap={BOARD_GRID_SIZE}
             // Lines tile edge to edge, so they need to be thinner than a dot
             // to read as a background instead of as graph paper.
             size={boardView.canvasPattern === "lines" ? 1 : 2}
             color={canvasTheme.patternColor}
-            // Like the wrapper: the pattern SVG must not lay its own dark
-            // paper over the themed board div underneath.
-            bgColor="transparent"
           />
         )}
         <BoardFloors />

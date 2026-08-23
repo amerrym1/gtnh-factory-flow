@@ -668,13 +668,16 @@ textarea {
   will-change: transform;
 }
 
-/* The shadows go out while the camera moves. A drop-shadow rasterises each
-   node's painted silhouette and re-rasterises it at every new zoom scale, so
-   a pinch re-ran a hundred filter passes per frame; the edge layer's one
-   filter scales with its area, which is the whole board. Nobody reads depth
-   cueing mid-gesture, and the marks all come back on move end. */
-.factory-flow-board--moving .react-flow__node,
-.factory-flow-board--moving .react-flow__edges {
+/* The shadows go out while the camera ZOOMS - and only zooms. A drop-shadow
+   rasterises each node's painted silhouette and re-rasterises it at every
+   new zoom scale, so a pinch re-ran a hundred filter passes per frame; the
+   edge layer's one filter scales with its area, which is the whole board.
+   A pure PAN never re-rasterises a composited filter, so panning keeps the
+   shadows - hiding them there bought nothing and read as the board losing
+   its depth every time the hand moved. The class is set from the move
+   handler the moment the zoom value actually changes. */
+.factory-flow-board--zooming .react-flow__node,
+.factory-flow-board--zooming .react-flow__edges {
   filter: none !important;
 }
 
@@ -1641,30 +1644,43 @@ img {
 
 /* The loud one. A slot with no wire is drawn like an unfinished line on a
    plan - dashed - and swings the full width of the chalk range, picking up a
-   halo at the top of the breath so it carries at a distance. */
+   halo at the top of the breath so it carries at a distance.
+
+   Compositor-only, like the rings below: the element holds the dim state and
+   a ::after carries the lit dashed ring and halo, fading on OPACITY. The old
+   version animated border-color, background and box-shadow - all paint
+   properties, repainting every marked chip every frame, forever. */
 @keyframes unwired-port-breathe {
   0%,
   100% {
-    border-color: #8f9bad;
-    background: #2f3640;
-    box-shadow: none;
+    opacity: 0;
   }
   50% {
-    border-color: #ffffff;
-    background: #5b6879;
-    box-shadow: 0 0 0 2px rgba(238, 242, 248, 0.5);
+    opacity: 1;
   }
 }
 
-/* The middle one: the whole REASON cell, label included. */
+/* The middle one: the whole REASON cell, label included. The element's own
+   opacity breathes (compositor); the background wash rides a ::after whose
+   opacity fades on the same clock (unwired-wash-breathe below) - animating
+   the background itself repainted the cell, and the board-level notice that
+   shares this mark repainted its whole overlay layer, every frame. */
 @keyframes unwired-reason-breathe {
   0%,
   100% {
-    background: transparent;
     opacity: 0.62;
   }
   50% {
-    background: rgba(238, 242, 248, 0.16);
+    opacity: 1;
+  }
+}
+
+@keyframes unwired-wash-breathe {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
     opacity: 1;
   }
 }
@@ -1690,12 +1706,36 @@ img {
 }
 
 .recipe-node-shell[data-verdict="unwired"] .flow-port--bind {
+  position: relative;
   border-style: dashed;
+  border-color: #8f9bad;
+  background: #2f3640;
+}
+
+.recipe-node-shell[data-verdict="unwired"] .flow-port--bind::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  pointer-events: none;
+  border: 2px dashed #ffffff;
+  box-shadow: 0 0 0 2px rgba(238, 242, 248, 0.5);
+  opacity: 0;
   animation: unwired-port-breathe var(--board-pulse) ease-in-out infinite;
 }
 
 .recipe-node-shell[data-verdict="unwired"] .verdict-reason-cell {
+  position: relative;
   animation: unwired-reason-breathe var(--board-pulse) ease-in-out infinite;
+}
+
+.recipe-node-shell[data-verdict="unwired"] .verdict-reason-cell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: rgba(238, 242, 248, 0.16);
+  opacity: 0;
+  animation: unwired-wash-breathe var(--board-pulse) ease-in-out infinite;
 }
 
 .unwired-ring {
@@ -1735,7 +1775,18 @@ img {
 
 /* The board-level tally breathes on the same clock as the cards it counts. */
 .unwired-notice {
+  position: relative;
   animation: unwired-reason-breathe var(--board-pulse) ease-in-out infinite;
+}
+
+.unwired-notice::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: rgba(238, 242, 248, 0.16);
+  opacity: 0;
+  animation: unwired-wash-breathe var(--board-pulse) ease-in-out infinite;
 }
 
 /* Same bargain the dead-loop ring strikes: keep the mark, drop the movement. */
@@ -1749,6 +1800,11 @@ img {
   .recipe-node-shell[data-verdict="unwired"] .flow-port--bind {
     border-color: #ffffff;
   }
+  .recipe-node-shell[data-verdict="unwired"] .flow-port--bind::after,
+  .recipe-node-shell[data-verdict="unwired"] .verdict-reason-cell::after,
+  .unwired-notice::after {
+    content: none;
+  }
   .unwired-ring {
     box-shadow: 0 0 0 var(--unwired-ring) rgba(238, 242, 248, 0.85);
   }
@@ -1761,6 +1817,12 @@ img {
 .factory-flow-board--calm .recipe-node-shell[data-verdict="unwired"] .verdict-reason-cell,
 .factory-flow-board--calm .unwired-ring {
   animation: none;
+}
+
+.factory-flow-board--calm .recipe-node-shell[data-verdict="unwired"] .flow-port--bind::after,
+.factory-flow-board--calm .recipe-node-shell[data-verdict="unwired"] .verdict-reason-cell::after,
+.factory-flow-board--calm .unwired-notice::after {
+  content: none;
 }
 
 .factory-flow-board--calm .unwired-ring {
