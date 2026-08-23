@@ -96,6 +96,8 @@ import {
   makeResourceKey,
   resourceMatchesInput,
 } from "@/lib/model";
+import { getFilledCellFluidEquivalent } from "@/lib/model/resources";
+import { fetchLitresPerCell } from "@/lib/datasets/cell-ratio";
 import {
   collectPocketMembers,
   getEffectiveNodeRecipe,
@@ -1569,6 +1571,30 @@ export function FactoryFlow() {
   const connectNodesBatch = useFactoryStore((state) => state.connectNodesBatch);
   const connectCustomRate = useFactoryStore((state) => state.connectCustomRate);
   const connectTrash = useFactoryStore((state) => state.connectTrash);
+  const connectCrossFormEdge = useFactoryStore((state) => state.connectCrossFormEdge);
+  // The async half of a loose cell wire: fetch the Canner's litres-per-cell,
+  // then commit the edge. Failing to find a ratio drops the gesture whole.
+  const connectLooseCellWire = useCallback(
+    async (
+      source: { nodeId: string; handleId: string },
+      target: { nodeId: string; handleId: string },
+      cell: { id: string; displayName?: string },
+      fluid: { id: string },
+    ) => {
+      const state = useFactoryStore.getState();
+      const version = state.datasetManifest?.versions.find(
+        (entry) => entry.id === state.selectedDatasetVersionId,
+      );
+      if (!version) {
+        return;
+      }
+      const litresPerCell = await fetchLitresPerCell(version, cell.id, fluid.id);
+      if (litresPerCell) {
+        connectCrossFormEdge(source, target, cell, litresPerCell);
+      }
+    },
+    [connectCrossFormEdge],
+  );
   const addStorageForConnection = useFactoryStore((state) => state.addStorageForConnection);
   const selectedNodeId = useFactoryStore((state) => state.selectedNodeId);
   const deleteNode = useFactoryStore((state) => state.deleteNode);
@@ -3210,11 +3236,29 @@ export function FactoryFlow() {
             ? getResourceForHandle(project, inputHandle.nodeId, inputHandle.handleId)
             : undefined;
 
-          if (
-            !outputResource ||
-            !inputResource ||
-            !resourceMatchesInput(outputResource, inputResource)
-          ) {
+          if (!outputResource || !inputResource) {
+            return;
+          }
+          if (!resourceMatchesInput(outputResource, inputResource)) {
+            // LOOSE CELL WIRES: with the board rule on, a filled cell may
+            // land straight on its fluid's input. The ratio comes from the
+            // Canner's own recipes (an API call, so the wire arrives a beat
+            // later); no recipe found means no wire, never a guessed ratio.
+            if (
+              getSetupRules(project).looseCellWires &&
+              outputResource.kind === "item" &&
+              inputResource.kind === "fluid" &&
+              getFilledCellFluidEquivalent(outputResource)?.id === inputResource.id &&
+              outputHandle.handleId &&
+              inputHandle.handleId
+            ) {
+              void connectLooseCellWire(
+                { nodeId: outputHandle.nodeId, handleId: outputHandle.handleId },
+                { nodeId: inputHandle.nodeId, handleId: inputHandle.handleId },
+                outputResource,
+                inputResource,
+              );
+            }
             return;
           }
 
@@ -3239,7 +3283,7 @@ export function FactoryFlow() {
         connectResourceEdges(connection.source, connection.target);
       }
     },
-    [connectCustomRate, connectResourceEdges, connectTrash, project],
+    [connectCustomRate, connectLooseCellWire, connectResourceEdges, connectTrash, project],
   );
 
   const isValidResourceConnection = useCallback(
@@ -6123,7 +6167,10 @@ const SetupRulesButton = memo(function SetupRulesButton() {
   const rules = useFactoryStore((state) => state.project.setupRules);
   const legacy = useFactoryStore((state) => state.project.assumeBoundaries);
   const setSetupRules = useFactoryStore((state) => state.setSetupRules);
-  const { freeInputs, freeOutputs } = getSetupRules({ setupRules: rules, assumeBoundaries: legacy });
+  const { freeInputs, freeOutputs, looseCellWires } = getSetupRules({
+    setupRules: rules,
+    assumeBoundaries: legacy,
+  });
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -6154,7 +6201,7 @@ const SetupRulesButton = memo(function SetupRulesButton() {
   }, [open]);
 
   const choices: Array<{
-    id: "freeInputs" | "freeOutputs";
+    id: "freeInputs" | "freeOutputs" | "looseCellWires";
     on: boolean;
     label: string;
     line: string;
@@ -6171,6 +6218,12 @@ const SetupRulesButton = memo(function SetupRulesButton() {
       label: "Free outputs",
       line: "Output with nowhere to go leaves the setup instead of backing up.",
     },
+    {
+      id: "looseCellWires",
+      on: looseCellWires,
+      label: "Loose cell wires",
+      line: "A filled cell wires straight onto its fluid's input, converted for free.",
+    },
   ];
 
   return (
@@ -6182,7 +6235,7 @@ const SetupRulesButton = memo(function SetupRulesButton() {
         aria-expanded={open}
         className={[
           "relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
-          open || freeInputs || freeOutputs ? TOOL_FACE_ON : TOOL_FACE_OFF,
+          open || freeInputs || freeOutputs || looseCellWires ? TOOL_FACE_ON : TOOL_FACE_OFF,
         ].join(" ")}
         title="Setup rules"
         aria-label="Setup rules"
@@ -11209,7 +11262,20 @@ function isCompatibleResourceConnection(
   const output = sourceHandle.side === "output" ? sourceResource : targetResource;
   const input = sourceHandle.side === "input" ? sourceResource : targetResource;
 
-  return sourceHandle.side !== targetHandle.side && resourceMatchesInput(output, input);
+  if (sourceHandle.side === targetHandle.side) {
+    return false;
+  }
+  if (resourceMatchesInput(output, input)) {
+    return true;
+  }
+  // LOOSE CELL WIRES: the board rule lets a filled cell land on its fluid's
+  // input; handleConnect fetches the Canner ratio and commits the edge.
+  return (
+    getSetupRules(project).looseCellWires &&
+    output.kind === "item" &&
+    input.kind === "fluid" &&
+    getFilledCellFluidEquivalent(output)?.id === input.id
+  );
 }
 
 function getDraggedResourceForHandle(

@@ -291,6 +291,18 @@ interface FactoryStore {
     source: { nodeId: string; handleId?: string },
     resource: Pick<ResourceAmount, "kind" | "id" | "displayName">,
   ) => void;
+  /**
+   * A loose cell wire (SetupRules.looseCellWires): a filled cell landing
+   * straight on its fluid's input. The edge carries the CELL as its resource,
+   * the fluid input handle as its target, and the Canner ratio the gesture
+   * fetched; the solver bridges the two forms through a hidden free Tank.
+   */
+  connectCrossFormEdge: (
+    source: { nodeId: string; handleId: string },
+    target: { nodeId: string; handleId: string },
+    resource: Pick<ResourceAmount, "id" | "displayName">,
+    litresPerCell: number,
+  ) => void;
   /** Swaps the node onto another recipe (crop pick), resetting per-recipe state. */
   setNodeRecipe: (nodeId: string, recipe: Recipe) => void;
   deleteNode: (nodeId: string) => void;
@@ -2990,6 +3002,35 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       });
     });
   },
+  connectCrossFormEdge: (source, target, resource, litresPerCell) => {
+    set((state) => {
+      if (!(litresPerCell > 0)) {
+        return state;
+      }
+      const edge: FactoryEdge = {
+        id: createId("edge"),
+        source: source.nodeId,
+        target: target.nodeId,
+        sourceHandle: source.handleId,
+        targetHandle: target.handleId,
+        resourceKind: "item",
+        resourceId: resource.id,
+        label: resource.displayName,
+        crossForm: { litresPerCell },
+      };
+      if (findDuplicateEdge(state.project.edges, edge)) {
+        return state;
+      }
+      const finalProject = touchProject({
+        ...state.project,
+        edges: [...state.project.edges, edge],
+      });
+      return withProjectHistory(state, {
+        project: finalProject,
+        lastResult: calculateThroughput(finalProject),
+      });
+    });
+  },
   reconnectEdge: (edgeId, connection) => {
     set((state) => {
       const oldEdge = state.project.edges.find((edge) => edge.id === edgeId);
@@ -4062,6 +4103,28 @@ function isFactoryEdgeStillValid(project: FactoryProject, edge: FactoryEdge): bo
 
   const effectiveSourceRecipe = applyRecipeInputOverrides(sourceRecipe, sourceNode);
   const effectiveTargetRecipe = applyRecipeInputOverrides(targetRecipe, targetNode);
+
+  // A LOOSE CELL WIRE's two ends are honest in different forms: the source
+  // must still make the cell, the target must still drink the fluid the
+  // wire's own target handle names.
+  if (edge.crossForm) {
+    const handleParts = (edge.targetHandle ?? "").split(":");
+    const fluidId =
+      handleParts[0] === "input" && handleParts[1] === "fluid" && handleParts[2]
+        ? decodeURIComponent(handleParts[2])
+        : undefined;
+    return Boolean(
+      fluidId &&
+        effectiveSourceRecipe.outputs.some((output) =>
+          resourceMatchesInput({ kind: edge.resourceKind, id: edge.resourceId }, output),
+        ) &&
+        effectiveTargetRecipe.inputs.some(
+          (input) =>
+            isRecipeInputConsumed(input) &&
+            resourceMatchesInput({ kind: "fluid", id: fluidId }, input),
+        ),
+    );
+  }
 
   return (
     effectiveSourceRecipe.outputs.some((output) =>

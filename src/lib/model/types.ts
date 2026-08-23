@@ -529,6 +529,17 @@ export interface FactoryEdge {
   resourceId: ResourceId;
   label?: string;
   ratePerSecond?: number;
+  /**
+   * A loose cell wire (SetupRules.looseCellWires): the edge's own resource is
+   * the filled CELL leaving the source, its target handle names the FLUID
+   * input it lands on, and this carries the Canner's litres-per-cell ratio,
+   * fetched when the wire was drawn. The solver expands such an edge through
+   * a hidden free Tank (see expandCrossFormEdges in throughput.ts); no wire
+   * ever crosses kinds on its own.
+   */
+  crossForm?: {
+    litresPerCell: number;
+  };
   labelOffset?: {
     x: number;
     y: number;
@@ -614,6 +625,14 @@ export interface SetupRules {
   freeInputs?: boolean;
   /** Output with nowhere to go leaves the board instead of clogging. */
   freeOutputs?: boolean;
+  /**
+   * A filled cell may wire straight onto its fluid's input, converting for
+   * free at the Canner's own ratio (stored on the edge at wire time, see
+   * FactoryEdge.crossForm). Off by default: the honest bridge is a Tank or
+   * Canner card, and this rule is the player choosing convenience over it.
+   * Turning it off later keeps the wires already drawn.
+   */
+  looseCellWires?: boolean;
 }
 
 export interface FactoryProject {

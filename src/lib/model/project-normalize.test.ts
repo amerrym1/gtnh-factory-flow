@@ -179,6 +179,60 @@ describe("wires into a trash can survive a reload", () => {
   });
 });
 
+describe("loose cell wires survive a reload", () => {
+  it("keeps a cross-form edge that carries its Canner ratio", () => {
+    const project = {
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      id: "loose",
+      name: "Loose",
+      recipes: [
+        {
+          id: "fill",
+          name: "Fill",
+          machineType: "Bender",
+          minimumTier: "LV",
+          durationTicks: 20,
+          eut: 30,
+          inputs: [],
+          outputs: [{ kind: "item", id: "water_cell", amount: 1 }],
+        },
+        {
+          id: "drink",
+          name: "Drink",
+          machineType: "Bender",
+          minimumTier: "LV",
+          durationTicks: 20,
+          eut: 30,
+          inputs: [{ kind: "fluid", id: "water", amount: 1000 }],
+          outputs: [{ kind: "item", id: "sponge", amount: 1 }],
+        },
+      ],
+      nodes: [
+        { id: "maker", recipeId: "fill", machineCount: 1, parallel: 1, position: { x: 0, y: 0 } },
+        { id: "taker", recipeId: "drink", machineCount: 1, parallel: 1, position: { x: 400, y: 0 } },
+      ],
+      storages: [],
+      edges: [
+        {
+          id: "w",
+          source: "maker",
+          target: "taker",
+          sourceHandle: "output:item:water_cell",
+          targetHandle: "input:fluid:water",
+          resourceKind: "item",
+          resourceId: "water_cell",
+          crossForm: { litresPerCell: 1000 },
+        },
+      ],
+      fuelProfiles: [],
+    } as unknown as FactoryProject;
+
+    const normalized = normalizeLoadedProject(project);
+    expect(normalized.edges.map((edge) => edge.id)).toEqual(["w"]);
+    expect(normalized.edges[0]?.crossForm?.litresPerCell).toBe(1000);
+  });
+});
+
 describe("dropping doubled wires on load", () => {
   it("keeps one wire when the same two rows were wired twice", () => {
     const doubled = createCrossFormProject();

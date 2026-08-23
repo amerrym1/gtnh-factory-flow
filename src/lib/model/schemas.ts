@@ -424,6 +424,8 @@ export const factoryEdgeSchema = z.object({
   ratePerSecond: z.number().positive().optional(),
   labelOffset: z.object({ x: z.number(), y: z.number() }).optional(),
   waypoints: z.array(z.object({ x: z.number(), y: z.number() })).optional(),
+  // A loose cell wire's Canner ratio; see FactoryEdge.crossForm.
+  crossForm: z.object({ litresPerCell: z.number().positive() }).optional(),
 });
 
 export const fuelProfileSchema = z
@@ -486,6 +488,7 @@ export const factoryProjectSchema = z.object({
     .object({
       freeInputs: z.boolean().optional(),
       freeOutputs: z.boolean().optional(),
+      looseCellWires: z.boolean().optional(),
     })
     .optional(),
   // Legacy sketch mode, rewritten as both rules on load.

@@ -18,18 +18,23 @@ export function getSetupRules(project: {
   const rules = project.setupRules;
   if (!rules) {
     const legacy = project.assumeBoundaries === true;
-    return { freeInputs: legacy, freeOutputs: legacy };
+    return { freeInputs: legacy, freeOutputs: legacy, looseCellWires: false };
   }
-  return { freeInputs: rules.freeInputs === true, freeOutputs: rules.freeOutputs === true };
+  return {
+    freeInputs: rules.freeInputs === true,
+    freeOutputs: rules.freeOutputs === true,
+    looseCellWires: rules.looseCellWires === true,
+  };
 }
 
-/** Stored form: nothing set at all when both rules are off. */
+/** Stored form: nothing set at all when every rule is off. */
 export function packSetupRules(rules: ResolvedSetupRules): SetupRules | undefined {
-  if (!rules.freeInputs && !rules.freeOutputs) {
+  if (!rules.freeInputs && !rules.freeOutputs && !rules.looseCellWires) {
     return undefined;
   }
   return {
     freeInputs: rules.freeInputs || undefined,
     freeOutputs: rules.freeOutputs || undefined,
+    looseCellWires: rules.looseCellWires || undefined,
   };
 }

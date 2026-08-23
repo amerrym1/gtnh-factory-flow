@@ -2,7 +2,7 @@
 
 import { Handle, Position, useStoreApi, type Node, type NodeProps } from "@xyflow/react";
 import { memo, type CSSProperties, type ReactNode } from "react";
-import { ArrowDownToLine, ArrowLeftRight, Trash2 } from "lucide-react";
+import { ArrowDownToLine, ArrowLeftRight } from "lucide-react";
 import type {
   FactoryStorage,
   StorageDrainMode,
@@ -764,9 +764,10 @@ function BufferModeSwap({ storageId, strict }: { storageId: string; strict: bool
  */
 function DrainModeSwap({ storageId, role }: { storageId: string; role: StorageRole }) {
   const setStorageDrainMode = useFactoryStore((state) => state.setStorageDrainMode);
+  // Always the cycle arrows: the button is the CONTROL, and the tile's word
+  // and silhouette already say which state it is in.
   const next: StorageDrainMode =
     role === "product" ? "byproduct" : role === "byproduct" ? "trash" : "product";
-  const Icon = role === "trash" ? Trash2 : ArrowLeftRight;
 
   return (
     <button
@@ -785,7 +786,7 @@ function DrainModeSwap({ storageId, role }: { storageId: string; role: StorageRo
       aria-label={`Switch to ${next}`}
       className="board-edit-chrome nodrag relative z-40 ml-auto flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
     >
-      <Icon aria-hidden className="h-2.5 w-2.5" />
+      <ArrowLeftRight aria-hidden className="h-2.5 w-2.5" />
     </button>
   );
 }
