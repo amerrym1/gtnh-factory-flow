@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.29.0",
+    date: "2026-08-23",
+    headline: "Cells, tanks and trash",
+    notes: [
+      "The Tank is a new free machine: it fills and empties cells instantly for nothing.",
+      "A drawer's product and byproduct switch has a third position: trash.",
+      "Trash cans on old setups become trash drawers; the toolbar button is gone.",
+      "A new setup rule lets a filled cell wire straight onto its fluid's input.",
+    ],
+  },
+  {
     version: "2.28.0",
     date: "2026-08-23",
     headline: "The coke ovens get their names right",
