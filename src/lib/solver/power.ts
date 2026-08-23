@@ -84,7 +84,16 @@ export function getHatchAmps(hatches: number): number {
 export function getNodePowerAmps(recipe: PowerRecipeInput, node: PowerNodeInput): number {
   if (isMultiblockRecipe(recipe)) {
     const hatchType = getEnergyHatchType(node.energyHatchType);
-    return hatchType.exotic ? hatchType.amps : getHatchAmps(getNodeEnergyHatches(recipe, node));
+    if (hatchType.exotic) {
+      return hatchType.amps;
+    }
+    const hatches = getNodeEnergyHatches(recipe, node);
+    // Mega-style power draws every hatch's whole 2 amps - a lone hatch
+    // included, where the base rule clamps it to 1.
+    if (getMachineBehaviour(recipe.machineType)?.fullPowerPool) {
+      return 2 * hatches;
+    }
+    return getHatchAmps(hatches);
   }
   return getMachineBehaviour(recipe.machineType)?.amperage ?? 1;
 }
@@ -111,7 +120,10 @@ export function getEffectiveVoltageOrdinal(
   tier: VoltageTier,
 ): number {
   const hatches = getNodeEnergyHatches(recipe, node);
-  const summedVoltage = getVoltageTierMaxEuT(tier) * hatches;
+  // Mega-style machines read `getMaxInputEu()`, which counts each regular
+  // hatch's full 2 amps; everything else sums hatch voltages alone.
+  const perHatch = getMachineBehaviour(recipe.machineType)?.fullPowerPool ? 2 : 1;
+  const summedVoltage = getVoltageTierMaxEuT(tier) * hatches * perHatch;
   if (!Number.isFinite(summedVoltage)) {
     return getVoltageTierIndex(tier);
   }

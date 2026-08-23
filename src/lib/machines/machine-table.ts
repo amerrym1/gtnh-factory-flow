@@ -155,6 +155,15 @@ export interface MachineBehaviour {
    */
   amperage?: number;
   /**
+   * Mega-style power (`MegaMultiBlockBase.setProcessingLogicPower`): the pool
+   * is `getMaxInputEu()`, the SUM of every hatch's full rating - so even a
+   * lone regular hatch contributes its whole 2 amps, with no single-hatch
+   * clamp.
+   */
+  fullPowerPool?: boolean;
+  /** `setUnlimitedTierSkips`: a recipe above the hatch tier still starts. */
+  unlimitedTierSkip?: boolean;
+  /**
    * How a HEAT_OVERCLOCK machine computes its machine heat, transcribed from
    * each machine's `setMachineHeat` call. See `heat.ts`.
    */
@@ -548,6 +557,8 @@ const MACHINES: Record<string, MachineBehaviour> = {
     overclock: HEAT_OVERCLOCK,
     heat: { voltageBonus: true },
     parallels: 256,
+    fullPowerPool: true,
+    unlimitedTierSkip: true,
     aliases: ["Mega Electric Blast Furnace"],
   },
   Volcanus: {
@@ -576,6 +587,9 @@ const MACHINES: Record<string, MachineBehaviour> = {
   "Mega Chemical Reactor": {
     overclock: OVERCLOCK.perfect(),
     parallels: 256,
+    // MTEMegaChemicalReactor keeps the base hatch amps but its processing
+    // logic sets unlimited tier skips.
+    unlimitedTierSkip: true,
     hidesControls: ["heatingCoil"],
   },
   "Circuit Assembly Line": { overclock: OVERCLOCK.perfect() },
@@ -604,6 +618,8 @@ const MACHINES: Record<string, MachineBehaviour> = {
   "Mega Oil Cracker": {
     overclock: OVERCLOCK.normal(),
     parallels: 256,
+    fullPowerPool: true,
+    unlimitedTierSkip: true,
     // Unlike the small cracker's additive, capped discount, the mega compounds
     // 10% per coil tier with no cap: MTEMegaOilCracker.getEuModifier.
     power: (c) => Math.pow(0.9, c.tier(COIL) + 1),
@@ -628,6 +644,8 @@ const MACHINES: Record<string, MachineBehaviour> = {
   "Mega Alloy Blast Smelter": {
     overclock: OVERCLOCK.normal(),
     parallels: 256,
+    fullPowerPool: true,
+    unlimitedTierSkip: true,
     // MTEMegaAlloyBlastSmelter: duration x (1 - 5% per coil tier above TPV),
     // stated here as throughput; and a compounding 5% EU discount per coil
     // tier above the RECIPE's own voltage tier, never a penalty.
@@ -710,6 +728,8 @@ const MACHINES: Record<string, MachineBehaviour> = {
     speed: 1.5,
     power: 0.9,
     parallels: 256,
+    fullPowerPool: true,
+    unlimitedTierSkip: true,
   },
   "Molecular Transformer": { overclock: OVERCLOCK.normal() },
   "Nuclear Salt Processing Plant": {

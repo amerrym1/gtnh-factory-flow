@@ -7,7 +7,7 @@ import {
   isSteamMachineHandler,
 } from "@/lib/model/recipe-rules";
 import { getEnergyHatchType } from "@/lib/machines/energy-hatches";
-import { STEAM_PRESSURE } from "@/lib/machines/machine-table";
+import { getMachineBehaviour, STEAM_PRESSURE } from "@/lib/machines/machine-table";
 import {
   getRecipeMinimumVoltageTier,
   getVoltageTierForEuT,
@@ -166,7 +166,10 @@ function getPowerState(
   if (isMultiblock) {
     // `OverclockCalculator.getAllowedTierSkip`: a recipe more than one tier
     // above the hatch voltage never runs, however many amps are stacked.
-    if (rawEuT > getVoltageTierMaxEuT(tier) * 4) {
+    if (
+      rawEuT > getVoltageTierMaxEuT(tier) * 4 &&
+      !getMachineBehaviour(effectiveRecipe.machineType)?.unlimitedTierSkip
+    ) {
       return "over-tier";
     }
     // `ParallelHelper.determineParallel`: the pool must carry one whole

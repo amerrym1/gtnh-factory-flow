@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Zap } from "lucide-react";
 import {
@@ -204,7 +204,25 @@ export function EnergySupplyMenu({
   onPick: (familyId: string, hatches: number) => void;
   onClose: () => void;
 }) {
-  const options = useMemo(() => energySupplyOptionsForTier(tier, catalog), [tier, catalog]);
+  const [query, setQuery] = useState("");
+  const allOptions = useMemo(() => energySupplyOptionsForTier(tier, catalog), [tier, catalog]);
+  // Type what you want: "64" or "64a" lands on the 64A hatch, "2" on the
+  // pair, "laser" on the lasers - Dagger's direct-input ask.
+  const options = useMemo(() => {
+    const needle = query.trim().toLowerCase().replace(/s+/g, "");
+    if (!needle) {
+      return allOptions;
+    }
+    return allOptions.filter((option) => {
+      const label = option.label.toLowerCase().replace(/s+/g, "");
+      const amps = String(option.amps);
+      return (
+        label.includes(needle) ||
+        amps.startsWith(needle.replace(/a$/, "")) ||
+        `${amps}a` === needle
+      );
+    });
+  }, [allOptions, query]);
   const voltage = GT_OVERCLOCK_TIERS.find((entry) => entry.tier === tier)?.maxEuT ?? 0;
   const selectedRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -212,7 +230,20 @@ export function EnergySupplyMenu({
   }, []);
 
   return (
-    <MenuShell anchor={anchor} width={360} maxHeight={470} onClose={onClose}>
+    <MenuShell anchor={anchor} width={360} maxHeight={500} onClose={onClose}>
+      <input
+        autoFocus
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && options[0]) {
+            onPick(options[0].familyId, options[0].hatches);
+          }
+        }}
+        placeholder="Type amps or a hatch..."
+        aria-label="Filter supplies"
+        className="mb-1 h-7 w-full border border-[var(--mc-33)] bg-[var(--mc-85)] px-2 text-[12px] font-bold text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)] outline-none focus:border-cyan-700 focus:bg-[var(--mc-100)]"
+      />
       <div className="mb-0.5 grid grid-cols-[minmax(0,1fr)_44px_64px] gap-x-1.5 border-b-2 border-[var(--mc-47)] px-1 pb-1 pr-[18px] text-[10px] font-bold uppercase tracking-[0.1em] leading-none text-[var(--mc-ink-muted)]">
         <span>Supply</span>
         <span className="text-right">Amps</span>
@@ -245,10 +276,16 @@ export function EnergySupplyMenu({
                 <EnergyHatchArt entry={option.entry} boxClass="-my-1 h-9 w-9" />
                 <span className="truncate">{option.label}</span>
               </span>
-              <span className="whitespace-nowrap text-right tabular-nums">
+              <span
+                className="whitespace-nowrap text-right tabular-nums"
+                title={`${option.amps.toLocaleString("en-US")} A`}
+              >
                 {formatCompact(option.amps)}
               </span>
-              <span className="whitespace-nowrap text-right tabular-nums text-[var(--mc-ink-muted)]">
+              <span
+                className="whitespace-nowrap text-right tabular-nums text-[var(--mc-ink-muted)]"
+                title={`${(voltage * option.amps).toLocaleString("en-US")} EU/t`}
+              >
                 {formatCompact(voltage * option.amps)}
               </span>
             </button>
@@ -315,11 +352,15 @@ export function EnergyTierMenu({
                   borderColor: color.border,
                   color: color.text,
                   textShadow: `1px 1px 0 ${color.shadow}`,
+                  textDecoration: color.underline ? "underline" : undefined,
                 }}
               >
                 {tier}
               </span>
-              <span className="whitespace-nowrap text-right tabular-nums text-[var(--mc-ink-muted)]">
+              <span
+                className="whitespace-nowrap text-right tabular-nums text-[var(--mc-ink-muted)]"
+                title={`${maxEuT.toLocaleString("en-US")} EU/t`}
+              >
                 {formatCompact(maxEuT)} EU/t
               </span>
             </button>

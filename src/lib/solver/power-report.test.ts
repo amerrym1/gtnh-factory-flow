@@ -106,6 +106,30 @@ describe("energy hatches", () => {
     expect(multiAmp.amps).toBe(16);
   });
 
+  it("gives a mega every hatch's full amps and unlimited tier skips", () => {
+    // MegaMultiBlockBase.setProcessingLogicPower: the pool is getMaxInputEu()
+    // (each regular hatch's whole 2 amps, a lone one included) and
+    // setUnlimitedTierSkips - a recipe far above the hatch tier is merely
+    // under-powered, never refused outright.
+    const mega = {
+      ...lcrRecipe(30720, "HV"),
+      machineType: "Mega Blast Furnace",
+    } as Recipe;
+    const oneHatch = getNodePowerReport(mega, { overclockTier: "MV", energyHatches: 1 });
+    expect(oneHatch.amps).toBe(2);
+    expect(oneHatch.state).toBe("under-powered");
+
+    const fourHatches = getNodePowerReport(mega, { overclockTier: "MV", energyHatches: 4 });
+    expect(fourHatches.amps).toBe(8);
+
+    // The same draw on a plain multiblock is refused as over-tier.
+    const plain = getNodePowerReport(lcrRecipe(30720, "HV"), {
+      overclockTier: "MV",
+      energyHatches: 2,
+    });
+    expect(plain.state).toBe("over-tier");
+  });
+
   it("treats an unknown hatch type as the plain pair", () => {
     const report = getNodePowerReport(lcrRecipe(480, "HV"), {
       overclockTier: "MV",

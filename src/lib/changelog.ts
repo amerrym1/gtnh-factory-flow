@@ -78,7 +78,9 @@ export const CHANGELOG: ChangelogEntry[] = [
     headline: "Pick your power in two clicks",
     notes: [
       "The hatch chip is two dropdowns now: one for the tier, one for the supply.",
-      "The supply list shows every way to power the machine at that tier, with its amps and EU/t.",
+      "The supply list shows every way to power the machine at that tier; type an amperage to jump to it.",
+      "Tier colors now match the game's own.",
+      "Mega multiblocks draw every hatch's full amps and start recipes above their tier, as in game.",
     ],
   },
   {
