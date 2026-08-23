@@ -1566,6 +1566,15 @@ img {
   );
 }
 
+/* TRASH: the bin - square shoulders, sides tapering straight down to a
+   narrower base. Same square top row as the shield, so the pill's buttons
+   stay planted through the three-way swap. */
+.storage-shape[data-storage-shape="trash"],
+.storage-shape[data-storage-shape="trash"] .storage-shape-fill,
+.storage-shape-content[data-storage-shape="trash"] {
+  clip-path: polygon(0 0, 100% 0, calc(100% - 16px) 100%, 16px 100%);
+}
+
 /* BUFFER: the hexagon, points left and right - a pipe joint the flow passes
    through, in one side and out the other. Strict buffers share the shape;
    the border treatment (see .storage-buffer-inlay) and the header button

@@ -57,7 +57,6 @@ import {
   Redo2,
   Sprout,
   Square,
-  Trash,
   Trash2,
   TriangleAlert,
   Type,
@@ -6262,7 +6261,6 @@ const SourceToolbar = memo(function SourceToolbar({
   onAutoArrange: () => void;
 }) {
   const addCropFarmNode = useFactoryStore((state) => state.addCropFarmNode);
-  const addTrashNode = useFactoryStore((state) => state.addTrashNode);
   const addCustomRateNode = useFactoryStore((state) => state.addCustomRateNode);
   const boardView = useBoardView();
   const rateUnit = useFactoryStore((state) => state.rateUnit);
@@ -6359,15 +6357,9 @@ const SourceToolbar = memo(function SourceToolbar({
         >
           <Sprout className="h-4 w-4" />
         </button>
-        <button
-          type="button"
-          onClick={addTrashNode}
-          className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
-          title="Add trash can"
-          aria-label="Add trash can"
-        >
-          <Trash className="h-4 w-4" />
-        </button>
+        {/* The trash can button is gone (2026-08-23): trashing is now the
+            third position on a drawer's product/byproduct pill. Legacy trash
+            can nodes still render and solve; only the spawner left. */}
         <button
           type="button"
           onClick={addCustomRateNode}

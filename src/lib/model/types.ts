@@ -339,8 +339,13 @@ export interface FactoryNode {
  * `byproduct` only catches what is left: it asks for nothing at all, so the
  * pace is set by whoever really wants the output (or by the plan's target
  * rate), and the leftover lands here instead of clogging the machine.
+ *
+ * `trash` voids what arrives: it asks for nothing, un-clogs its feeder like a
+ * byproduct, and what it eats is discarded from the books entirely instead of
+ * being counted as surplus. The drawer as a bin - this replaced the separate
+ * trash can node's spawn button (2026-08-23); old trash can nodes still work.
  */
-export type StorageDrainMode = "product" | "byproduct";
+export type StorageDrainMode = "product" | "byproduct" | "trash";
 
 /**
  * How a BUFFER treats a surplus. `overflow` (the default) catches what its

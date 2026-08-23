@@ -100,10 +100,19 @@ Working notes for future agents on GTNH Factory Flow.
 - A filled cell is an ordinary ITEM. It does not satisfy its fluid's slot, and
   the fluid does not satisfy the cell's. `resourceMatchesInput` compares kinds
   strictly; do not reintroduce a cross-kind branch.
-- Crossing the two forms takes a Canner on the board, exactly as it does in
+- Crossing the two forms takes a machine on the board, exactly as it does in
   game. There are ~4,000 Canner recipes in the dataset (~1,150 fill, ~1,150
   empty), so the bridge is always a placeable machine, and GT registers ~3,000
   recipe shapes in BOTH forms so most chains just need the matching variant.
+- The TANK (Jack, 2026-08-23) is the free version of that bridge: the
+  pipeline mirrors every fluid-touching Canner recipe into a synthesized
+  "Tank" map (`addTankRecipe` in `normalize-oracle-export.mjs`) at 0 EU and
+  1 tick - the same "instant" shape hand-crafting wears, machine count still
+  scales it. It keeps the REAL slots, empty cells included: the game never
+  deletes an emptied cell and neither does the planner. It waives only the
+  Canner's power and time. Do NOT go further than this - an auto-inserted
+  converter that discarded empty cells was designed and rejected in the same
+  session.
 - The old behaviour auto-converted at a guessed 1000 L per cell. It made chains
   look complete while omitting a real machine, empty cells and the power to run
   them, and it reported item production in litres. It also inflated cell inputs
@@ -642,6 +651,11 @@ Working notes for future agents on GTNH Factory Flow.
   byproduct pill changes bookkeeping, never pace. Targets are display
   arithmetic, not rows - a target-driven >100% figure survives in finalize,
   a demand-driven one does not.
+- The drain pill cycles THREE ways since 2026-08-23: product, byproduct,
+  trash. A TRASH drawer is the byproduct's shape (free disposal, no demand)
+  with the books voided (`applyTrashedOutputBalances` covers it alongside
+  the legacy trash can nodes): what it eats is neither shipped nor spare.
+  The toolbar's trash can spawner is gone; old trash can nodes still work.
 - Stage chain, each optimum locked as a row before the next: max total act;
   progressive max-min FAIRNESS over acts (the game's round-robin split - a
   big asker cannot crush a small one); recycle-before-import; ship-before-

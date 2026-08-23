@@ -336,7 +336,7 @@ export const factoryStorageSchema = z.object({
   capacity: z.number().positive().optional(),
   // Absent on every plan written before drains had a mode, and absent is
   // `product` - the pulling one - so nothing anybody has saved changes pace.
-  drainMode: z.enum(["product", "byproduct"]).optional(),
+  drainMode: z.enum(["product", "byproduct", "trash"]).optional(),
   // Absent means `overflow`: every buffer catches surplus unless the player
   // deliberately sets it strict.
   bufferMode: z.enum(["overflow", "strict"]).optional(),

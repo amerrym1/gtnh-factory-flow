@@ -464,3 +464,91 @@ describe("the two maps the game both calls Coke Oven", () => {
     );
   });
 });
+
+describe("the Tank: the planner's free canner", () => {
+  let dataset;
+
+  beforeAll(() => {
+    dataset = normalize({
+      schemaVersion: 1,
+      exporter: "gtnh-oracle",
+      format: "dev.gtnhplanner.oracle.v1",
+      generatedAt: "2026-08-08T05:00:00.000Z",
+      minecraftVersion: "1.7.10",
+      loadedMods: [],
+      adapters: [],
+      recipeCount: 3,
+      domains: [
+        {
+          id: "gregtech",
+          recipeMaps: [
+            {
+              id: "gt.recipe.canner",
+              name: "Canner",
+              sourceClass: "gregtech.api.recipe.RecipeMap",
+              recipes: [
+                {
+                  id: "fill-1",
+                  durationTicks: 16,
+                  eut: 1,
+                  itemInputs: [item("ic2:itemcellempty", 1, "Empty Cell")],
+                  fluidInputs: [fluid("water", 1000, "Water")],
+                  itemOutputs: [item("ic2:itemfluidcell@water", 1, "Water Cell")],
+                  fluidOutputs: [],
+                },
+                {
+                  id: "empty-1",
+                  durationTicks: 16,
+                  eut: 1,
+                  itemInputs: [item("ic2:itemfluidcell@water", 1, "Water Cell")],
+                  fluidInputs: [],
+                  itemOutputs: [item("ic2:itemcellempty", 1, "Empty Cell")],
+                  fluidOutputs: [fluid("water", 1000, "Water")],
+                },
+                {
+                  id: "food-1",
+                  durationTicks: 16,
+                  eut: 1,
+                  itemInputs: [item("ic2:itemtincan", 1, "Tin Can"), item("minecraft:apple", 1, "Apple")],
+                  fluidInputs: [],
+                  itemOutputs: [item("ic2:itemfilledtincan", 1, "Filled Tin Can")],
+                  fluidOutputs: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("mirrors every fluid-touching Canner recipe as a free instant Tank recipe", () => {
+    const tanks = dataset.recipes.filter((recipe) => recipe.machineType === "Tank");
+
+    expect(tanks).toHaveLength(2);
+    for (const tank of tanks) {
+      expect(tank.eut).toBe(0);
+      expect(tank.durationTicks).toBe(1);
+      expect(tank.minimumTier).toBe("NONE");
+    }
+    const fill = tanks.find((recipe) =>
+      recipe.inputs.some((slot) => slot.kind === "fluid"),
+    );
+    // The empty cell stays a real slot: the game never deletes one.
+    expect(fill.inputs.map((slot) => slot.id)).toContain("ic2:itemcellempty");
+  });
+
+  it("leaves the Canner's own recipes untouched beside the copies", () => {
+    const canners = dataset.recipes.filter((recipe) => recipe.machineType === "Canner");
+    expect(canners).toHaveLength(3);
+    expect(canners.every((recipe) => recipe.eut === 1)).toBe(true);
+  });
+
+  it("does not mirror fluid-free canning, and lists the Tank as a map", () => {
+    const tanks = dataset.recipes.filter((recipe) => recipe.machineType === "Tank");
+    expect(tanks.some((recipe) => recipe.name.includes("Tin Can"))).toBe(false);
+    expect(dataset.recipeMaps).toContain("Tank");
+    const icon = dataset.recipeMapIcons.find((entry) => entry.recipeMap === "Tank");
+    expect(icon.resource.id).toBe("ic2:itemcellempty");
+  });
+});
