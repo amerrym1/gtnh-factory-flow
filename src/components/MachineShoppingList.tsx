@@ -30,6 +30,9 @@ import {
 import { useWorkspaceView, writeWorkspaceView } from "@/lib/workspace-view";
 import { useFactoryStore } from "@/store/factory-store";
 import { getEnergyHatchType } from "@/lib/machines/energy-hatches";
+import { getHatchAmps } from "@/lib/solver/power";
+import { getVoltageTierMaxEuT } from "@/lib/model/tiers";
+import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { EnergyHatchArt } from "@/components/flow/EnergyHatchMenu";
 import {
   energyHatchCatalogKey,
@@ -518,6 +521,28 @@ function ListLine({
     chip?.isMultiblock && chip.tier
       ? hatchCatalog.get(energyHatchCatalogKey(chip.tier, chip.hatchTypeId ?? "standard"))
       : undefined;
+  // What the chip means, in one breath: the hatch, its amps, the EU/t they buy.
+  const hatchType = chip?.isMultiblock ? getEnergyHatchType(chip.hatchTypeId) : undefined;
+  const hatchAmps = hatchType
+    ? hatchType.exotic
+      ? hatchType.amps
+      : getHatchAmps(chip?.hatches ?? 1)
+    : 0;
+  const hatchPoolEuT = hatchType && chip?.tier ? getVoltageTierMaxEuT(chip.tier) * hatchAmps : 0;
+  const hatchStory =
+    hatchType && chip?.tier ? (
+      <div className="w-max max-w-[280px]">
+        <div className="text-[13px] font-semibold text-white">
+          {hatchType.exotic
+            ? `${chip.tier} ${hatchType.label}`
+            : `${chip.hatches}× ${chip.tier} Energy Hatch`}
+        </div>
+        <div className="mt-0.5 text-[11px] leading-4 text-slate-300">
+          {formatCompact(hatchAmps)} A:{" "}
+          <span className="font-bold text-white">{formatCompact(hatchPoolEuT)} EU/t</span> to spend
+        </div>
+      </div>
+    ) : undefined;
 
   // No hover panel on these lines: the row already says everything it knows,
   // and a tooltip repeating it was noise in the way of the scrollbar.
@@ -579,6 +604,7 @@ function ListLine({
              tier, one paint job, so the panel and the board read as one.
              Always in the right-hand column, so every chip on the list sits
              on one line however the rows around it are shaped. */
+          <MinecraftTooltip content={hatchStory}>
           <span className="flex shrink-0 items-center">
             {chip.isMultiblock ? (
               <>
@@ -618,6 +644,7 @@ function ListLine({
               {chip.tier}
             </span>
           </span>
+          </MinecraftTooltip>
         ) : null}
       <span
         className={[
