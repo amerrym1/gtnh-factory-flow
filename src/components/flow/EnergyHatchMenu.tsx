@@ -223,14 +223,14 @@ export function EnergyHatchMenu({
               ref={selected ? selectedRef : undefined}
               type="button"
               onClick={() => onPick(type.id, tier)}
-              className={`grid w-full grid-cols-[minmax(0,1fr)_64px_92px] items-center gap-x-1.5 border px-1 py-1 text-left text-[14px] font-bold leading-5 ${
+              className={`grid w-full grid-cols-[minmax(0,1fr)_64px_92px] items-center gap-x-1.5 border px-1 py-0.5 text-left text-[14px] font-bold leading-5 ${
                 selected
                   ? "border-[var(--selection)] bg-[var(--mc-85)] text-[var(--mc-ink)]"
                   : "border-transparent text-[var(--mc-ink)] hover:border-[var(--mc-33)] hover:bg-[var(--mc-85)]"
               }`}
             >
               <span className="flex min-w-0 items-center gap-1.5">
-                <EnergyHatchArt entry={entry} boxClass="h-[72px] w-[72px]" />
+                <EnergyHatchArt entry={entry} boxClass="-my-[10px] h-[72px] w-[72px]" />
                 <span
                   className="shrink-0 border px-1.5 text-[12px] leading-[17px]"
                   style={{
