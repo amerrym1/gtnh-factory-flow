@@ -40,20 +40,32 @@ Working notes for future agents on GTNH Factory Flow.
 - `origin` is `jackwrichards/gtnh-factory-flow` (this project). `upstream` is
   `Samiracle64/gtnh-factory-flow`, the repo this was originally forked from -
   it is not a push target and the two have long since diverged.
-- Pushing code can deploy the app, but dataset changes require the dataset pipeline.
-- To regenerate both datasets:
-
-```bash
-gh workflow run "GTNH dataset pipeline" --ref main -f channel=both -f publish=true -f force_rebuild=true
-```
-
-- Watch long runs instead of assuming success:
-
-```bash
-gh run watch <run-id> --exit-status
-```
-
-- After imports, verify the published manifest and, when relevant, inspect the published gzipped dataset, not only CI status.
+- Pushing code can deploy the app, but dataset changes require a dataset
+  rebuild - and the GitHub "GTNH dataset pipeline" workflow is a DECOY, like
+  the deploy workflows: the repo has no self-hosted runner, so every run
+  queues until the next half-hourly cron supersedes it. Established
+  2026-08-23; do not dispatch it and wait.
+- Datasets are really rebuilt by hand in this PC's WSL (Ubuntu):
+  - `~/gtnh-factory-flow` is a git-less SNAPSHOT of the repo. Copy any
+    changed pipeline scripts into it first or the rebuild runs old code.
+  - Raw oracle exports (the expensive Minecraft part, reusable as long as
+    the pack versions stand) live at
+    `~/gtnh-factory-flow/.pipeline/raw-export/<id>/oracle-export.json` with
+    `rendered-icons/` beside them.
+  - `~/run-both.sh` (and the fuller `~/rebuild-cokeoven.sh`) run
+    normalize-oracle-export.mjs, build-resource-index.mjs,
+    build-recipe-index.mjs (recipe index + lookup index + shards), then gzip,
+    into `~/gtnh-export/datasets/gtnh/<id>` (2.9) and
+    `~/gtnh-export/datasets-284/gtnh/<id>` (2.8.4).
+  - `~/copy-datasets.sh` copies the results into the Windows repo's
+    `public/datasets/gtnh`.
+  - Publish: scp the changed files (gzips, shards, oracle-report) to the
+    droplet's `/opt/shared/gtnh-datasets/<id>/`, rebuild
+    `datasets.manifest.json` with rebuild-manifest.mjs, then
+    `systemctl restart gtnh-flow`. Only textures are cache-immutable, so
+    replacing dataset gzips in place is safe.
+- After a publish, verify the live manifest and, when relevant, inspect the
+  published gzipped dataset, not only local output.
 - Stable and daily both matter. If the user says relaunch/import dataset, usually run both unless they explicitly narrow it.
 - The server should be prewarmed on startup. Slow first API calls usually mean prewarm/deploy service behavior regressed, not that the client should wait longer.
 
