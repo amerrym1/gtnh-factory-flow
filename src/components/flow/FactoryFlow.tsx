@@ -1422,6 +1422,12 @@ const MAX_HOP_SETTLE_PASSES = 2;
 // full precise reroute runs once on drop. Module state rather than React state:
 // the edges that need it re-render every frame anyway via their position props.
 const activelyDraggedNodeIds = new Set<string>();
+/**
+ * Bumped whenever the dragged set changes. The pulse canvas caches its
+ * occlusion rects on this plus the published-bounds identities, so the
+ * per-frame cost of the drag path is O(dragged cards), not O(all cards).
+ */
+let draggedNodeSetEpoch = 0;
 
 // The board clipboard lives at module scope on purpose: it survives design-tab
 // switches, so a selection copied in one design pastes into another.
@@ -4513,6 +4519,7 @@ export function FactoryFlow() {
     for (const dragged of draggedNodes) {
       activelyDraggedNodeIds.add(dragged.id);
     }
+    draggedNodeSetEpoch += 1;
     // Annotations are ink, not furniture: wires pass straight through them,
     // so a drag moving ONLY notes and boxes cannot change any route and must
     // not spend a single mid-drag solve. Decided once at grab time.
@@ -4808,6 +4815,7 @@ export function FactoryFlow() {
       moveBoardItems(moves);
 
       activelyDraggedNodeIds.clear();
+      draggedNodeSetEpoch += 1;
       dragConstraintsRef.current = new Map();
       dragPassengersRef.current = new Set();
       draggingNodeRef.current = false;
@@ -5758,10 +5766,16 @@ const TourLoopNoticeExample = memo(function TourLoopNoticeExample() {
  * the paper tracks a dragged board frame-perfectly instead of lagging a
  * commit behind.
  */
+const EMPTY_BOARD_FLOORS: Array<{ pocket: FactoryPocket; width: number; height: number }> = [];
+
 const BoardFloors = memo(function BoardFloors() {
   const floors = useStore(
     (state) => {
-      const open: Array<{ pocket: FactoryPocket; width: number; height: number }> = [];
+      // This selector runs on EVERY store notification — every pan and drag
+      // frame included. The no-open-board board (the common case) must cost
+      // one identity check, not an array allocation plus the equality walk:
+      // returning the shared frozen empty lets Object.is short-circuit.
+      let open: Array<{ pocket: FactoryPocket; width: number; height: number }> | undefined;
       for (const [, node] of state.nodeLookup) {
         if (node.type !== "boardNode") {
           continue;
@@ -5772,7 +5786,7 @@ const BoardFloors = memo(function BoardFloors() {
           continue;
         }
         const size = boardWindowSize(pocket);
-        open.push({
+        (open ??= []).push({
           // The live absolute position, so a nested board's paper follows
           // its parent as well as its own drag.
           pocket: { ...pocket, position: node.internals.positionAbsolute },
@@ -5780,7 +5794,7 @@ const BoardFloors = memo(function BoardFloors() {
           height: node.measured?.height ?? size.height,
         });
       }
-      return open;
+      return open ?? EMPTY_BOARD_FLOORS;
     },
     (left, right) =>
       left.length === right.length &&
@@ -6485,6 +6499,19 @@ const EdgePulseCanvas = memo(function EdgePulseCanvas({
     let frame = 0;
     let backingWidth = 0;
     let backingHeight = 0;
+    // With no pulses (zoomed past the detail step, or none marching) the loop
+    // used to clear the full canvas every frame forever; once wiped it can
+    // simply stand down until a pulse returns.
+    let cleared = false;
+    // The static half of the occlusion list — every rect except the cards
+    // being dragged right now — only changes when geometry republishes or the
+    // drag set changes, so it is rebuilt on those keys and reused per frame.
+    let occlusionBase: Array<{ left: number; top: number; right: number; bottom: number }> = [];
+    let occlusionKeyFrames: typeof publishedBoardFrameBounds | undefined;
+    let occlusionKeyBounds: typeof publishedBoardBounds;
+    let occlusionKeyUnder = false;
+    let occlusionKeyDragging = false;
+    let occlusionKeyEpoch = -1;
     // The pane is what the canvas has to cover. Measured from the DOM rather
     // than read from the store's width/height, which are only populated once
     // React Flow's own observer has fired and would leave the layer blank
@@ -6522,13 +6549,20 @@ const EdgePulseCanvas = memo(function EdgePulseCanvas({
         canvas.height = nextBackingHeight;
         canvas.style.width = `${width}px`;
         canvas.style.height = `${height}px`;
+        cleared = false;
       }
 
-      context.setTransform(ratio, 0, 0, ratio, 0, 0);
-      context.clearRect(0, 0, width, height);
       if (edgePulseCount() === 0) {
+        if (!cleared) {
+          context.setTransform(ratio, 0, 0, ratio, 0, 0);
+          context.clearRect(0, 0, width, height);
+          cleared = true;
+        }
         return;
       }
+      cleared = false;
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      context.clearRect(0, 0, width, height);
 
       // From here the context speaks flow coordinates, exactly like the SVG.
       context.translate(translateX, translateY);
@@ -6551,35 +6585,49 @@ const EdgePulseCanvas = memo(function EdgePulseCanvas({
       // beat behind on a small board, and frozen at the drag's start on a
       // big one).
       const dragging = activelyDraggedNodeIds.size > 0;
-      let occlusionBounds: Array<{
-        left: number;
-        top: number;
-        right: number;
-        bottom: number;
-      }> = [];
-      // A board's bar and rim occlude the wires in EVERY mode, so the dashes
-      // stop at them in every mode too — this is not part of the thickness
-      // mode's cards-on-pipes trade.
-      for (const entry of publishedBoardFrameBounds) {
-        if (dragging && activelyDraggedNodeIds.has(entry.id)) {
-          continue;
-        }
-        occlusionBounds.push(...boardChromeOccluders(entry.bounds));
-      }
-      if (edgesUnderNodesRef.current || dragging) {
-        for (const entry of publishedBoardBounds ?? []) {
+      if (
+        occlusionKeyFrames !== publishedBoardFrameBounds ||
+        occlusionKeyBounds !== publishedBoardBounds ||
+        occlusionKeyUnder !== edgesUnderNodesRef.current ||
+        occlusionKeyDragging !== dragging ||
+        occlusionKeyEpoch !== draggedNodeSetEpoch
+      ) {
+        occlusionKeyFrames = publishedBoardFrameBounds;
+        occlusionKeyBounds = publishedBoardBounds;
+        occlusionKeyUnder = edgesUnderNodesRef.current;
+        occlusionKeyDragging = dragging;
+        occlusionKeyEpoch = draggedNodeSetEpoch;
+        occlusionBase = [];
+        // A board's bar and rim occlude the wires in EVERY mode, so the dashes
+        // stop at them in every mode too — this is not part of the thickness
+        // mode's cards-on-pipes trade.
+        for (const entry of publishedBoardFrameBounds) {
           if (dragging && activelyDraggedNodeIds.has(entry.id)) {
             continue;
           }
-          // The tab zone at a card's top is transparent canvas and the wire
-          // stub visibly crosses it — the dashes must ride the stub all the
-          // way to the window's edge, so only the WINDOW occludes.
-          const dockInset = getDockTopInset(entry.id);
-          occlusionBounds.push(
-            dockInset > 0 ? { ...entry.bounds, top: entry.bounds.top + dockInset } : entry.bounds,
-          );
+          occlusionBase.push(...boardChromeOccluders(entry.bounds));
         }
+        if (edgesUnderNodesRef.current || dragging) {
+          for (const entry of publishedBoardBounds ?? []) {
+            if (dragging && activelyDraggedNodeIds.has(entry.id)) {
+              continue;
+            }
+            // The tab zone at a card's top is transparent canvas and the wire
+            // stub visibly crosses it — the dashes must ride the stub all the
+            // way to the window's edge, so only the WINDOW occludes.
+            const dockInset = getDockTopInset(entry.id);
+            occlusionBase.push(
+              dockInset > 0 ? { ...entry.bounds, top: entry.bounds.top + dockInset } : entry.bounds,
+            );
+          }
+        }
+      }
+      let occlusionBounds = occlusionBase;
+      if (edgesUnderNodesRef.current || dragging) {
         if (dragging) {
+          // The held cards' rects come from React Flow live and move every
+          // frame; they are the only per-frame part of the list.
+          occlusionBounds = occlusionBase.slice();
           const nodeLookup = flowStore.getState().nodeLookup;
           for (const draggedId of activelyDraggedNodeIds) {
             const draggedNode = nodeLookup?.get(draggedId);
@@ -7872,7 +7920,14 @@ function ResourceEdgeComponent({
     flowRate?.pulse === true &&
     Boolean(liveRoute.path) &&
     hasEdgeDetail(detailLevel, EDGE_DETAIL_PULSE);
-  useEffect(() => {
+  // A LAYOUT effect, not a passive one: the pulse canvas draws from this
+  // registration in its own rAF loop, and a passive effect flushes after
+  // paint — so every morph frame's dashes trailed one frame behind the SVG
+  // wire they ride. At commit time the canvas and the wire land together.
+  const livePath = liveRoute.path;
+  const livePoints = liveRoute.points;
+  const liveMorphing = liveRoute.morphing;
+  useLayoutEffect(() => {
     if (!pulseActive) {
       retractEdgePulse(id);
       return;
@@ -7882,7 +7937,7 @@ function ResourceEdgeComponent({
     let right = -Infinity;
     let top = Infinity;
     let bottom = -Infinity;
-    for (const point of liveRoute.points) {
+    for (const point of livePoints) {
       if (point.x < left) left = point.x;
       if (point.x > right) right = point.x;
       if (point.y < top) top = point.y;
@@ -7892,7 +7947,7 @@ function ResourceEdgeComponent({
     // would wink out a fraction early at the edge of the screen.
     const margin = EDGE_HOP_MAX_RADIUS + pulseStroke;
     publishEdgePulse(id, {
-      path: liveRoute.path,
+      path: livePath,
       // Same numbers the SVG overlay used, so the marks are unchanged.
       width: Math.max(2, pulseStroke * 0.38),
       dash: pulseDash,
@@ -7903,14 +7958,24 @@ function ResourceEdgeComponent({
       top: top - margin,
       bottom: bottom + margin,
       // A morph frame's path is one-of-a-kind; keep it out of the Path2D cache.
-      transient: liveRoute.morphing,
+      transient: liveMorphing,
     });
-  });
+  }, [
+    id,
+    pulseActive,
+    livePath,
+    livePoints,
+    liveMorphing,
+    pulseStroke,
+    pulseDash,
+    pulseGap,
+    pulseVelocity,
+  ]);
   // Where this edge's waypoint dots sit, for the dash canvas to punch out —
   // the canvas paints above the SVG, so without this the dashes march right
-  // over the dots. Published every render (drafts move per pointer frame);
-  // a handful of circles, so the churn is nothing.
-  useEffect(() => {
+  // over the dots. A layout effect for the same reason as the pulse above:
+  // the canvas must not punch holes at last frame's dot positions.
+  useLayoutEffect(() => {
     if (activeWaypoints && activeWaypoints.length > 0) {
       publishEdgeWaypointDots(
         id,
@@ -7924,7 +7989,7 @@ function ResourceEdgeComponent({
     } else {
       retractEdgeWaypointDots(id);
     }
-  });
+  }, [id, activeWaypoints, coreStrokeWidth]);
   useEffect(() => () => {
     retractEdgePulse(id);
     retractEdgeWaypointDots(id);
