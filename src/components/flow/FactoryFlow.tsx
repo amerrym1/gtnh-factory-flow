@@ -7846,10 +7846,16 @@ function ResourceEdgeComponent({
   // different pipe being swapped in. Only the volume width tweens: the
   // highlight thickening below stays instant, because hover feedback that
   // arrives a second late reads as a miss.
-  const flowWidthShown = useMotionValue(
+  const flowWidthRaw = useMotionValue(
     flowWidthTarget ?? FLOW_MODE_MIN_WIDTH,
     valueMotion && flowWidthTarget !== undefined,
   );
+  // Quantised to quarter pixels: the tween re-renders this component every
+  // frame for a second after each solve, and an un-quantised width fed the
+  // hop-path string build (and the pulse publish) a fresh number each frame
+  // for a change no eye can see. At quarter-pixel steps most frames reuse
+  // the previous path via the getDirectEdgePath memo.
+  const flowWidthShown = Math.round(flowWidthRaw * 4) / 4;
   const flowWidth = flowWidthTarget === undefined ? undefined : flowWidthShown;
   // Dash geometry scales with the stroke so the marks read the same on a hair
   // line and on a fat pipe.
@@ -8769,6 +8775,26 @@ function getRepeatedOutputHandleIds(
     .filter((handleId): handleId is string => Boolean(handleId));
 }
 
+/**
+ * Identity memo over the assembled path. Edges call getDirectEdgePath on
+ * every render — morph frames, width tweens, hover — and rebuilding the
+ * hopped path string when the points, width and solve are all unchanged was
+ * most of a render's cost. Keyed on the solve signature because hop bumps
+ * read NEIGHBOUR segments: a fresh solve must rebuild even a wire whose own
+ * points stood still. A hit also returns the identical result object, which
+ * keeps downstream identity checks quiet.
+ */
+const directEdgePathMemo = new Map<
+  string,
+  {
+    points: Array<{ x: number; y: number }>;
+    width: number;
+    routeIndex: number;
+    signature: string;
+    result: RoutedEdgePath;
+  }
+>();
+
 function getDirectEdgePath({
   edgeId,
   routeIndex,
@@ -8809,6 +8835,24 @@ function getDirectEdgePath({
       targetPosition,
     });
 
+  // Hop bumps are sized from the width this line actually draws at, so a
+  // highlighted (thickened) line still clears what it crosses.
+  const width = strokeWidth ?? ownStrokeWidth(edgeId);
+
+  const memoRouteIndex = routeIndex ?? 0;
+  if (edgeId) {
+    const cached = directEdgePathMemo.get(edgeId);
+    if (
+      cached &&
+      cached.points === points &&
+      cached.width === width &&
+      cached.routeIndex === memoRouteIndex &&
+      cached.signature === gridSolveSignature
+    ) {
+      return cached.result;
+    }
+  }
+
   // The midpoint anchor: where the rate pill sits when labels are on, and
   // "somewhere on this wire" for the hover story either way.
   const labelPoint = getPointAtPolylineRatio(points, 0.5) ?? {
@@ -8816,11 +8860,7 @@ function getDirectEdgePath({
     y: (sourceY + targetY) / 2,
   };
 
-  // Hop bumps are sized from the width this line actually draws at, so a
-  // highlighted (thickened) line still clears what it crosses.
-  const width = strokeWidth ?? ownStrokeWidth(edgeId);
-
-  return {
+  const result: RoutedEdgePath = {
     path: pointsToHoppedSvgPath(
       points,
       collectHoppedRouteSegments(edgeId, routeIndex, points),
@@ -8833,6 +8873,20 @@ function getDirectEdgePath({
     labelHidden: isPointInsideAnyMeasuredNode(labelPoint),
     points,
   };
+  if (edgeId) {
+    // Routes churn while dragging; without a ceiling this grows unbounded.
+    if (directEdgePathMemo.size > 4000) {
+      directEdgePathMemo.clear();
+    }
+    directEdgePathMemo.set(edgeId, {
+      points,
+      width,
+      routeIndex: memoRouteIndex,
+      signature: gridSolveSignature,
+      result,
+    });
+  }
+  return result;
 }
 
 function getSimpleOrthogonalEdgePoints({
