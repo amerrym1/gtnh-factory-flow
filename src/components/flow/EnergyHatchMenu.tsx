@@ -293,8 +293,9 @@ export function EnergySupplyMenu({
         })}
       </div>
       <div className="mt-1 border-t border-[var(--mc-54)] px-1 pt-1 text-[11px] leading-4 text-[var(--mc-ink-muted)]">
-        Multi-amp and laser hatches: exactly one, of its whole rating. Most machines take up to
-        two regular hatches.
+        A regular hatch carries 2 A, but a machine with only one feeds recipes at 1 A; the second
+        hatch unlocks the full 2 A each. Multi-amp and laser hatches: exactly one, of its whole
+        rating.
       </div>
     </MenuShell>
   );
