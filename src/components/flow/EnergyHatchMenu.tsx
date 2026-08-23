@@ -131,14 +131,14 @@ export function EnergyHatchMenu({
 
   // A body portal at tooltip depth: inside the node's own layer the panel
   // sat under the marching-dash canvas and under later-painted cards.
-  const PANEL_WIDTH = 400;
+  const PANEL_WIDTH = 440;
   const PANEL_MAX_HEIGHT = 500;
   return createPortal(
     <div
       ref={panelRef}
       // "nowheel" stops React Flow from zooming the canvas when scrolling the
       // list: its native wheel handler runs before React's synthetic one.
-      className="nodrag nowheel fixed z-[9999] w-[400px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1.5 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),4px_4px_0_rgba(0,0,0,0.35)]"
+      className="nodrag nowheel fixed z-[9999] w-[440px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-2 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),4px_4px_0_rgba(0,0,0,0.35)]"
       style={{
         left: Math.max(8, Math.min(anchor.x - PANEL_WIDTH, window.innerWidth - PANEL_WIDTH - 8)),
         top: Math.max(8, Math.min(anchor.y + 4, window.innerHeight - PANEL_MAX_HEIGHT - 8)),
@@ -164,7 +164,7 @@ export function EnergyHatchMenu({
         ))}
       </div>
       {/* Column heads: what the block is, then the two power facts. */}
-      <div className="grid grid-cols-[minmax(0,1fr)_52px_72px] gap-x-1 px-1 pb-0.5 text-[10px] font-bold uppercase leading-none text-[var(--mc-ink-muted)]">
+      <div className="grid grid-cols-[minmax(0,1fr)_56px_80px] gap-x-1.5 px-1 pb-1 text-[10px] font-bold uppercase leading-none text-[var(--mc-ink-muted)]">
         <span>Hatch</span>
         <span className="text-right">Amps</span>
         <span className="text-right">EU/t</span>
@@ -180,14 +180,14 @@ export function EnergyHatchMenu({
               ref={selected ? selectedRef : undefined}
               type="button"
               onClick={() => onPick(type.id, tier)}
-              className={`grid w-full grid-cols-[minmax(0,1fr)_52px_72px] items-center gap-x-1 border px-1 py-0.5 text-left text-[12px] font-bold leading-4 ${
+              className={`grid w-full grid-cols-[minmax(0,1fr)_56px_80px] items-center gap-x-1.5 border px-1 py-1 text-left text-[12px] font-bold leading-4 ${
                 selected
                   ? "border-[var(--selection)] bg-[var(--mc-85)] text-[var(--mc-ink)]"
                   : "border-transparent text-[var(--mc-ink)] hover:border-[var(--mc-33)] hover:bg-[var(--mc-85)]"
               }`}
             >
               <span className="flex min-w-0 items-center gap-1.5">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden">
+                <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center overflow-hidden">
                   {entry && (entry.iconPath || entry.iconAtlas) ? (
                     <ResourceIcon
                       resource={{ kind: "item", amount: 1, ...entry }}
@@ -195,10 +195,10 @@ export function EnergyHatchMenu({
                       tooltip={false}
                       showAmount={false}
                       showConsumedState={false}
-                      className="!h-6 !w-6 shrink-0"
+                      className="!h-[30px] !w-[30px] shrink-0"
                     />
                   ) : (
-                    <Zap className="h-4 w-4 opacity-60" />
+                    <Zap className="h-5 w-5 opacity-60" />
                   )}
                 </span>
                 <span
