@@ -1225,7 +1225,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   onContextMenu={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    stepSupply(-1);
+                    // Only SHIFT-right-click steps back; plain does nothing.
+                    if (event.shiftKey) {
+                      stepSupply(-1);
+                    }
                   }}
                   data-hatch-menu-anchor
                   className="nodrag flex h-6 items-center justify-center gap-0.5 whitespace-nowrap border-2 border-r-0 px-0.5 text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
@@ -1268,7 +1271,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 onContextMenu={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
-                  updateTier(-1);
+                  if (event.shiftKey) {
+                    updateTier(-1);
+                  }
                 }}
                 data-hatch-menu-anchor
                 className="nodrag flex h-6 w-[50px] items-center justify-center border-2 px-1 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
