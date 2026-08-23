@@ -200,8 +200,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   const [isCropMenuOpen, setCropMenuOpen] = useState(false);
   // Screen coords of each chip's corner while its dropdown is open; the
   // menus are fixed body portals, so they need a place, not just a flag.
-  const [supplyMenuAnchor, setSupplyMenuAnchor] = useState<{ x: number; y: number }>();
-  const [tierMenuAnchor, setTierMenuAnchor] = useState<{ x: number; y: number }>();
+  const [supplyMenuAnchor, setSupplyMenuAnchor] = useState<{ x: number; top: number; bottom: number }>();
+  const [tierMenuAnchor, setTierMenuAnchor] = useState<{ x: number; top: number; bottom: number }>();
   // Hovering a dropdown row shows the card AS IF it were picked, through the
   // same previewed-node channel the config knobs use.
   const [hatchMenuPreview, setHatchMenuPreview] = useState<
@@ -1219,7 +1219,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     setTierMenuAnchor(undefined);
                     const rect = event.currentTarget.getBoundingClientRect();
                     setSupplyMenuAnchor((open) =>
-                      open ? undefined : { x: rect.right, y: rect.top },
+                      open ? undefined : { x: rect.right, top: rect.top, bottom: rect.bottom },
                     );
                   }}
                   onContextMenu={(event) => {
@@ -1259,7 +1259,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     setSupplyMenuAnchor(undefined);
                     const rect = event.currentTarget.getBoundingClientRect();
                     setTierMenuAnchor((open) =>
-                      open ? undefined : { x: rect.right, y: rect.top },
+                      open ? undefined : { x: rect.right, top: rect.top, bottom: rect.bottom },
                     );
                     return;
                   }

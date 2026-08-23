@@ -77,7 +77,8 @@ function MenuShell({
   onClose,
   children,
 }: {
-  anchor: { x: number; y: number };
+  /** The chip's right edge and its top and bottom, in screen coordinates. */
+  anchor: { x: number; top: number; bottom: number };
   width: number;
   maxHeight: number;
   onClose: () => void;
@@ -117,19 +118,31 @@ function MenuShell({
     };
   }, [onClose]);
 
+  // Prefer opening UPWARD (the card stays visible for the hover-preview),
+  // but flip downward when the chip is too close to the top of the screen -
+  // a menu must never run off the viewport. Height caps to the chosen side.
+  const spaceAbove = anchor.top - 16;
+  const spaceBelow = window.innerHeight - anchor.bottom - 16;
+  const opensUp = spaceAbove >= Math.min(maxHeight, 260) || spaceAbove >= spaceBelow;
+
   return createPortal(
     <div
       ref={panelRef}
       // "nowheel" stops React Flow from zooming the canvas when scrolling the
       // list: its native wheel handler runs before React's synthetic one.
-      // The panel opens UPWARD from the chip's top edge, so the card's own
-      // ports stay visible while the hover-preview repaints them.
       className="nodrag nowheel fixed z-[9999] overflow-y-auto border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1.5 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),4px_4px_0_rgba(0,0,0,0.35)]"
       style={{
         width,
         left: Math.max(8, Math.min(anchor.x - width, window.innerWidth - width - 8)),
-        bottom: Math.max(8, window.innerHeight - anchor.y + 4),
-        maxHeight: Math.min(maxHeight, anchor.y - 16),
+        ...(opensUp
+          ? {
+              bottom: window.innerHeight - anchor.top + 4,
+              maxHeight: Math.min(maxHeight, spaceAbove),
+            }
+          : {
+              top: anchor.bottom + 4,
+              maxHeight: Math.min(maxHeight, spaceBelow),
+            }),
       }}
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
@@ -200,7 +213,7 @@ export function EnergySupplyMenu({
   onPreview,
   onClose,
 }: {
-  anchor: { x: number; y: number };
+  anchor: { x: number; top: number; bottom: number };
   tier: string;
   currentFamilyId: string;
   currentHatches: number;
@@ -255,7 +268,7 @@ export function EnergySupplyMenu({
         <span className="text-right">Amps</span>
         <span className="text-right">EU/t</span>
       </div>
-      <div className="recipe-search-scroll max-h-[380px] overflow-y-scroll pr-1">
+      <div className="recipe-search-scroll max-h-[320px] overflow-y-scroll pr-1">
         {options.map((option, index) => {
           const selected =
             option.familyId === currentFamilyId &&
@@ -300,9 +313,6 @@ export function EnergySupplyMenu({
           );
         })}
       </div>
-      <div className="mt-1 border-t border-[var(--mc-54)] px-1 pt-1 text-[11px] leading-4 text-[var(--mc-ink-muted)]">
-        One hatch feeds recipes 1 A, two or more feed 2 A each; exotic hatches: one only.
-      </div>
     </MenuShell>
   );
 }
@@ -320,7 +330,7 @@ export function EnergyTierMenu({
   onPreview,
   onClose,
 }: {
-  anchor: { x: number; y: number };
+  anchor: { x: number; top: number; bottom: number };
   currentTier: string;
   minimumTier?: string;
   onPick: (tier: VoltageTier) => void;
