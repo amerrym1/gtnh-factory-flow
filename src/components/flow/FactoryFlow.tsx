@@ -6589,16 +6589,18 @@ const SourceToolbar = memo(function SourceToolbar({
 /**
  * The board's marching dashes, on one canvas.
  *
- * Sits inside the viewport (so it shares the edge layer's stacking context)
- * but counter-scales itself back to screen resolution, so the dashes are drawn
- * at device pixels at every zoom instead of being a bitmap the browser
- * stretches. The canvas covers exactly the visible rectangle, so its cost is
- * a function of the window, not of the plan: a 10,000-edge board draws the
- * same number of pixels as a 10-edge one.
+ * Sits OUTSIDE the viewport in screen space (see the note on its element) and
+ * applies the camera itself, so the dashes are drawn at device pixels at
+ * every zoom instead of being a bitmap the browser stretches. The canvas
+ * covers exactly the visible rectangle, so its cost is a function of the
+ * window, not of the plan: a 10,000-edge board draws the same number of
+ * pixels as a 10-edge one.
  *
- * It reads the viewport transform out of the store on each frame rather than
- * subscribing to it — a subscription here would re-render this component on
- * every pan frame, which is the thing the whole layer exists to avoid.
+ * It reads the camera per frame rather than subscribing — a subscription
+ * would re-render this component on every pan frame, which is the thing the
+ * whole layer exists to avoid — and it reads it from the viewport DIV's own
+ * inline transform, not the store, so the dashes always agree with the frame
+ * the wires actually paint (see readPaintedTransform in the draw loop).
  */
 const EdgePulseCanvas = memo(function EdgePulseCanvas({
   edgesUnderNodes,
@@ -6662,9 +6664,34 @@ const EdgePulseCanvas = memo(function EdgePulseCanvas({
         : undefined;
     observer?.observe(pane!);
 
+    // The wires paint under the VIEWPORT DIV's CSS transform, and React
+    // commits that on its own schedule - during a pan the store can be a
+    // frame newer than the DOM (the pointer event updates it, the commit
+    // lands in a scheduler task), so a canvas drawn from the store slid off
+    // the wires until the pan stopped. Nothing runs between rAF and paint,
+    // so the div's inline transform at draw time is exactly what this
+    // frame's wires will paint with: read that, and fall back to the store
+    // only until the div exists.
+    let viewport = pane?.querySelector<HTMLElement>(".react-flow__viewport") ?? null;
+    const viewportTransformPattern =
+      /translate\((-?[\d.e+]+)px,\s*(-?[\d.e+]+)px\)\s*scale\((-?[\d.e+]+)\)/;
+    const readPaintedTransform = (): [number, number, number] => {
+      if (!viewport) {
+        viewport = pane?.querySelector<HTMLElement>(".react-flow__viewport") ?? null;
+      }
+      const raw = viewport?.style.transform;
+      if (raw) {
+        const match = viewportTransformPattern.exec(raw);
+        if (match) {
+          return [Number(match[1]), Number(match[2]), Number(match[3])];
+        }
+      }
+      return flowStore.getState().transform;
+    };
+
     const draw = (timeMs: number) => {
       frame = window.requestAnimationFrame(draw);
-      const [translateX, translateY, zoom] = flowStore.getState().transform;
+      const [translateX, translateY, zoom] = readPaintedTransform();
       if (width <= 0 || height <= 0 || zoom <= 0) {
         return;
       }
