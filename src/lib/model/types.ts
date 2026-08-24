@@ -531,11 +531,12 @@ export interface FactoryEdge {
   ratePerSecond?: number;
   /**
    * A loose cell wire (SetupRules.looseCellWires): the edge's own resource is
-   * the filled CELL leaving the source, its target handle names the FLUID
-   * input it lands on, and this carries the Canner's litres-per-cell ratio,
-   * fetched when the wire was drawn. The solver expands such an edge through
-   * a hidden free Tank (see expandCrossFormEdges in throughput.ts); no wire
-   * ever crosses kinds on its own.
+   * what leaves the source - the filled CELL or the FLUID - and its target
+   * handle names the other form's input it lands on. This carries the
+   * Canner's litres-per-cell ratio, fetched when the wire was drawn. The
+   * solver expands such an edge through a hidden free Tank (see
+   * expandCrossFormEdges in throughput.ts); no wire ever crosses kinds on
+   * its own.
    */
   crossForm?: {
     litresPerCell: number;

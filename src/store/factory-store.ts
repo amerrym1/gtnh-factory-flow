@@ -293,14 +293,15 @@ interface FactoryStore {
   ) => void;
   /**
    * A loose cell wire (SetupRules.looseCellWires): a filled cell landing
-   * straight on its fluid's input. The edge carries the CELL as its resource,
-   * the fluid input handle as its target, and the Canner ratio the gesture
-   * fetched; the solver bridges the two forms through a hidden free Tank.
+   * straight on its fluid's input, or a fluid landing straight on its cell's
+   * input. The edge carries the SOURCE's own resource, the far form's input
+   * handle as its target, and the Canner ratio the gesture fetched; the
+   * solver bridges the two forms through a hidden free Tank.
    */
   connectCrossFormEdge: (
     source: { nodeId: string; handleId: string },
     target: { nodeId: string; handleId: string },
-    resource: Pick<ResourceAmount, "id" | "displayName">,
+    resource: Pick<ResourceAmount, "kind" | "id" | "displayName">,
     litresPerCell: number,
   ) => void;
   /** Swaps the node onto another recipe (crop pick), resetting per-recipe state. */
@@ -3013,7 +3014,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         target: target.nodeId,
         sourceHandle: source.handleId,
         targetHandle: target.handleId,
-        resourceKind: "item",
+        resourceKind: resource.kind,
         resourceId: resource.id,
         label: resource.displayName,
         crossForm: { litresPerCell },
@@ -4105,23 +4106,27 @@ function isFactoryEdgeStillValid(project: FactoryProject, edge: FactoryEdge): bo
   const effectiveTargetRecipe = applyRecipeInputOverrides(targetRecipe, targetNode);
 
   // A LOOSE CELL WIRE's two ends are honest in different forms: the source
-  // must still make the cell, the target must still drink the fluid the
-  // wire's own target handle names.
+  // must still make the wire's own resource, the target must still take the
+  // far form the wire's own target handle names - the fluid under a cell
+  // wire, the cell under a fluid wire.
   if (edge.crossForm) {
     const handleParts = (edge.targetHandle ?? "").split(":");
-    const fluidId =
-      handleParts[0] === "input" && handleParts[1] === "fluid" && handleParts[2]
+    const farKind =
+      handleParts[1] === "fluid" || handleParts[1] === "item" ? handleParts[1] : undefined;
+    const farId =
+      handleParts[0] === "input" && farKind && handleParts[2]
         ? decodeURIComponent(handleParts[2])
         : undefined;
     return Boolean(
-      fluidId &&
+      farKind &&
+        farId &&
         effectiveSourceRecipe.outputs.some((output) =>
           resourceMatchesInput({ kind: edge.resourceKind, id: edge.resourceId }, output),
         ) &&
         effectiveTargetRecipe.inputs.some(
           (input) =>
             isRecipeInputConsumed(input) &&
-            resourceMatchesInput({ kind: "fluid", id: fluidId }, input),
+            resourceMatchesInput({ kind: farKind, id: farId }, input),
         ),
     );
   }

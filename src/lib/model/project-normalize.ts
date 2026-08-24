@@ -297,8 +297,8 @@ function dropCrossFormConnections(project: FactoryProject): FactoryProject {
   const edges = project.edges.filter(
     (edge) =>
       // A LOOSE CELL WIRE crosses the forms ON PURPOSE (SetupRules.
-      // looseCellWires): its resource is the cell, its target slot the
-      // fluid, and its stored Canner ratio is fetched, never guessed. The
+      // looseCellWires): its resource is one form, its target slot the
+      // other, and its stored Canner ratio is fetched, never guessed. The
       // legacy shape this pass hunts had no such field.
       edge.crossForm !== undefined ||
       (endpointHandles(edge.source, "source", edge.resourceKind) &&

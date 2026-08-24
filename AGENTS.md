@@ -114,16 +114,25 @@ Working notes for future agents on GTNH Factory Flow.
   auto-inserted converter that discarded empty cells was designed and
   rejected in the same session.
 - LOOSE CELL WIRES is the one opt-in beyond it (`SetupRules.looseCellWires`,
-  off by default, in the board-rules sheet): a filled cell may wire straight
-  onto its fluid's input. The wire itself is still same-kind (its resource is
-  the CELL; the fluid it lands on is named by its target handle) and carries
-  the Canner's litres-per-cell on `edge.crossForm`, fetched at wire time - no
-  ratio found, no wire. The solver bridges the forms through a hidden free
-  Tank (`expandCrossFormEdges` in throughput.ts) that never reaches the
-  board or the result. `resourceMatchesInput` stays strict; the rule lives
-  in the gesture (`handleConnect` / `isCompatibleResourceConnection`), edge
-  survival (`isFactoryEdgeStillValid`, `dropCrossFormConnections`), and the
-  expansion - nowhere else.
+  off by default, in the board-rules sheet): a filled cell and its fluid wire
+  straight together, EITHER WAY ROUND - cell output onto fluid input, fluid
+  output onto cell input - and the gesture behaves like any compatible pair
+  (green wash, whole-card drops, drags started from either end). The wire
+  itself is still same-kind (its resource is the SOURCE's own form; the far
+  form is named by its target handle) and carries the Canner's
+  litres-per-cell on `edge.crossForm`, fetched at wire time - no ratio
+  found, no wire. `getCrossFormCellMatch` in resources.ts is the one
+  pair-matching question. The solver bridges the forms through a hidden free
+  Tank (`expandCrossFormEdges` in throughput.ts, converting whichever way
+  the wire runs) that never reaches the board or the result.
+  `resourceMatchesInput` stays strict; the rule lives in the gesture
+  (`handleConnect` / `isCompatibleResourceConnection`, plus the whole-card
+  drop path `findNodeDropTargetOnSide` / `isCompatibleDraggedResourceTarget`
+  / `handleConnectEnd` - drawers stay strict), edge survival
+  (`isFactoryEdgeStillValid`, `dropCrossFormConnections`), and the
+  expansion - nowhere else. Known limit: the pair-match derives the fluid id
+  from the CELL'S NAME, so a same-named fluid with a different id (GT
+  `molten.iron` vs TCon `iron.molten`, both "Molten Iron") does not match.
 - The old behaviour auto-converted at a guessed 1000 L per cell. It made chains
   look complete while omitting a real machine, empty cells and the power to run
   them, and it reported item production in litres. It also inflated cell inputs

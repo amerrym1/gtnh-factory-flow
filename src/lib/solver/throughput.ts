@@ -326,14 +326,16 @@ export function calculateThroughput(
 }
 
 /**
- * LOOSE CELL WIRES (SetupRules.looseCellWires): a wire whose resource is a
- * filled cell but whose target handle names a fluid input. No wire crosses
- * kinds on its own - inside the solve each such edge runs through a hidden
- * free Tank: cell in, litres out at the Canner ratio stored on the edge, zero
- * EU, one tick, and a machine count high enough that only its neighbours can
- * ever bind. The hidden node and the synthetic fluid half of the wire are
- * stripped from the returned result; the visible edge keeps its own id, so
- * its figures land on the wire the player drew (in cells, its own resource).
+ * LOOSE CELL WIRES (SetupRules.looseCellWires): a wire whose resource is one
+ * form and whose target handle names the other - a cell landing on a fluid
+ * input, or a fluid landing on a cell input. No wire crosses kinds on its
+ * own - inside the solve each such edge runs through a hidden free Tank
+ * converting at the Canner ratio stored on the edge (cell in, litres out; or
+ * litres in, cell out), zero EU, one tick, and a machine count high enough
+ * that only its neighbours can ever bind. The hidden node and the synthetic
+ * far half of the wire are stripped from the returned result; the visible
+ * edge keeps its own id, so its figures land on the wire the player drew (in
+ * its own resource).
  *
  * Known blind spot: the clog-lock detector solves over the UNexpanded
  * project, so a dead board's vent analysis does not see through these wires.
@@ -345,9 +347,7 @@ function expandCrossFormEdges(project: FactoryProject): {
   hiddenNodeIds: string[];
   hiddenEdgeIds: string[];
 } {
-  const crossEdges = project.edges.filter(
-    (edge) => (edge.crossForm?.litresPerCell ?? 0) > 0 && edge.resourceKind === "item",
-  );
+  const crossEdges = project.edges.filter((edge) => (edge.crossForm?.litresPerCell ?? 0) > 0);
   if (crossEdges.length === 0) {
     return { project, hiddenNodeIds: [], hiddenEdgeIds: [] };
   }
@@ -359,27 +359,39 @@ function expandCrossFormEdges(project: FactoryProject): {
   const hiddenEdgeIds: string[] = [];
 
   for (const edge of crossEdges) {
-    // The fluid is named by the handle the wire lands on: `input:fluid:<id>`.
+    // The far form is named by the handle the wire lands on: `input:fluid:<id>`
+    // under a cell wire, `input:item:<cellId>` under a fluid wire.
     const handleParts = (edge.targetHandle ?? "").split(":");
-    if (handleParts[0] !== "input" || handleParts[1] !== "fluid" || !handleParts[2]) {
+    const cellToFluid = edge.resourceKind === "item" && handleParts[1] === "fluid";
+    const fluidToCell = edge.resourceKind === "fluid" && handleParts[1] === "item";
+    if (handleParts[0] !== "input" || !handleParts[2] || (!cellToFluid && !fluidToCell)) {
       continue;
     }
-    const fluidId = decodeURIComponent(handleParts[2]);
+    const farKind = cellToFluid ? ("fluid" as const) : ("item" as const);
+    const farId = decodeURIComponent(handleParts[2]);
     const litresPerCell = edge.crossForm!.litresPerCell;
 
     const hiddenRecipeId = `crossform-recipe:${edge.id}`;
     const hiddenNodeId = `crossform:${edge.id}`;
     recipes.push({
       id: hiddenRecipeId,
-      name: `Tank: ${fluidId}`,
+      name: `Tank: ${farId}`,
       kind: "custom",
       category: "crossform-tank",
       machineType: "Tank",
       minimumTier: "NONE",
       durationTicks: 1,
       eut: 0,
-      inputs: [{ kind: "item", id: edge.resourceId, amount: 1 }],
-      outputs: [{ kind: "fluid", id: fluidId, amount: litresPerCell }],
+      inputs: [
+        cellToFluid
+          ? { kind: "item", id: edge.resourceId, amount: 1 }
+          : { kind: "fluid", id: edge.resourceId, amount: litresPerCell },
+      ],
+      outputs: [
+        cellToFluid
+          ? { kind: "fluid", id: farId, amount: litresPerCell }
+          : { kind: "item", id: farId, amount: 1 },
+      ],
       source: { recipeMap: "crossform-tank" },
     });
     nodes.push({
@@ -399,19 +411,19 @@ function expandCrossFormEdges(project: FactoryProject): {
     edges[index] = {
       ...edge,
       target: hiddenNodeId,
-      targetHandle: `input:item:${encodeURIComponent(edge.resourceId)}`,
+      targetHandle: `input:${edge.resourceKind}:${encodeURIComponent(edge.resourceId)}`,
     };
-    const fluidEdgeId = `${edge.id}:crossform`;
+    const farEdgeId = `${edge.id}:crossform`;
     edges.push({
-      id: fluidEdgeId,
+      id: farEdgeId,
       source: hiddenNodeId,
       target: edge.target,
-      sourceHandle: `output:fluid:${encodeURIComponent(fluidId)}`,
+      sourceHandle: `output:${farKind}:${encodeURIComponent(farId)}`,
       targetHandle: edge.targetHandle,
-      resourceKind: "fluid",
-      resourceId: fluidId,
+      resourceKind: farKind,
+      resourceId: farId,
     });
-    hiddenEdgeIds.push(fluidEdgeId);
+    hiddenEdgeIds.push(farEdgeId);
   }
 
   return { project: { ...project, recipes, nodes, edges }, hiddenNodeIds, hiddenEdgeIds };

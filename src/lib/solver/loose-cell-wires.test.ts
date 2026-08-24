@@ -134,6 +134,62 @@ describe("loose cell wires", () => {
     expect(result.edges["catch"].transferredPerSecond).toBeCloseTo(1);
   });
 
+  it("fills a cell input from a fluid wire at the Canner ratio", () => {
+    // The mirror shape: a pump makes 2000 L of water a second, a machine
+    // eats one water cell a second. The wire carries the FLUID and lands on
+    // the cell input; the hidden Tank fills cells at 1000 L each, so the
+    // eater runs flat out and the pump holds at 50% when the spare litres
+    // have nowhere to go.
+    const PUMP = {
+      id: "pump",
+      name: "pump",
+      machineType: "Bender",
+      minimumTier: "LV",
+      durationTicks: 20,
+      eut: 30,
+      inputs: [],
+      outputs: [{ kind: "fluid" as const, id: "water", amount: 2000 }],
+    };
+    const EATER = {
+      id: "eat",
+      name: "eat",
+      machineType: "Bender",
+      minimumTier: "LV",
+      durationTicks: 20,
+      eut: 30,
+      inputs: [{ kind: "item" as const, id: "water_cell", amount: 1 }],
+      outputs: [{ kind: "item" as const, id: "sponge", amount: 1 }],
+    };
+    const result = calculateThroughput(
+      project({
+        recipes: [PUMP, EATER],
+        nodes: [node("maker", "pump"), node("taker", "eat")],
+        storages: [drawer("d", "sponge")],
+        edges: [
+          {
+            id: "w",
+            source: "maker",
+            target: "taker",
+            sourceHandle: "output:fluid:water",
+            targetHandle: "input:item:water_cell",
+            resourceKind: "fluid",
+            resourceId: "water",
+            crossForm: { litresPerCell: 1000 },
+          },
+          { id: "out", source: "taker", target: "d", resourceKind: "item", resourceId: "sponge" },
+        ],
+      }),
+      { generatedAt: "fixed" },
+    );
+
+    expect(result.nodes["taker"].utilization).toBeCloseTo(1);
+    expect(result.nodes["maker"].utilization).toBeCloseTo(0.5);
+    // The visible wire carries LITRES, its own resource.
+    expect(result.edges["w"].transferredPerSecond).toBeCloseTo(1000);
+    expect(Object.keys(result.nodes).sort()).toEqual(["maker", "taker"]);
+    expect(Object.keys(result.edges).sort()).toEqual(["out", "w"]);
+  });
+
   it("an edge without the ratio stays inert instead of inventing one", () => {
     const result = calculateThroughput(
       project({
