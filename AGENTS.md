@@ -130,9 +130,13 @@ Working notes for future agents on GTNH Factory Flow.
   drop path `findNodeDropTargetOnSide` / `isCompatibleDraggedResourceTarget`
   / `handleConnectEnd` - drawers stay strict), edge survival
   (`isFactoryEdgeStillValid`, `dropCrossFormConnections`), and the
-  expansion - nowhere else. Known limit: the pair-match derives the fluid id
-  from the CELL'S NAME, so a same-named fluid with a different id (GT
-  `molten.iron` vs TCon `iron.molten`, both "Molten Iron") does not match.
+  expansion - nowhere else. The pair-match reuses the search's name-tolerant
+  `isFluidEquivalentToFilledCell` (fluid ids rarely spell their names:
+  "Molten Cast Iron" is `molten.castiron`); a false name match still wires
+  nothing because the ratio fetch looks the pair up by exact ids. Residual
+  quirk: a same-named different-id fluid (TCon `iron.molten` vs GT
+  `molten.iron`) can wash green during the drag and then refuse silently
+  when no Canner recipe links the exact pair.
 - The old behaviour auto-converted at a guessed 1000 L per cell. It made chains
   look complete while omitting a real machine, empty cells and the power to run
   them, and it reported item production in litres. It also inflated cell inputs
