@@ -5692,11 +5692,11 @@ const UnwiredNotice = memo(function UnwiredNotice({
   }
 
   return (
-    <div className="unwired-notice nodrag pointer-events-auto flex items-center gap-2 border-2 border-[#c8d2e0] bg-[#2b3038]/95 px-2 py-1.5 font-mono text-[12px] text-[#e8ecf2] shadow-[inset_2px_2px_0_#5d6877,inset_-2px_-2px_0_#171a1f,4px_4px_0_rgba(0,0,0,0.35)]">
+    <div className="unwired-notice nodrag pointer-events-auto flex max-w-[min(92vw,560px)] flex-wrap items-center justify-center gap-x-2 gap-y-1.5 border-2 border-[#c8d2e0] bg-[#2b3038] px-2 py-1.5 font-mono text-[12px] text-[#e8ecf2] shadow-[inset_2px_2px_0_#5d6877,inset_-2px_-2px_0_#171a1f,4px_4px_0_rgba(0,0,0,0.35)]">
       <span className="shrink-0 font-bold tracking-[0.5px] text-[#eef2f8]">NOT WIRED UP</span>
       {/* One line, always. The card already explains itself; this only says
           how many are left and offers to take you to them. */}
-      <span className="whitespace-nowrap text-[#c2cad6]">
+      <span className="text-[#c2cad6]">
         {unwired.length === 1
           ? "1 machine has a slot with nothing on it"
           : `${unwired.length} machines have slots with nothing on them`}
@@ -5742,9 +5742,9 @@ const LooseWiresOffNotice = memo(function LooseWiresOffNotice({
   const nodeIds = [...new Set(crossEdges.flatMap((edge) => [edge.source, edge.target]))];
 
   return (
-    <div className="nodrag pointer-events-auto flex items-center gap-2 border-2 border-[#c3a04c] bg-[#2b261c]/95 px-2 py-1.5 font-mono text-[12px] text-[#f2ecdc] shadow-[inset_2px_2px_0_#7a6836,inset_-2px_-2px_0_#1a1610,4px_4px_0_rgba(0,0,0,0.35)]">
+    <div className="nodrag pointer-events-auto flex max-w-[min(92vw,560px)] flex-wrap items-center justify-center gap-x-2 gap-y-1.5 border-2 border-[#c3a04c] bg-[#2b261c] px-2 py-1.5 font-mono text-[12px] text-[#f2ecdc] shadow-[inset_2px_2px_0_#7a6836,inset_-2px_-2px_0_#1a1610,4px_4px_0_rgba(0,0,0,0.35)]">
       <span className="shrink-0 font-bold tracking-[0.5px] text-[#ffd98c]">LOOSE WIRES</span>
-      <span className="whitespace-nowrap text-[#e6ddc2]">
+      <span className="text-[#e6ddc2]">
         {crossEdges.length === 1
           ? "1 cell wire carries nothing with Loose cell wires off"
           : `${crossEdges.length} cell wires carry nothing with Loose cell wires off`}
@@ -5787,7 +5787,7 @@ const DeathSpiralNotice = memo(function DeathSpiralNotice({
   const story = describeDeathSpiral(spiral);
 
   return (
-    <div className="nodrag pointer-events-auto flex items-center gap-2 border-2 border-[#c34c4c] bg-[#2b1c1c]/95 px-2 py-1.5 font-mono text-[12px] text-[#f2e4e4] shadow-[inset_2px_2px_0_#7a3636,inset_-2px_-2px_0_#1a1010,4px_4px_0_rgba(0,0,0,0.35)]">
+    <div className="nodrag pointer-events-auto flex max-w-[min(92vw,560px)] flex-wrap items-center justify-center gap-x-2 gap-y-1.5 border-2 border-[#c34c4c] bg-[#2b1c1c] px-2 py-1.5 font-mono text-[12px] text-[#f2e4e4] shadow-[inset_2px_2px_0_#7a3636,inset_-2px_-2px_0_#1a1010,4px_4px_0_rgba(0,0,0,0.35)]">
       <span className="shrink-0 font-bold tracking-[0.5px] text-[#ff9c9c]">DEAD LOOP</span>
       <span className="text-[#e6d2d2]">{story.short}</span>
       {spirals.length > 1 ? (
@@ -5851,7 +5851,7 @@ const ClogLockNotice = memo(function ClogLockNotice({
   const showAt = showIndex % showTargets.length;
 
   return (
-    <div className="nodrag pointer-events-auto flex items-center gap-2 border-2 border-[#4c7ec3] bg-[#1a222b]/95 px-2 py-1.5 font-mono text-[12px] text-[#e4ecf2] shadow-[inset_2px_2px_0_#365d7a,inset_-2px_-2px_0_#10161a,4px_4px_0_rgba(0,0,0,0.35)]">
+    <div className="nodrag pointer-events-auto flex max-w-[min(92vw,560px)] flex-wrap items-center justify-center gap-x-2 gap-y-1.5 border-2 border-[#4c7ec3] bg-[#1a222b] px-2 py-1.5 font-mono text-[12px] text-[#e4ecf2] shadow-[inset_2px_2px_0_#365d7a,inset_-2px_-2px_0_#10161a,4px_4px_0_rgba(0,0,0,0.35)]">
       <span className="shrink-0 font-bold tracking-[0.5px] text-[#9cc9ff]">CLOG LOCK</span>
       <span className="text-[#d2e0e6]">{story.short}</span>
       {locks.length > 1 ? (
@@ -5930,7 +5930,7 @@ const TourLoopNoticeExample = memo(function TourLoopNoticeExample() {
   const lock = describeClogLock(TOUR_EXAMPLE_LOCK);
   return (
     <div data-tour-anchor="loop-notice" className="pointer-events-none flex flex-col items-center gap-2">
-      <div className="flex items-center gap-2 border-2 border-[#c34c4c] bg-[#2b1c1c]/95 px-2 py-1.5 font-mono text-[12px] text-[#f2e4e4] shadow-[inset_2px_2px_0_#7a3636,inset_-2px_-2px_0_#1a1010,4px_4px_0_rgba(0,0,0,0.35)]">
+      <div className="flex max-w-[min(92vw,560px)] flex-wrap items-center justify-center gap-x-2 gap-y-1.5 border-2 border-[#c34c4c] bg-[#2b1c1c] px-2 py-1.5 font-mono text-[12px] text-[#f2e4e4] shadow-[inset_2px_2px_0_#7a3636,inset_-2px_-2px_0_#1a1010,4px_4px_0_rgba(0,0,0,0.35)]">
         <span className="shrink-0 font-bold tracking-[0.5px] text-[#ff9c9c]">DEAD LOOP</span>
         <span className="shrink-0 border border-[#7a3636] px-1 text-[10px] font-bold tracking-[0.5px] text-[#b89a9a]">
           EXAMPLE
@@ -5943,7 +5943,7 @@ const TourLoopNoticeExample = memo(function TourLoopNoticeExample() {
           Show me
         </span>
       </div>
-      <div className="flex items-center gap-2 border-2 border-[#4c7ec3] bg-[#1a222b]/95 px-2 py-1.5 font-mono text-[12px] text-[#e4ecf2] shadow-[inset_2px_2px_0_#365d7a,inset_-2px_-2px_0_#10161a,4px_4px_0_rgba(0,0,0,0.35)]">
+      <div className="flex max-w-[min(92vw,560px)] flex-wrap items-center justify-center gap-x-2 gap-y-1.5 border-2 border-[#4c7ec3] bg-[#1a222b] px-2 py-1.5 font-mono text-[12px] text-[#e4ecf2] shadow-[inset_2px_2px_0_#365d7a,inset_-2px_-2px_0_#10161a,4px_4px_0_rgba(0,0,0,0.35)]">
         <span className="shrink-0 font-bold tracking-[0.5px] text-[#9cc9ff]">CLOG LOCK</span>
         <span className="shrink-0 border border-[#365d7a] px-1 text-[10px] font-bold tracking-[0.5px] text-[#9aaab8]">
           EXAMPLE
