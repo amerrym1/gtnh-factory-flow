@@ -36,6 +36,7 @@ function project(over: Partial<FactoryProject>): FactoryProject {
     nodes: [],
     edges: [],
     fuelProfiles: [],
+    setupRules: { looseCellWires: true },
     ...over,
   } as FactoryProject;
 }
@@ -188,6 +189,27 @@ describe("loose cell wires", () => {
     expect(result.edges["w"].transferredPerSecond).toBeCloseTo(1000);
     expect(Object.keys(result.nodes).sort()).toEqual(["maker", "taker"]);
     expect(Object.keys(result.edges).sort()).toEqual(["out", "w"]);
+  });
+
+  it("a cross-form wire carries nothing once the rule is turned off", () => {
+    // The wire and its ratio survive on the board, but with looseCellWires
+    // off the conversion does not exist: the drinker reads unsupplied, same
+    // as if the wire were not there. Turning the rule back on revives it.
+    const result = calculateThroughput(
+      project({
+        setupRules: { looseCellWires: false },
+        recipes: [FILLER, DRINKER],
+        nodes: [node("maker", "fill"), node("taker", "drink")],
+        storages: [drawer("d", "sponge")],
+        edges: [
+          CROSS_WIRE,
+          { id: "out", source: "taker", target: "d", resourceKind: "item", resourceId: "sponge" },
+        ],
+      }),
+      { generatedAt: "fixed" },
+    );
+
+    expect(result.nodes["taker"].utilization).toBeCloseTo(0);
   });
 
   it("an edge without the ratio stays inert instead of inventing one", () => {

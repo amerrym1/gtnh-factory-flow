@@ -277,6 +277,7 @@ const TOUCH_MOVES: GlanceRow[] = [
  */
 const NOTICES: GlanceRow[] = [
   { chip: "NOT WIRED UP", tone: "fine", text: "Slots still to wire, with a *Show me*" },
+  { chip: "LOOSE WIRES", tone: "bottleneck", text: "Cell wires dead with their rule off: delete them or *turn it back on*" },
   { chip: "DEAD LOOP", tone: "bottleneck", text: "A ring losing material, starved to *0%*" },
   { chip: "CLOG LOCK", tone: "clogged", text: "A ring jammed by its own spare: give it *a drawer*" },
 ];

@@ -83,7 +83,13 @@ export function calculateThroughput(
       outputs: rules.freeOutputs ? "all" : "none",
     });
   }
-  const crossForm = expandCrossFormEdges(project);
+  // With the rule OFF the conversion does not exist: a cross-form wire left
+  // on the board carries nothing (its far end reads NO SUPPLY), and the
+  // board raises a notice naming it. Anything else would let a disabled
+  // rule keep converting.
+  const crossForm = rules.looseCellWires
+    ? expandCrossFormEdges(project)
+    : { project, hiddenNodeIds: [], hiddenEdgeIds: [] };
   project = crossForm.project;
   const recipesById = new Map(project.recipes.map((recipe) => [recipe.id, recipe]));
   const nodes: Record<string, NodeThroughputResult> = {};

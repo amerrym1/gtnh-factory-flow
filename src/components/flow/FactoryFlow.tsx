@@ -5637,6 +5637,7 @@ export function FactoryFlow() {
       >
         <TourLoopNoticeExample />
         <UnwiredNotice onShow={handleShowNodes} />
+        <LooseWiresOffNotice onShow={handleShowNodes} />
         <DeathSpiralNotice onShow={handleShowNodes} />
         <ClogLockNotice onShow={handleShowNodes} />
         <RecipeAddChips />
@@ -5706,6 +5707,61 @@ const UnwiredNotice = memo(function UnwiredNotice({
         className="shrink-0 border border-[#c8d2e0] bg-[#454f5e] px-2 py-0.5 font-bold text-[#ffffff] hover:bg-[#566275]"
       >
         Show me
+      </button>
+    </div>
+  );
+});
+
+/**
+ * Cross-form wires stranded by Loose cell wires going OFF. With the rule off
+ * the conversion does not exist, so these wires carry nothing and the
+ * machines they fed read unsupplied - a mystery unless something names the
+ * cause. Amber, because nothing is broken: the plan and the rule just
+ * disagree, and either deleting the wires or turning the rule back on ends
+ * it. Not dismissible, deliberately, for the same reason the unwired notice
+ * is not: those are its only endings.
+ */
+const LooseWiresOffNotice = memo(function LooseWiresOffNotice({
+  onShow,
+}: {
+  onShow: (nodeIds: string[]) => void;
+}) {
+  const project = useFactoryStore((state) => state.project);
+  const deleteEdge = useFactoryStore((state) => state.deleteEdge);
+  const crossEdges = useMemo(
+    () =>
+      getSetupRules(project).looseCellWires
+        ? []
+        : project.edges.filter((edge) => edge.crossForm),
+    [project],
+  );
+
+  if (crossEdges.length === 0) {
+    return null;
+  }
+  const nodeIds = [...new Set(crossEdges.flatMap((edge) => [edge.source, edge.target]))];
+
+  return (
+    <div className="nodrag pointer-events-auto flex items-center gap-2 border-2 border-[#c3a04c] bg-[#2b261c]/95 px-2 py-1.5 font-mono text-[12px] text-[#f2ecdc] shadow-[inset_2px_2px_0_#7a6836,inset_-2px_-2px_0_#1a1610,4px_4px_0_rgba(0,0,0,0.35)]">
+      <span className="shrink-0 font-bold tracking-[0.5px] text-[#ffd98c]">LOOSE WIRES</span>
+      <span className="whitespace-nowrap text-[#e6ddc2]">
+        {crossEdges.length === 1
+          ? "1 cell wire carries nothing with Loose cell wires off"
+          : `${crossEdges.length} cell wires carry nothing with Loose cell wires off`}
+      </span>
+      <button
+        type="button"
+        onClick={() => onShow(nodeIds)}
+        className="shrink-0 border border-[#c3a04c] bg-[#4a3f24] px-2 py-0.5 font-bold text-[#ffe9c0] hover:bg-[#635430]"
+      >
+        Show me
+      </button>
+      <button
+        type="button"
+        onClick={() => deleteEdge(crossEdges.map((edge) => edge.id))}
+        className="shrink-0 border border-[#c3a04c] bg-[#4a3f24] px-2 py-0.5 font-bold text-[#ffe9c0] hover:bg-[#635430]"
+      >
+        {crossEdges.length === 1 ? "Delete it" : "Delete them"}
       </button>
     </div>
   );

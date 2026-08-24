@@ -566,7 +566,8 @@ interface FactoryStore {
   autoConnectNode: (nodeId: string) => void;
   optimizeMachineCount: (nodeId: string) => void;
   optimizeMachineCounts: () => void;
-  deleteEdge: (edgeId: string) => void;
+  /** One wire, or a batch deleted together as a single undo entry. */
+  deleteEdge: (edgeId: string | string[]) => void;
   setTargetRate: (targetRate?: TargetRate) => void;
   selectFuelProfile: (fuelProfileId: string) => void;
   renameProject: (name: string) => void;
@@ -3219,10 +3220,11 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   },
   deleteEdge: (edgeId) => {
     set((state) => {
+      const ids = new Set(Array.isArray(edgeId) ? edgeId : [edgeId]);
       const project = touchProject(
         pruneOrphanStorages({
           ...state.project,
-          edges: state.project.edges.filter((edge) => edge.id !== edgeId),
+          edges: state.project.edges.filter((edge) => !ids.has(edge.id)),
         }),
       );
       return withProjectHistory(state, {
