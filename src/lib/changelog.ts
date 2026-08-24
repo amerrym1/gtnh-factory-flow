@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.31.0",
+    date: "2026-08-23",
+    headline: "Loose cell wires that actually wire",
+    notes: [
+      "With the rule on, cells and their fluids now connect both ways round, dropped on the row or anywhere on the card.",
+      "Cells whose fluid spells its name oddly, like Molten Cast Iron, now connect too.",
+      "Turning the rule off names the wires it strands and offers to delete them.",
+      "The board's warning banners are solid now and keep their buttons inside.",
+    ],
+  },
+  {
     version: "2.30.1",
     date: "2026-08-23",
     headline: "A faster, smoother board",
