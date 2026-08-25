@@ -20,6 +20,8 @@ import type {
 } from "@/lib/model/types";
 import {
   AUTO_WORKBENCH_HANDLER_ID,
+  CROP_HARVESTER_INDUSTRIAL_FARM_ID,
+  CROP_HARVESTER_MANAGER_ID,
   enrichPassiveProductionRecipe,
   getFilledCellFluidEquivalent,
   isFluidEquivalentToFilledCell,
@@ -225,27 +227,44 @@ export async function getDatasetCatalog(versionId: string) {
     oreDictionary: {},
     recipeMaps: catalog.recipeMaps,
     recipeMapIcons: catalog.recipeMapIcons,
-    machineHandlerIcons: withAutoWorkbenchIcon(catalog),
+    machineHandlerIcons: withSynthesizedHandlerIcons(catalog),
     generatedAt: catalog.version.publishedAt,
   };
 }
 
 /**
- * The Auto Workbench handler is synthesized client-side for the crafting maps
- * (recipe-rules.ts), so no exported handler family ever minted its icon. The
- * machine is a real dataset item; hand its LV face to the synthesized family
- * here so crafting cards draw a machine chip like everything else.
+ * Handlers synthesized client-side (the Auto Workbench for the crafting maps
+ * in recipe-rules.ts, the two crop harvesters in passive-production.ts) never
+ * had an exported handler family mint their icon. Each machine is a real
+ * dataset item; hand its lowest-tier face to the synthesized family here so
+ * their cards draw a machine chip like everything else. Names are candidates
+ * in order because datasets disagree (2.8.4 says "Crop Manager (LV)" and has
+ * no Industrial Farm); a family with no match simply keeps its letter chip.
  */
-function withAutoWorkbenchIcon(catalog: LoadedRecipeIndex): MachineHandlerIconEntry[] | undefined {
-  const icons = catalog.machineHandlerIcons ?? [];
-  if (icons.some((entry) => entry.familyId === AUTO_WORKBENCH_HANDLER_ID)) {
-    return catalog.machineHandlerIcons;
+const SYNTHESIZED_HANDLER_FACES: Array<{ familyId: string; displayNames: string[] }> = [
+  { familyId: AUTO_WORKBENCH_HANDLER_ID, displayNames: ["Auto Workbench (LV)"] },
+  {
+    familyId: CROP_HARVESTER_MANAGER_ID,
+    displayNames: ["Basic Crop Manager", "Crop Manager (LV)"],
+  },
+  { familyId: CROP_HARVESTER_INDUSTRIAL_FARM_ID, displayNames: ["Industrial Farm"] },
+];
+
+function withSynthesizedHandlerIcons(catalog: LoadedRecipeIndex): MachineHandlerIconEntry[] {
+  const icons = [...(catalog.machineHandlerIcons ?? [])];
+  for (const { familyId, displayNames } of SYNTHESIZED_HANDLER_FACES) {
+    if (icons.some((entry) => entry.familyId === familyId)) {
+      continue;
+    }
+    for (const displayName of displayNames) {
+      const face = catalog.resources.find((resource) => resource.displayName === displayName);
+      if (face) {
+        icons.push({ familyId, resource: { ...face, amount: 1 } });
+        break;
+      }
+    }
   }
-  const face = catalog.resources.find((resource) => resource.displayName === "Auto Workbench (LV)");
-  if (!face) {
-    return catalog.machineHandlerIcons;
-  }
-  return [...icons, { familyId: AUTO_WORKBENCH_HANDLER_ID, resource: { ...face, amount: 1 } }];
+  return icons;
 }
 
 function getMachineConfigResources(catalog: LoadedRecipeIndex): DatasetResourceIndexEntry[] {

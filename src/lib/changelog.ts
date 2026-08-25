@@ -73,6 +73,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.32.1",
+    date: "2026-08-25",
+    headline: "Crop machines get their faces back",
+    notes: [
+      "The Crop Manager and Industrial Farm tabs on crop cards show the machine's icon instead of a letter.",
+    ],
+  },
+  {
     version: "2.32.0",
     date: "2026-08-25",
     headline: "Bee cards learn the speed gene",
