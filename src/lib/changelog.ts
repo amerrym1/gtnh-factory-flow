@@ -73,7 +73,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "2.32.1",
+    version: "2.33.0",
     date: "2026-08-25",
     headline: "Crop machines get their faces back",
     notes: [
