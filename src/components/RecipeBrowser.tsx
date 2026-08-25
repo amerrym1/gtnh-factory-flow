@@ -39,6 +39,8 @@ import {
   type SearchPhase,
 } from "@/lib/search";
 import { useFactoryStore } from "@/store/factory-store";
+import { useDesignStore } from "@/store/design-store";
+import { leaveWelcomeTab, readWelcomeTabState } from "@/lib/tour/welcome-tab";
 import type { RecipeInputPicks, TierFilter } from "@/store/factory-store";
 import type { Recipe, ResourceAmount } from "@/lib/model/types";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
@@ -710,8 +712,21 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       const currentMode = currentState.recipeBrowserResource
         ? currentState.recipeBrowserMode
         : browserMode;
-      const currentRefactorNodeId = currentState.recipeBrowserRefactorNodeId;
-      const anchorNodeId = currentResource?.anchorNodeId;
+      // A pick made while Welcome covers the board would land on whatever tab
+      // is hidden underneath it, unseen. It gets a fresh blank tab instead, so
+      // the card arrives on a board the player is actually looking at. Anchor
+      // and refactor targets are cards of the covered plan, so they are
+      // dropped along with it - on a blank board there is nothing to wire to
+      // or replace.
+      const welcomeCovered = readWelcomeTabState().active;
+      if (welcomeCovered) {
+        await useDesignStore.getState().addDesign();
+        leaveWelcomeTab();
+      }
+      const currentRefactorNodeId = welcomeCovered
+        ? undefined
+        : currentState.recipeBrowserRefactorNodeId;
+      const anchorNodeId = welcomeCovered ? undefined : currentResource?.anchorNodeId;
       const contextResource = getRecipeAddContextResource(
         currentResource,
         currentMode,

@@ -362,6 +362,14 @@ function BoardColumn() {
 }
 
 function ColumnWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
+  // The resource column reads the board's solve, and while Welcome covers the
+  // board those figures belong to whichever tab is hidden underneath — numbers
+  // about a plan you are not looking at. It folds to a blank strip for the
+  // duration, WITHOUT writing the workspace view, so stepping off Welcome
+  // brings it back exactly as it was left.
+  const welcome = useWelcomeTab();
+  const rightPanelShown = workspace.rightPanelOpen && !welcome.active;
+
   return (
     <>
       {/* 344/332: the browser column carries three iconed tabs and the setup
@@ -376,7 +384,7 @@ function ColumnWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
           gridTemplateColumns: [
             workspace.leftPanelOpen ? "344px" : `${RAIL_WIDTH}px`,
             "minmax(0,1fr)",
-            workspace.rightPanelOpen ? "332px" : `${RAIL_WIDTH}px`,
+            rightPanelShown ? "332px" : `${RAIL_WIDTH}px`,
           ].join(" "),
         }}
       >
@@ -390,8 +398,10 @@ function ColumnWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
           <PanelRail side="left" label="Items, pockets and setups" />
         )}
         <BoardColumn />
-        {workspace.rightPanelOpen ? (
+        {rightPanelShown ? (
           <InspectorPanel />
+        ) : welcome.active ? (
+          <div className="h-full border-l border-line bg-surface" />
         ) : (
           <PanelRail side="right" label="Resources" />
         )}
