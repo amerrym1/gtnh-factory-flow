@@ -39,6 +39,7 @@ export const CROP_NO_MANAGER_KEY = "none";
 const NO_MANAGER_TIER_INDEX = -1;
 
 export const BEE_FRAME_SLOT_CONTROL_PREFIX = "beeFrameSlot";
+export const BEE_SPEED_GENE_CONTROL_ID = "beeSpeedGene";
 export const BEE_ENVIRONMENT_CONTROL_ID = "beeEnvironment";
 export const BEE_MAGIC_AURA_CONTROL_ID = "beeMagicAura";
 export const BEE_ALVEARY_FRAME_HOUSING_CONTROL_ID = "beeAlvearyFrameHousing";
@@ -80,6 +81,7 @@ const CROP_CONTROL_IDS = new Set([
 ]);
 
 const BEE_CONTROL_IDS = new Set([
+  BEE_SPEED_GENE_CONTROL_ID,
   BEE_ENVIRONMENT_CONTROL_ID,
   BEE_MAGIC_AURA_CONTROL_ID,
   BEE_ALVEARY_FRAME_HOUSING_CONTROL_ID,
@@ -1114,6 +1116,7 @@ function cropStatsControl(recipe: PassiveProductionRecipeLabel): MachineConfigCo
 
 function apiaryProductionControls(): MachineConfigControl[] {
   return [
+    beeSpeedGeneControl(),
     beeFrameSlotControl(1),
     beeFrameSlotControl(2),
     beeFrameSlotControl(3),
@@ -1161,6 +1164,7 @@ function withoutTooltipLines(
 
 function magicApiaryProductionControls(): MachineConfigControl[] {
   return [
+    beeSpeedGeneControl(),
     beeFrameSlotControl(1),
     beeFrameSlotControl(2),
     beeFrameSlotControl(3),
@@ -1184,6 +1188,7 @@ function magicApiaryProductionControls(): MachineConfigControl[] {
 
 function alvearyProductionControls(): MachineConfigControl[] {
   return [
+    beeSpeedGeneControl(),
     selectControl({
       id: BEE_ALVEARY_FRAME_HOUSING_CONTROL_ID,
       label: "Frame Housings",
@@ -1228,6 +1233,7 @@ function alvearyProductionControls(): MachineConfigControl[] {
 
 function industrialApiaryControls(): MachineConfigControl[] {
   return [
+    beeSpeedGeneControl(),
     selectControl({
       id: BEE_INDUSTRIAL_SPEED_CONTROL_ID,
       label: "Acceleration",
@@ -1284,6 +1290,7 @@ function industrialApiaryControls(): MachineConfigControl[] {
 
 function megaApiaryControls(): MachineConfigControl[] {
   return [
+    beeSpeedGeneControl(),
     selectControl({
       id: BEE_MEGA_ROYAL_JELLY_CONTROL_ID,
       label: "Royal Jelly",
@@ -1299,6 +1306,41 @@ function megaApiaryControls(): MachineConfigControl[] {
       ],
     }),
   ];
+}
+
+/**
+ * Every speed allele in the pack: Forestry `EnumAllele.Speed` (0.3 to 1.7)
+ * plus MagicBees' Blinding (2.0). GTNH Forestry's `Bee.getFinalChance` is
+ * `2.8 * chance^0.52 * (prodMod + t)^0.52 * speed^0.37 / 100`, so the gene is
+ * a plain output factor independent of the housing and the product, and the
+ * dataset bakes every chance at speed 1 (Normal).
+ */
+const BEE_SPEED_GENES: Array<{ key: string; label: string; value: number }> = [
+  { key: "slowest", label: "Slowest", value: 0.3 },
+  { key: "slower", label: "Slower", value: 0.6 },
+  { key: "slow", label: "Slow", value: 0.8 },
+  { key: "normal", label: "Normal", value: 1 },
+  { key: "fast", label: "Fast", value: 1.2 },
+  { key: "faster", label: "Faster", value: 1.4 },
+  { key: "fastest", label: "Fastest", value: 1.7 },
+  { key: "blinding", label: "Blinding", value: 2 },
+];
+
+function beeSpeedGeneControl(): MachineConfigControl {
+  return selectControl({
+    id: BEE_SPEED_GENE_CONTROL_ID,
+    label: "Speed Gene",
+    defaultKey: "normal",
+    tiers: BEE_SPEED_GENES.map((gene) =>
+      option(
+        gene.key,
+        gene.label,
+        `bee_speed_${gene.key}`,
+        `${gene.label} Speed Gene (${gene.value})`,
+        { outputMultiplier: gene.value ** 0.37 },
+      ),
+    ),
+  });
 }
 
 function beeEnvironmentControl(): MachineConfigControl {

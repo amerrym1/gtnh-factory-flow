@@ -191,6 +191,38 @@ describe("passive production machine effects", () => {
     ).toBeCloseTo(Math.pow(31, 0.52));
   });
 
+  it("applies the speed gene as the getFinalChance speed^0.37 factor", () => {
+    const recipe = enrichPassiveProductionRecipe(testBeeRecipe());
+    const blindingNode: Pick<FactoryNode, "machineConfigTiers" | "coilTier"> = {
+      machineConfigTiers: { beeSpeedGene: "blinding" },
+    };
+    const slowestNode: Pick<FactoryNode, "machineConfigTiers" | "coilTier"> = {
+      machineConfigTiers: { beeSpeedGene: "slowest" },
+    };
+
+    expect(
+      getMachineOutputMultiplier(recipe, blindingNode, recipe.outputs[0]!, "LV"),
+    ).toBeCloseTo(Math.pow(2, 0.37), 5);
+    expect(
+      getMachineOutputMultiplier(recipe, slowestNode, recipe.outputs[0]!, "LV"),
+    ).toBeCloseTo(Math.pow(0.3, 0.37), 5);
+    expect(getMachineDurationMultiplier(recipe, blindingNode)).toBe(1);
+  });
+
+  it("stacks the speed gene with housing production terms", () => {
+    const recipe = enrichPassiveProductionRecipe(testBeeRecipe());
+    const node: Pick<FactoryNode, "machineConfigTiers" | "machineHandlerId"> = {
+      machineConfigTiers: { beeSpeedGene: "blinding" },
+      machineHandlerId: "alveary",
+    };
+    const alvearyRecipe = applyMachineHandlerToRecipe(recipe, node);
+
+    expect(getMachineOutputMultiplier(alvearyRecipe, node, recipe.outputs[0]!, "LV")).toBeCloseTo(
+      Math.pow(2, 0.37) * Math.pow(10, 0.52),
+      5,
+    );
+  });
+
   it("applies bee climate requirements to specialty outputs", () => {
     const recipe = enrichPassiveProductionRecipe({
       ...testBeeRecipe(),
@@ -252,6 +284,7 @@ describe("passive production machine effects", () => {
     const stats = getOverclockedRecipeStats(industrialRecipe, node);
 
     expect(industrialRecipe.machineConfigControls?.map((control) => control.id)).toEqual([
+      "beeSpeedGene",
       "beeIndustrialSpeed",
       "beeIndustrialProduction",
       "beeEnvironment",

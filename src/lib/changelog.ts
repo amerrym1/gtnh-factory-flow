@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.32.0",
+    date: "2026-08-25",
+    headline: "Bee cards learn the speed gene",
+    notes: [
+      "Every bee housing has a Speed Gene setting, from Slowest to Blinding.",
+      "Output scales the way the game scales it, so Blinding bees make about 29% more than Normal.",
+    ],
+  },
+  {
     version: "2.31.0",
     date: "2026-08-23",
     headline: "Loose cell wires that actually wire",
