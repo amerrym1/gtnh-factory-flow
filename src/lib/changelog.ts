@@ -73,6 +73,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.34.0",
+    date: "2026-08-25",
+    headline: "The Welcome tab stays out of your way",
+    notes: [
+      "The resource column goes blank while the Welcome tab is up and comes back when you leave.",
+      "Adding a recipe from the Welcome tab opens a fresh design tab and places it there.",
+      "When every machine chip is unselected, the recipe search says so and offers to select them all.",
+    ],
+  },
+  {
     version: "2.33.0",
     date: "2026-08-25",
     headline: "Crop machines get their faces back",
