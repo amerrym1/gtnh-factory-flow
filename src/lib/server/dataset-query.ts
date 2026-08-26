@@ -93,7 +93,9 @@ interface LoadedRecipeIndex {
   recipeMapIconCandidates?: RecipeMapIconCandidate[];
   recipeMapIconCache?: Map<string, DatasetResourceIndexEntry | undefined>;
   recipeMapIconEntriesByMap?: Map<string, RecipeMapIconEntry>;
-  recipesByRawRecipeId?: Map<string, Recipe[]>;
+  /** rawRecipeId -> recipe indexes; ids and numbers only, never recipe bodies. */
+  recipeIndexesByRawRecipeId?: Map<string, number[]>;
+  /** Bounded LRU of hydrated summaries; see setCachedHydratedSummary. */
   hydratedRecipeSummaries?: Map<number, RecipeSummary>;
   /** Resources a crop or a bee can produce; see getPassiveSourceResourceKeys. */
   passiveSourceKeys?: Partial<Record<ResourceSourceFilter, Set<string>>>;
@@ -207,11 +209,13 @@ const loadedRecipeLookupIndexes = new Map<string, LoadedRecipeLookupIndex>();
 const pendingRecipeLookupLoads = new Map<string, Promise<LoadedRecipeLookupIndex>>();
 const loadedShards = new Map<string, Recipe[]>();
 const pendingShardLoads = new Map<string, Promise<Recipe[]>>();
+const pendingRawRecipeIdIndexLoads = new Map<string, Promise<Map<string, number[]>>>();
 const pendingPrewarmLoads = new Map<string, Promise<void>>();
 let manifestCache: DatasetManifest | undefined;
 let manifestCacheStamp: string | undefined;
 const gunzipAsync = promisify(gunzip);
 const maxLoadedShardCount = positiveIntEnv("GTNH_MAX_LOADED_RECIPE_SHARDS", 8);
+const maxHydratedRecipeSummaryCount = positiveIntEnv("GTNH_MAX_HYDRATED_RECIPE_SUMMARIES", 8000);
 
 export async function getDatasetCatalog(versionId: string) {
   const catalog = await loadCatalog(versionId);
@@ -308,7 +312,41 @@ export async function resolveDatasetRecipeRefs(
   }
 
   const catalog = await loadCatalog(versionId);
-  const recipesByRawRecipeId = await getRecipesByRawRecipeId(catalog);
+  const indexesByRawRecipeId = await getRecipeIndexesByRawRecipeId(catalog);
+
+  // Only the shards holding this request's candidates are read, through the
+  // bounded shard cache: the recipe bodies never stay resident.
+  const candidateShardRequests = new Map<RecipeIndexShard, number[]>();
+  for (const ref of refs) {
+    if (!ref.rawRecipeId) {
+      continue;
+    }
+    for (const recipeIndex of indexesByRawRecipeId.get(ref.rawRecipeId) ?? []) {
+      const shard = catalog.shards.find(
+        (entry) => recipeIndex >= entry.start && recipeIndex < entry.end,
+      );
+      if (!shard) {
+        continue;
+      }
+      const existing = candidateShardRequests.get(shard);
+      if (existing) {
+        existing.push(recipeIndex);
+      } else {
+        candidateShardRequests.set(shard, [recipeIndex]);
+      }
+    }
+  }
+
+  const candidatesByIndex = new Map<number, Recipe>();
+  for (const [shard, recipeIndexes] of candidateShardRequests) {
+    const recipes = await loadShard(catalog.version, shard);
+    for (const recipeIndex of recipeIndexes) {
+      const recipe = recipes[recipeIndex - shard.start];
+      if (recipe) {
+        candidatesByIndex.set(recipeIndex, recipe);
+      }
+    }
+  }
 
   return refs
     .map((ref) => {
@@ -316,10 +354,11 @@ export async function resolveDatasetRecipeRefs(
         return undefined;
       }
 
-      const match = recipesByRawRecipeId
-        .get(ref.rawRecipeId)
-        ?.find(
-          (recipe) =>
+      const match = (indexesByRawRecipeId.get(ref.rawRecipeId) ?? [])
+        .map((recipeIndex) => candidatesByIndex.get(recipeIndex))
+        .find(
+          (recipe): recipe is Recipe =>
+            recipe !== undefined &&
             recipe.id !== ref.id &&
             recipe.name === ref.name &&
             recipe.machineType === ref.machineType &&
@@ -1625,31 +1664,61 @@ async function loadShard(version: DatasetVersion, shard: RecipeIndexShard): Prom
   return promise;
 }
 
-async function getRecipesByRawRecipeId(catalog: LoadedRecipeIndex): Promise<Map<string, Recipe[]>> {
-  if (catalog.recipesByRawRecipeId) {
-    return catalog.recipesByRawRecipeId;
+/**
+ * rawRecipeId -> recipe indexes, built once per loaded dataset.
+ *
+ * This map holds ids and numbers only. It used to hold every recipe BODY,
+ * which pinned the whole corpus (hundreds of MB) in the heap forever the
+ * first time anyone imported a plan carrying rawRecipeIds - the single
+ * biggest driver of the production server's heap-exhaustion crashes. The
+ * scan reads shards a few at a time and keeps none of them.
+ */
+async function getRecipeIndexesByRawRecipeId(
+  catalog: LoadedRecipeIndex,
+): Promise<Map<string, number[]>> {
+  if (catalog.recipeIndexesByRawRecipeId) {
+    return catalog.recipeIndexesByRawRecipeId;
   }
 
-  const recipesByRawRecipeId = new Map<string, Recipe[]>();
-  const shardRecipes = await Promise.all(
-    catalog.shards.map((shard) => loadShard(catalog.version, shard)),
-  );
-  for (const recipe of shardRecipes.flat()) {
-    const rawRecipeId = recipe.source?.rawRecipeId;
-    if (!rawRecipeId) {
-      continue;
-    }
-
-    const existing = recipesByRawRecipeId.get(rawRecipeId);
-    if (existing) {
-      existing.push(recipe);
-    } else {
-      recipesByRawRecipeId.set(rawRecipeId, [recipe]);
-    }
+  const cacheKey = datasetVersionCacheKey(catalog.version);
+  const pending = pendingRawRecipeIdIndexLoads.get(cacheKey);
+  if (pending) {
+    return pending;
   }
 
-  catalog.recipesByRawRecipeId = recipesByRawRecipeId;
-  return recipesByRawRecipeId;
+  const promise = (async () => {
+    const indexesByRawRecipeId = new Map<string, number[]>();
+    const concurrency = 4;
+    for (let index = 0; index < catalog.shards.length; index += concurrency) {
+      const batch = catalog.shards.slice(index, index + concurrency);
+      const payloads = await Promise.all(
+        batch.map((shard) => readGzipJson<RecipeShardPayload>(publicPathToFile(shard.path))),
+      );
+      // Recorded in shard order so candidate lists stay deterministic.
+      payloads.forEach((payload, batchIndex) => {
+        const shard = batch[batchIndex];
+        payload.recipes.forEach((recipe, offset) => {
+          const rawRecipeId = recipe.source?.rawRecipeId;
+          if (!rawRecipeId) {
+            return;
+          }
+          const existing = indexesByRawRecipeId.get(rawRecipeId);
+          if (existing) {
+            existing.push(shard.start + offset);
+          } else {
+            indexesByRawRecipeId.set(rawRecipeId, [shard.start + offset]);
+          }
+        });
+      });
+    }
+    catalog.recipeIndexesByRawRecipeId = indexesByRawRecipeId;
+    return indexesByRawRecipeId;
+  })().finally(() => {
+    pendingRawRecipeIdIndexLoads.delete(cacheKey);
+  });
+
+  pendingRawRecipeIdIndexLoads.set(cacheKey, promise);
+  return promise;
 }
 
 async function prewarmRecipeShards(catalog: LoadedRecipeIndex): Promise<void> {
@@ -1896,8 +1965,7 @@ async function getRecipeSummariesByIndexMap(
             getCatalogResourcesByKey(catalog),
             getChoiceAlternativesByKey(catalog),
           );
-          catalog.hydratedRecipeSummaries ??= new Map();
-          catalog.hydratedRecipeSummaries.set(recipeIndex, summary);
+          setCachedHydratedSummary(catalog, recipeIndex, summary);
           summariesByIndex.set(recipeIndex, summary);
         }
       }
@@ -1911,7 +1979,7 @@ function getHydratedRecipeSummary(
   catalog: LoadedRecipeIndex,
   recipeIndex: number,
 ): RecipeSummary | undefined {
-  const cached = catalog.hydratedRecipeSummaries?.get(recipeIndex);
+  const cached = getCachedHydratedSummary(catalog, recipeIndex);
   if (cached) {
     return cached;
   }
@@ -1922,9 +1990,44 @@ function getHydratedRecipeSummary(
   }
 
   const summary = hydrateRecipeSummary(compactSummary, catalog);
-  catalog.hydratedRecipeSummaries ??= new Map();
-  catalog.hydratedRecipeSummaries.set(recipeIndex, summary);
+  setCachedHydratedSummary(catalog, recipeIndex, summary);
   return summary;
+}
+
+function getCachedHydratedSummary(
+  catalog: LoadedRecipeIndex,
+  recipeIndex: number,
+): RecipeSummary | undefined {
+  const cache = catalog.hydratedRecipeSummaries;
+  const cached = cache?.get(recipeIndex);
+  if (!cache || !cached) {
+    return undefined;
+  }
+
+  cache.delete(recipeIndex);
+  cache.set(recipeIndex, cached);
+  return cached;
+}
+
+/**
+ * Hydrated summaries are cheap to rebuild and were cached forever, which let
+ * hours of recipe-book browsing walk the heap into the limit. Same LRU shape
+ * as the shard cache: recently used stays, the tail falls off.
+ */
+function setCachedHydratedSummary(
+  catalog: LoadedRecipeIndex,
+  recipeIndex: number,
+  summary: RecipeSummary,
+) {
+  const cache = (catalog.hydratedRecipeSummaries ??= new Map());
+  cache.set(recipeIndex, summary);
+  while (cache.size > maxHydratedRecipeSummaryCount) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey === undefined) {
+      return;
+    }
+    cache.delete(oldestKey);
+  }
 }
 
 function toRecipeSummary(

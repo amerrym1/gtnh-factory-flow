@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.34.1",
+    date: "2026-08-26",
+    headline: "The site stops slowing down over the day",
+    notes: [
+      "Fixed a server memory problem that made pages take up to 30 seconds and the board feel sluggish.",
+      "Opening a shared plan no longer triggers the slowdown.",
+    ],
+  },
+  {
     version: "2.34.0",
     date: "2026-08-25",
     headline: "The Welcome tab stays out of your way",
