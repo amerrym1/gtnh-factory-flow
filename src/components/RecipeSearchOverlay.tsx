@@ -692,7 +692,24 @@ export function RecipeSearchOverlay({
               </div>
             ) : recipes.length === 0 ? (
               <div className="grid min-h-[260px] place-items-center border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-3 text-sm shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-                No matching recipes.
+                {/* An empty list with every chip dark is the selection's doing,
+                    not the search's. Saying "no matching recipes" there sends
+                    people to reword the query when the fix is one click up. */}
+                {recipeMapChips.length > 0 &&
+                recipeMapChips.every((chip) => !chip.selected) ? (
+                  <div className="flex flex-col items-center gap-3 text-center">
+                    <span>No machines are selected at the top.</span>
+                    <button
+                      type="button"
+                      onClick={onToggleAllRecipeMaps}
+                      className="border-2 border-[var(--mc-47)] bg-[var(--mc-78)] px-3 py-1 text-[13px] font-bold shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-47)] hover:bg-[var(--mc-85)]"
+                    >
+                      Select all machines
+                    </button>
+                  </div>
+                ) : (
+                  "No matching recipes."
+                )}
               </div>
             ) : (
               <>
