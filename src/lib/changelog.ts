@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.35.3",
+    date: "2026-08-26",
+    headline: "The thinking spinner moves out of the way",
+    notes: [
+      "The loading message sits at the top of the board instead of over your cards.",
+      "The tab shows a small spinner while its numbers are still computing.",
+    ],
+  },
+  {
     version: "2.35.2",
     date: "2026-08-26",
     headline: "The numbers come back in about a second",

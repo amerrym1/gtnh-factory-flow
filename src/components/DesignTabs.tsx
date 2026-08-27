@@ -10,6 +10,7 @@ import {
   useWelcomeTab,
 } from "@/lib/tour/welcome-tab";
 import { useDesignStore } from "@/store/design-store";
+import { useSolvingBooks } from "@/components/flow/use-solving-books";
 
 // Wide enough for the longest item on one line ("Close tabs to right"); the
 // menu clips rather than wraps, so this and the labels move together.
@@ -205,9 +206,10 @@ export function DesignTabs() {
                       }}
                       onDoubleClick={() => setRenamingId(design.id)}
                       title={design.name}
-                      className="max-w-[150px] truncate text-xs font-medium"
+                      className="flex max-w-[166px] items-center gap-1.5 text-xs font-medium"
                     >
-                      {design.name}
+                      {isActive ? <TabSolvingSpinner /> : null}
+                      <span className="truncate">{design.name}</span>
                     </button>
                   )}
 
@@ -533,6 +535,26 @@ function RenameInput({
       }}
       aria-label="Design name"
       className="w-[140px] rounded border border-cyan-500 bg-surface px-1 text-xs text-fg outline-none"
+    />
+  );
+}
+
+/**
+ * A tiny spinner on the ACTIVE tab while its books are still computing in
+ * the worker - the canvas holds only one plan at a time, so the active tab
+ * is the only one that can be mid-solve. Its own component so the whole tab
+ * strip does not resubscribe to the solve flag; it renders nothing the
+ * moment the real numbers land.
+ */
+function TabSolvingSpinner() {
+  const solving = useSolvingBooks();
+  if (!solving) {
+    return null;
+  }
+  return (
+    <span
+      aria-label="Still working out this plan's numbers"
+      className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-neutral-600 border-t-cyan-400"
     />
   );
 }

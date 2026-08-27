@@ -122,6 +122,7 @@ import {
 } from "@/store/factory-store";
 import { useBlueprintStore } from "@/store/blueprint-store";
 import { useDesignStore } from "@/store/design-store";
+import { useSolvingBooks } from "./use-solving-books";
 import {
   isDesignCameraSettled,
   settleDesignCamera,
@@ -11922,33 +11923,25 @@ function nextPaint(): Promise<void> {
 /**
  * The big-board loading state. A plan past the worker threshold gets stale
  * books back the moment it lands on the canvas (src/store/solve-books.ts),
- * and until the real ones arrive every number on the board reads zero. That
- * used to be a frozen tab; now it is a working one, and this says so. It
- * subscribes to the one flag itself so the board never re-renders for it,
- * and it blocks nothing: the canvas underneath stays live.
+ * and until the real ones arrive every number on the board reads zero.
+ * Shown as a pill at the BOTTOM CENTRE of the board, not over its middle:
+ * the message is "still thinking", and it must never sit on the cards being
+ * edited (player request, 2026-08-26). Bottom centre is the one chrome-free
+ * strip - the corners hold the help button and the camera tools, the top
+ * holds two toolbar rows. It subscribes through useSolvingBooks itself so
+ * the board never re-renders for it, and it blocks nothing: the canvas
+ * underneath stays live.
  */
 function SolvingBooksOverlay() {
-  const stale = useFactoryStore((state) => Boolean(state.lastResult.stale));
-  // Half a second of grace before showing anything: a background solve that
-  // lands quickly should never flash a spinner over the board.
-  const [shown, setShown] = useState(false);
-  useEffect(() => {
-    if (!stale) {
-      setShown(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setShown(true), 500);
-    return () => window.clearTimeout(timer);
-  }, [stale]);
-  if (!shown) {
+  const solving = useSolvingBooks();
+  if (!solving) {
     return null;
   }
   return (
-    <div className="pointer-events-none absolute inset-0 z-30 grid place-items-center">
-      <div className="flex flex-col items-center gap-4 border-2 border-neutral-600 bg-neutral-950/85 px-10 py-8 font-mono text-neutral-200 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-neutral-700 border-t-neutral-200" />
-        <div className="text-[14px]">Working out this board&apos;s numbers...</div>
-        <div className="text-[12px] text-neutral-400">Big plans take a few seconds. You can keep working.</div>
+    <div className="pointer-events-none absolute bottom-16 left-1/2 z-30 -translate-x-1/2">
+      <div className="flex items-center gap-3 whitespace-nowrap border-2 border-neutral-600 bg-neutral-950/90 px-4 py-2 font-mono text-neutral-200 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+        <div className="h-5 w-5 animate-spin rounded-full border-[3px] border-neutral-700 border-t-cyan-400" />
+        <div className="text-[13px]">Working out the numbers... you can keep editing.</div>
       </div>
     </div>
   );
