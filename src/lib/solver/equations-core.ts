@@ -3,7 +3,8 @@ import { makeResourceKey } from "@/lib/model/resources";
 import { getStorageRoles } from "@/lib/model/storage-role";
 import { collectTrashNodeIds } from "@/lib/model/trash";
 import { getCompatibleOutputFlow, getEdgeTargetDemandKey } from "./equilibrium";
-import { solveLp, type LinearProgram, type LpSolution } from "./simplex";
+import { type LinearProgram, type LpSolution } from "./simplex";
+import { solveLpAuto } from "./lp-engine";
 
 /**
  * The board's steady state as equations, solved directly: the BOOKS half of
@@ -94,7 +95,9 @@ export interface EquationsDiagnosis {
 export function solveEquationsCore(
   project: FactoryProject,
   nodes: Record<string, NodeThroughputResult>,
-  solve: (lp: LinearProgram) => LpSolution = solveLp,
+  // solveLpAuto is the engine switchboard: HiGHS where initLpEngine has run
+  // (the solve worker), the homegrown simplex everywhere else.
+  solve: (lp: LinearProgram) => LpSolution = solveLpAuto,
   diagnosis?: EquationsDiagnosis,
   options?: EquationsCoreOptions,
 ): EquationsCoreResult {

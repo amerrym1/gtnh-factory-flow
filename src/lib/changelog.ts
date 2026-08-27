@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.35.2",
+    date: "2026-08-26",
+    headline: "The numbers come back in about a second",
+    notes: [
+      "Boards with loops and returned byproducts calculate up to 24 times faster.",
+      "The long spinner on big plans is mostly gone: most boards finish in about a second.",
+    ],
+  },
+  {
     version: "2.35.1",
     date: "2026-08-26",
     headline: "Slow boards go to the background too",

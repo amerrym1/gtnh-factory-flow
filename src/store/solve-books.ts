@@ -164,7 +164,17 @@ function getWorker(): Worker {
       if (queued) {
         const next = queued;
         queued = undefined;
-        scheduleSolve(next);
+        // A queued repeat of what just finished (or of anything already
+        // solved) serves from the cache instead of solving twice.
+        const cached = bigBooksCache.get(next.key);
+        if (cached) {
+          if (next.key === currentKey) {
+            lastBooks = cached;
+            sink?.(cached);
+          }
+        } else {
+          scheduleSolve(next);
+        }
       }
     };
     worker.onerror = (event) => {
