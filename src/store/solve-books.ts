@@ -33,6 +33,21 @@ import type { FactoryProject, ThroughputResult } from "@/lib/model/types";
  */
 const SYNC_SOLVE_LIMIT = 220;
 
+/**
+ * Size is not the whole story: a 59-machine platline with three loose cell
+ * wires solves in 3.8s (84% inside the simplex - the hidden Tank each
+ * cross-form wire expands into makes the LP much harder) while the same
+ * board without them takes 0.27s. Two more reasons to leave the main thread:
+ * the LAST solve, wherever it ran, took longer than this budget - a slow
+ * board stays async until a fast solve proves otherwise - and a plan
+ * carrying cross-form wires past a token size, so that board's very first
+ * solve never freezes the tab either.
+ */
+const SLOW_SOLVE_MS = 150;
+const CROSS_FORM_SYNC_LIMIT = 100;
+
+let lastSolveDurationMs: number | undefined;
+
 const BIG_BOOKS_CACHE_LIMIT = 8;
 const bigBooksCache = new Map<string, ThroughputResult>();
 
@@ -58,8 +73,14 @@ export function registerBooksSink(apply: (result: ThroughputResult) => void) {
 
 export function solveBooks(project: FactoryProject): ThroughputResult {
   const size = project.nodes.length + project.edges.length;
-  if (size <= SYNC_SOLVE_LIMIT || !workerAvailable()) {
+  const expectSlow =
+    size > SYNC_SOLVE_LIMIT ||
+    (lastSolveDurationMs !== undefined && lastSolveDurationMs > SLOW_SOLVE_MS) ||
+    (size > CROSS_FORM_SYNC_LIMIT && project.edges.some((edge) => edge.crossForm));
+  if (!expectSlow || !workerAvailable()) {
+    const started = performance.now();
     const result = calculateThroughput(project);
+    lastSolveDurationMs = performance.now() - started;
     currentKey = undefined;
     lastBooks = result;
     return result;
@@ -123,11 +144,19 @@ function getWorker(): Worker {
   if (!worker) {
     worker = new Worker(new URL("./solve-books.worker.ts", import.meta.url));
     worker.onmessage = (
-      event: MessageEvent<{ key: string; result?: ThroughputResult; error?: string }>,
+      event: MessageEvent<{
+        key: string;
+        result?: ThroughputResult;
+        error?: string;
+        solveMs?: number;
+      }>,
     ) => {
-      const { key, result, error } = event.data;
+      const { key, result, error, solveMs } = event.data;
       inFlight = undefined;
       if (result) {
+        if (solveMs !== undefined) {
+          lastSolveDurationMs = solveMs;
+        }
         deliver(key, result);
       } else {
         console.error("solve worker error:", error);

@@ -11929,7 +11929,18 @@ function nextPaint(): Promise<void> {
  */
 function SolvingBooksOverlay() {
   const stale = useFactoryStore((state) => Boolean(state.lastResult.stale));
-  if (!stale) {
+  // Half a second of grace before showing anything: a background solve that
+  // lands quickly should never flash a spinner over the board.
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!stale) {
+      setShown(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setShown(true), 500);
+    return () => window.clearTimeout(timer);
+  }, [stale]);
+  if (!shown) {
     return null;
   }
   return (
