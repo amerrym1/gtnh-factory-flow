@@ -5558,6 +5558,7 @@ export function FactoryFlow() {
           />
         ) : null}
       </ReactFlow>
+      <SolvingBooksOverlay />
       <PaintToolbar
         paintMode={nodeColorPaintMode}
         onPaintModeChange={handlePaintModeChange}
@@ -11916,4 +11917,28 @@ function nextPaint(): Promise<void> {
       window.requestAnimationFrame(() => resolve());
     });
   });
+}
+
+/**
+ * The big-board loading state. A plan past the worker threshold gets stale
+ * books back the moment it lands on the canvas (src/store/solve-books.ts),
+ * and until the real ones arrive every number on the board reads zero. That
+ * used to be a frozen tab; now it is a working one, and this says so. It
+ * subscribes to the one flag itself so the board never re-renders for it,
+ * and it blocks nothing: the canvas underneath stays live.
+ */
+function SolvingBooksOverlay() {
+  const stale = useFactoryStore((state) => Boolean(state.lastResult.stale));
+  if (!stale) {
+    return null;
+  }
+  return (
+    <div className="pointer-events-none absolute inset-0 z-30 grid place-items-center">
+      <div className="flex flex-col items-center gap-4 border-2 border-neutral-600 bg-neutral-950/85 px-10 py-8 font-mono text-neutral-200 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-neutral-700 border-t-neutral-200" />
+        <div className="text-[14px]">Working out this board&apos;s numbers...</div>
+        <div className="text-[12px] text-neutral-400">Big plans take a few seconds. You can keep working.</div>
+      </div>
+    </div>
+  );
 }

@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.35.0",
+    date: "2026-08-26",
+    headline: "Big boards stop freezing the browser",
+    notes: [
+      "Big plans work out their numbers in the background, with a spinner while they think.",
+      "Switching between tabs is instant, even with huge plans open.",
+    ],
+  },
+  {
     version: "2.34.1",
     date: "2026-08-26",
     headline: "The site stops slowing down over the day",
