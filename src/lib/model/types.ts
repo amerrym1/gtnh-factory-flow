@@ -861,4 +861,10 @@ export interface ThroughputResult {
   externalInputs: ResourceBalance[];
   unconsumedOutputs: ResourceBalance[];
   generatedAt: string;
+  /**
+   * These books do not describe the current plan yet: a big board's solve
+   * runs off the main thread and the real result replaces them when it
+   * lands. See `src/store/solve-books.ts`.
+   */
+  stale?: boolean;
 }

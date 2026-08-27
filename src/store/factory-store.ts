@@ -10,7 +10,7 @@ import {
 } from "@/lib/model/edge-identity";
 import { normalizeLoadedProject } from "@/lib/model/project-normalize";
 import { setActiveRateUnit, type RateUnit } from "@/lib/model/rate-unit";
-import { calculateThroughput } from "@/lib/solver";
+import { registerBooksSink, solveBooks } from "./solve-books";
 import { applyRecipeInputOverrides, inputOverrideAmount } from "@/lib/model/recipe-input-overrides";
 import type { AlternativeCycleFace } from "@/lib/nei/alternative-cycle";
 import { createCropFarmPlaceholderRecipe, isCropFarmRecipe } from "@/lib/model/passive-production";
@@ -716,14 +716,14 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   placedBoardToken: 0,
   selectedBoardIds: [],
   boardFocusRequest: undefined,
-  lastResult: calculateThroughput(initialProject),
+  lastResult: solveBooks(initialProject),
   rateUnit: "second",
   setRateUnit: (unit) => {
     // The formatters read a module singleton; recomputing the result gives
     // every rate surface a fresh identity so nothing shows a stale unit.
     setActiveRateUnit(unit);
     const { project } = get();
-    set({ rateUnit: unit, lastResult: calculateThroughput(project) });
+    set({ rateUnit: unit, lastResult: solveBooks(project) });
   },
   setProject: (project) => {
     const nextProject = touchProject(normalizeLoadedProject(project));
@@ -733,7 +733,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       selectedRecipeId: nextProject.nodes[0]?.recipeId ?? nextProject.recipes[0]?.id,
       pendingBoardSelectionIds: undefined,
       selectedBoardIds: [],
-      lastResult: calculateThroughput(nextProject),
+      lastResult: solveBooks(nextProject),
       undoHistory: [],
       redoHistory: [],
     });
@@ -746,7 +746,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       selectedRecipeId: nextProject.nodes[0]?.recipeId ?? nextProject.recipes[0]?.id,
       pendingBoardSelectionIds: undefined,
       selectedBoardIds: [],
-      lastResult: calculateThroughput(nextProject),
+      lastResult: solveBooks(nextProject),
       undoHistory: [],
       redoHistory: [],
     });
@@ -853,7 +853,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
 
       return {
         project,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       };
     });
   },
@@ -1020,7 +1020,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         pendingResourceConnection: undefined,
         selectedNodeId: undefined,
         selectedRecipeId: state.dataset?.recipes[0]?.id,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -1084,7 +1084,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
           project,
           pendingResourceConnection: undefined,
           selectedNodeId: slot.nodeId,
-          lastResult: calculateThroughput(project),
+          lastResult: solveBooks(project),
         });
       }
 
@@ -1110,7 +1110,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         project,
         pendingResourceConnection: undefined,
         selectedNodeId: slot.nodeId,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -1145,7 +1145,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   },
   recalculate: () => {
     const { project } = get();
-    set({ lastResult: calculateThroughput(project) });
+    set({ lastResult: solveBooks(project) });
   },
   selectNode: (nodeId) => {
     const node = get().project.nodes.find((entry) => entry.id === nodeId);
@@ -1198,7 +1198,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       );
       return withProjectHistory(state, {
         project,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -1256,7 +1256,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
           ? state.project.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId)
           : state.project.edges,
       });
-      return withProjectHistory(state, { project, lastResult: calculateThroughput(project) });
+      return withProjectHistory(state, { project, lastResult: solveBooks(project) });
     });
   },
   connectCustomRate: (customNodeId, customSide, machine, resource) => {
@@ -1324,7 +1324,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       return withProjectHistory(state, {
         project,
         selectedNodeId: customNodeId,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -1374,7 +1374,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       });
       return withProjectHistory(state, {
         project,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -1418,7 +1418,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         project,
         selectedNodeId: nodeId,
         selectedRecipeId: recipe.id,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -1441,7 +1441,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
             : state.pendingResourceConnection,
         selectedNodeId: project.nodes[0]?.id,
         selectedRecipeId: project.nodes[0]?.recipeId ?? state.selectedRecipeId,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -1468,7 +1468,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       return withProjectHistory(state, {
         project,
         selectedNodeId: undefined,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -1579,7 +1579,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         ...(placed
           ? { placedBoardIds: [storage.id], placedBoardToken: state.placedBoardToken + 1 }
           : undefined),
-        lastResult: calculateThroughput(finalProject),
+        lastResult: solveBooks(finalProject),
       });
     });
   },
@@ -1594,7 +1594,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
 
       return withProjectHistory(state, {
         project,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -1614,7 +1614,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
           state.pendingResourceConnection?.nodeId === storageId
             ? undefined
             : state.pendingResourceConnection,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -1648,7 +1648,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         project,
         selectedNodeId: clone.id,
         selectedRecipeId: clone.recipeId,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -1670,7 +1670,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       });
       return withProjectHistory(state, {
         project,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -1711,7 +1711,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
 
       return withProjectHistory(state, {
         project,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -1726,7 +1726,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
 
       return withProjectHistory(state, {
         project,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -2124,7 +2124,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
           state.selectedNodeId && doomedItems.has(state.selectedNodeId)
             ? undefined
             : state.selectedNodeId,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -2273,7 +2273,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         project,
         selectedNodeId: lastPastedNode?.id ?? state.selectedNodeId,
         selectedRecipeId: lastPastedNode?.recipeId ?? state.selectedRecipeId,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
     return pastedIds;
@@ -3000,7 +3000,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       const finalProject = touchProject(removedAny ? pruneOrphanStorages(project) : project);
       return withProjectHistory(state, {
         project: finalProject,
-        lastResult: calculateThroughput(finalProject),
+        lastResult: solveBooks(finalProject),
       });
     });
   },
@@ -3029,7 +3029,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       });
       return withProjectHistory(state, {
         project: finalProject,
-        lastResult: calculateThroughput(finalProject),
+        lastResult: solveBooks(finalProject),
       });
     });
   },
@@ -3080,7 +3080,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         const project = touchProject(pruneOrphanStorages(projectWithoutOld));
         return withProjectHistory(state, {
           project,
-          lastResult: calculateThroughput(project),
+          lastResult: solveBooks(project),
         });
       }
 
@@ -3101,7 +3101,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
 
       return withProjectHistory(state, {
         project,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -3116,7 +3116,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
 
       return withProjectHistory(state, {
         project,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -3162,7 +3162,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
 
       return withProjectHistory(state, {
         project,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -3186,7 +3186,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       });
       return withProjectHistory(state, {
         project: touchedProject,
-        lastResult: calculateThroughput(touchedProject),
+        lastResult: solveBooks(touchedProject),
       });
     });
   },
@@ -3214,7 +3214,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       const touchedProject = touchProject(project);
       return withProjectHistory(state, {
         project: touchedProject,
-        lastResult: calculateThroughput(touchedProject),
+        lastResult: solveBooks(touchedProject),
       });
     });
   },
@@ -3229,7 +3229,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       );
       return withProjectHistory(state, {
         project,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -3241,7 +3241,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       });
       return withProjectHistory(state, {
         project,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -3254,7 +3254,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       });
       return withProjectHistory(state, {
         project,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -3266,7 +3266,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       });
       return withProjectHistory(state, {
         project,
-        lastResult: calculateThroughput(project),
+        lastResult: solveBooks(project),
       });
     });
   },
@@ -3323,7 +3323,7 @@ function restoreProjectState(
       selectedRecipe?.id ??
       project.nodes[0]?.recipeId ??
       project.recipes[0]?.id,
-    lastResult: calculateThroughput(project),
+    lastResult: solveBooks(project),
   };
 }
 
@@ -3438,7 +3438,7 @@ function addRecipeNodeToState(
           },
         }
       : {}),
-    lastResult: calculateThroughput(project),
+    lastResult: solveBooks(project),
   });
 }
 
@@ -3547,7 +3547,7 @@ function addConnectedRecipeNodeToState(
       nodeIds: [nextNode.id],
       token: (state.boardFocusRequest?.token ?? 0) + 1,
     },
-    lastResult: calculateThroughput(project),
+    lastResult: solveBooks(project),
   });
 }
 
@@ -3767,7 +3767,7 @@ function refactorNodeToState(
       nodeIds: [nodeId],
       token: (state.boardFocusRequest?.token ?? 0) + 1,
     },
-    lastResult: calculateThroughput(project),
+    lastResult: solveBooks(project),
   });
 }
 
@@ -4815,3 +4815,10 @@ function createId(prefix: string): string {
 
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
+
+// A big board's solve finishes off the main thread; the finished books land
+// here and replace the stale placeholder solveBooks handed out. See
+// src/store/solve-books.ts.
+registerBooksSink((result) => {
+  useFactoryStore.setState({ lastResult: result });
+});
