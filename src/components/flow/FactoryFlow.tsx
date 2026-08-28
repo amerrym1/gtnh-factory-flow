@@ -59,7 +59,6 @@ import {
   TriangleAlert,
   Type,
   Undo2,
-  Wallpaper,
   Check,
   SlidersHorizontal,
   X,
@@ -390,12 +389,22 @@ const BOARD_GRID_SIZE = BOARD_GRID;
 /** Stable identity: a fresh array each render would re-init React Flow's snap. */
 const BOARD_GRID_SNAP: [number, number] = [BOARD_GRID_SIZE, BOARD_GRID_SIZE];
 const CANVAS_PATTERN_LABEL: Record<CanvasPattern, string> = {
-  dots: "Background: dots",
-  lines: "Background: grid lines",
-  cross: "Background: crosses",
-  ruled: "Background: ruled lines",
-  graph: "Background: graph paper",
-  none: "Background: blank",
+  dots: "Dots",
+  lines: "Grid lines",
+  cross: "Crosses",
+  ruled: "Ruled lines",
+  graph: "Graph paper",
+  none: "Blank",
+};
+
+/** One glyph per background pattern, for the view menu's pattern row. */
+const CANVAS_PATTERN_ICON: Record<CanvasPattern, LucideIcon> = {
+  dots: Grip,
+  lines: Grid3x3,
+  cross: Plus,
+  ruled: AlignJustify,
+  graph: Grid2x2,
+  none: Ban,
 };
 
 /** Module-level so the board never re-renders on a fresh object identity. */
@@ -5570,14 +5579,8 @@ export function FactoryFlow() {
         onPlaceImage={placeImageFile}
         isDeleteMode={isDeleteMode}
         onDeleteModeChange={handleDeleteModeChange}
-        compact={isCompact}
-        openGroup={openToolGroup}
-        onToggleGroup={handleToolGroupToggle}
-        shiftedDown={false}
-      />
-      <BoardViewToolbar
         view={boardView}
-        onChange={writeBoardView}
+        onViewChange={writeBoardView}
         dockToggleWarning={dockToggleWarning}
         compact={isCompact}
         openGroup={openToolGroup}
@@ -6146,7 +6149,7 @@ const SelectionActionsBar = memo(function SelectionActionsBar({
 });
 
 /** Which of the board's toolbars is unfolded on a compact window. */
-type ToolGroupId = "build" | "paint" | "view";
+type ToolGroupId = "build" | "paint";
 
 interface ToolGroupProps {
   id: ToolGroupId;
@@ -6177,6 +6180,43 @@ function ToolTray({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   );
+}
+
+/**
+ * Close an open fold-out on any outside pointerdown, or on Escape. Capture
+ * phase, because the board under it stops pointer events of its own before
+ * they reach the document. Every toolbar fold-out opens on CLICK and closes
+ * through this: the hover-open versions stacked one menu over another when
+ * the pointer crossed the row quickly.
+ */
+function useFoldoutDismiss(
+  open: boolean,
+  ref: React.RefObject<HTMLDivElement | null>,
+  close: () => void,
+) {
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const onPointer = (event: PointerEvent) => {
+      // `globalThis.Node`, not `Node`: React Flow's own Node type is imported
+      // into this file and would shadow the DOM one.
+      if (!ref.current?.contains(event.target as globalThis.Node)) {
+        close();
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        close();
+      }
+    };
+    window.addEventListener("pointerdown", onPointer, true);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onPointer, true);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, ref, close]);
 }
 
 /**
@@ -6546,6 +6586,10 @@ const SourceToolbar = memo(function SourceToolbar({
   const boardView = useBoardView();
   const rateUnit = useFactoryStore((state) => state.rateUnit);
   const setRateUnit = useFactoryStore((state) => state.setRateUnit);
+  const rateIndex = RATE_UNIT_CHOICES.findIndex((choice) => choice.unit === rateUnit);
+  const rateChoice = RATE_UNIT_CHOICES[rateIndex] ?? RATE_UNIT_CHOICES[1];
+  const nextRateChoice =
+    RATE_UNIT_CHOICES[(Math.max(rateIndex, 0) + 1) % RATE_UNIT_CHOICES.length];
   // Subscribe to the DEPTHS, not the history arrays: a selector returning the
   // array itself would re-render this toolbar on every project edit.
   const undo = useFactoryStore((state) => state.undo);
@@ -6606,26 +6650,20 @@ const SourceToolbar = memo(function SourceToolbar({
         label="build tools"
         side="left"
       >
-      {/* How the numbers read: the rate units change what the existing board
-          says, so they sit nearest the history plate... */}
+      {/* How the numbers read: the rate unit changes what the existing board
+          says, so it sits nearest the history plate. ONE key that cycles,
+          wearing the current unit as its face: four permanent keys spent
+          three slots saying nothing but "not this one". */}
       <ToolTray>
-        <div className="pointer-events-auto flex">
-          {RATE_UNIT_CHOICES.map((choice) => (
-            <button
-              key={choice.unit}
-              type="button"
-              onClick={() => setRateUnit(choice.unit)}
-              title={choice.title}
-              aria-pressed={rateUnit === choice.unit}
-              className={[
-                "flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] font-mono text-[12px] font-black",
-                rateUnit === choice.unit ? TOOL_FACE_ON : TOOL_FACE_OFF,
-              ].join(" ")}
-            >
-              {choice.label}
-            </button>
-          ))}
-        </div>
+        <button
+          type="button"
+          onClick={() => setRateUnit(nextRateChoice.unit)}
+          title={`${rateChoice.title}. Click for ${nextRateChoice.title.toLowerCase()}.`}
+          aria-label={`Rates ${rateChoice.title.toLowerCase()}. Click for ${nextRateChoice.title.toLowerCase()}.`}
+          className={`pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] font-mono text-[12px] font-black ${TOOL_FACE_OFF}`}
+        >
+          {rateChoice.label}
+        </button>
       </ToolTray>
       {/* ...while the plate on the right is the one that puts new cards down. */}
       <ToolTray>
@@ -7414,30 +7452,31 @@ function ThemeSwatch({ theme }: { theme: CanvasTheme }) {
 }
 
 // Memoized because FactoryFlow re-renders every frame of a node drag; with
-// stable callbacks this toolbar renders only when a tool or colour changes.
+// stable callbacks this menu renders only when the view or its open state
+// changes.
 /**
- * Board VIEW controls, deliberately set apart from the paint and annotation
- * tools above them. Those change the plan; these only change how you look at
- * it, and mixing the two in one strip made "does this edit my factory?" a
- * question you had to answer per button.
+ * Board VIEW options, folded into ONE button and a sheet, and deliberately
+ * set apart from the paint and annotation tools beside it: those change the
+ * plan, these only change how you look at it. They used to be nine permanent
+ * icon toggles, which asked the player to memorise nine glyphs (a magnet
+ * meaning "smooth movement") for switches most people touch once. The sheet
+ * gives every option its name and a line saying what it does, the way the
+ * Setup Rules sheet already did.
  */
-const BoardViewToolbar = memo(function BoardViewToolbar({
+const BoardViewMenu = memo(function BoardViewMenu({
   view,
   onChange,
   dockToggleWarning,
-  compact,
-  openGroup,
-  onToggleGroup,
-  shiftedDown,
+  open,
+  onOpenChange,
 }: {
   view: BoardView;
   onChange: (patch: Partial<BoardView>) => void;
   /** One-line caution before the dock flip rewires a big or dotted board. */
   dockToggleWarning?: string;
-  compact: boolean;
-  openGroup?: ToolGroupId;
-  onToggleGroup: (group: ToolGroupId | undefined) => void;
-  shiftedDown: boolean;
+  /** Held by the paint toolbar, which lifts the row's z while the sheet is out. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const {
     canvasPattern,
@@ -7447,86 +7486,110 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
     linePulseMode,
     calmMode,
   } = view;
-  const PatternIcon =
-    canvasPattern === "lines"
-      ? Grid3x3
-      : canvasPattern === "cross"
-        ? Plus
-        : canvasPattern === "ruled"
-          ? AlignJustify
-          : canvasPattern === "graph"
-            ? Grid2x2
-            : canvasPattern === "none"
-              ? Ban
-              : Grip;
-  const buttonClass = (active: boolean) =>
-    [
-      "pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
-      active ? TOOL_FACE_ON : TOOL_FACE_OFF,
-    ].join(" ");
   // Motion is device taste, not plan state: read and written through its own
   // store (board-motion.tsx), never through the plan-view snapshot.
   const boardMotion = useBoardMotion();
-  const activeTheme = getCanvasTheme(view.canvasTheme);
-  // The theme picker opens on hover with the same grace period the paint
-  // palette uses, so the two feel like one family of fold-outs.
-  const [isThemePickerOpen, setThemePickerOpen] = useState(false);
-  const themeCloseTimerRef = useRef<number | undefined>(undefined);
-  const openThemePicker = () => {
-    window.clearTimeout(themeCloseTimerRef.current);
-    setThemePickerOpen(true);
-  };
-  const scheduleCloseThemePicker = () => {
-    window.clearTimeout(themeCloseTimerRef.current);
-    themeCloseTimerRef.current = window.setTimeout(() => setThemePickerOpen(false), 250);
-  };
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const closeSheet = useCallback(() => onOpenChange(false), [onOpenChange]);
+  useFoldoutDismiss(open, rootRef, closeSheet);
+
+  const toggles: Array<{
+    id: string;
+    on: boolean;
+    label: string;
+    line: string;
+    Icon: LucideIcon;
+    flip: () => void;
+  }> = [
+    // The two line modes, independent and mixable. Volume is always ranked
+    // within a kind, items against items and fluids against fluids.
+    {
+      id: "thickness",
+      on: lineThicknessMode,
+      label: "Line thickness",
+      line: "Wires with more flow are drawn thicker.",
+      Icon: Cable,
+      flip: () => onChange({ lineThicknessMode: !lineThicknessMode }),
+    },
+    {
+      id: "dashes",
+      on: linePulseMode,
+      label: "Moving dashes",
+      line: "Wires show moving dashes.",
+      Icon: Ellipsis,
+      flip: () => onChange({ linePulseMode: !linePulseMode }),
+    },
+    {
+      id: "labels",
+      on: lineLabelsMode,
+      label: "Line labels",
+      line: "Each wire shows its rate.",
+      Icon: Tag,
+      flip: () => onChange({ lineLabelsMode: !lineLabelsMode }),
+    },
+    {
+      id: "docking",
+      on: freeDockMode,
+      label: "Free docking",
+      line: "Wires can attach anywhere on a card. Off: fixed ports only.",
+      Icon: Anchor,
+      flip: () => {
+        if (dockToggleWarning && !window.confirm(dockToggleWarning)) {
+          return;
+        }
+        onChange({ freeDockMode: !freeDockMode });
+      },
+    },
+    {
+      id: "calm",
+      on: calmMode,
+      label: "Calm colours",
+      line: "Softer status colours.",
+      Icon: Presentation,
+      flip: () => onChange({ calmMode: !calmMode }),
+    },
+    // The two motion switches. Device taste rather than plan dressing, so
+    // they write to their own store and never travel with a shared plan.
+    {
+      id: "smooth",
+      on: boardMotion.moveMotion,
+      label: "Smooth movement",
+      line: "Cards move smoothly instead of jumping.",
+      Icon: Magnet,
+      flip: () => writeBoardMotion({ moveMotion: !boardMotion.moveMotion }),
+    },
+    {
+      id: "numbers",
+      on: boardMotion.valueMotion,
+      label: "Live numbers",
+      line: "Numbers change smoothly.",
+      Icon: Activity,
+      flip: () => writeBoardMotion({ valueMotion: !boardMotion.valueMotion }),
+    },
+  ];
 
   return (
-    <div
-      data-board-toolbar
-      // top-16, not top-3: a clear gap below the editing tools is the whole
-      // point of the grouping.
-      data-help-anchor="view"
-      className={[
-        "nodrag pointer-events-none absolute flex items-start gap-1",
-        // Lifted while the theme list is out so it cannot be painted over by
-        // a later toolbar - the same trap the paint palette fell into once.
-        isThemePickerOpen ? "z-40" : "z-20",
-        // Folded, this is one button, and it joins the paint trigger on the top
-        // line rather than holding a line of its own below it — which also keeps
-        // both fold-out rows on the same clear second line.
-        compact ? (shiftedDown ? "right-14 top-14" : "right-14 top-3") : "right-3 top-16",
-      ].join(" ")}
-    >
-      <ToolGroup
-        id="view"
-        compact={compact}
-        openGroup={openGroup}
-        onToggle={onToggleGroup}
-        icon={Eye}
-        label="view options"
-        side="right"
+    <div ref={rootRef} data-help-anchor="view" className="pointer-events-auto relative flex">
+      <button
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        aria-expanded={open}
+        className={[
+          "relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+          open ? TOOL_FACE_ON : TOOL_FACE_OFF,
+        ].join(" ")}
+        title="View options"
+        aria-label="View options"
       >
-      {/* One plate: every button here changes how the board is DRAWN, never
-          what the plan is. */}
-      <ToolTray>
-      <div
-        className="flex items-start"
-        onMouseEnter={openThemePicker}
-        onMouseLeave={scheduleCloseThemePicker}
-      >
-        <div
-          className={[
-            // Hangs below the row like the paint palette, absolute against
-            // the toolbar root so it never widens the plate it lives in.
-            "absolute right-0 w-[184px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
-            compact ? "top-[6.5rem]" : "top-[3.25rem]",
-            isThemePickerOpen
-              ? "pointer-events-auto translate-y-0 opacity-100"
-              : "pointer-events-none -translate-y-1 opacity-0",
-          ].join(" ")}
-        >
-          <div className="grid gap-1">
+        <Eye className="h-4 w-4" />
+      </button>
+      {open ? (
+        <div className="absolute right-0 top-[calc(100%+6px)] z-30 flex max-h-[70vh] w-[300px] max-w-[calc(100vw-24px)] flex-col gap-1 overflow-y-auto border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+          <p className="px-1 pt-1 font-mono text-[11px] leading-snug text-[var(--mc-ink)] opacity-70">
+            How the board is drawn. None of it changes the plan.
+          </p>
+          {/* The background's paper... */}
+          <div className="grid grid-cols-2 gap-1">
             {CANVAS_THEMES.map((theme) => (
               <button
                 key={theme.id}
@@ -7548,121 +7611,63 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
               </button>
             ))}
           </div>
+          {/* ...and its pattern, one key per choice instead of a blind cycle. */}
+          <div className="flex gap-1">
+            {CANVAS_PATTERNS.map((pattern) => {
+              const PatternIcon = CANVAS_PATTERN_ICON[pattern];
+              return (
+                <button
+                  key={pattern}
+                  type="button"
+                  onClick={() => onChange({ canvasPattern: pattern })}
+                  title={CANVAS_PATTERN_LABEL[pattern]}
+                  aria-label={`Background pattern: ${CANVAS_PATTERN_LABEL[pattern]}`}
+                  aria-pressed={canvasPattern === pattern}
+                  className={[
+                    "flex h-9 flex-1 items-center justify-center border-2 border-[var(--mc-15)]",
+                    canvasPattern === pattern ? TOOL_FACE_ON : TOOL_FACE_OFF,
+                  ].join(" ")}
+                >
+                  <PatternIcon className="h-4 w-4" />
+                </button>
+              );
+            })}
+          </div>
+          {/* No grid-lock row: the grid is not a mode. No heatmap or line
+              colour row either: both ride the speed smart view, bottom
+              right, so "colour the board by speed" stays one switch. */}
+          {toggles.map(({ id, on, label, line, Icon, flip }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={flip}
+              aria-pressed={on}
+              className={[
+                "flex items-start gap-2 border-2 p-2 text-left",
+                on
+                  ? `border-[var(--mc-good)] ${TOOL_FACE_ON}`
+                  : `border-[var(--mc-15)] ${TOOL_FACE_OFF}`,
+              ].join(" ")}
+            >
+              <Icon className="mt-[1px] h-4 w-4 shrink-0" />
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="flex items-baseline justify-between gap-2">
+                  <span className="font-mono text-[12px] font-black uppercase">{label}</span>
+                  <span
+                    className={[
+                      "font-mono text-[10px] font-black tracking-[1px]",
+                      on ? "text-[var(--mc-good)]" : "text-[var(--mc-ink-muted)]",
+                    ].join(" ")}
+                  >
+                    {on ? "ON" : "OFF"}
+                  </span>
+                </span>
+                <span className="font-mono text-[11px] leading-snug opacity-80">{line}</span>
+              </span>
+            </button>
+          ))}
         </div>
-        <button
-          type="button"
-          onClick={() => setThemePickerOpen((open) => !open)}
-          className={buttonClass(isThemePickerOpen)}
-          title={`Background: ${activeTheme.name}`}
-          aria-label="Choose background style"
-        >
-          <Wallpaper className="h-4 w-4" />
-        </button>
-      </div>
-      <button
-        type="button"
-        onClick={() =>
-          onChange({
-            canvasPattern:
-              CANVAS_PATTERNS[
-                (CANVAS_PATTERNS.indexOf(canvasPattern) + 1) % CANVAS_PATTERNS.length
-              ],
-          })
-        }
-        className={buttonClass(false)}
-        title={CANVAS_PATTERN_LABEL[canvasPattern]}
-        aria-label={CANVAS_PATTERN_LABEL[canvasPattern]}
-      >
-        <PatternIcon className="h-4 w-4" />
-      </button>
-      {/* No grid-lock button any more. The grid is not a mode: every card is
-          built out of whole cells and every position is a cell corner, so
-          there is nothing left for a toggle to mean. */}
-      {/* No heatmap button and no line-colour button either: both ride the
-          speed smart view (the gauge button, bottom right) and show only at
-          the glance step, so "colour the board by speed" is one switch. */}
-      {/* The two line modes left here, independent and mixable. Volume is
-          always ranked within a kind, items against items and fluids against
-          fluids. */}
-      <button
-        type="button"
-        onClick={() => onChange({ lineThicknessMode: !lineThicknessMode })}
-        className={buttonClass(lineThicknessMode)}
-        title="Line thickness"
-        aria-label={lineThicknessMode ? "Turn line thickness off" : "Thicken lines by volume"}
-        aria-pressed={lineThicknessMode}
-      >
-        <Cable className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange({ linePulseMode: !linePulseMode })}
-        className={buttonClass(linePulseMode)}
-        title="Moving dashes"
-        aria-label={linePulseMode ? "Stop the moving dashes" : "Show moving dashes"}
-        aria-pressed={linePulseMode}
-      >
-        <Ellipsis className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange({ lineLabelsMode: !lineLabelsMode })}
-        className={buttonClass(lineLabelsMode)}
-        title="Line labels"
-        aria-label={lineLabelsMode ? "Hide line labels" : "Show line labels"}
-        aria-pressed={lineLabelsMode}
-      >
-        <Tag className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          if (dockToggleWarning && !window.confirm(dockToggleWarning)) {
-            return;
-          }
-          onChange({ freeDockMode: !freeDockMode });
-        }}
-        className={buttonClass(freeDockMode)}
-        title={freeDockMode ? "Free docking" : "Port docking"}
-        aria-label={freeDockMode ? "Pin wires to their ports" : "Let wires attach anywhere"}
-        aria-pressed={freeDockMode}
-      >
-        <Anchor className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange({ calmMode: !calmMode })}
-        className={buttonClass(calmMode)}
-        title="Calm colours"
-        aria-label={calmMode ? "Turn calm colours off" : "Turn calm colours on"}
-        aria-pressed={calmMode}
-      >
-        <Presentation className="h-4 w-4" />
-      </button>
-      {/* The two motion switches. Device taste rather than plan dressing, so
-          they write to their own store and never travel with a shared plan. */}
-      <button
-        type="button"
-        onClick={() => writeBoardMotion({ moveMotion: !boardMotion.moveMotion })}
-        className={buttonClass(boardMotion.moveMotion)}
-        title="Smooth movement"
-        aria-label={boardMotion.moveMotion ? "Turn smooth movement off" : "Turn smooth movement on"}
-        aria-pressed={boardMotion.moveMotion}
-      >
-        <Magnet className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        onClick={() => writeBoardMotion({ valueMotion: !boardMotion.valueMotion })}
-        className={buttonClass(boardMotion.valueMotion)}
-        title="Live numbers"
-        aria-label={boardMotion.valueMotion ? "Turn live numbers off" : "Turn live numbers on"}
-        aria-pressed={boardMotion.valueMotion}
-      >
-        <Activity className="h-4 w-4" />
-      </button>
-      </ToolTray>
-      </ToolGroup>
+      ) : null}
     </div>
   );
 });
@@ -7677,6 +7682,9 @@ const PaintToolbar = memo(function PaintToolbar({
   onPlaceImage,
   isDeleteMode,
   onDeleteModeChange,
+  view,
+  onViewChange,
+  dockToggleWarning,
   compact,
   openGroup,
   onToggleGroup,
@@ -7691,24 +7699,37 @@ const PaintToolbar = memo(function PaintToolbar({
   onPlaceImage: (file: File) => Promise<void>;
   isDeleteMode: boolean;
   onDeleteModeChange: (enabled: boolean) => void;
+  /** The view menu rides this row's corner slot; see BoardViewMenu. */
+  view: BoardView;
+  onViewChange: (patch: Partial<BoardView>) => void;
+  dockToggleWarning?: string;
   compact: boolean;
   openGroup?: ToolGroupId;
   onToggleGroup: (group: ToolGroupId | undefined) => void;
   shiftedDown: boolean;
 }) {
   const activeColor = GT_NODE_COLORS[activeColorTag];
+  // Every fold-out on this row opens on CLICK and closes on outside click or
+  // Escape, like the view sheet and the Setup Rules sheet. They used to open
+  // on hover, and a pointer crossing the row quickly stacked one over another.
   const [isPaletteOpen, setPaletteOpen] = useState(false);
-  // A short grace period on close lets the pointer cross the tiny dead gaps
-  // between the palette and the brush without the palette snapping shut.
-  const paletteCloseTimerRef = useRef<number | undefined>(undefined);
-  const openPalette = () => {
-    window.clearTimeout(paletteCloseTimerRef.current);
-    setPaletteOpen(true);
-  };
-  const scheduleClosePalette = () => {
-    window.clearTimeout(paletteCloseTimerRef.current);
-    paletteCloseTimerRef.current = window.setTimeout(() => setPaletteOpen(false), 250);
-  };
+  const paletteRef = useRef<HTMLDivElement | null>(null);
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
+  useFoldoutDismiss(isPaletteOpen, paletteRef, closePalette);
+  // The draw tools live under ONE slot, Photoshop-style: the face wears the
+  // last tool used, the menu under it holds all five with their names. The
+  // face opens the menu, or cancels when a tool is armed; the menu picks.
+  const [isDrawMenuOpen, setDrawMenuOpen] = useState(false);
+  const [lastDrawTool, setLastDrawTool] = useState<BoardDrawTool>("box");
+  const drawRef = useRef<HTMLDivElement | null>(null);
+  const closeDrawMenu = useCallback(() => setDrawMenuOpen(false), []);
+  useFoldoutDismiss(isDrawMenuOpen, drawRef, closeDrawMenu);
+  const faceDrawTool = annotationTool ?? lastDrawTool;
+  const FaceDrawIcon =
+    ANNOTATION_TOOLS.find((tool) => tool.kind === faceDrawTool)?.Icon ?? Square;
+  // The view sheet's open state lives here so the whole row can lift its z
+  // while the sheet is out, same as it does for the palette.
+  const [isViewMenuOpen, setViewMenuOpen] = useState(false);
 
   return (
     <div
@@ -7716,12 +7737,12 @@ const PaintToolbar = memo(function PaintToolbar({
       className={[
         "nodrag pointer-events-none absolute right-3 flex items-start gap-2",
         shiftedDown ? "top-14" : "top-3",
-        // An open palette hangs below its own row and crosses the view
-        // toolbar underneath. Both toolbars sit at z-20 and the view row is
-        // later in the DOM, so it painted OVER the swatches and took the
-        // clicks: the colours were visible and unpickable. The paint row
-        // lifts above every other toolbar for as long as the palette is out.
-        isPaletteOpen ? "z-40" : "z-20",
+        // An open fold-out hangs below the row and can cross whatever toolbar
+        // sits beneath, which at the same z and later in the DOM would paint
+        // OVER it and take its clicks: the colours were once visible and
+        // unpickable. The row lifts above every other toolbar for as long as
+        // any of its fold-outs is out.
+        isPaletteOpen || isDrawMenuOpen || isViewMenuOpen ? "z-40" : "z-20",
       ].join(" ")}
     >
       <ToolGroup
@@ -7734,11 +7755,7 @@ const PaintToolbar = memo(function PaintToolbar({
         side="right"
       >
       <ToolTray>
-      <div
-        className="flex items-start"
-        onMouseEnter={openPalette}
-        onMouseLeave={scheduleClosePalette}
-      >
+      <div ref={paletteRef} className="flex items-start">
       <div
         className={[
           // Nine across, two down: the whole palette reads in one glance.
@@ -7757,7 +7774,10 @@ const PaintToolbar = memo(function PaintToolbar({
       >
         <button
           type="button"
-          onClick={() => onPaintModeChange(paintMode === null ? undefined : null)}
+          onClick={() => {
+            onPaintModeChange(paintMode === null ? undefined : null);
+            setPaletteOpen(false);
+          }}
           className={[
             "flex h-7 w-7 items-center justify-center border-2 bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]",
             paintMode === null ? "border-white ring-2 ring-cyan-300" : "border-[var(--mc-15)]",
@@ -7771,7 +7791,10 @@ const PaintToolbar = memo(function PaintToolbar({
           <button
             key={entry.tag}
             type="button"
-            onClick={() => onColorSelect(entry.tag)}
+            onClick={() => {
+              onColorSelect(entry.tag);
+              setPaletteOpen(false);
+            }}
             className={[
               "h-7 w-7 border-2 shadow-[inset_1px_1px_0_rgba(255,255,255,0.45),inset_-1px_-1px_0_rgba(0,0,0,0.45)]",
               activeColorTag === entry.tag
@@ -7815,21 +7838,65 @@ const PaintToolbar = memo(function PaintToolbar({
       >
         {paintMode === null ? <X className="h-4 w-4" /> : <Paintbrush className="h-4 w-4" />}
       </button>
-      {ANNOTATION_TOOLS.map(({ kind, label, Icon }) => (
+      <div ref={drawRef} className="relative flex items-start">
+        <div
+          className={[
+            // Hangs below the slot, right-aligned so it grows towards the
+            // middle of the screen, never off its edge.
+            "absolute right-0 top-[calc(100%+10px)] flex w-max flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
+            isDrawMenuOpen
+              ? "pointer-events-auto translate-y-0 opacity-100"
+              : "pointer-events-none -translate-y-1 opacity-0",
+          ].join(" ")}
+        >
+          {ANNOTATION_TOOLS.map(({ kind, label, Icon }) => (
+            <button
+              key={kind}
+              type="button"
+              onClick={() => {
+                setLastDrawTool(kind);
+                onAnnotationToolChange(kind);
+                setDrawMenuOpen(false);
+              }}
+              aria-pressed={annotationTool === kind}
+              className={[
+                "flex items-center gap-2 border-2 p-1 pr-2 text-left",
+                annotationTool === kind
+                  ? "border-white bg-[var(--mc-85)] text-[var(--mc-ink)] ring-2 ring-cyan-300"
+                  : "border-[var(--mc-15)] bg-[var(--mc-49)] text-white hover:bg-[var(--mc-61)]",
+              ].join(" ")}
+            >
+              <span className="flex h-7 w-7 items-center justify-center">
+                <Icon className="h-4 w-4" />
+              </span>
+              <span className="whitespace-nowrap font-mono text-[11px] font-semibold">
+                {label}
+              </span>
+            </button>
+          ))}
+        </div>
         <button
-          key={kind}
           type="button"
-          onClick={() => onAnnotationToolChange(annotationTool === kind ? undefined : kind)}
+          onClick={() => {
+            // Armed, the face is a cancel; otherwise it opens the menu.
+            if (annotationTool !== undefined) {
+              onAnnotationToolChange(undefined);
+              setDrawMenuOpen(false);
+              return;
+            }
+            setDrawMenuOpen((was) => !was);
+          }}
+          aria-expanded={isDrawMenuOpen}
           className={[
             "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
-            annotationTool === kind ? TOOL_FACE_ON : TOOL_FACE_OFF,
+            annotationTool !== undefined ? TOOL_FACE_ON : TOOL_FACE_OFF,
           ].join(" ")}
-          title={annotationTool === kind ? "Cancel" : label}
-          aria-label={annotationTool === kind ? "Cancel" : label}
+          title={annotationTool !== undefined ? "Cancel" : "Draw tools"}
+          aria-label={annotationTool !== undefined ? "Cancel drawing" : "Draw tools"}
         >
-          <Icon className="h-4 w-4" />
+          <FaceDrawIcon className="h-4 w-4" />
         </button>
-      ))}
+      </div>
       <AddImageButton onPlaceImage={onPlaceImage} />
       </ToolTray>
       {/* The bin on a plate of its own: it takes things OFF the board, and it
@@ -7851,6 +7918,18 @@ const PaintToolbar = memo(function PaintToolbar({
         </button>
       </ToolTray>
       </ToolGroup>
+      {/* The corner slot, OUTSIDE the fold group: view options are one button
+          and a sheet at every width, and they stay reachable while the paint
+          row is folded away on a phone. */}
+      <ToolTray>
+        <BoardViewMenu
+          view={view}
+          onChange={onViewChange}
+          dockToggleWarning={dockToggleWarning}
+          open={isViewMenuOpen}
+          onOpenChange={setViewMenuOpen}
+        />
+      </ToolTray>
     </div>
   );
 });
