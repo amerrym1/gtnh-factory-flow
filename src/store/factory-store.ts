@@ -4438,6 +4438,69 @@ function hasDuplicateEdge(edges: FactoryEdge[], edge: FactoryEdge): boolean {
   return Boolean(findDuplicateEdge(edges, edge));
 }
 
+/**
+ * Would releasing this wire drag into the VOID leave something on the board?
+ * The exact refusal logic of `addStorageForConnection`, run against a
+ * hypothetical drawer and committed nowhere: a spawn survives when at least
+ * one edge wires, or when nothing wired but nothing CONFLICTED either (a
+ * plain build failure keeps the unwired drawer). Only a storage endpoint
+ * conflict - this port row already has its drawer for this resource -
+ * prunes the spawn into a no-op. The connection line asks this to color
+ * the drag before the release commits to anything.
+ */
+export function wouldConnectionStorageSpawn(
+  project: FactoryProject,
+  resource: Pick<ResourceAmount, "kind" | "id">,
+  nodeId: string | string[],
+  side: "input" | "output",
+  handleId: string,
+): boolean {
+  const nodeIds = Array.isArray(nodeId) ? nodeId : [nodeId];
+  const storage: FactoryStorage = {
+    id: "__hypothetical-spawn__",
+    kind: resource.kind,
+    resourceId: resource.id,
+    position: { x: 0, y: 0 },
+  };
+  let hypothetical: FactoryProject = {
+    ...project,
+    storages: [...(project.storages ?? []), storage],
+  };
+  const selectedResource = {
+    kind: resource.kind,
+    id: resource.id,
+    sourceHandle:
+      side === "output"
+        ? handleId
+        : makeResourceHandleId("output", { kind: resource.kind, id: resource.id }),
+    targetHandle:
+      side === "input"
+        ? handleId
+        : makeResourceHandleId("input", { kind: resource.kind, id: resource.id }),
+  };
+  let wired = 0;
+  let conflicted = false;
+  for (const anchorId of nodeIds) {
+    const edge =
+      side === "output"
+        ? buildEdgeBetweenNodes(hypothetical, anchorId, storage.id, selectedResource)
+        : buildEdgeBetweenNodes(hypothetical, storage.id, anchorId, selectedResource);
+    if (!edge) {
+      continue;
+    }
+    if (findDuplicateEdge(hypothetical.edges, edge)) {
+      continue;
+    }
+    if (hasStorageEndpointConflict(hypothetical, edge)) {
+      conflicted = true;
+      continue;
+    }
+    hypothetical = { ...hypothetical, edges: [...hypothetical.edges, edge] };
+    wired += 1;
+  }
+  return wired > 0 || !conflicted;
+}
+
 function hasStorageEndpointConflict(project: FactoryProject, edge: FactoryEdge): boolean {
   if (!findEdgeStorage(project, edge)) {
     return false;

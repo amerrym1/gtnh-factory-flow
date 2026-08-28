@@ -21,6 +21,7 @@ import {
   type NodeTypes,
   type OnSelectionChangeParams,
   type ReactFlowInstance,
+  useReactFlow,
   useStore,
   useStoreApi,
   ViewportPortal,
@@ -107,6 +108,7 @@ import type {
   FactoryNodeColorTag,
   FactoryPocket,
   FactoryProject,
+  FactoryStorage,
   Recipe,
   ResourceAmount,
   ResourceKind,
@@ -115,6 +117,7 @@ import type {
 import {
   captureBoardSelection,
   useFactoryStore,
+  wouldConnectionStorageSpawn,
   type BoardClipboardPayload,
   type BoardFraming,
 } from "@/store/factory-store";
@@ -248,6 +251,7 @@ import { useBoardPulseSync } from "./animation-phase";
 import { getDockTabsRight, getDockTopInset } from "./dock-insets";
 import {
   isWiringConnection,
+  onWiringConnectionChange,
   markWireDrop,
   setWiringConnection,
   wasRecentWireDrop,
@@ -289,7 +293,7 @@ import {
   snapshotEdgePulses,
   snapshotEdgeWaypointDots,
 } from "./edge-pulse";
-import { StorageNode, type StorageFlowNode } from "./StorageNode";
+import { StorageNode, StorageTileFace, type StorageFlowNode } from "./StorageNode";
 import { TrashNode, type TrashFlowNode } from "./TrashNode";
 import {
   POCKET_CARD_SOURCE_HANDLE,
@@ -1582,6 +1586,33 @@ let publishedBoardGeometryById = new Map<
  */
 const activeDropTargets = new Map<string, ResolvedResourceHandle | null>();
 
+/**
+ * The cards a wire drop can land ON (or be refused by): everything except
+ * annotations (ink) and open board frames (rooms - a drop on their floor is
+ * a void drop that spawns inside). The connection line hit-tests against
+ * these to tell "over a refusing card" from "over the void".
+ */
+let publishedSolidCardIds = new Set<string>();
+
+/**
+ * While a wire is being dragged: whether releasing it into the VOID would
+ * leave anything on the board. Computed once at drag start (it depends on
+ * the plan and the dragged port, never the pointer) and read per frame by
+ * the connection line, which colors the pipe green-dashed (release makes a
+ * drawer) or red-dashed (release does nothing - this port's drawer already
+ * exists). Module state for the same reason as `activeDropTargets`.
+ */
+let voidDropWillSpawn = false;
+
+/**
+ * The exact drawer a void release would spawn, for the ghost to render with
+ * the real tile face: the storage record it would create and the role it
+ * would wear (an input drag spawns a SOURCE feeding it, an output drag a
+ * PRODUCT catching it).
+ */
+let voidDropGhostStorage: FactoryStorage | undefined;
+let voidDropGhostRole: "source" | "product" = "product";
+
 // Slot endpoints cached relative to their node's origin, keyed by node size.
 // Measuring through the DOM made an edge's endpoints depend on whether its
 // node happened to be mounted (`onlyRenderVisibleElements` culls off-screen
@@ -2461,6 +2492,13 @@ export function FactoryFlow() {
       });
     }
     publishedBoardGeometryById = geometryById;
+    const solidCardIds = new Set<string>();
+    for (const node of flowNodesRef.current) {
+      if (node.type !== "annotationNode" && node.type !== "boardNode") {
+        solidCardIds.add(node.id);
+      }
+    }
+    publishedSolidCardIds = solidCardIds;
     // Annotations are ink on the board, not furniture. A box drawn AROUND a
     // cluster used to be a solid obstacle spanning all of it, so every wire
     // inside was forced to detour around its own group — the drawing changed
@@ -3455,6 +3493,8 @@ export function FactoryFlow() {
     setWiringConnection(false);
     boardRef.current?.classList.remove(WIRING_BOARD_CLASS);
     clearNodeDropFit();
+    voidDropWillSpawn = false;
+    voidDropGhostStorage = undefined;
   }, []);
 
   const startDropFitPainting = useCallback(() => {
@@ -3474,6 +3514,41 @@ export function FactoryFlow() {
     clearHopMap();
 
     paintNodeDropFit(project, draggedResourceRef.current, false);
+
+    // What a VOID release would do, decided once per drag: it depends on
+    // the plan and the dragged port, never on where the pointer is. The
+    // connection line reads this per frame to color the pipe.
+    const dragged = draggedResourceRef.current;
+    if (dragged && !isPocketId(project, dragged.nodeId)) {
+      const originIsStorage = (project.storages ?? []).some(
+        (storage) => storage.id === dragged.nodeId,
+      );
+      const spawnSide = originIsStorage ? "input" : dragged.side;
+      const spawnHandleId = originIsStorage
+        ? makeResourceHandleId("input", { kind: dragged.kind, id: dragged.id })
+        : dragged.handleId;
+      voidDropWillSpawn = wouldConnectionStorageSpawn(
+        project,
+        dragged,
+        dragged.nodeId,
+        spawnSide,
+        spawnHandleId,
+      );
+      voidDropGhostStorage = {
+        id: "__void-drop-ghost__",
+        kind: dragged.kind,
+        resourceId: dragged.id,
+        displayName: dragged.displayName,
+        iconPath: dragged.iconPath,
+        iconAtlas: dragged.iconAtlas,
+        dominantColor: dragged.dominantColor ?? dragged.iconAtlas?.dominantColor,
+        position: { x: 0, y: 0 },
+      };
+      voidDropGhostRole = spawnSide === "input" ? "source" : "product";
+    } else {
+      voidDropWillSpawn = false;
+      voidDropGhostStorage = undefined;
+    }
 
     // One cheap selector per frame — it matches nothing until auto-pan mounts
     // a card that has not been given a verdict yet.
@@ -5620,6 +5695,7 @@ export function FactoryFlow() {
           />
         )}
         <BoardFloors />
+        <VoidDropGhost />
         {annotationDraft && annotationTool ? (
           <AnnotationDraftPreview
             tool={annotationTool}
@@ -8742,9 +8818,22 @@ function ResourceConnectionLine({
     targetY: endY,
     targetPosition: endPosition,
   });
-  // A snapped end is by definition a connection that will work, whatever React
-  // Flow thinks — it only ever reports "valid" when the pointer is on a handle.
-  const color = !snap && connectionStatus === "invalid" ? "#ef4444" : "#00d9ff";
+  // What THIS release would do, told by the pipe itself. A snapped end is a
+  // connection that will work, whatever React Flow thinks — it only ever
+  // reports "valid" when the pointer is on a handle. Off every card, the
+  // pipe turns green-dashed when release will spawn a drawer, red-dashed
+  // when it will do nothing (this port's drawer already exists). Over a
+  // refusing card it goes red, agreeing with the card's own wash.
+  const overSolidCard = !snap && isPointOverSolidCard(toX, toY);
+  const verdict = snap
+    ? "connect"
+    : connectionStatus === "invalid" || overSolidCard
+      ? "refuse"
+      : voidDropWillSpawn
+        ? "spawn"
+        : "dead";
+  const color = verdict === "connect" ? "#00d9ff" : verdict === "spawn" ? "#22c55e" : "#ef4444";
+  const dashed = verdict === "spawn" || verdict === "dead";
 
   return (
     <g className="react-flow__connection">
@@ -8762,12 +8851,116 @@ function ResourceConnectionLine({
         stroke={color}
         strokeWidth={5}
         strokeLinecap="round"
+        strokeDasharray={dashed ? "10 8" : undefined}
         opacity={0.98}
         style={{ filter: `drop-shadow(0 0 5px ${color})` }}
       />
-      <circle cx={endX} cy={endY} r={6} fill={color} stroke="#052e36" strokeWidth={2} />
+      {/* A hollow end says "will make something here"; a solid dot says the
+          end lands on something that exists; a bare cross-ish dot for dead. */}
+      <circle
+        cx={endX}
+        cy={endY}
+        r={6}
+        fill={verdict === "spawn" ? "none" : color}
+        stroke={verdict === "spawn" ? color : "#052e36"}
+        strokeWidth={2}
+      />
+      {/* Over spawnable void, the HTML ghost (VoidDropGhost) previews the
+          drawer itself; the line only signals. A dead release gets its
+          reason in words. */}
+      {verdict === "dead" ? (
+        <text
+          x={endX}
+          y={endY + 24}
+          textAnchor="middle"
+          fontSize={12}
+          fill={color}
+          stroke="#052e36"
+          strokeWidth={3}
+          paintOrder="stroke"
+        >
+          Drawer already exists
+        </text>
+      ) : null}
     </g>
   );
+}
+
+/**
+ * The GHOST of the drawer a void release would spawn: the real footprint,
+ * the real icon, grayed out, riding the pointer. Mounted only while a wire
+ * is out (via the wiring listener - one tiny component per gesture, never
+ * the board), positioned imperatively per pointermove (no re-render), and
+ * hidden whenever the pointer is over a card or a snapping slot, where the
+ * release means something else.
+ */
+function VoidDropGhost() {
+  const [wiring, setWiring] = useState(false);
+  const { screenToFlowPosition } = useReactFlow();
+  const ghostRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => onWiringConnectionChange(setWiring), []);
+
+  const ghostStorage = wiring && voidDropWillSpawn ? voidDropGhostStorage : undefined;
+
+  useEffect(() => {
+    if (!ghostStorage) {
+      return;
+    }
+    const move = (event: PointerEvent) => {
+      const ghost = ghostRef.current;
+      if (!ghost) {
+        return;
+      }
+      const flow = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      const elsewhere = getConnectionSnap(flow.x, flow.y) || isPointOverSolidCard(flow.x, flow.y);
+      ghost.style.display = elsewhere ? "none" : "";
+      ghost.style.transform = `translate(${flow.x - STORAGE_NODE_WIDTH / 2}px, ${flow.y - STORAGE_NODE_HEIGHT / 2}px)`;
+    };
+    window.addEventListener("pointermove", move, { passive: true });
+    return () => window.removeEventListener("pointermove", move);
+  }, [ghostStorage, screenToFlowPosition]);
+
+  if (!ghostStorage) {
+    return null;
+  }
+
+  return (
+    <ViewportPortal>
+      <div
+        ref={ghostRef}
+        className="pointer-events-none absolute left-0 top-0"
+        style={{
+          zIndex: 14,
+          width: STORAGE_NODE_WIDTH,
+          height: STORAGE_NODE_HEIGHT,
+          display: "none",
+          // The real tile at half presence: recognisably the drawer that
+          // will exist, visibly not existing yet.
+          opacity: 0.62,
+        }}
+      >
+        <StorageTileFace storage={ghostStorage} role={voidDropGhostRole} />
+      </div>
+    </ViewportPortal>
+  );
+}
+
+/** Flow-space hit test against the published card set (no DOM per frame). */
+function isPointOverSolidCard(x: number, y: number): boolean {
+  for (const id of publishedSolidCardIds) {
+    const geometry = publishedBoardGeometryById.get(id);
+    if (
+      geometry &&
+      x >= geometry.x &&
+      x <= geometry.x + geometry.width &&
+      y >= geometry.y &&
+      y <= geometry.y + geometry.height
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function getEdgeBundles(
