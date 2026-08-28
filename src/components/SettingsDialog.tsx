@@ -10,6 +10,7 @@ import {
 } from "@/lib/app-font";
 import { isUpdatePopupEnabled, setUpdatePopupEnabled } from "@/lib/whats-new";
 import { areChipClicksInverted, setChipClicksInverted } from "@/lib/chip-clicks";
+import { areBoardSoundsEnabled, setBoardSoundsEnabled } from "@/lib/board-sounds";
 
 /**
  * The planner's settings, in one small sheet.
@@ -26,6 +27,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [font, setFont] = useState<AppFontId>(() => getStoredAppFont());
   const [updatePopup, setUpdatePopup] = useState<boolean>(() => isUpdatePopupEnabled());
   const [invertedClicks, setInvertedClicks] = useState<boolean>(() => areChipClicksInverted());
+  const [sounds, setSounds] = useState<boolean>(() => areBoardSoundsEnabled());
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -146,6 +148,42 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                 className={[
                   "h-4 w-4 shrink-0",
                   updatePopup ? "text-cyan-400" : "invisible",
+                ].join(" ")}
+              />
+            </button>
+          </section>
+
+          <section className="mt-4">
+            <h3 className="px-1 pb-1.5 text-[11px] font-bold uppercase tracking-widest text-fg-muted">
+              Sound
+            </h3>
+            <button
+              type="button"
+              onClick={() => {
+                const next = !sounds;
+                setBoardSoundsEnabled(next);
+                setSounds(next);
+              }}
+              aria-pressed={sounds}
+              className={[
+                "flex w-full items-center gap-3 rounded border px-3 py-2.5 text-left",
+                sounds
+                  ? "border-cyan-600 bg-cyan-500/10"
+                  : "border-line hover:border-line-strong hover:bg-surface-raised",
+              ].join(" ")}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-base leading-tight text-fg">Interface sounds</span>
+                <span className="mt-0.5 block text-xs text-fg-muted">
+                  Quiet clicks and thumps when you place cards, wire them, and delete them. Off,
+                  the planner is silent.
+                </span>
+              </span>
+              <Check
+                aria-hidden
+                className={[
+                  "h-4 w-4 shrink-0",
+                  sounds ? "text-cyan-400" : "invisible",
                 ].join(" ")}
               />
             </button>
