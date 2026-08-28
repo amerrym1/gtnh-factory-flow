@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   APP_FONTS,
   getStoredAppFont,
@@ -35,6 +35,12 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [invertedClicks, setInvertedClicks] = useState<boolean>(() => areChipClicksInverted());
   const [sounds, setSounds] = useState<boolean>(() => areBoardSoundsEnabled());
   const [volume, setVolume] = useState<number>(() => getBoardSoundVolume());
+  // The preview thump fires when the drag SETTLES, not per input event: a
+  // slider emits dozens of changes a second, and previewing each one had
+  // the notes stealing each other into fragments while the repeat duck
+  // faded the pile down.
+  const previewTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(previewTimerRef.current), []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -219,8 +225,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                   const next = Number(event.target.value) / 100;
                   setBoardSoundVolume(next);
                   setVolume(next);
-                  // The thump IS the preview; its own throttle paces a drag.
-                  playBoardSound("place");
+                  window.clearTimeout(previewTimerRef.current);
+                  previewTimerRef.current = window.setTimeout(() => {
+                    playBoardSound("place");
+                  }, 180);
                 }}
                 className="w-36 accent-cyan-500"
               />
