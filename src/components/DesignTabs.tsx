@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, Compass } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { EntryIcon } from "@/lib/model/types";
-import { ResourceIcon } from "./nei/ResourceIcon";
+import { FLUID_ICON_SCALE, ResourceIcon } from "./nei/ResourceIcon";
 import {
   closeWelcomeTab,
   leaveWelcomeTab,
@@ -718,16 +718,22 @@ function hasDrawableFace(icon: EntryIcon | undefined): icon is EntryIcon {
   return Boolean(icon && (icon.iconPath || icon.iconAtlas || icon.kind === "fluid"));
 }
 
+/** The face's box: the pill's full height, the way a browser tab wears a favicon. */
+const TAB_FACE_PX = 24;
+
 /**
- * The design's saved one-item face, shrunk to text height. Same rendering as
- * the setup shelf's icon slot: the padded source art drawn oversized and
- * cropped by the wrapper, so the sprite fills the little box.
+ * The design's saved one-item face at the pill's full height. Same rendering
+ * as the setup shelf's icon slot: the padded source art drawn oversized and
+ * cropped by the wrapper, so the sprite fills the little box. Nudged down a
+ * pixel because every pill carries a 2px bottom border (the active underline,
+ * transparent on the rest), which centres content a pixel above the pill's
+ * visual middle.
  */
 function TabFace({ icon }: { icon: EntryIcon }) {
   return (
     <span
       aria-hidden
-      className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden"
+      className="flex h-6 w-6 shrink-0 translate-y-[1px] items-center justify-center overflow-hidden"
     >
       <ResourceIcon
         resource={{
@@ -742,6 +748,12 @@ function TabFace({ icon }: { icon: EntryIcon }) {
         bare
         tooltip={false}
         showAmount={false}
+        // A fluid draws as a swatch inset to FLUID_ICON_SCALE of its cell so it
+        // weighs the same as items beside it; at tab size that inset leaves a
+        // speck, so it is inverted away and the swatch itself fills the box.
+        iconPixelSize={
+          icon.kind === "fluid" ? Math.round(TAB_FACE_PX / FLUID_ICON_SCALE) : undefined
+        }
         className="!h-full !w-full"
       />
     </span>
