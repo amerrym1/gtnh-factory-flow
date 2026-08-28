@@ -17,6 +17,13 @@
  *   notes scheduled while suspended play late, clipped, or not at all -
  *   that was the "sometimes I don't hear it" bug. `playBoardSound` resumes
  *   first and schedules in the resume callback.
+ * - The output stream is KEPT HOT. Chrome (Windows especially) parks the
+ *   hardware audio stream after a few seconds of silence while
+ *   `currentTime` keeps running, and a 100ms note scheduled into the
+ *   wake-up gap is clipped or lost entirely - which reads as "the first
+ *   sound played, then nothing". An inaudible constant source holds the
+ *   stream open, and every note starts a beat after "now" so it never
+ *   begins mid-wakeup.
  * - Fundamentals sit at 200Hz+ (laptop speakers roll off below), and the
  *   whole mix runs through one gentle lowpass so nothing spits.
  */
@@ -109,9 +116,23 @@ const THROTTLE_MS: Record<BoardSoundKind, number> = {
 /** Every note fades in over this long; instant attacks click. */
 const ATTACK = 0.005;
 
+/**
+ * Notes start this far after "now". Scheduling AT currentTime asks the
+ * graph to begin a 5ms attack in the past by the time it renders, which
+ * eats the front of the note.
+ */
+const SCHEDULE_AHEAD = 0.03;
+
 function getContext(): AudioContext | undefined {
   if (typeof window === "undefined") {
     return undefined;
+  }
+  // A context can die under us (device switch, "closed" state); a dead one
+  // is discarded and rebuilt rather than silently swallowing every note.
+  if (audioContext && audioContext.state === "closed") {
+    audioContext = undefined;
+    masterGain = undefined;
+    noiseBuffer = undefined;
   }
   if (!audioContext) {
     try {
@@ -126,6 +147,15 @@ function getContext(): AudioContext | undefined {
       roof.frequency.value = 3200;
       masterGain.connect(roof);
       roof.connect(audioContext.destination);
+      // The keep-alive: an inaudible DC-ish hum that never stops, so the
+      // hardware output stream never parks between sounds. Routed straight
+      // to the destination - it must survive the master volume at zero.
+      const keepAlive = audioContext.createConstantSource();
+      const keepAliveGain = audioContext.createGain();
+      keepAliveGain.gain.value = 0.0001;
+      keepAlive.connect(keepAliveGain);
+      keepAliveGain.connect(audioContext.destination);
+      keepAlive.start();
     } catch {
       return undefined;
     }
@@ -168,7 +198,7 @@ interface BlipOptions {
 
 /** One enveloped oscillator note. */
 function blip(ctx: AudioContext, out: AudioNode, options: BlipOptions): void {
-  const t0 = ctx.currentTime + (options.delay ?? 0);
+  const t0 = ctx.currentTime + SCHEDULE_AHEAD + (options.delay ?? 0);
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   // A few cents of drift so repeated actions never sound stamped out.
@@ -191,7 +221,7 @@ function puff(
   out: AudioNode,
   options: { frequency: number; q?: number; duration: number; peak: number; delay?: number },
 ): void {
-  const t0 = ctx.currentTime + (options.delay ?? 0);
+  const t0 = ctx.currentTime + SCHEDULE_AHEAD + (options.delay ?? 0);
   const source = ctx.createBufferSource();
   source.buffer = getNoiseBuffer(ctx);
   // A random start point so two puffs never replay the identical grains.
@@ -249,6 +279,20 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void
       puff(ctx, out, { frequency: 600, q: 0.8, duration: 0.2, peak: 0.25 });
       blip(ctx, out, { from: 220, to: 294, duration: 0.18, peak: 0.15 });
       break;
+  }
+}
+
+/**
+ * Builds and resumes the context ahead of the first real sound, so it never
+ * plays into a cold output stream. Call from any early user gesture.
+ */
+export function primeBoardSounds(): void {
+  if (typeof window === "undefined" || !areBoardSoundsEnabled()) {
+    return;
+  }
+  const ctx = getContext();
+  if (ctx && ctx.state !== "running") {
+    void ctx.resume().catch(() => {});
   }
 }
 

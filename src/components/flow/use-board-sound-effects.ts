@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import type { FactoryProject } from "@/lib/model/types";
-import { playBoardSound } from "@/lib/board-sounds";
+import { playBoardSound, primeBoardSounds } from "@/lib/board-sounds";
 import { useFactoryStore } from "@/store/factory-store";
 
 /**
@@ -146,6 +146,15 @@ export function useBoardSoundEffects(): void {
       playProjectDiff(prev, next);
     });
 
-    return unsubscribe;
+    // Warm the audio path on the first gesture so the first REAL sound
+    // never plays into a cold output stream (Chrome parks the hardware
+    // stream during silence and eats short notes while it wakes).
+    const prime = () => primeBoardSounds();
+    window.addEventListener("pointerdown", prime, { once: true, passive: true });
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener("pointerdown", prime);
+    };
   }, []);
 }

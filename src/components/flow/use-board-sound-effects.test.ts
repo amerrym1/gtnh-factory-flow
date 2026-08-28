@@ -3,6 +3,7 @@ import type { FactoryProject } from "@/lib/model/types";
 
 vi.mock("@/lib/board-sounds", () => ({
   playBoardSound: vi.fn(),
+  primeBoardSounds: vi.fn(),
 }));
 
 import { playBoardSound } from "@/lib/board-sounds";
