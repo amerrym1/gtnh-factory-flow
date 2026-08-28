@@ -117,6 +117,18 @@ const DEDUPE_MS = 30;
 /** How fast a stolen voice gets out of the way. */
 const STEAL_FADE = 0.015;
 
+/**
+ * Fast REPEATS duck. Even with stealing, a burst of full-volume retriggers
+ * (wheel-scrolling a tier chip) reads two or three times louder than one
+ * note - the ear sums repeated pulses inside ~200ms. So repeats inside
+ * this window play progressively quieter, like an OS scroll tick, and the
+ * first note after a pause is back at full voice.
+ */
+const REPEAT_WINDOW_MS = 180;
+const REPEAT_DUCK = 0.6;
+const REPEAT_DUCK_FLOOR = 3;
+const repeatStreak = new Map<BoardSoundKind, number>();
+
 /** Every note fades in over this long; instant attacks click. */
 const ATTACK = 0.005;
 
@@ -274,42 +286,42 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void
   switch (kind) {
     case "place":
       // A round thump, its octave for body, a knock for the touch.
-      blip(ctx, out, { from: 220, to: 150, duration: 0.22, peak: 0.65 });
-      blip(ctx, out, { from: 440, to: 300, duration: 0.15, peak: 0.2, type: "triangle" });
-      puff(ctx, out, { frequency: 1600, duration: 0.05, peak: 0.3 });
+      blip(ctx, out, { from: 196, to: 140, duration: 0.22, peak: 0.5 });
+      blip(ctx, out, { from: 392, to: 280, duration: 0.15, peak: 0.16, type: "triangle" });
+      puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.22 });
       break;
     case "delete":
       // A falling note: something left the board.
-      blip(ctx, out, { from: 392, to: 196, duration: 0.25, peak: 0.5, type: "triangle" });
+      blip(ctx, out, { from: 349, to: 175, duration: 0.25, peak: 0.4, type: "triangle" });
       break;
     case "connect":
       // Two rising notes a beat apart: the wire snapping home.
-      blip(ctx, out, { from: 659, to: 659, duration: 0.12, peak: 0.4, type: "triangle" });
-      blip(ctx, out, { from: 880, to: 880, duration: 0.16, peak: 0.45, delay: 0.08, type: "triangle" });
+      blip(ctx, out, { from: 587, to: 587, duration: 0.12, peak: 0.32, type: "triangle" });
+      blip(ctx, out, { from: 784, to: 784, duration: 0.16, peak: 0.36, delay: 0.08, type: "triangle" });
       break;
     case "unwire":
       // One falling note, softer than delete: only a wire went.
-      blip(ctx, out, { from: 523, to: 349, duration: 0.18, peak: 0.4, type: "triangle" });
+      blip(ctx, out, { from: 466, to: 311, duration: 0.18, peak: 0.32, type: "triangle" });
       break;
     case "error":
       // Two notes stepping DOWN a minor third: a gentle "no".
-      blip(ctx, out, { from: 311, to: 311, duration: 0.14, peak: 0.5, type: "triangle" });
-      blip(ctx, out, { from: 262, to: 262, duration: 0.22, peak: 0.5, delay: 0.1, type: "triangle" });
+      blip(ctx, out, { from: 294, to: 294, duration: 0.14, peak: 0.4, type: "triangle" });
+      blip(ctx, out, { from: 247, to: 247, duration: 0.22, peak: 0.4, delay: 0.1, type: "triangle" });
       break;
     case "open":
-      blip(ctx, out, { from: 294, to: 494, duration: 0.2, peak: 0.4, type: "triangle" });
+      blip(ctx, out, { from: 262, to: 440, duration: 0.2, peak: 0.32, type: "triangle" });
       break;
     case "close":
-      blip(ctx, out, { from: 494, to: 294, duration: 0.2, peak: 0.4, type: "triangle" });
+      blip(ctx, out, { from: 440, to: 262, duration: 0.2, peak: 0.32, type: "triangle" });
       break;
     case "adjust":
       // A neutral mid tap: a knob turned, a pill cycled, a count stepped.
-      blip(ctx, out, { from: 587, to: 587, duration: 0.08, peak: 0.3, type: "triangle" });
+      blip(ctx, out, { from: 523, to: 523, duration: 0.08, peak: 0.22, type: "triangle" });
       break;
     case "sweep":
       // One broad soft brush for a bulk change, however big it was.
-      puff(ctx, out, { frequency: 800, q: 0.9, duration: 0.3, peak: 0.5 });
-      blip(ctx, out, { from: 262, to: 349, duration: 0.28, peak: 0.3 });
+      puff(ctx, out, { frequency: 700, q: 0.9, duration: 0.3, peak: 0.4 });
+      blip(ctx, out, { from: 233, to: 311, duration: 0.28, peak: 0.24 });
       break;
   }
 }
@@ -340,7 +352,11 @@ export function playBoardSound(kind: BoardSoundKind): void {
   if (last !== undefined && now - last < DEDUPE_MS) {
     return;
   }
+  const streak =
+    last !== undefined && now - last < REPEAT_WINDOW_MS ? (repeatStreak.get(kind) ?? 0) + 1 : 0;
+  repeatStreak.set(kind, streak);
   lastPlayedAt.set(kind, now);
+  const duck = Math.pow(REPEAT_DUCK, Math.min(streak, REPEAT_DUCK_FLOOR));
 
   const ctx = getContext();
   const out = masterGain;
@@ -358,7 +374,7 @@ export function playBoardSound(kind: BoardSoundKind): void {
     // One gain node PER SOUND, so the whole sound (all its notes and
     // puffs) can be stolen as a unit by the next retrigger.
     const voice = ctx.createGain();
-    voice.gain.value = 1;
+    voice.gain.value = duck;
     voice.connect(out);
     activeVoices.set(kind, voice);
     schedule(kind, ctx, voice);
