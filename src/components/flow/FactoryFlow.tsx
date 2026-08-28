@@ -8938,12 +8938,10 @@ function VoidDropGhost() {
       lastSnapKeyRef.current = snapKey;
       const elsewhere = snap || isPointOverSolidCard(point.x, point.y);
       ghost.style.display = elsewhere ? "none" : "";
-      // The drawer preview sits CENTERED on the pointer - that is exactly
-      // where a release puts it. The reason card hangs snug off the
-      // cursor's upper right, so the hand never covers the words.
-      const offsetX = willSpawn ? -STORAGE_NODE_WIDTH / 2 : 8;
-      const offsetY = willSpawn ? -STORAGE_NODE_HEIGHT / 2 : -STORAGE_NODE_HEIGHT - 8;
-      ghost.style.transform = `translate(${point.x + offsetX}px, ${point.y + offsetY}px)`;
+      // Both cards sit CENTERED on the pointer - the drawer preview because
+      // that is exactly where a release puts it, the reason card because an
+      // offset card read as sitting off the mouse (tried, rejected).
+      ghost.style.transform = `translate(${point.x - STORAGE_NODE_WIDTH / 2}px, ${point.y - STORAGE_NODE_HEIGHT / 2}px)`;
     };
     frame = requestAnimationFrame(tick);
     return () => {
@@ -11667,6 +11665,13 @@ function findNodeDropTargetOnSide(
 
   const storage = (project.storages ?? []).find((entry) => entry.id === nodeId);
   if (storage) {
+    // A drawer never offers ITSELF: the store refuses a drawer feeding
+    // itself, so snapping and washing green on the origin drawer promised
+    // a wire the release could not deliver. Machines are different on
+    // purpose - one that eats what it makes really can self-wire.
+    if (storage.id === draggedResource.nodeId) {
+      return undefined;
+    }
     const held = { kind: storage.kind, id: storage.resourceId };
     return accepts(held) ? port(held) : undefined;
   }

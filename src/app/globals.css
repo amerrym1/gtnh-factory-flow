@@ -1278,15 +1278,6 @@ img {
   pointer-events: none !important;
 }
 
-/* While a wire is out, the SYSTEM CURSOR GOES. The pipe's endpoint dot and
-   the drawer ghost centred on the same point are the pointer now - with an
-   arrow also on screen, any hair of offset between the two read as the
-   ghost sitting off the mouse. */
-.factory-flow-board--wiring,
-.factory-flow-board--wiring * {
-  cursor: none !important;
-}
-
 .factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--bind,
 .factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--hungry,
 .factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--clogged,
