@@ -90,8 +90,6 @@ export type BoardSoundKind =
   | "connect" // a wire snaps in
   | "unwire" // a wire is cut
   | "error" // a wire drop was refused
-  | "open" // a board window opens
-  | "close" // a board window folds to its card
   | "adjust" // a setting on a card changed: machine count, drain pill, config
   | "sweep"; // one sound for a bulk change (paste, arrange, import)
 
@@ -318,12 +316,6 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void
       // Two notes stepping DOWN a minor third: a gentle "no".
       blip(ctx, out, { from: 294, to: 294, duration: 0.14, peak: 0.4, type: "triangle" });
       blip(ctx, out, { from: 247, to: 247, duration: 0.22, peak: 0.4, delay: 0.1, type: "triangle" });
-      break;
-    case "open":
-      blip(ctx, out, { from: 262, to: 440, duration: 0.2, peak: 0.32, type: "triangle" });
-      break;
-    case "close":
-      blip(ctx, out, { from: 440, to: 262, duration: 0.2, peak: 0.32, type: "triangle" });
       break;
     case "adjust":
       // A neutral mid tap: a knob turned, a pill cycled, a count stepped.

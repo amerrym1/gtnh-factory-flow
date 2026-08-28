@@ -12,35 +12,53 @@ import { useFactoryStore } from "@/store/factory-store";
  * of ids between one project and the next catches all of them - including
  * paths added later, which is the point.
  *
- * Rules, in order:
- * - A tab switch or plan load (the project id changed) is silent: nothing
- *   was DONE, the view just moved.
- * - A bulk change (an arrange, a paste, a big multi-delete) plays ONE soft
- *   sweep instead of a drum roll.
- * - Otherwise one sound per category: cards landing beats wires (a drawer
- *   drag makes both, and the thump tells the story), boards opening and
- *   closing speak for themselves.
+ * SOUNDS ARE FOR THE CANVAS ONLY (Jack, 2026-08-28): cards landing and
+ * leaving, wires connecting and cutting, card settings changing, bulk
+ * changes. Navigation and chrome are silent - no tab sounds, no button
+ * sounds, no board window open/close. Two guards enforce that beyond the
+ * id-diff itself:
+ * - A project id change is navigation and plays nothing, and it opens a
+ *   short QUIET WINDOW: loading machinery (migrations, icon refreshes,
+ *   dataset touch-ups) often rewrites the plan right after a switch, and
+ *   none of that is the player's hand.
+ * - The config signature ignores cosmetic fields (positions, icons,
+ *   colors, tooltips, names), so a refresh that re-resolves art can never
+ *   fake a settings change.
  *
  * Undo and redo are deliberately NOT special-cased: undoing a delete diffs
  * as an add and thumps like one, which is what the hand just did.
- *
- * There is deliberately NO generic click sound. A tick on every button was
- * tried and rejected: sound marks the PLAN changing, not the mouse working.
  */
 
 interface ProjectSoundSnapshot {
   projectId: string;
   nodeIds: Set<string>;
   edgeIds: Set<string>;
-  openPocketIds: Set<string>;
   /**
-   * Every card serialized WITHOUT its position: machine counts, tiers,
-   * drain pills, config choices. When the structure is unchanged but this
-   * moved, a knob was turned somewhere and the adjust tap plays. Positions
-   * are excluded so drags stay silent; a project write only happens per
+   * Every card serialized through the cosmetic filter: machine counts,
+   * tiers, drain pills, config choices survive; positions and art do not.
+   * When the structure is unchanged but this moved, a knob was turned
+   * somewhere and the adjust tap plays. A project write only happens per
    * user action, so the stringify cost is nothing.
    */
   configSignature: string;
+}
+
+/**
+ * Fields that change without the player turning any knob: drag positions,
+ * icon re-resolution, display names, paint. None of them may sound.
+ */
+const COSMETIC_KEYS = new Set([
+  "position",
+  "iconPath",
+  "iconAtlas",
+  "dominantColor",
+  "tooltip",
+  "displayName",
+  "colorTag",
+]);
+
+function signatureReplacer(key: string, value: unknown): unknown {
+  return COSMETIC_KEYS.has(key) ? undefined : value;
 }
 
 export function snapshotProject(project: FactoryProject): ProjectSoundSnapshot {
@@ -48,29 +66,20 @@ export function snapshotProject(project: FactoryProject): ProjectSoundSnapshot {
   const signatureParts: string[] = [];
   for (const node of project.nodes) {
     nodeIds.add(node.id);
-    const { position: _position, ...rest } = node;
-    signatureParts.push(JSON.stringify(rest));
+    signatureParts.push(JSON.stringify(node, signatureReplacer));
   }
   for (const storage of project.storages ?? []) {
     nodeIds.add(storage.id);
-    const { position: _position, ...rest } = storage;
-    signatureParts.push(JSON.stringify(rest));
+    signatureParts.push(JSON.stringify(storage, signatureReplacer));
   }
   const edgeIds = new Set<string>();
   for (const edge of project.edges) {
     edgeIds.add(edge.id);
   }
-  const openPocketIds = new Set<string>();
-  for (const pocket of project.pockets ?? []) {
-    if (pocket.expanded) {
-      openPocketIds.add(pocket.id);
-    }
-  }
   return {
     projectId: project.id,
     nodeIds,
     edgeIds,
-    openPocketIds,
     configSignature: signatureParts.join("\n"),
   };
 }
@@ -93,8 +102,6 @@ export function playProjectDiff(prev: ProjectSoundSnapshot, next: ProjectSoundSn
   const removedNodes = countMissing(prev.nodeIds, next.nodeIds);
   const addedEdges = countMissing(next.edgeIds, prev.edgeIds);
   const removedEdges = countMissing(prev.edgeIds, next.edgeIds);
-  const opened = countMissing(next.openPocketIds, prev.openPocketIds);
-  const closed = countMissing(prev.openPocketIds, next.openPocketIds);
 
   const total = addedNodes + removedNodes + addedEdges + removedEdges;
   if (total >= BULK_THRESHOLD) {
@@ -104,7 +111,7 @@ export function playProjectDiff(prev: ProjectSoundSnapshot, next: ProjectSoundSn
 
   // Nothing structural moved, but a card's settings did: a machine count
   // stepped, a drain pill cycled, a config chosen. One neutral tap.
-  if (total === 0 && opened === 0 && closed === 0) {
+  if (total === 0) {
     if (next.configSignature !== prev.configSignature) {
       playBoardSound("adjust");
     }
@@ -123,16 +130,20 @@ export function playProjectDiff(prev: ProjectSoundSnapshot, next: ProjectSoundSn
     playBoardSound("connect");
   } else if (removedEdges > 0) {
     playBoardSound("unwire");
-  } else if (opened > 0) {
-    playBoardSound("open");
-  } else if (closed > 0) {
-    playBoardSound("close");
   }
 }
+
+/**
+ * How long after a plan switch the board stays quiet. Loading machinery
+ * rewrites the project in the moments after a switch; the player's own
+ * first action after picking a tab comes later than this.
+ */
+const QUIET_AFTER_SWITCH_MS = 1200;
 
 export function useBoardSoundEffects(): void {
   useEffect(() => {
     let snapshot = snapshotProject(useFactoryStore.getState().project);
+    let quietUntil = 0;
 
     const unsubscribe = useFactoryStore.subscribe((state, prevState) => {
       if (state.project === prevState.project) {
@@ -141,8 +152,13 @@ export function useBoardSoundEffects(): void {
       const next = snapshotProject(state.project);
       const prev = snapshot;
       snapshot = next;
-      // A different plan arriving is navigation, not an action.
+      // A different plan arriving is navigation, not an action - and the
+      // writes that trail it (migrations, refreshes) are not one either.
       if (next.projectId !== prev.projectId) {
+        quietUntil = performance.now() + QUIET_AFTER_SWITCH_MS;
+        return;
+      }
+      if (performance.now() < quietUntil) {
         return;
       }
       playProjectDiff(prev, next);
