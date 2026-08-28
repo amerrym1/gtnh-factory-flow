@@ -8865,23 +8865,9 @@ function ResourceConnectionLine({
         stroke={verdict === "spawn" ? color : "#052e36"}
         strokeWidth={2}
       />
-      {/* Over spawnable void, the HTML ghost (VoidDropGhost) previews the
-          drawer itself; the line only signals. A dead release gets its
-          reason in words. */}
-      {verdict === "dead" ? (
-        <text
-          x={endX}
-          y={endY + 24}
-          textAnchor="middle"
-          fontSize={12}
-          fill={color}
-          stroke="#052e36"
-          strokeWidth={3}
-          paintOrder="stroke"
-        >
-          Drawer already exists
-        </text>
-      ) : null}
+      {/* Over the void, the HTML overlay (VoidDropGhost) carries the rest:
+          the drawer preview when release spawns one, the reason card when
+          it does nothing. The line only signals. */}
     </g>
   );
 }
@@ -8901,7 +8887,8 @@ function VoidDropGhost() {
 
   useEffect(() => onWiringConnectionChange(setWiring), []);
 
-  const ghostStorage = wiring && voidDropWillSpawn ? voidDropGhostStorage : undefined;
+  const ghostStorage = wiring ? voidDropGhostStorage : undefined;
+  const willSpawn = wiring && voidDropWillSpawn;
 
   useEffect(() => {
     if (!ghostStorage) {
@@ -8915,11 +8902,17 @@ function VoidDropGhost() {
       const flow = screenToFlowPosition({ x: event.clientX, y: event.clientY });
       const elsewhere = getConnectionSnap(flow.x, flow.y) || isPointOverSolidCard(flow.x, flow.y);
       ghost.style.display = elsewhere ? "none" : "";
-      ghost.style.transform = `translate(${flow.x - STORAGE_NODE_WIDTH / 2}px, ${flow.y - STORAGE_NODE_HEIGHT / 2}px)`;
+      // The drawer preview sits CENTERED on the pointer - that is exactly
+      // where a release puts it. The reason card instead hangs off the
+      // cursor's upper right like a tooltip, so the hand never covers the
+      // words it is being shown.
+      const offsetX = willSpawn ? -STORAGE_NODE_WIDTH / 2 : 14;
+      const offsetY = willSpawn ? -STORAGE_NODE_HEIGHT / 2 : -STORAGE_NODE_HEIGHT - 14;
+      ghost.style.transform = `translate(${flow.x + offsetX}px, ${flow.y + offsetY}px)`;
     };
     window.addEventListener("pointermove", move, { passive: true });
     return () => window.removeEventListener("pointermove", move);
-  }, [ghostStorage, screenToFlowPosition]);
+  }, [ghostStorage, willSpawn, screenToFlowPosition]);
 
   if (!ghostStorage) {
     return null;
@@ -8940,26 +8933,41 @@ function VoidDropGhost() {
           display: "none",
         }}
       >
-        {/* An opaque board-dark backing in the tile's own silhouette, so
-            the ghost occludes the wire completely while the face above it
-            still reads as faded. Transparency alone let the pipe shine
-            through the preview. */}
-        <span
-          aria-hidden
-          data-storage-shape={voidDropGhostRole}
-          className="storage-shape absolute inset-0"
-          style={{ background: "#0d1117" }}
-        />
-        <div
-          className="relative h-full w-full"
-          style={{
-            // The real tile at half presence: recognisably the drawer that
-            // will exist, visibly not existing yet.
-            opacity: 0.62,
-          }}
-        >
-          <StorageTileFace storage={ghostStorage} role={voidDropGhostRole} />
-        </div>
+        {willSpawn ? (
+          <>
+            {/* An opaque board-dark backing in the tile's own silhouette,
+                so the ghost occludes the wire completely while the face
+                above it still reads as faded. Transparency alone let the
+                pipe shine through the preview. */}
+            <span
+              aria-hidden
+              data-storage-shape={voidDropGhostRole}
+              className="storage-shape absolute inset-0"
+              style={{ background: "#0d1117" }}
+            />
+            <div
+              className="relative h-full w-full"
+              style={{
+                // The real tile at half presence: recognisably the drawer
+                // that will exist, visibly not existing yet.
+                opacity: 0.62,
+              }}
+            >
+              <StorageTileFace storage={ghostStorage} role={voidDropGhostRole} />
+            </div>
+          </>
+        ) : (
+          // The reason card for a dead release: same footprint as the
+          // drawer that will NOT appear, dashed to say "nothing solid",
+          // opaque so the wire runs underneath and the words stay
+          // readable, wrapped inside.
+          <div
+            className="flex h-full w-full items-center justify-center rounded-[4px] border-2 border-dashed border-[#ef4444] p-1.5 text-center text-[11px] font-bold leading-tight text-[#ff9d9d]"
+            style={{ background: "#0d1117" }}
+          >
+            Drawer already exists
+          </div>
+        )}
       </div>
     </ViewportPortal>
   );
