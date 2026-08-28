@@ -50,12 +50,9 @@ export function DesignTabs() {
   const [openMenu, setOpenMenu] = useState<OpenMenu>();
   const [armed, setArmed] = useState<ArmedAction>();
   const [overflow, setOverflow] = useState({ left: false, right: false });
-  // While a tab is being dragged, the strip renders this order instead of the
-  // store's; the drop commits it. The ref is the same list for the window-level
-  // pointer handlers, which cannot see fresh state.
-  const [dragOrder, setDragOrder] = useState<string[]>();
+  // The tab being dragged, if any. Order changes are previewed with pure
+  // transforms — no re-render happens until the drop commits.
   const [draggingId, setDraggingId] = useState<string>();
-  const dragOrderRef = useRef<string[] | undefined>(undefined);
   // A drag ends with the browser still delivering the click that started it;
   // this keeps that click from also switching tabs.
   const suppressClickRef = useRef(false);
@@ -166,56 +163,115 @@ export function DesignTabs() {
   }, [isHydrated]);
 
   /**
-   * Mouse-and-pen drag to rearrange: past a small threshold the press becomes
-   * a drag, the strip re-renders in the dragged order live, and the release
-   * stamps it. Touch keeps its meaning — this same motion is how a finger
+   * Mouse-and-pen drag to rearrange. Past a small threshold the press becomes
+   * a drag; from there the held pill rides the pointer as a transform while
+   * the pills it passes slide aside on a transition — the DOM order never
+   * changes mid-drag, so nothing jumps. The drop clears the transforms and
+   * commits the order in the same breath, which React re-renders before the
+   * next paint. Touch keeps its meaning — this same motion is how a finger
    * scrolls the strip.
+   *
+   * All geometry lives in TRACK space (positions captured once at drag start,
+   * the pointer re-based against the track's live rect), so the strip
+   * auto-scrolling under the drag does not put the numbers out.
    */
   const beginTabDrag = (event: React.PointerEvent, id: string) => {
     if (event.button !== 0 || event.pointerType === "touch" || renamingId) {
       return;
     }
 
-    const startX = event.clientX;
+    const track = trackRef.current;
+    if (!track) {
+      return;
+    }
+
+    const startClientX = event.clientX;
     let started = false;
+
+    interface Slot {
+      id: string;
+      el: HTMLElement;
+      /** Resting centre, track space. */
+      mid: number;
+    }
+    let slots: Slot[] = [];
+    let dragged: Slot | undefined;
+    let startIndex = 0;
+    let targetIndex = 0;
+    /** How far a displaced neighbour slides: the held pill's footprint. */
+    let step = 0;
+    let startTrackX = 0;
+
+    const trackX = (clientX: number) => clientX - track.getBoundingClientRect().left;
 
     const move = (moveEvent: PointerEvent) => {
       if (!started) {
-        if (Math.abs(moveEvent.clientX - startX) < 5) {
+        if (Math.abs(moveEvent.clientX - startClientX) < 5) {
           return;
         }
         started = true;
         suppressClickRef.current = true;
         closeMenu();
-        dragOrderRef.current = useDesignStore.getState().designs.map((design) => design.id);
-        setDragOrder(dragOrderRef.current);
         setDraggingId(id);
-      }
 
-      // Which slot the pointer is over: count the other tabs whose midpoint
-      // sits left of it. Read from the live DOM so tabs of different widths
-      // stay right as they swap past each other.
-      const track = trackRef.current;
-      const prev = dragOrderRef.current;
-      if (!track || !prev) {
+        const trackLeft = track.getBoundingClientRect().left;
+        startTrackX = startClientX - trackLeft;
+        const rects = [...track.querySelectorAll<HTMLElement>("[data-design-id]")].map((el) => ({
+          el,
+          rect: el.getBoundingClientRect(),
+        }));
+        slots = rects.map(({ el, rect }) => ({
+          id: el.dataset.designId ?? "",
+          el,
+          mid: rect.left - trackLeft + rect.width / 2,
+        }));
+        startIndex = slots.findIndex((slot) => slot.id === id);
+        targetIndex = startIndex;
+        dragged = slots[startIndex];
+        const neighbour = rects[startIndex + 1] ?? rects[startIndex - 1];
+        step = neighbour
+          ? Math.abs(neighbour.rect.left - rects[startIndex].rect.left)
+          : rects[startIndex].rect.width;
+
+        for (const slot of slots) {
+          if (slot === dragged) {
+            // Above its displaced neighbours while it rides the pointer.
+            slot.el.style.zIndex = "5";
+            slot.el.style.position = "relative";
+          } else {
+            slot.el.style.transition = "transform 160ms ease";
+          }
+        }
+      }
+      if (!dragged) {
         return;
       }
+
+      const dx = trackX(moveEvent.clientX) - startTrackX;
+      dragged.el.style.transform = `translateX(${dx}px)`;
+
+      // Which slot the held pill's centre is over, against RESTING midpoints:
+      // the DOM never reorders mid-drag, so they stay true.
+      const centre = dragged.mid + dx;
       let index = 0;
-      for (const pill of track.querySelectorAll<HTMLElement>("[data-design-id]")) {
-        if (pill.dataset.designId === id) {
-          continue;
-        }
-        const rect = pill.getBoundingClientRect();
-        if (moveEvent.clientX > rect.left + rect.width / 2) {
+      for (const slot of slots) {
+        if (slot !== dragged && centre > slot.mid) {
           index += 1;
         }
       }
-      const next = prev.filter((entry) => entry !== id);
-      next.splice(index, 0, id);
-      if (next.some((entry, position) => entry !== prev[position])) {
-        dragOrderRef.current = next;
-        setDragOrder(next);
-      }
+      targetIndex = index;
+      slots.forEach((slot, position) => {
+        if (slot === dragged) {
+          return;
+        }
+        const shift =
+          position > startIndex && position <= targetIndex
+            ? -step
+            : position < startIndex && position >= targetIndex
+              ? step
+              : 0;
+        slot.el.style.transform = shift ? `translateX(${shift}px)` : "";
+      });
 
       // Dragging against either end of a scrolled strip walks it along.
       const scroller = scrollerRef.current;
@@ -233,11 +289,20 @@ export function DesignTabs() {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
-      if (started && dragOrderRef.current) {
-        void reorderDesigns(dragOrderRef.current);
+      if (started && dragged) {
+        const order = slots.filter((slot) => slot !== dragged).map((slot) => slot.id);
+        order.splice(targetIndex, 0, id);
+        // Styles off and order committed in one task: React flushes the new
+        // order before the browser paints, so the pills go straight from
+        // their translated positions to their new slots.
+        for (const slot of slots) {
+          slot.el.style.transform = "";
+          slot.el.style.transition = "";
+          slot.el.style.zIndex = "";
+          slot.el.style.position = "";
+        }
+        void reorderDesigns(order);
       }
-      dragOrderRef.current = undefined;
-      setDragOrder(undefined);
       setDraggingId(undefined);
       // The suppressed click is delivered before timers run, so this frees the
       // NEXT click, not the one that ended the drag.
@@ -250,11 +315,6 @@ export function DesignTabs() {
     window.addEventListener("pointerup", finish);
     window.addEventListener("pointercancel", finish);
   };
-
-  // Mid-drag the strip shows the order under the pointer, not the store's.
-  const orderedDesigns = dragOrder
-    ? dragOrder.flatMap((id) => designs.filter((design) => design.id === id))
-    : designs;
 
   if (!isHydrated) {
     return <div className="h-8 shrink-0 border-b border-line bg-surface" />;
@@ -330,15 +390,23 @@ export function DesignTabs() {
             aria-label="Designs"
             className="flex w-max select-none items-center gap-1"
           >
-            {orderedDesigns.map((design, index) => {
+            {designs.map((design, index) => {
               const isActive = design.id === activeDesignId && !welcome.active;
 
               return (
                 <Fragment key={design.id}>
                   {/* A faint seam between neighbours: names alone run together
-                      once a few tabs sit side by side. */}
+                      once a few tabs sit side by side. Hidden while a drag is
+                      on: the pills slide with transforms and the seams do not,
+                      so mid-drag they would sit in the wrong gaps. */}
                   {index > 0 ? (
-                    <span aria-hidden className="h-3.5 w-px shrink-0 bg-line" />
+                    <span
+                      aria-hidden
+                      className={[
+                        "h-3.5 w-px shrink-0 bg-line transition-opacity",
+                        draggingId ? "opacity-0" : "",
+                      ].join(" ")}
+                    />
                   ) : null}
                 <div
                   data-design-id={design.id}
@@ -748,11 +816,17 @@ function TabFace({ icon }: { icon: EntryIcon }) {
         bare
         tooltip={false}
         showAmount={false}
-        // A fluid draws as a swatch inset to FLUID_ICON_SCALE of its cell so it
-        // weighs the same as items beside it; at tab size that inset leaves a
-        // speck, so it is inverted away and the swatch itself fills the box.
+        // Both kinds are drawn oversized so the ART fills the box, not the
+        // art plus its padding. A rendered item texture is 256px with the art
+        // in the middle 128 (measured across the set), so exactly 2x the box
+        // puts the art at box size, cropped by the wrapper. A fluid draws as
+        // a swatch inset to FLUID_ICON_SCALE of its cell so it weighs the
+        // same as items in a slot grid; here that inset is inverted away and
+        // the swatch itself fills the box.
         iconPixelSize={
-          icon.kind === "fluid" ? Math.round(TAB_FACE_PX / FLUID_ICON_SCALE) : undefined
+          icon.kind === "fluid"
+            ? Math.round(TAB_FACE_PX / FLUID_ICON_SCALE)
+            : TAB_FACE_PX * 2
         }
         className="!h-full !w-full"
       />
