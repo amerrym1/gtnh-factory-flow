@@ -246,26 +246,49 @@ interface BlipOptions {
   delay?: number;
   duration: number;
   peak: number;
-  type?: OscillatorType;
 }
 
-/** One enveloped oscillator note. */
+/**
+ * One enveloped note - a ROUNDED tone, not a beep. Raw oscillator types
+ * (triangle especially) all read as beeps whatever the envelope does. The
+ * tone here is a sine fundamental with a quiet, slightly-detuned octave
+ * partial for body, through a per-note lowpass that tracks the pitch - the
+ * soft mallet-on-wood family rather than the alarm family. Pitch contours
+ * stay exactly as the voice tables state them.
+ */
 function blip(ctx: AudioContext, out: AudioNode, options: BlipOptions): void {
   const t0 = ctx.currentTime + SCHEDULE_AHEAD + (options.delay ?? 0);
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
   // A few cents of drift so repeated actions never sound stamped out.
   const drift = 1 + (Math.random() - 0.5) * 0.03;
-  osc.type = options.type ?? "sine";
-  osc.frequency.setValueAtTime(options.from * drift, t0);
-  if (options.to !== options.from) {
-    osc.frequency.exponentialRampToValueAtTime(options.to * drift, t0 + options.duration);
-  }
+  const gain = ctx.createGain();
+  const rounder = ctx.createBiquadFilter();
+  rounder.type = "lowpass";
+  rounder.frequency.value = Math.min(options.from * 3.5, 3000);
+  rounder.Q.value = 0.5;
   shapeEnvelope(gain.gain, t0, options.peak, options.duration);
-  osc.connect(gain);
+  rounder.connect(gain);
   gain.connect(out);
-  osc.start(t0);
-  osc.stop(t0 + options.duration + 0.03);
+  const partials = [
+    { multiple: 1, level: 1 },
+    { multiple: 2.004, level: 0.22 },
+  ];
+  for (const partial of partials) {
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    const partialGain = ctx.createGain();
+    partialGain.gain.value = partial.level;
+    osc.frequency.setValueAtTime(options.from * drift * partial.multiple, t0);
+    if (options.to !== options.from) {
+      osc.frequency.exponentialRampToValueAtTime(
+        options.to * drift * partial.multiple,
+        t0 + options.duration,
+      );
+    }
+    osc.connect(partialGain);
+    partialGain.connect(rounder);
+    osc.start(t0);
+    osc.stop(t0 + options.duration + 0.03);
+  }
 }
 
 /** A filtered puff of noise: the knock and brush material. */
@@ -304,44 +327,44 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void
       // A round thump, its octave for body, a knock for the touch. The
       // fall is shallow on purpose: a deep drop read as a sad landing.
       blip(ctx, out, { from: 196, to: 165, duration: 0.22, peak: 0.42 });
-      blip(ctx, out, { from: 392, to: 330, duration: 0.15, peak: 0.13, type: "triangle" });
+      blip(ctx, out, { from: 392, to: 330, duration: 0.15, peak: 0.13 });
       puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.18 });
       break;
     case "placeSource":
       // The same thump tilted UPWARD: supply arriving, not product piling.
       blip(ctx, out, { from: 165, to: 208, duration: 0.22, peak: 0.42 });
-      blip(ctx, out, { from: 330, to: 415, duration: 0.15, peak: 0.13, type: "triangle" });
+      blip(ctx, out, { from: 330, to: 415, duration: 0.15, peak: 0.13 });
       puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.18 });
       break;
     case "delete":
       // A small settling step down - removed, not mourned. The octave
       // plunge this used to be made every cleanup sound like a loss.
-      blip(ctx, out, { from: 311, to: 233, duration: 0.18, peak: 0.34, type: "triangle" });
+      blip(ctx, out, { from: 311, to: 233, duration: 0.18, peak: 0.34 });
       break;
     case "connect":
       // A click and a settled tone one step up: latched, not celebrated.
       // The old wide-interval chime read as a fanfare.
-      blip(ctx, out, { from: 523, to: 523, duration: 0.08, peak: 0.24, type: "triangle" });
-      blip(ctx, out, { from: 587, to: 587, duration: 0.14, peak: 0.26, delay: 0.06, type: "triangle" });
+      blip(ctx, out, { from: 523, to: 523, duration: 0.08, peak: 0.24 });
+      blip(ctx, out, { from: 587, to: 587, duration: 0.14, peak: 0.26, delay: 0.06 });
       break;
     case "unwire":
       // One falling note, softer than delete: only a wire went.
-      blip(ctx, out, { from: 440, to: 330, duration: 0.16, peak: 0.28, type: "triangle" });
+      blip(ctx, out, { from: 440, to: 330, duration: 0.16, peak: 0.28 });
       break;
     case "error":
       // Two notes stepping DOWN a whole tone: a gentle "no".
-      blip(ctx, out, { from: 294, to: 294, duration: 0.14, peak: 0.32, type: "triangle" });
-      blip(ctx, out, { from: 262, to: 262, duration: 0.2, peak: 0.32, delay: 0.1, type: "triangle" });
+      blip(ctx, out, { from: 294, to: 294, duration: 0.14, peak: 0.32 });
+      blip(ctx, out, { from: 262, to: 262, duration: 0.2, peak: 0.32, delay: 0.1 });
       break;
     case "open":
-      blip(ctx, out, { from: 262, to: 440, duration: 0.2, peak: 0.28, type: "triangle" });
+      blip(ctx, out, { from: 262, to: 440, duration: 0.2, peak: 0.28 });
       break;
     case "close":
-      blip(ctx, out, { from: 440, to: 262, duration: 0.2, peak: 0.28, type: "triangle" });
+      blip(ctx, out, { from: 440, to: 262, duration: 0.2, peak: 0.28 });
       break;
     case "adjust":
       // A neutral mid tap: a knob turned, a pill cycled, a count stepped.
-      blip(ctx, out, { from: 523, to: 523, duration: 0.08, peak: 0.2, type: "triangle" });
+      blip(ctx, out, { from: 523, to: 523, duration: 0.08, peak: 0.2 });
       break;
     case "sweep":
       // One broad soft brush for a bulk change, however big it was.

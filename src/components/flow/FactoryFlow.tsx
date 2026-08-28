@@ -2008,6 +2008,11 @@ export function FactoryFlow() {
   // whether the gesture handed off to the async loose-cell ratio fetch.
   const projectAtConnectStartRef = useRef<FactoryProject | undefined>(undefined);
   const pendingLooseWireRef = useRef(false);
+  // The gesture's origin card, tracked separately from draggedResourceRef:
+  // a drag can start on a handle whose resource cannot be resolved, and
+  // such a drag ending dead must still buzz rather than slip through the
+  // "was there even a drag" check.
+  const wireGestureOriginRef = useRef<string | undefined>(undefined);
   const dropFitFrameRef = useRef<number | undefined>(undefined);
   // Export requests run one after another rather than bouncing: the dialog
   // fires its preview capture the moment it opens, and a second request
@@ -3520,6 +3525,7 @@ export function FactoryFlow() {
       connectCompletedRef.current = false;
       projectAtConnectStartRef.current = useFactoryStore.getState().project;
       pendingLooseWireRef.current = false;
+      wireGestureOriginRef.current = nodeId ?? undefined;
       lastConnectionPointerRef.current = getClientPosition(event);
       draggedResourceRef.current =
         nodeId && handleId ? getDraggedResourceForHandle(project, nodeId, handleId) : undefined;
@@ -3750,14 +3756,15 @@ export function FactoryFlow() {
   // buzzing it would buzz every browse.
   const handleConnectEndWithSound = useCallback(
     (event: MouseEvent | TouchEvent) => {
-      const draggedResource = draggedResourceRef.current;
-      const dragNodeId = draggedResource?.nodeId;
+      const dragNodeId = draggedResourceRef.current?.nodeId ?? wireGestureOriginRef.current;
+      const hadGesture = projectAtConnectStartRef.current !== undefined;
       const projectAtStart = projectAtConnectStartRef.current;
       projectAtConnectStartRef.current = undefined;
+      wireGestureOriginRef.current = undefined;
       // Read the pointer BEFORE the handler, which clears it as it runs.
       const clientPosition = getClientPosition(event) ?? lastConnectionPointerRef.current;
       handleConnectEnd(event);
-      if (!draggedResource || !projectAtStart) {
+      if (!hadGesture || !projectAtStart) {
         return;
       }
       if (useFactoryStore.getState().project !== projectAtStart) {
