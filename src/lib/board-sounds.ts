@@ -332,16 +332,18 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void
       puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.18 });
       break;
     case "placeProduct":
-      // Two discrete taps stepping DOWN a fourth: product banked. The
-      // mirror of placeSource, so the pair reads as out vs in.
-      blip(ctx, out, { from: 196, to: 196, duration: 0.14, peak: 0.4 });
-      blip(ctx, out, { from: 147, to: 147, duration: 0.16, peak: 0.36, delay: 0.09 });
+      // Two discrete taps stepping UP a fourth. The first assignment had
+      // this pair the other way round and the down-step read as failure;
+      // Jack's call: product rises, source settles.
+      blip(ctx, out, { from: 147, to: 147, duration: 0.14, peak: 0.36 });
+      blip(ctx, out, { from: 196, to: 196, duration: 0.16, peak: 0.4, delay: 0.09 });
       puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.16 });
       break;
     case "placeSource":
-      // Two discrete taps stepping UP a fourth: supply arriving.
-      blip(ctx, out, { from: 147, to: 147, duration: 0.14, peak: 0.36 });
-      blip(ctx, out, { from: 196, to: 196, duration: 0.16, peak: 0.4, delay: 0.09 });
+      // Two discrete taps stepping DOWN a fourth: the mirror of
+      // placeProduct, so the pair reads as out vs in.
+      blip(ctx, out, { from: 196, to: 196, duration: 0.14, peak: 0.4 });
+      blip(ctx, out, { from: 147, to: 147, duration: 0.16, peak: 0.36, delay: 0.09 });
       puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.16 });
       break;
     case "delete":
@@ -360,9 +362,11 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void
       blip(ctx, out, { from: 440, to: 330, duration: 0.16, peak: 0.28 });
       break;
     case "error":
-      // Two notes stepping DOWN a whole tone: a gentle "no".
-      blip(ctx, out, { from: 294, to: 294, duration: 0.14, peak: 0.32 });
-      blip(ctx, out, { from: 262, to: 262, duration: 0.2, peak: 0.32, delay: 0.1 });
+      // Not a buzzer: a soft SCRATCH of noise, "nothing happened". Two
+      // little brushes, no tone at all - a dead wire drag should feel like
+      // paper, not like an alarm.
+      puff(ctx, out, { frequency: 900, q: 1.2, duration: 0.06, peak: 0.2 });
+      puff(ctx, out, { frequency: 550, q: 1, duration: 0.1, peak: 0.18, delay: 0.05 });
       break;
     case "open":
       blip(ctx, out, { from: 262, to: 440, duration: 0.2, peak: 0.28 });

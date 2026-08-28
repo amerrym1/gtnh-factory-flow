@@ -120,6 +120,7 @@ import {
 } from "@/store/factory-store";
 import { useBlueprintStore } from "@/store/blueprint-store";
 import { playBoardSound } from "@/lib/board-sounds";
+import { projectSoundFingerprint } from "./use-board-sound-effects";
 import { useDesignStore } from "@/store/design-store";
 import { useSolvingBooks } from "./use-solving-books";
 import {
@@ -2006,7 +2007,7 @@ export function FactoryFlow() {
   // (onConnect runs before onConnectEnd, so "did this gesture change
   // anything" must compare against drag START, not connect-end entry), and
   // whether the gesture handed off to the async loose-cell ratio fetch.
-  const projectAtConnectStartRef = useRef<FactoryProject | undefined>(undefined);
+  const connectStartFingerprintRef = useRef<string | undefined>(undefined);
   const pendingLooseWireRef = useRef(false);
   // The gesture's origin card, tracked separately from draggedResourceRef:
   // a drag can start on a handle whose resource cannot be resolved, and
@@ -3523,7 +3524,12 @@ export function FactoryFlow() {
       const handleId = params.handleId ?? eventHandle?.handleId;
 
       connectCompletedRef.current = false;
-      projectAtConnectStartRef.current = useFactoryStore.getState().project;
+      // A content fingerprint, not the reference: a refused spawn commits a
+      // rebuilt-but-identical project, and treating that as "changed"
+      // silenced the failure sound for exactly that refusal.
+      connectStartFingerprintRef.current = projectSoundFingerprint(
+        useFactoryStore.getState().project,
+      );
       pendingLooseWireRef.current = false;
       wireGestureOriginRef.current = nodeId ?? undefined;
       lastConnectionPointerRef.current = getClientPosition(event);
@@ -3757,17 +3763,16 @@ export function FactoryFlow() {
   const handleConnectEndWithSound = useCallback(
     (event: MouseEvent | TouchEvent) => {
       const dragNodeId = draggedResourceRef.current?.nodeId ?? wireGestureOriginRef.current;
-      const hadGesture = projectAtConnectStartRef.current !== undefined;
-      const projectAtStart = projectAtConnectStartRef.current;
-      projectAtConnectStartRef.current = undefined;
+      const fingerprintAtStart = connectStartFingerprintRef.current;
+      connectStartFingerprintRef.current = undefined;
       wireGestureOriginRef.current = undefined;
       // Read the pointer BEFORE the handler, which clears it as it runs.
       const clientPosition = getClientPosition(event) ?? lastConnectionPointerRef.current;
       handleConnectEnd(event);
-      if (!hadGesture || !projectAtStart) {
+      if (fingerprintAtStart === undefined) {
         return;
       }
-      if (useFactoryStore.getState().project !== projectAtStart) {
+      if (projectSoundFingerprint(useFactoryStore.getState().project) !== fingerprintAtStart) {
         return;
       }
       if (pendingLooseWireRef.current) {

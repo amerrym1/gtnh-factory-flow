@@ -103,6 +103,23 @@ export function snapshotProject(project: FactoryProject): ProjectSoundSnapshot {
   };
 }
 
+/**
+ * What the ear would consider "the plan changed", as one comparable string.
+ * The gesture failure-check needs this instead of a reference compare: a
+ * refused drawer spawn (storage endpoint conflict) COMMITS a rebuilt,
+ * content-identical project - reference-new, nothing actually different -
+ * and reading that as success silenced the exact failure it was.
+ */
+export function projectSoundFingerprint(project: FactoryProject): string {
+  const snap = snapshotProject(project);
+  return [
+    [...snap.nodeIds].sort().join(","),
+    [...snap.edgeIds].sort().join(","),
+    [...snap.openPocketIds].sort().join(","),
+    snap.configSignature,
+  ].join("|");
+}
+
 function countMissing(from: Set<string>, inSet: Set<string>): number {
   let count = 0;
   for (const id of from) {
