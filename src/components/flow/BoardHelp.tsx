@@ -7,7 +7,6 @@ import {
   Gauge,
   Grid3x3,
   Magnet,
-  Network,
   Paintbrush,
   Play,
   RotateCcw,
@@ -166,9 +165,7 @@ const CALLOUTS: Array<{
     rows: [
       { icon: Undo2, text: "Undo and redo" },
       { chip: "/s", text: "*Rate unit*: click to change" },
-      { icon: Gauge, text: "Place *farm* or *custom rate*" },
-      { icon: SlidersHorizontal, text: "*Setup rules*: free inputs and free outputs" },
-      { icon: Network, text: "*Auto-arrange* the whole board" },
+      { icon: Gauge, text: "Place a *custom rate* card" },
     ],
   },
   {
@@ -196,7 +193,8 @@ const CALLOUTS: Array<{
       { text: "One button, one sheet: *view only*, never the plan" },
       { icon: Grid3x3, text: "Background style and pattern" },
       { icon: Cable, text: "Wire thickness, dashes, labels, docking" },
-      { icon: Magnet, text: "*Motion*: cards glide, numbers ease" },
+      { icon: Magnet, text: "*Motion*: cards and numbers move smoothly" },
+      { icon: SlidersHorizontal, text: "Beside it: *setup rules* and *auto-arrange*" },
     ],
   },
   {

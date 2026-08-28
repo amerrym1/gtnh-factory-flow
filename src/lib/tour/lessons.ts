@@ -14,7 +14,6 @@ import {
   Paintbrush,
   Search,
   Share2,
-  Sprout,
   Square,
   Trash2,
   Undo2,
@@ -166,9 +165,7 @@ const LOOK_AROUND: TourLesson = {
       title: "Build tools",
       rows: [
         { icon: Undo2, text: "Undo and redo. *Ctrl+Z*." },
-        { icon: Sprout, text: "*Crop farm*: CropsNH (2.9)." },
         { icon: Gauge, text: "*Custom rate*: set any rate in or out by hand." },
-        { icon: Network, text: "*Auto-arrange*: lays the whole board out. Undo puts it back." },
         { chip: "/s", text: "The *rate unit*. Click it: tick, second, minute, hour." },
       ],
     },
@@ -190,6 +187,7 @@ const LOOK_AROUND: TourLesson = {
       rows: [
         { text: "These change *the view*, not the plan." },
         { icon: Eye, text: "One menu: background, how the wires draw, motion." },
+        { icon: Network, text: "Beside it: *setup rules* and *auto-arrange*." },
         { icon: Focus, text: "*Fits the whole plan* on the screen." },
         { icon: Box, text: "Zoomed out, cards can show *what they are*, *how hard they run*, or *power*." },
       ],

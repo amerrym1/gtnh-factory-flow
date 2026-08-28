@@ -53,7 +53,6 @@ import {
   Plus,
   Presentation,
   Redo2,
-  Sprout,
   Square,
   Trash2,
   TriangleAlert,
@@ -5582,6 +5581,7 @@ export function FactoryFlow() {
         view={boardView}
         onViewChange={writeBoardView}
         dockToggleWarning={dockToggleWarning}
+        onAutoArrange={handleAutoArrange}
         compact={isCompact}
         openGroup={openToolGroup}
         onToggleGroup={handleToolGroupToggle}
@@ -5592,7 +5592,6 @@ export function FactoryFlow() {
         openGroup={openToolGroup}
         onToggleGroup={handleToolGroupToggle}
         shiftedDown={false}
-        onAutoArrange={handleAutoArrange}
       />
       <BoardHelp compact={isCompact} />
       {/* Toggled from the dev menu (shift-click the version chip). Sits above
@@ -6272,8 +6271,8 @@ function ToolGroup({
         // `w-max`, or the row inherits its shrink-to-fit width from the toolbar
         // root it is positioned against — which folded is one 36px button, so
         // every row wrapped into a vertical column one button wide.
-        // top-[3.25rem]: the plated trigger stands 48px tall now.
-        "absolute top-[3.25rem] flex w-max max-w-[calc(100vw-24px)] flex-wrap items-start gap-1 transition-[opacity,transform] duration-100",
+        // top-[3rem]: the plated trigger stands 44px tall now.
+        "absolute top-[3rem] flex w-max max-w-[calc(100vw-24px)] flex-wrap items-start gap-1 transition-[opacity,transform] duration-100",
         side === "left" ? "left-0 justify-start" : "right-0 justify-end",
         isOpen ? "translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0",
       ].join(" ")}
@@ -6297,7 +6296,7 @@ function ToolGroup({
         aria-label={isOpen ? `Hide ${label}` : `Show ${label}`}
         title={isOpen ? `Hide ${label}` : label}
         className={[
-          "pointer-events-auto relative z-10 flex h-9 w-9 shrink-0 items-center justify-center border-2 border-[var(--mc-15)]",
+          "pointer-events-auto relative z-10 flex h-8 w-8 shrink-0 items-center justify-center border-2 border-[var(--mc-15)]",
           isOpen ? TOOL_FACE_ON : TOOL_FACE_OFF,
         ].join(" ")}
       >
@@ -6502,7 +6501,7 @@ const SetupRulesButton = memo(function SetupRulesButton() {
         onClick={() => setOpen((was) => !was)}
         aria-expanded={open}
         className={[
-          "relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+          "relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)]",
           open || freeInputs || freeOutputs || looseCellWires ? TOOL_FACE_ON : TOOL_FACE_OFF,
         ].join(" ")}
         title="Setup rules"
@@ -6511,7 +6510,7 @@ const SetupRulesButton = memo(function SetupRulesButton() {
         <SlidersHorizontal className="h-4 w-4" />
       </button>
       {open ? (
-        <div className="absolute left-0 top-[calc(100%+6px)] z-30 flex w-[320px] flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+        <div className="absolute right-0 top-[calc(100%+6px)] z-30 flex w-[320px] max-w-[calc(100vw-24px)] flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
           <p className="px-1 pt-1 font-mono text-[11px] leading-snug text-[var(--mc-ink)] opacity-70">
             What the setup does when a slot cannot be supplied or emptied.
             <br />
@@ -6571,17 +6570,13 @@ const SourceToolbar = memo(function SourceToolbar({
   openGroup,
   onToggleGroup,
   shiftedDown,
-  onAutoArrange,
 }: {
   compact: boolean;
   openGroup?: ToolGroupId;
   onToggleGroup: (group: ToolGroupId | undefined) => void;
   /** A banner has the top line: step down one. */
   shiftedDown: boolean;
-  /** One press lays the whole visible level out left to right. */
-  onAutoArrange: () => void;
 }) {
-  const addCropFarmNode = useFactoryStore((state) => state.addCropFarmNode);
   const addCustomRateNode = useFactoryStore((state) => state.addCustomRateNode);
   const boardView = useBoardView();
   const rateUnit = useFactoryStore((state) => state.rateUnit);
@@ -6598,7 +6593,7 @@ const SourceToolbar = memo(function SourceToolbar({
   const canRedo = useFactoryStore((state) => state.redoHistory.length > 0);
   const historyButtonClass = (enabled: boolean) =>
     [
-      "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
+      "pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
       enabled ? "hover:brightness-110" : "cursor-not-allowed opacity-40",
     ].join(" ");
 
@@ -6660,47 +6655,24 @@ const SourceToolbar = memo(function SourceToolbar({
           onClick={() => setRateUnit(nextRateChoice.unit)}
           title={`${rateChoice.title}. Click for ${nextRateChoice.title.toLowerCase()}.`}
           aria-label={`Rates ${rateChoice.title.toLowerCase()}. Click for ${nextRateChoice.title.toLowerCase()}.`}
-          className={`pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] font-mono text-[12px] font-black ${TOOL_FACE_OFF}`}
+          className={`pointer-events-auto flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)] font-mono text-[12px] font-black ${TOOL_FACE_OFF}`}
         >
           {rateChoice.label}
         </button>
       </ToolTray>
-      {/* ...while the plate on the right is the one that puts new cards down. */}
+      {/* ...while the plate on the right is the one that puts new cards down.
+          The crop farm spawner left this row (2026-08-27): farms come from
+          the recipe book like everything else. The trash can spawner went
+          earlier (2026-08-23), to the drawer pill's third position. */}
       <ToolTray>
         <button
           type="button"
-          onClick={addCropFarmNode}
-          className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
-          title="Add crop farm"
-          aria-label="Add crop farm"
-        >
-          <Sprout className="h-4 w-4" />
-        </button>
-        {/* The trash can button is gone (2026-08-23): trashing is now the
-            third position on a drawer's product/byproduct pill. Legacy trash
-            can nodes still render and solve; only the spawner left. */}
-        <button
-          type="button"
           onClick={addCustomRateNode}
-          className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+          className="pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
           title="Add custom rate node"
           aria-label="Add custom rate node"
         >
           <Gauge className="h-4 w-4" />
-        </button>
-      </ToolTray>
-      {/* The tidy-up and the board's own rules: the two buttons that act on
-          the whole board at once rather than on a card. */}
-      <ToolTray>
-        <SetupRulesButton />
-        <button
-          type="button"
-          onClick={onAutoArrange}
-          className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
-          title="Auto-arrange"
-          aria-label="Auto-arrange the board"
-        >
-          <Network className="h-4 w-4" />
         </button>
       </ToolTray>
       </ToolGroup>
@@ -7407,7 +7379,7 @@ function AddImageButton({ onPlaceImage }: { onPlaceImage: (file: File) => Promis
         onClick={() => inputRef.current?.click()}
         disabled={busy}
         className={[
-          "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+          "pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)]",
           TOOL_FACE_OFF,
           busy ? "cursor-wait opacity-70" : "",
         ].join(" ")}
@@ -7575,7 +7547,7 @@ const BoardViewMenu = memo(function BoardViewMenu({
         onClick={() => onOpenChange(!open)}
         aria-expanded={open}
         className={[
-          "relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+          "relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)]",
           open ? TOOL_FACE_ON : TOOL_FACE_OFF,
         ].join(" ")}
         title="View options"
@@ -7685,6 +7657,7 @@ const PaintToolbar = memo(function PaintToolbar({
   view,
   onViewChange,
   dockToggleWarning,
+  onAutoArrange,
   compact,
   openGroup,
   onToggleGroup,
@@ -7703,6 +7676,8 @@ const PaintToolbar = memo(function PaintToolbar({
   view: BoardView;
   onViewChange: (patch: Partial<BoardView>) => void;
   dockToggleWarning?: string;
+  /** One press lays the whole visible level out left to right. */
+  onAutoArrange: () => void;
   compact: boolean;
   openGroup?: ToolGroupId;
   onToggleGroup: (group: ToolGroupId | undefined) => void;
@@ -7766,7 +7741,7 @@ const PaintToolbar = memo(function PaintToolbar({
           "absolute right-0 grid gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
           // On a phone it hangs two lines down — clear of the unfolded paint
           // row on the line between — six across and three down.
-          compact ? "top-[6.5rem] grid-cols-6" : "top-[3.25rem] w-[296px] grid-cols-9",
+          compact ? "top-[6rem] grid-cols-6" : "top-[3rem] w-[296px] grid-cols-9",
           isPaletteOpen
             ? "pointer-events-auto translate-y-0 opacity-100"
             : "pointer-events-none -translate-y-1 opacity-0",
@@ -7814,7 +7789,7 @@ const PaintToolbar = memo(function PaintToolbar({
         // sits on the visible ends, not the wrapper, so the folded-away
         // palette's empty layout box stays out of the ring.
         data-help-anchor="paint"
-        className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]"
+        className="pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]"
         title={`Color: ${activeColorTag}`}
         aria-label="Pick color"
       >
@@ -7830,7 +7805,7 @@ const PaintToolbar = memo(function PaintToolbar({
           onPaintModeChange(paintMode !== undefined ? undefined : activeColorTag)
         }
         className={[
-          "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+          "pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)]",
           paintMode !== undefined ? TOOL_FACE_ON : TOOL_FACE_OFF,
         ].join(" ")}
         title={paintMode !== undefined ? "Stop painting" : "Paint"}
@@ -7888,7 +7863,7 @@ const PaintToolbar = memo(function PaintToolbar({
           }}
           aria-expanded={isDrawMenuOpen}
           className={[
-            "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+            "pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)]",
             annotationTool !== undefined ? TOOL_FACE_ON : TOOL_FACE_OFF,
           ].join(" ")}
           title={annotationTool !== undefined ? "Cancel" : "Draw tools"}
@@ -7907,7 +7882,7 @@ const PaintToolbar = memo(function PaintToolbar({
           onClick={() => onDeleteModeChange(!isDeleteMode)}
           data-help-anchor="paint"
           className={[
-            "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+            "pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)]",
             isDeleteMode ? TOOL_FACE_ON : TOOL_FACE_OFF,
           ].join(" ")}
           title={isDeleteMode ? "Stop deleting" : "Delete tool"}
@@ -7918,9 +7893,23 @@ const PaintToolbar = memo(function PaintToolbar({
         </button>
       </ToolTray>
       </ToolGroup>
-      {/* The corner slot, OUTSIDE the fold group: view options are one button
-          and a sheet at every width, and they stay reachable while the paint
-          row is folded away on a phone. */}
+      {/* The whole-board pair, OUTSIDE the fold group: the board's rules and
+          the tidy-up act on everything at once, so they live by the corner
+          with the view button rather than among the card tools. */}
+      <ToolTray>
+        <SetupRulesButton />
+        <button
+          type="button"
+          onClick={onAutoArrange}
+          className="pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+          title="Auto-arrange"
+          aria-label="Auto-arrange the board"
+        >
+          <Network className="h-4 w-4" />
+        </button>
+      </ToolTray>
+      {/* The corner slot: view options are one button and a sheet at every
+          width, reachable while the paint row is folded away on a phone. */}
       <ToolTray>
         <BoardViewMenu
           view={view}
