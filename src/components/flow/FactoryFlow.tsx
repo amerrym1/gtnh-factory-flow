@@ -3727,10 +3727,13 @@ export function FactoryFlow() {
     ],
   );
 
-  // A wire drag that ended ON A CARD and changed nothing was refused - the
-  // red wash said no, and the no should be audible. Successes need no hook
-  // here: the store watcher hears the new edge or drawer. Releasing over
-  // the void or back on the origin card is a cancel, not a refusal.
+  // A wire drag that ended and changed NOTHING is a failure the ear should
+  // hear - a drop on a red-washed card, or a release into a void that
+  // spawned nothing. Successes need no hook here: the store watcher hears
+  // the new edge or drawer. The ONE silent ending is a release back on the
+  // origin card: that is a cancel - and it is also what a plain CLICK on a
+  // port row looks like to React Flow, so buzzing it would buzz every
+  // browse.
   const handleConnectEndWithSound = useCallback(
     (event: MouseEvent | TouchEvent) => {
       const draggedResource = draggedResourceRef.current;
@@ -3747,7 +3750,7 @@ export function FactoryFlow() {
         return;
       }
       const dropCardId = clientPosition ? getBoardNodeIdAtPosition(clientPosition) : undefined;
-      if (!dropCardId || dropCardId === dragNodeId) {
+      if (dropCardId === dragNodeId) {
         return;
       }
       playBoardSound("error");
