@@ -119,6 +119,7 @@ import {
   type BoardFraming,
 } from "@/store/factory-store";
 import { useBlueprintStore } from "@/store/blueprint-store";
+import { playBoardSound } from "@/lib/board-sounds";
 import { useDesignStore } from "@/store/design-store";
 import { useSolvingBooks } from "./use-solving-books";
 import {
@@ -3726,6 +3727,34 @@ export function FactoryFlow() {
     ],
   );
 
+  // A wire drag that ended ON A CARD and changed nothing was refused - the
+  // red wash said no, and the no should be audible. Successes need no hook
+  // here: the store watcher hears the new edge or drawer. Releasing over
+  // the void or back on the origin card is a cancel, not a refusal.
+  const handleConnectEndWithSound = useCallback(
+    (event: MouseEvent | TouchEvent) => {
+      const draggedResource = draggedResourceRef.current;
+      const hadOpenDrag = Boolean(draggedResource) && !connectCompletedRef.current;
+      const dragNodeId = draggedResource?.nodeId;
+      // Read the pointer BEFORE the handler, which clears it as it runs.
+      const clientPosition = getClientPosition(event) ?? lastConnectionPointerRef.current;
+      const projectBefore = useFactoryStore.getState().project;
+      handleConnectEnd(event);
+      if (!hadOpenDrag || connectCompletedRef.current) {
+        return;
+      }
+      if (useFactoryStore.getState().project !== projectBefore) {
+        return;
+      }
+      const dropCardId = clientPosition ? getBoardNodeIdAtPosition(clientPosition) : undefined;
+      if (!dropCardId || dropCardId === dragNodeId) {
+        return;
+      }
+      playBoardSound("error");
+    },
+    [handleConnectEnd],
+  );
+
   useEffect(() => {
     const updatePointerPosition = (event: PointerEvent | MouseEvent | TouchEvent) => {
       if (!draggedResourceRef.current) {
@@ -5447,7 +5476,7 @@ export function FactoryFlow() {
         edgeTypes={edgeTypes}
         onConnect={handleConnect}
         onConnectStart={handleConnectStart}
-        onConnectEnd={handleConnectEnd}
+        onConnectEnd={handleConnectEndWithSound}
         onInit={handleInit}
         onMoveStart={handleMoveStart}
         onMoveEnd={handleMoveEnd}

@@ -24,8 +24,8 @@ import { useFactoryStore } from "@/store/factory-store";
  * Undo and redo are deliberately NOT special-cased: undoing a delete diffs
  * as an add and thumps like one, which is what the hand just did.
  *
- * The hook also gives every button in the app a barely-there tick, on
- * pointerdown so it lands with the finger rather than after the release.
+ * There is deliberately NO generic click sound. A tick on every button was
+ * tried and rejected: sound marks the PLAN changing, not the mouse working.
  */
 
 interface ProjectSoundSnapshot {
@@ -146,20 +146,6 @@ export function useBoardSoundEffects(): void {
       playProjectDiff(prev, next);
     });
 
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        return;
-      }
-      if (target.closest("button, [role='button']")) {
-        playBoardSound("tick");
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown, { capture: true, passive: true });
-
-    return () => {
-      unsubscribe();
-      document.removeEventListener("pointerdown", onPointerDown, { capture: true });
-    };
+    return unsubscribe;
   }, []);
 }
