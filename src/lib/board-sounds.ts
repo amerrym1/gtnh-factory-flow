@@ -140,13 +140,25 @@ function getContext(): AudioContext | undefined {
       masterGain = audioContext.createGain();
       // The one master volume. Everything below is relative to this.
       masterGain.gain.value = getBoardSoundVolume();
-      // A soft roof over the whole mix: synthesized edges above ~3kHz are
-      // what makes little UI notes sound cheap and spitty.
+      // A soft roof over the whole mix: synthesized edges high up are what
+      // makes little UI notes sound cheap and spitty. 5.5kHz keeps the
+      // presence band (1-4kHz) intact - loudness LIVES there, and an
+      // earlier 3.2kHz roof was part of why everything read as faint.
       const roof = audioContext.createBiquadFilter();
       roof.type = "lowpass";
-      roof.frequency.value = 3200;
+      roof.frequency.value = 5500;
+      // A limiter, not an effect: the voices are mixed hot so they carry
+      // over game audio, and overlapping notes at full volume must round
+      // off instead of clipping.
+      const limiter = audioContext.createDynamicsCompressor();
+      limiter.threshold.value = -8;
+      limiter.knee.value = 6;
+      limiter.ratio.value = 12;
+      limiter.attack.value = 0.002;
+      limiter.release.value = 0.1;
       masterGain.connect(roof);
-      roof.connect(audioContext.destination);
+      roof.connect(limiter);
+      limiter.connect(audioContext.destination);
       // The keep-alive: an inaudible DC-ish hum that never stops, so the
       // hardware output stream never parks between sounds. Routed straight
       // to the destination - it must survive the master volume at zero.
@@ -176,10 +188,16 @@ function getNoiseBuffer(ctx: AudioContext): AudioBuffer {
   return noiseBuffer;
 }
 
-/** Fade in over ATTACK, decay to silence, end at true zero. */
+/**
+ * Fade in over ATTACK, decay with a BODY, end at true zero. The body stage
+ * (down to a third of peak at mid-duration, then out) matters for loudness:
+ * the ear integrates over ~150ms, so a note that is all attack measures
+ * loud on a scope and still sounds like a faint tap.
+ */
 function shapeEnvelope(gain: AudioParam, t0: number, peak: number, duration: number): void {
   gain.setValueAtTime(0.0001, t0);
   gain.linearRampToValueAtTime(peak, t0 + ATTACK);
+  gain.exponentialRampToValueAtTime(peak * 0.35, t0 + duration * 0.45);
   gain.exponentialRampToValueAtTime(0.002, t0 + duration);
   gain.linearRampToValueAtTime(0, t0 + duration + 0.015);
 }
@@ -239,45 +257,52 @@ function puff(
   source.stop(t0 + options.duration + 0.03);
 }
 
+/**
+ * The voices. Tuning lesson learned the hard way: short pure sines below
+ * 300Hz are perceptually near-silent whatever their amplitude. Loudness
+ * needs duration (the body stage of the envelope), harmonics (triangle
+ * over sine), and some energy above 500Hz. Every voice carries all three.
+ */
 function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void {
   switch (kind) {
     case "place":
-      // A round thump with a soft knock on top: a card set down.
-      blip(ctx, out, { from: 240, to: 150, duration: 0.12, peak: 0.5 });
-      puff(ctx, out, { frequency: 1400, duration: 0.04, peak: 0.12 });
+      // A round thump, its octave for body, a knock for the touch.
+      blip(ctx, out, { from: 220, to: 150, duration: 0.22, peak: 0.65 });
+      blip(ctx, out, { from: 440, to: 300, duration: 0.15, peak: 0.2, type: "triangle" });
+      puff(ctx, out, { frequency: 1600, duration: 0.05, peak: 0.3 });
       break;
     case "delete":
       // A falling note: something left the board.
-      blip(ctx, out, { from: 330, to: 165, duration: 0.14, peak: 0.3, type: "triangle" });
+      blip(ctx, out, { from: 392, to: 196, duration: 0.25, peak: 0.5, type: "triangle" });
       break;
     case "connect":
       // Two rising notes a beat apart: the wire snapping home.
-      blip(ctx, out, { from: 587, to: 587, duration: 0.07, peak: 0.22 });
-      blip(ctx, out, { from: 880, to: 880, duration: 0.1, peak: 0.25, delay: 0.07 });
+      blip(ctx, out, { from: 659, to: 659, duration: 0.12, peak: 0.4, type: "triangle" });
+      blip(ctx, out, { from: 880, to: 880, duration: 0.16, peak: 0.45, delay: 0.08, type: "triangle" });
       break;
     case "unwire":
       // One falling note, softer than delete: only a wire went.
-      blip(ctx, out, { from: 494, to: 330, duration: 0.1, peak: 0.22 });
+      blip(ctx, out, { from: 523, to: 349, duration: 0.18, peak: 0.4, type: "triangle" });
       break;
     case "error":
-      // Two low notes stepping DOWN a minor third: a gentle "no".
-      blip(ctx, out, { from: 311, to: 311, duration: 0.08, peak: 0.25, type: "triangle" });
-      blip(ctx, out, { from: 262, to: 262, duration: 0.12, peak: 0.25, delay: 0.09, type: "triangle" });
+      // Two notes stepping DOWN a minor third: a gentle "no".
+      blip(ctx, out, { from: 311, to: 311, duration: 0.14, peak: 0.5, type: "triangle" });
+      blip(ctx, out, { from: 262, to: 262, duration: 0.22, peak: 0.5, delay: 0.1, type: "triangle" });
       break;
     case "open":
-      blip(ctx, out, { from: 262, to: 440, duration: 0.13, peak: 0.2, type: "triangle" });
+      blip(ctx, out, { from: 294, to: 494, duration: 0.2, peak: 0.4, type: "triangle" });
       break;
     case "close":
-      blip(ctx, out, { from: 440, to: 262, duration: 0.13, peak: 0.2, type: "triangle" });
+      blip(ctx, out, { from: 494, to: 294, duration: 0.2, peak: 0.4, type: "triangle" });
       break;
     case "adjust":
       // A neutral mid tap: a knob turned, a pill cycled, a count stepped.
-      blip(ctx, out, { from: 520, to: 520, duration: 0.05, peak: 0.14, type: "triangle" });
+      blip(ctx, out, { from: 587, to: 587, duration: 0.08, peak: 0.3, type: "triangle" });
       break;
     case "sweep":
       // One broad soft brush for a bulk change, however big it was.
-      puff(ctx, out, { frequency: 600, q: 0.8, duration: 0.2, peak: 0.25 });
-      blip(ctx, out, { from: 220, to: 294, duration: 0.18, peak: 0.15 });
+      puff(ctx, out, { frequency: 800, q: 0.9, duration: 0.3, peak: 0.5 });
+      blip(ctx, out, { from: 262, to: 349, duration: 0.28, peak: 0.3 });
       break;
   }
 }
