@@ -18,6 +18,9 @@ import { useSolvingBooks } from "@/components/flow/use-solving-books";
 // menu clips rather than wraps, so this and the labels move together.
 const MENU_WIDTH = 230;
 
+/** Furthest the track rubber-bands past either end, in px. */
+const RUBBER_MAX = 14;
+
 /** Which destructive item is one click from firing, if any. */
 type ArmedAction = "delete" | "right" | "left" | "others";
 
@@ -129,6 +132,27 @@ export function DesignTabs() {
     // drag-nudge cannot leave it stale.
     let wheelTarget: number | undefined;
     let forgetTimer: ReturnType<typeof setTimeout> | undefined;
+    // Rubber band: wheeling past an end nudges the whole track a few damped
+    // pixels in the direction of travel and springs it back, so the end feels
+    // like an end instead of the wheel just going dead.
+    let band = 0;
+    let bandTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const setBand = (next: number) => {
+      const track = trackRef.current;
+      if (!track) {
+        return;
+      }
+      band = next;
+      if (next === 0) {
+        // A touch of ease-back overshoot, so the return reads as a spring.
+        track.style.transition = "transform 260ms cubic-bezier(0.2, 0.7, 0.3, 1.15)";
+        track.style.transform = "";
+      } else {
+        track.style.transition = "transform 80ms ease-out";
+        track.style.transform = `translateX(${-next}px)`;
+      }
+    };
 
     const onWheel = (event: WheelEvent) => {
       if (scroller.scrollWidth <= scroller.clientWidth) {
@@ -143,8 +167,22 @@ export function DesignTabs() {
       // Line-mode deltas (some mice on Firefox) arrive in rows, not pixels.
       const pixels = event.deltaMode === 1 ? delta * 16 : delta;
       const maxScroll = scroller.scrollWidth - scroller.clientWidth;
-      wheelTarget = Math.max(0, Math.min(maxScroll, (wheelTarget ?? scroller.scrollLeft) + pixels));
+      const raw = (wheelTarget ?? scroller.scrollLeft) + pixels;
+      wheelTarget = Math.max(0, Math.min(maxScroll, raw));
       scroller.scrollTo({ left: wheelTarget, behavior: "smooth" });
+
+      // Whatever the clamp swallowed is the pull past the end. Signed the same
+      // way as scroll: positive past the right end, negative past the left.
+      const excess = raw - wheelTarget;
+      if (excess !== 0) {
+        // Diminishing returns and a hard cap: resistance, not travel.
+        setBand(Math.max(-RUBBER_MAX, Math.min(RUBBER_MAX, band + excess * 0.25)));
+        clearTimeout(bandTimer);
+        bandTimer = setTimeout(() => setBand(0), 140);
+      } else if (band !== 0) {
+        setBand(0);
+      }
+
       clearTimeout(forgetTimer);
       forgetTimer = setTimeout(() => {
         wheelTarget = undefined;
@@ -155,6 +193,12 @@ export function DesignTabs() {
     return () => {
       scroller.removeEventListener("wheel", onWheel);
       clearTimeout(forgetTimer);
+      clearTimeout(bandTimer);
+      const track = trackRef.current;
+      if (track) {
+        track.style.transition = "";
+        track.style.transform = "";
+      }
     };
     // isHydrated: same as the observer above — no scroller exists at mount.
   }, [isHydrated]);
@@ -197,6 +241,8 @@ export function DesignTabs() {
     let targetIndex = 0;
     /** How far a displaced neighbour slides: the held pill's footprint. */
     let step = 0;
+    /** Half the held pill: its leading edge is what asks neighbours to move. */
+    let reach = 0;
     let startTrackX = 0;
 
     const trackX = (clientX: number) => clientX - track.getBoundingClientRect().left;
@@ -229,6 +275,7 @@ export function DesignTabs() {
         step = neighbour
           ? Math.abs(neighbour.rect.left - rects[startIndex].rect.left)
           : rects[startIndex].rect.width;
+        reach = rects[startIndex].rect.width / 2;
 
         for (const slot of slots) {
           if (slot === dragged) {
@@ -247,12 +294,19 @@ export function DesignTabs() {
       const dx = trackX(moveEvent.clientX) - startTrackX;
       dragged.el.style.transform = `translateX(${dx}px)`;
 
-      // Which slot the held pill's centre is over, against RESTING midpoints:
-      // the DOM never reorders mid-drag, so they stay true.
+      // Where the held pill sits, against RESTING midpoints — the DOM never
+      // reorders mid-drag, so they stay true. A neighbour yields as soon as
+      // the pill's LEADING EDGE reaches its middle, not when centre passes
+      // centre: each slot's threshold moves `reach` towards the held pill, so
+      // tabs step aside early instead of waiting to be fully overlapped.
       const centre = dragged.mid + dx;
       let index = 0;
       for (const slot of slots) {
-        if (slot !== dragged && centre > slot.mid) {
+        if (slot === dragged) {
+          continue;
+        }
+        const threshold = slot.mid > dragged.mid ? slot.mid - reach : slot.mid + reach;
+        if (centre > threshold) {
           index += 1;
         }
       }
