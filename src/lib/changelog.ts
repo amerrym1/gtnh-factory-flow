@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.37.0",
+    date: "2026-08-27",
+    headline: "A tidier board toolbar",
+    notes: [
+      "The view switches now live in one menu, each with its name and what it does.",
+      "The draw tools share one button that remembers your last pick.",
+      "The rate unit is one key that opens a list.",
+      "Setup rules and auto-arrange moved to the top right, and every button got a little smaller.",
+    ],
+  },
+  {
     version: "2.36.0",
     date: "2026-08-27",
     headline: "Tabs you can rearrange",
