@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.36.0",
+    date: "2026-08-27",
+    headline: "Tabs you can rearrange",
+    notes: [
+      "Drag a tab left or right to reorder your designs, and the order sticks.",
+      "A plan with a saved icon shows it on its tab.",
+      "The mouse wheel scrolls the tab strip, with a little bounce at the ends.",
+      "Long tab strips fade out at the edges instead of showing arrow buttons.",
+    ],
+  },
+  {
     version: "2.35.3",
     date: "2026-08-26",
     headline: "The thinking spinner moves out of the way",
