@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Compass } from "lucide-react";
+import { Compass } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { EntryIcon } from "@/lib/model/types";
@@ -17,9 +17,6 @@ import { useSolvingBooks } from "@/components/flow/use-solving-books";
 // Wide enough for the longest item on one line ("Close tabs to right"); the
 // menu clips rather than wraps, so this and the labels move together.
 const MENU_WIDTH = 230;
-
-/** How far one arrow press travels — roughly one tab. */
-const SCROLL_STEP = 160;
 
 /** Which destructive item is one click from firing, if any. */
 type ArmedAction = "delete" | "right" | "left" | "others";
@@ -71,11 +68,15 @@ export function DesignTabs() {
     }
 
     const maxScroll = scroller.scrollWidth - scroller.clientWidth;
-    setOverflow({
-      // A pixel of slack: fractional widths otherwise leave an arrow enabled
-      // with nowhere left to go.
-      left: scroller.scrollLeft > 1,
-      right: scroller.scrollLeft < maxScroll - 1,
+    setOverflow((previous) => {
+      const next = {
+        // A pixel of slack: fractional widths otherwise leave a fade lit with
+        // nowhere left to scroll.
+        left: scroller.scrollLeft > 1,
+        right: scroller.scrollLeft < maxScroll - 1,
+      };
+      // Scrolling fires this per frame; same answer, same object, no render.
+      return next.left === previous.left && next.right === previous.right ? previous : next;
     });
   }, []);
 
@@ -109,10 +110,6 @@ export function DesignTabs() {
       ?.querySelector(`[data-design-id="${CSS.escape(activeDesignId)}"]`)
       ?.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" });
   }, [activeDesignId]);
-
-  const scrollTabs = (direction: -1 | 1) => {
-    scrollerRef.current?.scrollBy({ left: direction * SCROLL_STEP, behavior: "smooth" });
-  };
 
   // The strip is the one horizontal scroller under a vertical wheel, so plain
   // wheel input walks the tabs. Attached natively: React registers wheel
@@ -372,19 +369,25 @@ export function DesignTabs() {
           </div>
         ) : null}
 
-        {overflow.left ? <ScrollArrow direction={-1} onClick={() => scrollTabs(-1)} /> : null}
-
         {/*
           Sized to its tabs (`shrink`), not to the whole bar (`flex-1`): with a
           couple of designs the strip is only as wide as they are, so the `+`
           sits against the last tab instead of being stranded at the far right.
           Once the tabs outgrow the bar it shrinks and scrolls instead.
+
+          More-tabs-this-way is said with edge FADES, not buttons: they overlay
+          the strip's ends, always mounted and only changing opacity, so the
+          row never shifts when one lights up. (The arrows this replaces popped
+          in and out of the flex row, walking every tab sideways each time.)
+          Scrolling itself already has the wheel, the trackpad, a finger, and
+          dragging a tab against either end.
         */}
-        <div
-          ref={scrollerRef}
-          onScroll={syncOverflow}
-          className="no-scrollbar min-w-0 shrink overflow-x-auto"
-        >
+        <div className="relative min-w-0 shrink">
+          <div
+            ref={scrollerRef}
+            onScroll={syncOverflow}
+            className="no-scrollbar min-w-0 overflow-x-auto"
+          >
           <nav
             ref={trackRef}
             aria-label="Designs"
@@ -482,9 +485,23 @@ export function DesignTabs() {
               );
             })}
           </nav>
-        </div>
+          </div>
 
-        {overflow.right ? <ScrollArrow direction={1} onClick={() => scrollTabs(1)} /> : null}
+          <span
+            aria-hidden
+            className={[
+              "pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-surface to-transparent transition-opacity duration-200",
+              overflow.left ? "opacity-100" : "opacity-0",
+            ].join(" ")}
+          />
+          <span
+            aria-hidden
+            className={[
+              "pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-surface to-transparent transition-opacity duration-200",
+              overflow.right ? "opacity-100" : "opacity-0",
+            ].join(" ")}
+          />
+        </div>
 
         {/* Just outside the scroller: next to the last tab, but never scrolled
             out of reach the way it would be inside the list. */}
@@ -698,26 +715,6 @@ function splitNeighbours(ids: string[], anchorId: string) {
   const left = ids.slice(0, index);
   const right = ids.slice(index + 1);
   return { left, right, others: [...left, ...right] };
-}
-
-/**
- * Rendered only when there is something to scroll to in that direction, so the
- * strip stays clean at the common case of a handful of designs.
- */
-function ScrollArrow({ direction, onClick }: { direction: -1 | 1; onClick: () => void }) {
-  const Icon = direction === -1 ? ChevronLeft : ChevronRight;
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={direction === -1 ? "Scroll tabs left" : "Scroll tabs right"}
-      title={direction === -1 ? "Scroll tabs left" : "Scroll tabs right"}
-      className="inline-flex h-7 w-5 shrink-0 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-fg"
-    >
-      <Icon className="h-4 w-4" />
-    </button>
-  );
 }
 
 function MenuItem({
