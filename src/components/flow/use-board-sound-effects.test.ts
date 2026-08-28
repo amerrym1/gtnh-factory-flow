@@ -91,6 +91,17 @@ describe("playProjectDiff", () => {
     expect(diff(drawerBefore, drawerAfter)).toEqual(["adjust"]);
   });
 
+  it("plays open and close when a board unfolds and folds", () => {
+    const folded = project({
+      pockets: [{ id: "p", name: "Zone" }],
+    } as Partial<FactoryProject>);
+    const unfolded = project({
+      pockets: [{ id: "p", name: "Zone", expanded: true, size: { width: 400, height: 300 } }],
+    } as Partial<FactoryProject>);
+    expect(diff(folded, unfolded)).toEqual(["open"]);
+    expect(diff(unfolded, folded)).toEqual(["close"]);
+  });
+
   it("stays silent for a pure move", () => {
     const before = project({ nodes: [node("a")] });
     const after = project({ nodes: [{ ...node("a"), position: { x: 100, y: 100 } }] });

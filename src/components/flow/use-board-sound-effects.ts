@@ -13,9 +13,9 @@ import { useFactoryStore } from "@/store/factory-store";
  * paths added later, which is the point.
  *
  * SOUNDS ARE FOR THE CANVAS ONLY (Jack, 2026-08-28): cards landing and
- * leaving, wires connecting and cutting, card settings changing, bulk
- * changes. Navigation and chrome are silent - no tab sounds, no button
- * sounds, no board window open/close. Two guards enforce that beyond the
+ * leaving, wires connecting and cutting, boards folding and unfolding,
+ * card settings changing, bulk changes. Navigation and chrome are silent -
+ * no tab sounds, no button sounds. Two guards enforce that beyond the
  * id-diff itself:
  * - A project id change is navigation and plays nothing, and it opens a
  *   short QUIET WINDOW: loading machinery (migrations, icon refreshes,
@@ -33,6 +33,8 @@ interface ProjectSoundSnapshot {
   projectId: string;
   nodeIds: Set<string>;
   edgeIds: Set<string>;
+  /** Boards standing open as windows; folding and unfolding sound. */
+  openPocketIds: Set<string>;
   /**
    * Every card serialized through the cosmetic filter: machine counts,
    * tiers, drain pills, config choices survive; positions and art do not.
@@ -76,10 +78,17 @@ export function snapshotProject(project: FactoryProject): ProjectSoundSnapshot {
   for (const edge of project.edges) {
     edgeIds.add(edge.id);
   }
+  const openPocketIds = new Set<string>();
+  for (const pocket of project.pockets ?? []) {
+    if (pocket.expanded) {
+      openPocketIds.add(pocket.id);
+    }
+  }
   return {
     projectId: project.id,
     nodeIds,
     edgeIds,
+    openPocketIds,
     configSignature: signatureParts.join("\n"),
   };
 }
@@ -109,10 +118,14 @@ export function playProjectDiff(prev: ProjectSoundSnapshot, next: ProjectSoundSn
     return;
   }
 
-  // Nothing structural moved, but a card's settings did: a machine count
-  // stepped, a drain pill cycled, a config chosen. One neutral tap.
+  // Nothing structural moved: a board folded or unfolded, or a card's
+  // settings changed (machine count, drain pill, config). One sound.
   if (total === 0) {
-    if (next.configSignature !== prev.configSignature) {
+    if (countMissing(next.openPocketIds, prev.openPocketIds) > 0) {
+      playBoardSound("open");
+    } else if (countMissing(prev.openPocketIds, next.openPocketIds) > 0) {
+      playBoardSound("close");
+    } else if (next.configSignature !== prev.configSignature) {
       playBoardSound("adjust");
     }
     return;
