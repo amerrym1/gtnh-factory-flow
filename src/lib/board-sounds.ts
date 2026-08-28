@@ -340,12 +340,12 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void
       puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.16 });
       break;
     case "placeSource":
-      // Two flat taps on ONE note: a knock-knock, no direction at all.
-      // Every directional pairing failed the ear test - down read as an
-      // error whichever meaning wore it - so only the product rises and
-      // the source stays level.
-      blip(ctx, out, { from: 175, to: 175, duration: 0.13, peak: 0.38 });
-      blip(ctx, out, { from: 175, to: 175, duration: 0.16, peak: 0.36, delay: 0.09 });
+      // ONE flat tap, a shade above the machine thump. The knock-knock
+      // pair kept reading wrong (and a burst could steal its second knock,
+      // so the same action sounded different run to run); the single beat
+      // is what survived the ear test. Down-motion stays reserved for
+      // delete.
+      blip(ctx, out, { from: 185, to: 185, duration: 0.16, peak: 0.4 });
       puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.16 });
       break;
     case "delete":

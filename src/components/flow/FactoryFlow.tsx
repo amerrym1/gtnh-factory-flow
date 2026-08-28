@@ -8931,16 +8931,35 @@ function VoidDropGhost() {
         ref={ghostRef}
         className="pointer-events-none absolute left-0 top-0"
         style={{
-          zIndex: 14,
+          // Above the connection line's own layer: the pipe runs UNDER the
+          // ghost and disappears behind it, exactly as a docked wire does
+          // behind the real drawer.
+          zIndex: 1500,
           width: STORAGE_NODE_WIDTH,
           height: STORAGE_NODE_HEIGHT,
           display: "none",
-          // The real tile at half presence: recognisably the drawer that
-          // will exist, visibly not existing yet.
-          opacity: 0.62,
         }}
       >
-        <StorageTileFace storage={ghostStorage} role={voidDropGhostRole} />
+        {/* An opaque board-dark backing in the tile's own silhouette, so
+            the ghost occludes the wire completely while the face above it
+            still reads as faded. Transparency alone let the pipe shine
+            through the preview. */}
+        <span
+          aria-hidden
+          data-storage-shape={voidDropGhostRole}
+          className="storage-shape absolute inset-0"
+          style={{ background: "#0d1117" }}
+        />
+        <div
+          className="relative h-full w-full"
+          style={{
+            // The real tile at half presence: recognisably the drawer that
+            // will exist, visibly not existing yet.
+            opacity: 0.62,
+          }}
+        >
+          <StorageTileFace storage={ghostStorage} role={voidDropGhostRole} />
+        </div>
       </div>
     </ViewportPortal>
   );
