@@ -85,7 +85,8 @@ export function setBoardSoundVolume(volume: number): void {
 }
 
 export type BoardSoundKind =
-  | "place" // a card or drawer lands on the board
+  | "place" // a card lands, or a drawer spawns to CATCH a product
+  | "placeSource" // a drawer spawns to SUPPLY something: same thump, rising
   | "delete" // a card leaves the board
   | "connect" // a wire snaps in
   | "unwire" // a wire is cut
@@ -300,9 +301,16 @@ function puff(
 function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void {
   switch (kind) {
     case "place":
-      // A round thump, its octave for body, a knock for the touch.
-      blip(ctx, out, { from: 196, to: 140, duration: 0.22, peak: 0.42 });
-      blip(ctx, out, { from: 392, to: 280, duration: 0.15, peak: 0.13, type: "triangle" });
+      // A round thump, its octave for body, a knock for the touch. The
+      // fall is shallow on purpose: a deep drop read as a sad landing.
+      blip(ctx, out, { from: 196, to: 165, duration: 0.22, peak: 0.42 });
+      blip(ctx, out, { from: 392, to: 330, duration: 0.15, peak: 0.13, type: "triangle" });
+      puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.18 });
+      break;
+    case "placeSource":
+      // The same thump tilted UPWARD: supply arriving, not product piling.
+      blip(ctx, out, { from: 165, to: 208, duration: 0.22, peak: 0.42 });
+      blip(ctx, out, { from: 330, to: 415, duration: 0.15, peak: 0.13, type: "triangle" });
       puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.18 });
       break;
     case "delete":
@@ -311,9 +319,10 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void
       blip(ctx, out, { from: 311, to: 233, duration: 0.18, peak: 0.34, type: "triangle" });
       break;
     case "connect":
-      // Two rising notes a beat apart: the wire snapping home.
-      blip(ctx, out, { from: 587, to: 587, duration: 0.12, peak: 0.28, type: "triangle" });
-      blip(ctx, out, { from: 698, to: 698, duration: 0.16, peak: 0.3, delay: 0.08, type: "triangle" });
+      // A click and a settled tone one step up: latched, not celebrated.
+      // The old wide-interval chime read as a fanfare.
+      blip(ctx, out, { from: 523, to: 523, duration: 0.08, peak: 0.24, type: "triangle" });
+      blip(ctx, out, { from: 587, to: 587, duration: 0.14, peak: 0.26, delay: 0.06, type: "triangle" });
       break;
     case "unwire":
       // One falling note, softer than delete: only a wire went.

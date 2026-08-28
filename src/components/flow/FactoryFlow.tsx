@@ -2002,6 +2002,12 @@ export function FactoryFlow() {
   const draggedResourceRef = useRef<DraggedResourceConnection | undefined>(undefined);
   const lastConnectionPointerRef = useRef<{ x: number; y: number } | undefined>(undefined);
   const connectCompletedRef = useRef(false);
+  // For the failure sound: the plan as it stood when the wire drag began
+  // (onConnect runs before onConnectEnd, so "did this gesture change
+  // anything" must compare against drag START, not connect-end entry), and
+  // whether the gesture handed off to the async loose-cell ratio fetch.
+  const projectAtConnectStartRef = useRef<FactoryProject | undefined>(undefined);
+  const pendingLooseWireRef = useRef(false);
   const dropFitFrameRef = useRef<number | undefined>(undefined);
   // Export requests run one after another rather than bouncing: the dialog
   // fires its preview capture the moment it opens, and a second request
@@ -3395,6 +3401,7 @@ export function FactoryFlow() {
               ? getCrossFormCellMatch(outputResource, inputResource)
               : undefined;
             if (crossFormMatch && outputHandle.handleId && inputHandle.handleId) {
+              pendingLooseWireRef.current = true;
               void connectLooseCellWire(
                 { nodeId: outputHandle.nodeId, handleId: outputHandle.handleId },
                 { nodeId: inputHandle.nodeId, handleId: inputHandle.handleId },
@@ -3511,6 +3518,8 @@ export function FactoryFlow() {
       const handleId = params.handleId ?? eventHandle?.handleId;
 
       connectCompletedRef.current = false;
+      projectAtConnectStartRef.current = useFactoryStore.getState().project;
+      pendingLooseWireRef.current = false;
       lastConnectionPointerRef.current = getClientPosition(event);
       draggedResourceRef.current =
         nodeId && handleId ? getDraggedResourceForHandle(project, nodeId, handleId) : undefined;
@@ -3645,6 +3654,7 @@ export function FactoryFlow() {
               : undefined;
             if (crossFormMatch) {
               connectCompletedRef.current = true;
+              pendingLooseWireRef.current = true;
               void connectLooseCellWire(source, target, outputResource, crossFormMatch);
             }
             return;
@@ -3728,25 +3738,32 @@ export function FactoryFlow() {
   );
 
   // A wire drag that ended and changed NOTHING is a failure the ear should
-  // hear - a drop on a red-washed card, or a release into a void that
-  // spawned nothing. Successes need no hook here: the store watcher hears
-  // the new edge or drawer. The ONE silent ending is a release back on the
-  // origin card: that is a cancel - and it is also what a plain CLICK on a
-  // port row looks like to React Flow, so buzzing it would buzz every
-  // browse.
+  // hear - a drop on a red-washed card, a full input, a release into a
+  // void that spawned nothing. The verdict is the PLAN alone, measured
+  // from drag START (React Flow runs onConnect before onConnectEnd, and
+  // handleConnect marks the gesture completed before it validates, so
+  // neither the completed flag nor connect-end entry state can tell a
+  // refused handle drop from a wired one). The silent endings: the plan
+  // changed (success - the watcher plays it), the async loose-cell fetch
+  // owns the outcome, or the release was back on the origin card - a
+  // cancel, and also what a plain CLICK on a port row looks like, so
+  // buzzing it would buzz every browse.
   const handleConnectEndWithSound = useCallback(
     (event: MouseEvent | TouchEvent) => {
       const draggedResource = draggedResourceRef.current;
-      const hadOpenDrag = Boolean(draggedResource) && !connectCompletedRef.current;
       const dragNodeId = draggedResource?.nodeId;
+      const projectAtStart = projectAtConnectStartRef.current;
+      projectAtConnectStartRef.current = undefined;
       // Read the pointer BEFORE the handler, which clears it as it runs.
       const clientPosition = getClientPosition(event) ?? lastConnectionPointerRef.current;
-      const projectBefore = useFactoryStore.getState().project;
       handleConnectEnd(event);
-      if (!hadOpenDrag || connectCompletedRef.current) {
+      if (!draggedResource || !projectAtStart) {
         return;
       }
-      if (useFactoryStore.getState().project !== projectBefore) {
+      if (useFactoryStore.getState().project !== projectAtStart) {
+        return;
+      }
+      if (pendingLooseWireRef.current) {
         return;
       }
       const dropCardId = clientPosition ? getBoardNodeIdAtPosition(clientPosition) : undefined;

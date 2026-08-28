@@ -91,6 +91,23 @@ describe("playProjectDiff", () => {
     expect(diff(drawerBefore, drawerAfter)).toEqual(["adjust"]);
   });
 
+  it("tells a supply drawer from a catch drawer by the wire direction", () => {
+    const machine = project({ nodes: [node("m")] });
+    const withSupply = project({
+      nodes: [node("m")],
+      storages: [{ id: "s", kind: "item", resourceId: "x", position: { x: 0, y: 0 } }],
+      edges: [{ ...edge("e1"), source: "s", target: "m" }],
+    } as Partial<FactoryProject>);
+    expect(diff(machine, withSupply)).toEqual(["placeSource"]);
+
+    const withCatch = project({
+      nodes: [node("m")],
+      storages: [{ id: "s", kind: "item", resourceId: "x", position: { x: 0, y: 0 } }],
+      edges: [{ ...edge("e1"), source: "m", target: "s" }],
+    } as Partial<FactoryProject>);
+    expect(diff(machine, withCatch)).toEqual(["place"]);
+  });
+
   it("plays open and close when a board unfolds and folds", () => {
     const folded = project({
       pockets: [{ id: "p", name: "Zone" }],

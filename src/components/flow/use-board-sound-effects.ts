@@ -35,6 +35,10 @@ interface ProjectSoundSnapshot {
   edgeIds: Set<string>;
   /** Boards standing open as windows; folding and unfolding sound. */
   openPocketIds: Set<string>;
+  /** Drawer ids, to tell a supply spawn from a catch spawn. */
+  storageIds: Set<string>;
+  /** Edge endpoints, to see which way a freshly spawned drawer faces. */
+  edgeEnds: Map<string, { source: string; target: string }>;
   /**
    * Every card serialized through the cosmetic filter: machine counts,
    * tiers, drain pills, config choices survive; positions and art do not.
@@ -70,13 +74,17 @@ export function snapshotProject(project: FactoryProject): ProjectSoundSnapshot {
     nodeIds.add(node.id);
     signatureParts.push(JSON.stringify(node, signatureReplacer));
   }
+  const storageIds = new Set<string>();
   for (const storage of project.storages ?? []) {
     nodeIds.add(storage.id);
+    storageIds.add(storage.id);
     signatureParts.push(JSON.stringify(storage, signatureReplacer));
   }
   const edgeIds = new Set<string>();
+  const edgeEnds = new Map<string, { source: string; target: string }>();
   for (const edge of project.edges) {
     edgeIds.add(edge.id);
+    edgeEnds.set(edge.id, { source: edge.source, target: edge.target });
   }
   const openPocketIds = new Set<string>();
   for (const pocket of project.pockets ?? []) {
@@ -89,6 +97,8 @@ export function snapshotProject(project: FactoryProject): ProjectSoundSnapshot {
     nodeIds,
     edgeIds,
     openPocketIds,
+    storageIds,
+    edgeEnds,
     configSignature: signatureParts.join("\n"),
   };
 }
@@ -105,6 +115,36 @@ function countMissing(from: Set<string>, inSet: Set<string>): number {
 
 /** At or past this many changed ids, one change is a bulk change. */
 const BULK_THRESHOLD = 8;
+
+/**
+ * True when everything that landed is drawers and a new wire runs OUT of
+ * one - the void-drop that answers "who supplies this" - so the thump can
+ * tilt upward. A drawer catching a product keeps the plain place thump,
+ * as do machine cards and mixed paste-ins.
+ */
+function spawnedSupplyDrawer(prev: ProjectSoundSnapshot, next: ProjectSoundSnapshot): boolean {
+  const newSolids: string[] = [];
+  for (const id of next.nodeIds) {
+    if (!prev.nodeIds.has(id)) {
+      newSolids.push(id);
+    }
+  }
+  if (newSolids.length === 0 || !newSolids.every((id) => next.storageIds.has(id))) {
+    return false;
+  }
+  for (const [id, ends] of next.edgeEnds) {
+    if (prev.edgeEnds.has(id)) {
+      continue;
+    }
+    if (newSolids.includes(ends.source)) {
+      return true;
+    }
+    if (newSolids.includes(ends.target)) {
+      return false;
+    }
+  }
+  return false;
+}
 
 export function playProjectDiff(prev: ProjectSoundSnapshot, next: ProjectSoundSnapshot): void {
   const addedNodes = countMissing(next.nodeIds, prev.nodeIds);
@@ -136,7 +176,7 @@ export function playProjectDiff(prev: ProjectSoundSnapshot, next: ProjectSoundSn
   // either action alone - which read as broken volume, not as two events.
   // Priority: what arrived beats what left, cards beat wires.
   if (addedNodes > 0) {
-    playBoardSound("place");
+    playBoardSound(spawnedSupplyDrawer(prev, next) ? "placeSource" : "place");
   } else if (removedNodes > 0) {
     playBoardSound("delete");
   } else if (addedEdges > 0) {
