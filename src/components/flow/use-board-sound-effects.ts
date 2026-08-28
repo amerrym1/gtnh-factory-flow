@@ -117,12 +117,16 @@ function countMissing(from: Set<string>, inSet: Set<string>): number {
 const BULK_THRESHOLD = 8;
 
 /**
- * True when everything that landed is drawers and a new wire runs OUT of
- * one - the void-drop that answers "who supplies this" - so the thump can
- * tilt upward. A drawer catching a product keeps the plain place thump,
- * as do machine cards and mixed paste-ins.
+ * Which place voice a landing gets. When everything that landed is drawers,
+ * the new wire's direction tells supply from catch: a wire OUT of the new
+ * drawer is "who supplies this" answered (placeSource, stepping up), a wire
+ * INTO it is a product getting banked (placeProduct, stepping down).
+ * Machine cards and mixed paste-ins keep the plain flat thump.
  */
-function spawnedSupplyDrawer(prev: ProjectSoundSnapshot, next: ProjectSoundSnapshot): boolean {
+function placeKindFor(
+  prev: ProjectSoundSnapshot,
+  next: ProjectSoundSnapshot,
+): "place" | "placeProduct" | "placeSource" {
   const newSolids: string[] = [];
   for (const id of next.nodeIds) {
     if (!prev.nodeIds.has(id)) {
@@ -130,20 +134,20 @@ function spawnedSupplyDrawer(prev: ProjectSoundSnapshot, next: ProjectSoundSnaps
     }
   }
   if (newSolids.length === 0 || !newSolids.every((id) => next.storageIds.has(id))) {
-    return false;
+    return "place";
   }
   for (const [id, ends] of next.edgeEnds) {
     if (prev.edgeEnds.has(id)) {
       continue;
     }
     if (newSolids.includes(ends.source)) {
-      return true;
+      return "placeSource";
     }
     if (newSolids.includes(ends.target)) {
-      return false;
+      return "placeProduct";
     }
   }
-  return false;
+  return "place";
 }
 
 export function playProjectDiff(prev: ProjectSoundSnapshot, next: ProjectSoundSnapshot): void {
@@ -176,7 +180,7 @@ export function playProjectDiff(prev: ProjectSoundSnapshot, next: ProjectSoundSn
   // either action alone - which read as broken volume, not as two events.
   // Priority: what arrived beats what left, cards beat wires.
   if (addedNodes > 0) {
-    playBoardSound(spawnedSupplyDrawer(prev, next) ? "placeSource" : "place");
+    playBoardSound(placeKindFor(prev, next));
   } else if (removedNodes > 0) {
     playBoardSound("delete");
   } else if (addedEdges > 0) {

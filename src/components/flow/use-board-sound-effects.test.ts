@@ -105,7 +105,7 @@ describe("playProjectDiff", () => {
       storages: [{ id: "s", kind: "item", resourceId: "x", position: { x: 0, y: 0 } }],
       edges: [{ ...edge("e1"), source: "m", target: "s" }],
     } as Partial<FactoryProject>);
-    expect(diff(machine, withCatch)).toEqual(["place"]);
+    expect(diff(machine, withCatch)).toEqual(["placeProduct"]);
   });
 
   it("plays open and close when a board unfolds and folds", () => {

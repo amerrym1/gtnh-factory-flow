@@ -85,8 +85,9 @@ export function setBoardSoundVolume(volume: number): void {
 }
 
 export type BoardSoundKind =
-  | "place" // a card lands, or a drawer spawns to CATCH a product
-  | "placeSource" // a drawer spawns to SUPPLY something: same thump, rising
+  | "place" // a machine card lands: one flat thump
+  | "placeProduct" // a drawer spawns to CATCH a product: thump stepping down
+  | "placeSource" // a drawer spawns to SUPPLY something: thump stepping up
   | "delete" // a card leaves the board
   | "connect" // a wire snaps in
   | "unwire" // a wire is cut
@@ -324,17 +325,24 @@ function puff(
 function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void {
   switch (kind) {
     case "place":
-      // A round thump, its octave for body, a knock for the touch. The
-      // fall is shallow on purpose: a deep drop read as a sad landing.
-      blip(ctx, out, { from: 196, to: 165, duration: 0.22, peak: 0.42 });
-      blip(ctx, out, { from: 392, to: 330, duration: 0.15, peak: 0.13 });
+      // One FLAT rounded thump with a knock: a card set down. No pitch
+      // fall at all - any downward movement here read as the delete
+      // family, however shallow.
+      blip(ctx, out, { from: 196, to: 196, duration: 0.2, peak: 0.44 });
       puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.18 });
       break;
+    case "placeProduct":
+      // Two discrete taps stepping DOWN a fourth: product banked. The
+      // mirror of placeSource, so the pair reads as out vs in.
+      blip(ctx, out, { from: 196, to: 196, duration: 0.14, peak: 0.4 });
+      blip(ctx, out, { from: 147, to: 147, duration: 0.16, peak: 0.36, delay: 0.09 });
+      puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.16 });
+      break;
     case "placeSource":
-      // The same thump tilted UPWARD: supply arriving, not product piling.
-      blip(ctx, out, { from: 165, to: 208, duration: 0.22, peak: 0.42 });
-      blip(ctx, out, { from: 330, to: 415, duration: 0.15, peak: 0.13 });
-      puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.18 });
+      // Two discrete taps stepping UP a fourth: supply arriving.
+      blip(ctx, out, { from: 147, to: 147, duration: 0.14, peak: 0.36 });
+      blip(ctx, out, { from: 196, to: 196, duration: 0.16, peak: 0.4, delay: 0.09 });
+      puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.16 });
       break;
     case "delete":
       // A small settling step down - removed, not mourned. The octave
