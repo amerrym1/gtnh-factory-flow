@@ -90,6 +90,7 @@ export type BoardSoundKind =
   | "placeSource" // a drawer spawns to SUPPLY something: thump stepping up
   | "delete" // a card leaves the board
   | "connect" // a wire snaps in
+  | "snap" // the dragged wire catches a compatible slot mid-drag
   | "unwire" // a wire is cut
   | "error" // a wire drop was refused
   | "open" // a board window unfolds from its summary card
@@ -358,6 +359,13 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void
       // The old wide-interval chime read as a fanfare.
       blip(ctx, out, { from: 523, to: 523, duration: 0.08, peak: 0.24 });
       blip(ctx, out, { from: 587, to: 587, duration: 0.14, peak: 0.26, delay: 0.06 });
+      break;
+    case "snap":
+      // A quick grab: the scratch material but snappier - a short brush
+      // with a small tick of tone, pitched mid rather than high. Fires on
+      // the TRANSITION into a snap, never per frame.
+      puff(ctx, out, { frequency: 1300, q: 1.4, duration: 0.045, peak: 0.22 });
+      blip(ctx, out, { from: 523, to: 523, duration: 0.04, peak: 0.1, delay: 0.01 });
       break;
     case "unwire":
       // One falling note, softer than delete: only a wire went.

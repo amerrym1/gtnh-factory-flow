@@ -21,7 +21,6 @@ import {
   type NodeTypes,
   type OnSelectionChangeParams,
   type ReactFlowInstance,
-  useReactFlow,
   useStore,
   useStoreApi,
   ViewportPortal,
@@ -1612,6 +1611,15 @@ let voidDropWillSpawn = false;
  */
 let voidDropGhostStorage: FactoryStorage | undefined;
 let voidDropGhostRole: "source" | "product" = "product";
+
+/**
+ * The connection line's live end, published each render in FLOW coords. The
+ * ghost positions from THIS rather than converting pointer events itself:
+ * two separate conversions drifted apart (the ghost sat well off the
+ * pointer), and the line's own coordinates are the ground truth by
+ * definition.
+ */
+let lastConnectionFlowPoint: { x: number; y: number } | undefined;
 
 // Slot endpoints cached relative to their node's origin, keyed by node size.
 // Measuring through the DOM made an edge's endpoints depend on whether its
@@ -8803,6 +8811,8 @@ function ResourceConnectionLine({
   toPosition,
   connectionStatus,
 }: ConnectionLineComponentProps<BoardFlowNode>) {
+  // The ghost overlay follows this exact point; see lastConnectionFlowPoint.
+  lastConnectionFlowPoint = { x: toX, y: toY };
   // Over a card that takes this resource, the pipe jumps to the slot it will
   // land on rather than following the cursor across the card.
   const snap = getConnectionSnap(toX, toY);
@@ -8832,7 +8842,10 @@ function ResourceConnectionLine({
       : voidDropWillSpawn
         ? "spawn"
         : "dead";
-  const color = verdict === "connect" ? "#00d9ff" : verdict === "spawn" ? "#22c55e" : "#ef4444";
+  // Snapped is GREEN and solid - "this will connect" - with white marching
+  // dots running toward the caught slot; a spawnable void is green dashed;
+  // refusals and dead voids are red.
+  const color = verdict === "connect" ? "#22c55e" : verdict === "spawn" ? "#22c55e" : "#ef4444";
   const dashed = verdict === "spawn" || verdict === "dead";
 
   return (
@@ -8855,6 +8868,18 @@ function ResourceConnectionLine({
         opacity={0.98}
         style={{ filter: `drop-shadow(0 0 5px ${color})` }}
       />
+      {verdict === "connect" ? (
+        <path
+          className="connection-march"
+          d={edgePath}
+          fill="none"
+          stroke="#ffffff"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeDasharray="2 10"
+          opacity={0.9}
+        />
+      ) : null}
       {/* A hollow end says "will make something here"; a solid dot says the
           end lands on something that exists; a bare cross-ish dot for dead. */}
       <circle
@@ -8882,8 +8907,8 @@ function ResourceConnectionLine({
  */
 function VoidDropGhost() {
   const [wiring, setWiring] = useState(false);
-  const { screenToFlowPosition } = useReactFlow();
   const ghostRef = useRef<HTMLDivElement | null>(null);
+  const lastSnapKeyRef = useRef<string | undefined>(undefined);
 
   useEffect(() => onWiringConnectionChange(setWiring), []);
 
@@ -8894,25 +8919,39 @@ function VoidDropGhost() {
     if (!ghostStorage) {
       return;
     }
-    const move = (event: PointerEvent) => {
+    let frame: number;
+    const tick = () => {
+      frame = requestAnimationFrame(tick);
       const ghost = ghostRef.current;
-      if (!ghost) {
+      const point = lastConnectionFlowPoint;
+      if (!ghost || !point) {
         return;
       }
-      const flow = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      const elsewhere = getConnectionSnap(flow.x, flow.y) || isPointOverSolidCard(flow.x, flow.y);
+      const snap = getConnectionSnap(point.x, point.y);
+      // The grab is audible on the TRANSITION into a snap (or onto a
+      // different slot), never per frame. The slot's fixed endpoint is the
+      // identity - getConnectionSnap returns no ids.
+      const snapKey = snap ? `${snap.point.x}|${snap.point.y}` : undefined;
+      if (snapKey && snapKey !== lastSnapKeyRef.current) {
+        playBoardSound("snap");
+      }
+      lastSnapKeyRef.current = snapKey;
+      const elsewhere = snap || isPointOverSolidCard(point.x, point.y);
       ghost.style.display = elsewhere ? "none" : "";
       // The drawer preview sits CENTERED on the pointer - that is exactly
-      // where a release puts it. The reason card instead hangs off the
-      // cursor's upper right like a tooltip, so the hand never covers the
-      // words it is being shown.
-      const offsetX = willSpawn ? -STORAGE_NODE_WIDTH / 2 : 14;
-      const offsetY = willSpawn ? -STORAGE_NODE_HEIGHT / 2 : -STORAGE_NODE_HEIGHT - 14;
-      ghost.style.transform = `translate(${flow.x + offsetX}px, ${flow.y + offsetY}px)`;
+      // where a release puts it. The reason card hangs snug off the
+      // cursor's upper right, so the hand never covers the words.
+      const offsetX = willSpawn ? -STORAGE_NODE_WIDTH / 2 : 8;
+      const offsetY = willSpawn ? -STORAGE_NODE_HEIGHT / 2 : -STORAGE_NODE_HEIGHT - 8;
+      ghost.style.transform = `translate(${point.x + offsetX}px, ${point.y + offsetY}px)`;
     };
-    window.addEventListener("pointermove", move, { passive: true });
-    return () => window.removeEventListener("pointermove", move);
-  }, [ghostStorage, willSpawn, screenToFlowPosition]);
+    frame = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(frame);
+      lastSnapKeyRef.current = undefined;
+      lastConnectionFlowPoint = undefined;
+    };
+  }, [ghostStorage, willSpawn]);
 
   if (!ghostStorage) {
     return null;

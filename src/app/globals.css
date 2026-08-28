@@ -2473,3 +2473,20 @@ img {
 }
 
 
+
+/* The connection line's SNAPPED state: white marching dots riding the green
+   pipe toward the slot it caught. Class-gated so reduced motion simply
+   leaves the dots parked. */
+@keyframes connection-march {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+.connection-march {
+  animation: connection-march 0.45s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .connection-march {
+    animation: none;
+  }
+}
