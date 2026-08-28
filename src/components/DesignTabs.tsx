@@ -1,8 +1,10 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, Compass } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import type { EntryIcon } from "@/lib/model/types";
+import { ResourceIcon } from "./nei/ResourceIcon";
 import {
   closeWelcomeTab,
   leaveWelcomeTab,
@@ -41,12 +43,22 @@ export function DesignTabs() {
   const renameDesign = useDesignStore((state) => state.renameDesign);
   const removeDesign = useDesignStore((state) => state.removeDesign);
   const removeDesigns = useDesignStore((state) => state.removeDesigns);
+  const reorderDesigns = useDesignStore((state) => state.reorderDesigns);
   const welcome = useWelcomeTab();
 
   const [renamingId, setRenamingId] = useState<string>();
   const [openMenu, setOpenMenu] = useState<OpenMenu>();
   const [armed, setArmed] = useState<ArmedAction>();
   const [overflow, setOverflow] = useState({ left: false, right: false });
+  // While a tab is being dragged, the strip renders this order instead of the
+  // store's; the drop commits it. The ref is the same list for the window-level
+  // pointer handlers, which cannot see fresh state.
+  const [dragOrder, setDragOrder] = useState<string[]>();
+  const [draggingId, setDraggingId] = useState<string>();
+  const dragOrderRef = useRef<string[] | undefined>(undefined);
+  // A drag ends with the browser still delivering the click that started it;
+  // this keeps that click from also switching tabs.
+  const suppressClickRef = useRef(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
 
@@ -84,7 +96,10 @@ export function DesignTabs() {
     observer.observe(scroller);
     observer.observe(track);
     return () => observer.disconnect();
-  }, [syncOverflow]);
+    // isHydrated: before hydration this component renders a bare placeholder,
+    // so a mount-time effect finds no scroller and must run again once the
+    // real strip is up.
+  }, [syncOverflow, isHydrated]);
 
   // Switching to a design that sits off-screen should bring it into view rather
   // than leaving the strip looking unchanged.
@@ -101,6 +116,145 @@ export function DesignTabs() {
   const scrollTabs = (direction: -1 | 1) => {
     scrollerRef.current?.scrollBy({ left: direction * SCROLL_STEP, behavior: "smooth" });
   };
+
+  // The strip is the one horizontal scroller under a vertical wheel, so plain
+  // wheel input walks the tabs. Attached natively: React registers wheel
+  // listeners passively, and a passive listener cannot claim the gesture, so
+  // the page would rubber-band instead of the tabs moving.
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) {
+      return;
+    }
+
+    // Smooth-scrolled towards an accumulating target rather than jumped, so a
+    // spin of the wheel glides. The target outlives each event because smooth
+    // scrolling is still mid-flight when the next notch lands — reading
+    // `scrollLeft` then would throw away most of the previous notch. It is
+    // forgotten shortly after the wheel goes quiet so an arrow press or a
+    // drag-nudge cannot leave it stale.
+    let wheelTarget: number | undefined;
+    let forgetTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const onWheel = (event: WheelEvent) => {
+      if (scroller.scrollWidth <= scroller.clientWidth) {
+        return;
+      }
+      const delta =
+        Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      if (delta === 0) {
+        return;
+      }
+      event.preventDefault();
+      // Line-mode deltas (some mice on Firefox) arrive in rows, not pixels.
+      const pixels = event.deltaMode === 1 ? delta * 16 : delta;
+      const maxScroll = scroller.scrollWidth - scroller.clientWidth;
+      wheelTarget = Math.max(0, Math.min(maxScroll, (wheelTarget ?? scroller.scrollLeft) + pixels));
+      scroller.scrollTo({ left: wheelTarget, behavior: "smooth" });
+      clearTimeout(forgetTimer);
+      forgetTimer = setTimeout(() => {
+        wheelTarget = undefined;
+      }, 250);
+    };
+
+    scroller.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      scroller.removeEventListener("wheel", onWheel);
+      clearTimeout(forgetTimer);
+    };
+    // isHydrated: same as the observer above — no scroller exists at mount.
+  }, [isHydrated]);
+
+  /**
+   * Mouse-and-pen drag to rearrange: past a small threshold the press becomes
+   * a drag, the strip re-renders in the dragged order live, and the release
+   * stamps it. Touch keeps its meaning — this same motion is how a finger
+   * scrolls the strip.
+   */
+  const beginTabDrag = (event: React.PointerEvent, id: string) => {
+    if (event.button !== 0 || event.pointerType === "touch" || renamingId) {
+      return;
+    }
+
+    const startX = event.clientX;
+    let started = false;
+
+    const move = (moveEvent: PointerEvent) => {
+      if (!started) {
+        if (Math.abs(moveEvent.clientX - startX) < 5) {
+          return;
+        }
+        started = true;
+        suppressClickRef.current = true;
+        closeMenu();
+        dragOrderRef.current = useDesignStore.getState().designs.map((design) => design.id);
+        setDragOrder(dragOrderRef.current);
+        setDraggingId(id);
+      }
+
+      // Which slot the pointer is over: count the other tabs whose midpoint
+      // sits left of it. Read from the live DOM so tabs of different widths
+      // stay right as they swap past each other.
+      const track = trackRef.current;
+      const prev = dragOrderRef.current;
+      if (!track || !prev) {
+        return;
+      }
+      let index = 0;
+      for (const pill of track.querySelectorAll<HTMLElement>("[data-design-id]")) {
+        if (pill.dataset.designId === id) {
+          continue;
+        }
+        const rect = pill.getBoundingClientRect();
+        if (moveEvent.clientX > rect.left + rect.width / 2) {
+          index += 1;
+        }
+      }
+      const next = prev.filter((entry) => entry !== id);
+      next.splice(index, 0, id);
+      if (next.some((entry, position) => entry !== prev[position])) {
+        dragOrderRef.current = next;
+        setDragOrder(next);
+      }
+
+      // Dragging against either end of a scrolled strip walks it along.
+      const scroller = scrollerRef.current;
+      if (scroller) {
+        const rect = scroller.getBoundingClientRect();
+        if (moveEvent.clientX < rect.left + 24) {
+          scroller.scrollLeft -= 12;
+        } else if (moveEvent.clientX > rect.right - 24) {
+          scroller.scrollLeft += 12;
+        }
+      }
+    };
+
+    const finish = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      if (started && dragOrderRef.current) {
+        void reorderDesigns(dragOrderRef.current);
+      }
+      dragOrderRef.current = undefined;
+      setDragOrder(undefined);
+      setDraggingId(undefined);
+      // The suppressed click is delivered before timers run, so this frees the
+      // NEXT click, not the one that ended the drag.
+      setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  };
+
+  // Mid-drag the strip shows the order under the pointer, not the store's.
+  const orderedDesigns = dragOrder
+    ? dragOrder.flatMap((id) => designs.filter((design) => design.id === id))
+    : designs;
 
   if (!isHydrated) {
     return <div className="h-8 shrink-0 border-b border-line bg-surface" />;
@@ -171,19 +325,30 @@ export function DesignTabs() {
           onScroll={syncOverflow}
           className="no-scrollbar min-w-0 shrink overflow-x-auto"
         >
-          <nav ref={trackRef} aria-label="Designs" className="flex w-max items-center gap-1">
-            {designs.map((design) => {
+          <nav
+            ref={trackRef}
+            aria-label="Designs"
+            className="flex w-max select-none items-center gap-1"
+          >
+            {orderedDesigns.map((design, index) => {
               const isActive = design.id === activeDesignId && !welcome.active;
 
               return (
+                <Fragment key={design.id}>
+                  {/* A faint seam between neighbours: names alone run together
+                      once a few tabs sit side by side. */}
+                  {index > 0 ? (
+                    <span aria-hidden className="h-3.5 w-px shrink-0 bg-line" />
+                  ) : null}
                 <div
-                  key={design.id}
                   data-design-id={design.id}
+                  onPointerDown={(event) => beginTabDrag(event, design.id)}
                   className={[
                     "group flex h-6 shrink-0 items-center rounded-t border-b-2 pl-2 pr-1",
                     isActive
                       ? "border-cyan-500 bg-surface-raised text-fg"
                       : "border-transparent text-fg-muted hover:bg-surface-sunken hover:text-fg",
+                    draggingId === design.id ? "opacity-75" : "",
                   ].join(" ")}
                 >
                   {renamingId === design.id ? (
@@ -199,6 +364,9 @@ export function DesignTabs() {
                     <button
                       type="button"
                       onClick={() => {
+                        if (suppressClickRef.current) {
+                          return;
+                        }
                         // Clicking a design is also how you step off Welcome,
                         // including when it is the design already loaded.
                         leaveWelcomeTab();
@@ -208,6 +376,7 @@ export function DesignTabs() {
                       title={design.name}
                       className="flex max-w-[166px] items-center gap-1.5 text-xs font-medium"
                     >
+                      {hasDrawableFace(design.icon) ? <TabFace icon={design.icon} /> : null}
                       {isActive ? <TabSolvingSpinner /> : null}
                       <span className="truncate">{design.name}</span>
                     </button>
@@ -241,6 +410,7 @@ export function DesignTabs() {
                     ⋯
                   </button>
                 </div>
+                </Fragment>
               );
             })}
           </nav>
@@ -536,6 +706,45 @@ function RenameInput({
       aria-label="Design name"
       className="w-[140px] rounded border border-cyan-500 bg-surface px-1 text-xs text-fg outline-none"
     />
+  );
+}
+
+/**
+ * Whether the saved face would actually draw. An item icon with no sprite and
+ * no atlas entry renders as nothing, and reserving space for nothing just
+ * indents the name.
+ */
+function hasDrawableFace(icon: EntryIcon | undefined): icon is EntryIcon {
+  return Boolean(icon && (icon.iconPath || icon.iconAtlas || icon.kind === "fluid"));
+}
+
+/**
+ * The design's saved one-item face, shrunk to text height. Same rendering as
+ * the setup shelf's icon slot: the padded source art drawn oversized and
+ * cropped by the wrapper, so the sprite fills the little box.
+ */
+function TabFace({ icon }: { icon: EntryIcon }) {
+  return (
+    <span
+      aria-hidden
+      className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden"
+    >
+      <ResourceIcon
+        resource={{
+          id: icon.resourceId,
+          kind: icon.kind,
+          amount: 1,
+          displayName: icon.displayName,
+          iconPath: icon.iconPath,
+          iconAtlas: icon.iconAtlas,
+          dominantColor: icon.dominantColor,
+        }}
+        bare
+        tooltip={false}
+        showAmount={false}
+        className="!h-full !w-full"
+      />
+    </span>
   );
 }
 
