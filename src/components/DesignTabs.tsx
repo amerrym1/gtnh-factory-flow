@@ -18,8 +18,9 @@ import { useSolvingBooks } from "@/components/flow/use-solving-books";
 // menu clips rather than wraps, so this and the labels move together.
 const MENU_WIDTH = 230;
 
-/** Furthest the track rubber-bands past either end, in px. */
-const RUBBER_MAX = 18;
+/** Asymptote of the rubber stretch past either end, in px — the saturating
+ * resistance curve approaches it and never quite arrives. */
+const RUBBER_MAX = 24;
 
 /** Which destructive item is one click from firing, if any. */
 type ArmedAction = "delete" | "right" | "left" | "others";
@@ -124,38 +125,66 @@ export function DesignTabs() {
       return;
     }
 
-    // Smooth-scrolled towards an accumulating target rather than jumped, so a
-    // spin of the wheel glides. The target outlives each event because smooth
-    // scrolling is still mid-flight when the next notch lands — reading
-    // `scrollLeft` then would throw away most of the previous notch. It is
-    // forgotten shortly after the wheel goes quiet so an arrow press or a
-    // drag-nudge cannot leave it stale.
-    let wheelTarget: number | undefined;
-    let forgetTimer: ReturnType<typeof setTimeout> | undefined;
-    // Rubber band: wheeling past an end nudges the whole track a few damped
-    // pixels in the direction of travel and springs it back, so the end feels
-    // like an end instead of the wheel just going dead. Pull that lands while
-    // the smooth scroll is still travelling is BANKED and spent on arrival —
-    // fired mid-flight it would be lost in the motion, and the spin that
-    // slams into the end is exactly the one that should bounce.
-    let band = 0;
-    let pendingBand = 0;
-    let bandTimer: ReturnType<typeof setTimeout> | undefined;
+    // ONE motion engine, not the browser's smooth scroll plus a separate
+    // band. Wheel input moves a virtual TARGET that is allowed past the ends
+    // (rubber-damped); each frame the position eases towards it, the in-range
+    // part renders as scrollLeft and the out-of-range part as a translate of
+    // the track. So the glide, the stretch at the wall and the spring back
+    // are a single continuous curve — the strip arrives at the end and flows
+    // straight into the bounce instead of stopping and then twitching.
+    let pos: number | undefined;
+    let target = 0;
+    /** Raw unspent pull past the end; rendered through `rubber`. */
+    let excess = 0;
+    let lastWheelAt = 0;
+    let frame = 0;
 
-    const setBand = (next: number) => {
+    /** Saturating resistance: early pull shows, hard pull barely adds. */
+    const rubber = (pull: number) =>
+      Math.sign(pull) * RUBBER_MAX * (Math.abs(pull) / (Math.abs(pull) + 120));
+
+    const settle = () => {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      pos = undefined;
+      excess = 0;
       const track = trackRef.current;
-      if (!track) {
+      if (track) {
+        track.style.transform = "";
+      }
+    };
+
+    const tick = (now: number) => {
+      const track = trackRef.current;
+      if (!track || pos === undefined) {
+        settle();
         return;
       }
-      band = next;
-      if (next === 0) {
-        // A touch of ease-back overshoot, so the return reads as a spring.
-        track.style.transition = "transform 320ms cubic-bezier(0.2, 0.7, 0.3, 1.2)";
-        track.style.transform = "";
-      } else {
-        track.style.transition = "transform 100ms ease-out";
-        track.style.transform = `translateX(${-next}px)`;
+
+      const maxScroll = scroller.scrollWidth - scroller.clientWidth;
+      // Once the wheel has gone quiet the pull relaxes, which is what brings
+      // the stretch home — same easing, opposite direction, no timer cliff.
+      if (now - lastWheelAt > 90) {
+        excess *= 0.82;
+        if (Math.abs(excess) < 0.5) {
+          excess = 0;
+        }
       }
+
+      const goal = Math.max(0, Math.min(maxScroll, target)) + rubber(excess);
+      pos += (goal - pos) * 0.18;
+
+      const inRange = Math.max(0, Math.min(maxScroll, pos));
+      scroller.scrollLeft = inRange;
+      const over = pos - inRange;
+      track.style.transform = Math.abs(over) > 0.1 ? `translateX(${-over}px)` : "";
+
+      if (Math.abs(goal - pos) < 0.4 && excess === 0 && Math.abs(over) < 0.4) {
+        scroller.scrollLeft = Math.max(0, Math.min(maxScroll, target));
+        settle();
+        return;
+      }
+      frame = requestAnimationFrame(tick);
     };
 
     const onWheel = (event: WheelEvent) => {
@@ -171,69 +200,27 @@ export function DesignTabs() {
       // Line-mode deltas (some mice on Firefox) arrive in rows, not pixels.
       const pixels = event.deltaMode === 1 ? delta * 16 : delta;
       const maxScroll = scroller.scrollWidth - scroller.clientWidth;
-      const raw = (wheelTarget ?? scroller.scrollLeft) + pixels;
-      wheelTarget = Math.max(0, Math.min(maxScroll, raw));
-      scroller.scrollTo({ left: wheelTarget, behavior: "smooth" });
 
-      // Whatever the clamp swallowed is the pull past the end. Signed the same
-      // way as scroll: positive past the right end, negative past the left.
-      const excess = raw - wheelTarget;
-      if (excess !== 0) {
-        const pull = Math.max(
-          -RUBBER_MAX,
-          // Damped and hard-capped: resistance, not travel.
-          Math.min(RUBBER_MAX, band + pendingBand + excess * 0.35),
-        );
-        if (Math.abs(scroller.scrollLeft - wheelTarget) < 1) {
-          // Visibly at the end already: stretch right now.
-          pendingBand = 0;
-          setBand(pull);
-          clearTimeout(bandTimer);
-          bandTimer = setTimeout(() => setBand(0), 220);
-        } else {
-          pendingBand = pull;
-        }
-      } else if (band !== 0 || pendingBand !== 0) {
-        pendingBand = 0;
-        setBand(0);
+      if (pos === undefined) {
+        pos = scroller.scrollLeft;
+        target = pos;
       }
+      const raw = target + excess + pixels;
+      target = Math.max(0, Math.min(maxScroll, raw));
+      // What the clamp swallowed keeps pulling, capped so a long grind at the
+      // wall cannot bank a launch. Signed like scroll: positive past the right.
+      excess = Math.max(-400, Math.min(400, raw - target));
+      lastWheelAt = performance.now();
 
-      clearTimeout(forgetTimer);
-      forgetTimer = setTimeout(() => {
-        wheelTarget = undefined;
-      }, 250);
-    };
-
-    // Spends the banked pull the moment the smooth scroll lands on the end.
-    // Judged against the BOUNDARY itself, not wheelTarget: the forget timer
-    // often wipes the target while the smooth scroll is still on its way.
-    const onScroll = () => {
-      if (pendingBand === 0) {
-        return;
-      }
-      const maxScroll = scroller.scrollWidth - scroller.clientWidth;
-      const atEnd =
-        pendingBand > 0 ? scroller.scrollLeft >= maxScroll - 1 : scroller.scrollLeft <= 1;
-      if (atEnd) {
-        setBand(pendingBand);
-        pendingBand = 0;
-        clearTimeout(bandTimer);
-        bandTimer = setTimeout(() => setBand(0), 220);
+      if (!frame) {
+        frame = requestAnimationFrame(tick);
       }
     };
 
     scroller.addEventListener("wheel", onWheel, { passive: false });
-    scroller.addEventListener("scroll", onScroll);
     return () => {
       scroller.removeEventListener("wheel", onWheel);
-      scroller.removeEventListener("scroll", onScroll);
-      clearTimeout(forgetTimer);
-      clearTimeout(bandTimer);
-      const track = trackRef.current;
-      if (track) {
-        track.style.transition = "";
-        track.style.transform = "";
-      }
+      settle();
     };
     // isHydrated: same as the observer above — no scroller exists at mount.
   }, [isHydrated]);
