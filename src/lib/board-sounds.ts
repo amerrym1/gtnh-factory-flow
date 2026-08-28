@@ -100,18 +100,22 @@ let masterGain: GainNode | undefined;
 let noiseBuffer: AudioBuffer | undefined;
 const lastPlayedAt = new Map<BoardSoundKind, number>();
 
-/** Burst events may repeat a sound no faster than this. */
-const THROTTLE_MS: Record<BoardSoundKind, number> = {
-  place: 90,
-  delete: 90,
-  connect: 120,
-  unwire: 120,
-  error: 250,
-  open: 200,
-  close: 200,
-  adjust: 70,
-  sweep: 300,
-};
+/**
+ * RETRIGGER STEALS, never stacks and never drops. Playing a kind that is
+ * already sounding fades the old voice out in a few ms and starts fresh -
+ * the way every game UI does it. The alternatives both failed in use: let
+ * voices overlap and rapid deletes SUM their 250ms tails into a crescendo;
+ * throttle repeats away and rapid deletes lose their feedback entirely
+ * ("some sounds don't play"). One live voice per kind, so a burst of the
+ * same action sounds like a fast drum roll at one volume.
+ */
+const activeVoices = new Map<BoardSoundKind, GainNode>();
+
+/** Only a same-frame duplicate is dropped outright. */
+const DEDUPE_MS = 30;
+
+/** How fast a stolen voice gets out of the way. */
+const STEAL_FADE = 0.015;
 
 /** Every note fades in over this long; instant attacks click. */
 const ATTACK = 0.005;
@@ -133,6 +137,9 @@ function getContext(): AudioContext | undefined {
     audioContext = undefined;
     masterGain = undefined;
     noiseBuffer = undefined;
+    // These voices belong to the dead context; stealing them from the new
+    // one would schedule ramps on a foreign clock.
+    activeVoices.clear();
   }
   if (!audioContext) {
     try {
@@ -330,7 +337,7 @@ export function playBoardSound(kind: BoardSoundKind): void {
   }
   const now = performance.now();
   const last = lastPlayedAt.get(kind);
-  if (last !== undefined && now - last < THROTTLE_MS[kind]) {
+  if (last !== undefined && now - last < DEDUPE_MS) {
     return;
   }
   lastPlayedAt.set(kind, now);
@@ -340,14 +347,33 @@ export function playBoardSound(kind: BoardSoundKind): void {
   if (!ctx || !out) {
     return;
   }
+  const play = () => {
+    // Steal, don't stack: fade any live voice of this kind out fast.
+    const previous = activeVoices.get(kind);
+    if (previous) {
+      const t = ctx.currentTime;
+      previous.gain.setValueAtTime(previous.gain.value, t);
+      previous.gain.linearRampToValueAtTime(0.0001, t + STEAL_FADE);
+    }
+    // One gain node PER SOUND, so the whole sound (all its notes and
+    // puffs) can be stolen as a unit by the next retrigger.
+    const voice = ctx.createGain();
+    voice.gain.value = 1;
+    voice.connect(out);
+    activeVoices.set(kind, voice);
+    schedule(kind, ctx, voice);
+    window.setTimeout(() => {
+      if (activeVoices.get(kind) === voice) {
+        activeVoices.delete(kind);
+      }
+      voice.disconnect();
+    }, 1000);
+  };
   if (ctx.state !== "running") {
     // Never schedule against a suspended clock: resume first, play in the
     // callback. Sounds fire from user gestures, so the resume succeeds.
-    void ctx
-      .resume()
-      .then(() => schedule(kind, ctx, out))
-      .catch(() => {});
+    void ctx.resume().then(play).catch(() => {});
     return;
   }
-  schedule(kind, ctx, out);
+  play();
 }
