@@ -122,9 +122,12 @@ const STEAL_FADE = 0.015;
  * (wheel-scrolling a tier chip) reads two or three times louder than one
  * note - the ear sums repeated pulses inside ~200ms. So repeats inside
  * this window play progressively quieter, like an OS scroll tick, and the
- * first note after a pause is back at full voice.
+ * first note after a pause is back at full voice. The window is deliberately
+ * TIGHT: wheel steps arrive every 30-80ms, but two deliberate actions in
+ * quick succession can be 150ms apart, and ducking those read as broken
+ * volume rather than as a scroll tick.
  */
-const REPEAT_WINDOW_MS = 180;
+const REPEAT_WINDOW_MS = 120;
 const REPEAT_DUCK = 0.6;
 const REPEAT_DUCK_FLOOR = 3;
 const repeatStreak = new Map<BoardSoundKind, number>();
@@ -166,18 +169,26 @@ function getContext(): AudioContext | undefined {
       const roof = audioContext.createBiquadFilter();
       roof.type = "lowpass";
       roof.frequency.value = 5500;
-      // A limiter, not an effect: the voices are mixed hot so they carry
-      // over game audio, and overlapping notes at full volume must round
-      // off instead of clipping.
-      const limiter = audioContext.createDynamicsCompressor();
-      limiter.threshold.value = -8;
-      limiter.knee.value = 6;
-      limiter.ratio.value = 12;
-      limiter.attack.value = 0.002;
-      limiter.release.value = 0.1;
+      // Overload protection must be STATELESS. A DynamicsCompressor here
+      // made identical actions play at different volumes: its ~100ms
+      // release meant a sound landing shortly after another went through
+      // partially-engaged gain reduction while an isolated one did not.
+      // A tanh soft-clip shapes each sample on its own - no memory, so
+      // the same note is always the same loudness, and a rare overlap
+      // rounds off instead of clipping.
+      const softClip = audioContext.createWaveShaper();
+      const curve = new Float32Array(1024);
+      for (let i = 0; i < curve.length; i += 1) {
+        const x = (i / (curve.length - 1)) * 2 - 1;
+        // Unity slope at zero (transparent at normal levels), saturating
+        // toward ~0.83 as overlaps push past full scale.
+        curve[i] = Math.tanh(x * 1.2) / 1.2;
+      }
+      softClip.curve = curve;
+      softClip.oversample = "2x";
       masterGain.connect(roof);
-      roof.connect(limiter);
-      limiter.connect(audioContext.destination);
+      roof.connect(softClip);
+      softClip.connect(audioContext.destination);
       // The keep-alive: an inaudible DC-ish hum that never stops, so the
       // hardware output stream never parks between sounds. Routed straight
       // to the destination - it must survive the master volume at zero.

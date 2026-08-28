@@ -111,17 +111,19 @@ export function playProjectDiff(prev: ProjectSoundSnapshot, next: ProjectSoundSn
     return;
   }
 
+  // ONE sound per transaction. A refactor adds and removes in the same
+  // step, and playing place AND delete together came out twice as loud as
+  // either action alone - which read as broken volume, not as two events.
+  // Priority: what arrived beats what left, cards beat wires.
   if (addedNodes > 0) {
     playBoardSound("place");
+  } else if (removedNodes > 0) {
+    playBoardSound("delete");
   } else if (addedEdges > 0) {
     playBoardSound("connect");
-  }
-  if (removedNodes > 0) {
-    playBoardSound("delete");
   } else if (removedEdges > 0) {
     playBoardSound("unwire");
-  }
-  if (opened > 0) {
+  } else if (opened > 0) {
     playBoardSound("open");
   } else if (closed > 0) {
     playBoardSound("close");
