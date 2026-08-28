@@ -14,6 +14,11 @@
  */
 
 const KEY = "gtnh-factory-flow.board-sounds.v1";
+const VOLUME_KEY = "gtnh-factory-flow.board-sounds-volume.v1";
+const TICKS_KEY = "gtnh-factory-flow.board-sounds-ticks.v1";
+
+/** The default master volume; the settings slider works in this scale. */
+export const DEFAULT_BOARD_SOUND_VOLUME = 0.5;
 
 export function areBoardSoundsEnabled(): boolean {
   try {
@@ -35,6 +40,61 @@ export function setBoardSoundsEnabled(enabled: boolean): void {
   }
 }
 
+/** Master volume, 0..1. Applied live: a slider drag is audible immediately. */
+export function getBoardSoundVolume(): number {
+  try {
+    const raw = window.localStorage.getItem(VOLUME_KEY);
+    if (raw === null) {
+      return DEFAULT_BOARD_SOUND_VOLUME;
+    }
+    const value = Number(raw);
+    return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : DEFAULT_BOARD_SOUND_VOLUME;
+  } catch {
+    return DEFAULT_BOARD_SOUND_VOLUME;
+  }
+}
+
+export function setBoardSoundVolume(volume: number): void {
+  const clamped = Math.min(1, Math.max(0, volume));
+  try {
+    if (clamped === DEFAULT_BOARD_SOUND_VOLUME) {
+      window.localStorage.removeItem(VOLUME_KEY);
+    } else {
+      window.localStorage.setItem(VOLUME_KEY, String(clamped));
+    }
+  } catch {
+    // A blocked quota must never break the app.
+  }
+  if (masterGain) {
+    masterGain.gain.value = clamped;
+  }
+}
+
+/**
+ * The button tick has its own switch: it is the one sound that fires on
+ * EVERY press everywhere, so someone who likes the board's thumps may still
+ * want their buttons silent.
+ */
+export function areButtonTicksEnabled(): boolean {
+  try {
+    return window.localStorage.getItem(TICKS_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+export function setButtonTicksEnabled(enabled: boolean): void {
+  try {
+    if (enabled) {
+      window.localStorage.removeItem(TICKS_KEY);
+    } else {
+      window.localStorage.setItem(TICKS_KEY, "off");
+    }
+  } catch {
+    // A blocked quota must never break the app.
+  }
+}
+
 export type BoardSoundKind =
   | "place" // a card or drawer lands on the board
   | "delete" // a card leaves the board
@@ -43,6 +103,7 @@ export type BoardSoundKind =
   | "open" // a board window opens
   | "close" // a board window folds to its card
   | "tick" // a button press
+  | "adjust" // a setting on a card changed: machine count, drain pill, config
   | "sweep"; // one sound for a bulk change (paste, arrange, import)
 
 let audioContext: AudioContext | undefined;
@@ -59,6 +120,7 @@ const THROTTLE_MS: Record<BoardSoundKind, number> = {
   open: 200,
   close: 200,
   tick: 45,
+  adjust: 70,
   sweep: 300,
 };
 
@@ -71,7 +133,7 @@ function getContext(): AudioContext | undefined {
       audioContext = new AudioContext();
       masterGain = audioContext.createGain();
       // The one master volume. Everything below is relative to this.
-      masterGain.gain.value = 0.5;
+      masterGain.gain.value = getBoardSoundVolume();
       masterGain.connect(audioContext.destination);
     } catch {
       return undefined;
@@ -155,6 +217,9 @@ export function playBoardSound(kind: BoardSoundKind): void {
   if (typeof window === "undefined" || !areBoardSoundsEnabled()) {
     return;
   }
+  if (kind === "tick" && !areButtonTicksEnabled()) {
+    return;
+  }
   if (typeof document !== "undefined" && document.hidden) {
     return;
   }
@@ -171,39 +236,48 @@ export function playBoardSound(kind: BoardSoundKind): void {
     return;
   }
 
+  // Fundamentals sit at 200Hz and up: laptop speakers roll off hard below
+  // that, and the first tuning pass (thumps near 100Hz, peaks under 0.1)
+  // was inaudible on them.
   switch (kind) {
     case "place":
-      // A soft low thump with a faint knock on top: a card set down.
-      blip(ctx, out, { from: 150, to: 105, duration: 0.11, peak: 0.22 });
-      puff(ctx, out, { frequency: 1800, duration: 0.02, peak: 0.05 });
+      // A thump with a knock on top: a card set down.
+      blip(ctx, out, { from: 240, to: 150, duration: 0.12, peak: 0.5 });
+      puff(ctx, out, { frequency: 2000, duration: 0.03, peak: 0.15 });
       break;
     case "delete":
       // A falling note: something left the board.
-      blip(ctx, out, { from: 300, to: 150, duration: 0.12, peak: 0.1, type: "triangle" });
+      blip(ctx, out, { from: 330, to: 165, duration: 0.14, peak: 0.3, type: "triangle" });
       break;
     case "connect":
       // Two rising notes a beat apart: the wire snapping home.
-      blip(ctx, out, { from: 660, to: 660, duration: 0.05, peak: 0.06 });
-      blip(ctx, out, { from: 880, to: 880, duration: 0.07, peak: 0.07, delay: 0.06 });
+      blip(ctx, out, { from: 587, to: 587, duration: 0.06, peak: 0.22 });
+      blip(ctx, out, { from: 880, to: 880, duration: 0.09, peak: 0.25, delay: 0.07 });
       break;
     case "unwire":
-      // One falling note, quieter than delete: only a wire went.
-      blip(ctx, out, { from: 440, to: 300, duration: 0.08, peak: 0.06 });
+      // One falling note, softer than delete: only a wire went.
+      blip(ctx, out, { from: 494, to: 330, duration: 0.1, peak: 0.22 });
       break;
     case "open":
-      blip(ctx, out, { from: 220, to: 390, duration: 0.12, peak: 0.07, type: "triangle" });
+      blip(ctx, out, { from: 262, to: 440, duration: 0.13, peak: 0.2, type: "triangle" });
       break;
     case "close":
-      blip(ctx, out, { from: 390, to: 220, duration: 0.12, peak: 0.07, type: "triangle" });
+      blip(ctx, out, { from: 440, to: 262, duration: 0.13, peak: 0.2, type: "triangle" });
       break;
     case "tick":
-      // Barely there: a fingertip on a key.
-      puff(ctx, out, { frequency: 2400, q: 2, duration: 0.015, peak: 0.05 });
+      // A short click with a little body, so it reads as a press rather
+      // than a sound cutting off.
+      puff(ctx, out, { frequency: 2200, q: 1.5, duration: 0.03, peak: 0.12 });
+      blip(ctx, out, { from: 900, to: 900, duration: 0.025, peak: 0.06 });
+      break;
+    case "adjust":
+      // A neutral mid tap: a knob turned, a pill cycled, a count stepped.
+      blip(ctx, out, { from: 520, to: 520, duration: 0.045, peak: 0.14, type: "triangle" });
       break;
     case "sweep":
       // One broad soft brush for a bulk change, however big it was.
-      puff(ctx, out, { frequency: 500, q: 0.8, duration: 0.18, peak: 0.09 });
-      blip(ctx, out, { from: 180, to: 240, duration: 0.16, peak: 0.06 });
+      puff(ctx, out, { frequency: 600, q: 0.8, duration: 0.2, peak: 0.25 });
+      blip(ctx, out, { from: 220, to: 294, duration: 0.18, peak: 0.15 });
       break;
   }
 }

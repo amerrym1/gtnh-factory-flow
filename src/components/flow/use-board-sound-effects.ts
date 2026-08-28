@@ -33,15 +33,28 @@ interface ProjectSoundSnapshot {
   nodeIds: Set<string>;
   edgeIds: Set<string>;
   openPocketIds: Set<string>;
+  /**
+   * Every card serialized WITHOUT its position: machine counts, tiers,
+   * drain pills, config choices. When the structure is unchanged but this
+   * moved, a knob was turned somewhere and the adjust tap plays. Positions
+   * are excluded so drags stay silent; a project write only happens per
+   * user action, so the stringify cost is nothing.
+   */
+  configSignature: string;
 }
 
-function snapshotProject(project: FactoryProject): ProjectSoundSnapshot {
+export function snapshotProject(project: FactoryProject): ProjectSoundSnapshot {
   const nodeIds = new Set<string>();
+  const signatureParts: string[] = [];
   for (const node of project.nodes) {
     nodeIds.add(node.id);
+    const { position: _position, ...rest } = node;
+    signatureParts.push(JSON.stringify(rest));
   }
   for (const storage of project.storages ?? []) {
     nodeIds.add(storage.id);
+    const { position: _position, ...rest } = storage;
+    signatureParts.push(JSON.stringify(rest));
   }
   const edgeIds = new Set<string>();
   for (const edge of project.edges) {
@@ -53,7 +66,13 @@ function snapshotProject(project: FactoryProject): ProjectSoundSnapshot {
       openPocketIds.add(pocket.id);
     }
   }
-  return { projectId: project.id, nodeIds, edgeIds, openPocketIds };
+  return {
+    projectId: project.id,
+    nodeIds,
+    edgeIds,
+    openPocketIds,
+    configSignature: signatureParts.join("\n"),
+  };
 }
 
 function countMissing(from: Set<string>, inSet: Set<string>): number {
@@ -69,7 +88,7 @@ function countMissing(from: Set<string>, inSet: Set<string>): number {
 /** At or past this many changed ids, one change is a bulk change. */
 const BULK_THRESHOLD = 8;
 
-function playProjectDiff(prev: ProjectSoundSnapshot, next: ProjectSoundSnapshot): void {
+export function playProjectDiff(prev: ProjectSoundSnapshot, next: ProjectSoundSnapshot): void {
   const addedNodes = countMissing(next.nodeIds, prev.nodeIds);
   const removedNodes = countMissing(prev.nodeIds, next.nodeIds);
   const addedEdges = countMissing(next.edgeIds, prev.edgeIds);
@@ -80,6 +99,15 @@ function playProjectDiff(prev: ProjectSoundSnapshot, next: ProjectSoundSnapshot)
   const total = addedNodes + removedNodes + addedEdges + removedEdges;
   if (total >= BULK_THRESHOLD) {
     playBoardSound("sweep");
+    return;
+  }
+
+  // Nothing structural moved, but a card's settings did: a machine count
+  // stepped, a drain pill cycled, a config chosen. One neutral tap.
+  if (total === 0 && opened === 0 && closed === 0) {
+    if (next.configSignature !== prev.configSignature) {
+      playBoardSound("adjust");
+    }
     return;
   }
 

@@ -10,7 +10,15 @@ import {
 } from "@/lib/app-font";
 import { isUpdatePopupEnabled, setUpdatePopupEnabled } from "@/lib/whats-new";
 import { areChipClicksInverted, setChipClicksInverted } from "@/lib/chip-clicks";
-import { areBoardSoundsEnabled, setBoardSoundsEnabled } from "@/lib/board-sounds";
+import {
+  areBoardSoundsEnabled,
+  areButtonTicksEnabled,
+  getBoardSoundVolume,
+  playBoardSound,
+  setBoardSoundsEnabled,
+  setBoardSoundVolume,
+  setButtonTicksEnabled,
+} from "@/lib/board-sounds";
 
 /**
  * The planner's settings, in one small sheet.
@@ -28,6 +36,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [updatePopup, setUpdatePopup] = useState<boolean>(() => isUpdatePopupEnabled());
   const [invertedClicks, setInvertedClicks] = useState<boolean>(() => areChipClicksInverted());
   const [sounds, setSounds] = useState<boolean>(() => areBoardSoundsEnabled());
+  const [volume, setVolume] = useState<number>(() => getBoardSoundVolume());
+  const [ticks, setTicks] = useState<boolean>(() => areButtonTicksEnabled());
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -184,6 +194,73 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                 className={[
                   "h-4 w-4 shrink-0",
                   sounds ? "text-cyan-400" : "invisible",
+                ].join(" ")}
+              />
+            </button>
+
+            <div
+              className={[
+                "mt-1 flex items-center gap-3 rounded border border-line px-3 py-2.5",
+                sounds ? "" : "opacity-40",
+              ].join(" ")}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-base leading-tight text-fg">Volume</span>
+                <span className="mt-0.5 block text-xs text-fg-muted">
+                  Drag to hear the level.
+                </span>
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={Math.round(volume * 100)}
+                disabled={!sounds}
+                aria-label="Sound volume"
+                onChange={(event) => {
+                  const next = Number(event.target.value) / 100;
+                  setBoardSoundVolume(next);
+                  setVolume(next);
+                  // The thump IS the preview; its own throttle paces a drag.
+                  playBoardSound("place");
+                }}
+                className="w-36 accent-cyan-500"
+              />
+              <span className="w-10 shrink-0 text-right text-sm tabular-nums text-fg-muted">
+                {Math.round(volume * 100)}%
+              </span>
+            </div>
+
+            <button
+              type="button"
+              disabled={!sounds}
+              onClick={() => {
+                const next = !ticks;
+                setButtonTicksEnabled(next);
+                setTicks(next);
+              }}
+              aria-pressed={ticks}
+              className={[
+                "mt-1 flex w-full items-center gap-3 rounded border px-3 py-2.5 text-left",
+                !sounds
+                  ? "border-line opacity-40"
+                  : ticks
+                    ? "border-cyan-600 bg-cyan-500/10"
+                    : "border-line hover:border-line-strong hover:bg-surface-raised",
+              ].join(" ")}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-base leading-tight text-fg">Button ticks</span>
+                <span className="mt-0.5 block text-xs text-fg-muted">
+                  A very quiet tick on every button press. Off, only board actions make sound.
+                </span>
+              </span>
+              <Check
+                aria-hidden
+                className={[
+                  "h-4 w-4 shrink-0",
+                  sounds && ticks ? "text-cyan-400" : "invisible",
                 ].join(" ")}
               />
             </button>
