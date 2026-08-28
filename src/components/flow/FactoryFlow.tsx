@@ -6430,7 +6430,14 @@ const RATE_UNIT_CHOICES: Array<{ unit: RateUnit; label: string; title: string }>
  * the word itself, in green when the rule is on. Any one of the three answers
  * the question; you do not have to know the house style to read it.
  */
-const SetupRulesButton = memo(function SetupRulesButton() {
+const SetupRulesButton = memo(function SetupRulesButton({
+  open,
+  onOpenChange,
+}: {
+  /** Held by the paint toolbar, which lifts the row's z while the sheet is out. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const rules = useFactoryStore((state) => state.project.setupRules);
   const legacy = useFactoryStore((state) => state.project.assumeBoundaries);
   const setSetupRules = useFactoryStore((state) => state.setSetupRules);
@@ -6438,34 +6445,9 @@ const SetupRulesButton = memo(function SetupRulesButton() {
     setupRules: rules,
     assumeBoundaries: legacy,
   });
-  const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
-
-  // Click anywhere else and the sheet goes. Capture phase, because the board
-  // under it stops pointer events of its own before they reach the document.
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const close = (event: PointerEvent) => {
-      // `globalThis.Node`, not `Node`: React Flow's own Node type is imported
-      // into this file and would shadow the DOM one.
-      if (!rootRef.current?.contains(event.target as globalThis.Node)) {
-        setOpen(false);
-      }
-    };
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    };
-    window.addEventListener("pointerdown", close, true);
-    window.addEventListener("keydown", escape);
-    return () => {
-      window.removeEventListener("pointerdown", close, true);
-      window.removeEventListener("keydown", escape);
-    };
-  }, [open]);
+  const closeSheet = useCallback(() => onOpenChange(false), [onOpenChange]);
+  useFoldoutDismiss(open, rootRef, closeSheet);
 
   const choices: Array<{
     id: "freeInputs" | "freeOutputs" | "looseCellWires";
@@ -6494,11 +6476,15 @@ const SetupRulesButton = memo(function SetupRulesButton() {
   ];
 
   return (
-    <div ref={rootRef} className="pointer-events-auto relative flex">
+    // NOT `relative`: the sheet anchors to the toolbar ROOT (the nearest
+    // positioned ancestor), whose right edge is the screen's, so a 320px
+    // sheet never runs off the left of a phone the way it did anchored to
+    // this button's own edge.
+    <div ref={rootRef} className="pointer-events-auto flex">
       <button
         type="button"
         data-tour-anchor="setup-rules"
-        onClick={() => setOpen((was) => !was)}
+        onClick={() => onOpenChange(!open)}
         aria-expanded={open}
         className={[
           "relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)]",
@@ -6510,7 +6496,7 @@ const SetupRulesButton = memo(function SetupRulesButton() {
         <SlidersHorizontal className="h-4 w-4" />
       </button>
       {open ? (
-        <div className="absolute right-0 top-[calc(100%+6px)] z-30 flex w-[320px] max-w-[calc(100vw-24px)] flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+        <div className="absolute right-0 top-[calc(100%+6px)] z-30 flex max-h-[70vh] w-[320px] max-w-[calc(100vw-24px)] flex-col gap-1 overflow-y-auto border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
           <p className="px-1 pt-1 font-mono text-[11px] leading-snug text-[var(--mc-ink)] opacity-70">
             What the setup does when a slot cannot be supplied or emptied.
             <br />
@@ -6581,10 +6567,12 @@ const SourceToolbar = memo(function SourceToolbar({
   const boardView = useBoardView();
   const rateUnit = useFactoryStore((state) => state.rateUnit);
   const setRateUnit = useFactoryStore((state) => state.setRateUnit);
-  const rateIndex = RATE_UNIT_CHOICES.findIndex((choice) => choice.unit === rateUnit);
-  const rateChoice = RATE_UNIT_CHOICES[rateIndex] ?? RATE_UNIT_CHOICES[1];
-  const nextRateChoice =
-    RATE_UNIT_CHOICES[(Math.max(rateIndex, 0) + 1) % RATE_UNIT_CHOICES.length];
+  const rateChoice =
+    RATE_UNIT_CHOICES.find((choice) => choice.unit === rateUnit) ?? RATE_UNIT_CHOICES[1];
+  const [isRateMenuOpen, setRateMenuOpen] = useState(false);
+  const rateRef = useRef<HTMLDivElement | null>(null);
+  const closeRateMenu = useCallback(() => setRateMenuOpen(false), []);
+  useFoldoutDismiss(isRateMenuOpen, rateRef, closeRateMenu);
   // Subscribe to the DEPTHS, not the history arrays: a selector returning the
   // array itself would re-render this toolbar on every project edit.
   const undo = useFactoryStore((state) => state.undo);
@@ -6602,7 +6590,10 @@ const SourceToolbar = memo(function SourceToolbar({
       data-board-toolbar
       data-help-anchor="build"
       className={[
-        "nodrag pointer-events-none absolute left-3 flex items-start gap-2 z-20",
+        "nodrag pointer-events-none absolute left-3 flex items-start gap-2",
+        // Lifted while the rate menu hangs below, so a notice card cannot
+        // paint over it - the same lift the paint row gives its fold-outs.
+        isRateMenuOpen ? "z-40" : "z-20",
         // Inside a pocket the breadcrumb takes the top line and every trigger row
         // steps down to make room; its fold-out follows, since that is positioned
         // against this root.
@@ -6645,20 +6636,54 @@ const SourceToolbar = memo(function SourceToolbar({
         label="build tools"
         side="left"
       >
-      {/* How the numbers read: the rate unit changes what the existing board
-          says, so it sits nearest the history plate. ONE key that cycles,
-          wearing the current unit as its face: four permanent keys spent
-          three slots saying nothing but "not this one". */}
+      {/* How the numbers read: ONE key wearing the current unit, opening the
+          four units as a named list. Four permanent keys spent three slots
+          saying nothing but "not this one", and a blind cycle made you walk
+          the whole ring to go back one. */}
       <ToolTray>
-        <button
-          type="button"
-          onClick={() => setRateUnit(nextRateChoice.unit)}
-          title={`${rateChoice.title}. Click for ${nextRateChoice.title.toLowerCase()}.`}
-          aria-label={`Rates ${rateChoice.title.toLowerCase()}. Click for ${nextRateChoice.title.toLowerCase()}.`}
-          className={`pointer-events-auto flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)] font-mono text-[12px] font-black ${TOOL_FACE_OFF}`}
-        >
-          {rateChoice.label}
-        </button>
+        <div ref={rateRef} className="relative flex">
+          <button
+            type="button"
+            onClick={() => setRateMenuOpen((was) => !was)}
+            aria-expanded={isRateMenuOpen}
+            title={`Rate unit: ${rateChoice.title.toLowerCase()}`}
+            aria-label={`Rate unit: ${rateChoice.title.toLowerCase()}`}
+            className={[
+              "pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)] font-mono text-[12px] font-black",
+              isRateMenuOpen ? TOOL_FACE_ON : TOOL_FACE_OFF,
+            ].join(" ")}
+          >
+            {rateChoice.label}
+          </button>
+          {isRateMenuOpen ? (
+            <div className="absolute left-0 top-[calc(100%+10px)] z-30 flex w-max flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+              {RATE_UNIT_CHOICES.map((choice) => (
+                <button
+                  key={choice.unit}
+                  type="button"
+                  onClick={() => {
+                    setRateUnit(choice.unit);
+                    setRateMenuOpen(false);
+                  }}
+                  aria-pressed={rateUnit === choice.unit}
+                  className={[
+                    "pointer-events-auto flex items-center gap-2 border-2 p-1 pr-2 text-left",
+                    rateUnit === choice.unit
+                      ? "border-white bg-[var(--mc-85)] text-[var(--mc-ink)] ring-2 ring-cyan-300"
+                      : "border-[var(--mc-15)] bg-[var(--mc-49)] text-white hover:bg-[var(--mc-61)]",
+                  ].join(" ")}
+                >
+                  <span className="flex h-6 w-7 shrink-0 items-center justify-center font-mono text-[12px] font-black">
+                    {choice.label}
+                  </span>
+                  <span className="whitespace-nowrap font-mono text-[11px] font-semibold">
+                    {choice.title}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </ToolTray>
       {/* ...while the plate on the right is the one that puts new cards down.
           The crop farm spawner left this row (2026-08-27): farms come from
@@ -7557,9 +7582,6 @@ const BoardViewMenu = memo(function BoardViewMenu({
       </button>
       {open ? (
         <div className="absolute right-0 top-[calc(100%+6px)] z-30 flex max-h-[70vh] w-[300px] max-w-[calc(100vw-24px)] flex-col gap-1 overflow-y-auto border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
-          <p className="px-1 pt-1 font-mono text-[11px] leading-snug text-[var(--mc-ink)] opacity-70">
-            How the board is drawn. None of it changes the plan.
-          </p>
           {/* The background's paper... */}
           <div className="grid grid-cols-2 gap-1">
             {CANVAS_THEMES.map((theme) => (
@@ -7702,9 +7724,10 @@ const PaintToolbar = memo(function PaintToolbar({
   const faceDrawTool = annotationTool ?? lastDrawTool;
   const FaceDrawIcon =
     ANNOTATION_TOOLS.find((tool) => tool.kind === faceDrawTool)?.Icon ?? Square;
-  // The view sheet's open state lives here so the whole row can lift its z
-  // while the sheet is out, same as it does for the palette.
+  // The view and rules sheets' open state lives here so the whole row can
+  // lift its z while either is out, same as it does for the palette.
   const [isViewMenuOpen, setViewMenuOpen] = useState(false);
+  const [isRulesOpen, setRulesOpen] = useState(false);
 
   return (
     <div
@@ -7717,7 +7740,7 @@ const PaintToolbar = memo(function PaintToolbar({
         // OVER it and take its clicks: the colours were once visible and
         // unpickable. The row lifts above every other toolbar for as long as
         // any of its fold-outs is out.
-        isPaletteOpen || isDrawMenuOpen || isViewMenuOpen ? "z-40" : "z-20",
+        isPaletteOpen || isDrawMenuOpen || isViewMenuOpen || isRulesOpen ? "z-40" : "z-20",
       ].join(" ")}
     >
       <ToolGroup
@@ -7897,7 +7920,7 @@ const PaintToolbar = memo(function PaintToolbar({
           the tidy-up act on everything at once, so they live by the corner
           with the view button rather than among the card tools. */}
       <ToolTray>
-        <SetupRulesButton />
+        <SetupRulesButton open={isRulesOpen} onOpenChange={setRulesOpen} />
         <button
           type="button"
           onClick={onAutoArrange}
