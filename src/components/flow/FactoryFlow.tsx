@@ -55,6 +55,8 @@ import {
   Redo2,
   Square,
   Trash2,
+  Volume2,
+  VolumeX,
   TriangleAlert,
   Type,
   Undo2,
@@ -122,7 +124,11 @@ import {
   type BoardFraming,
 } from "@/store/factory-store";
 import { useBlueprintStore } from "@/store/blueprint-store";
-import { playBoardSound } from "@/lib/board-sounds";
+import {
+  areBoardSoundsEnabled,
+  playBoardSound,
+  setBoardSoundsEnabled,
+} from "@/lib/board-sounds";
 import { projectSoundFingerprint } from "./use-board-sound-effects";
 import { useDesignStore } from "@/store/design-store";
 import { useSolvingBooks } from "./use-solving-books";
@@ -6391,6 +6397,40 @@ function useFoldoutDismiss(
  * swatches keep their cyan ring alone: a selection mark there has to stand
  * against any hue, including this very grey.
  */
+/**
+ * The corner mute: the same switch Settings' Sound section throws, one click
+ * from the board. A slashed speaker means silent. Unmuting plays the little
+ * settings tap so the answer is audible immediately; muting is, naturally,
+ * its own confirmation.
+ */
+function BoardMuteButton() {
+  const [muted, setMuted] = useState<boolean>(
+    () => typeof window !== "undefined" && !areBoardSoundsEnabled(),
+  );
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const nextMuted = !muted;
+        setBoardSoundsEnabled(!nextMuted);
+        setMuted(nextMuted);
+        if (!nextMuted) {
+          playBoardSound("adjust");
+        }
+      }}
+      aria-pressed={muted}
+      className={[
+        "pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)]",
+        muted ? TOOL_FACE_ON : TOOL_FACE_OFF,
+      ].join(" ")}
+      title={muted ? "Unmute sounds" : "Mute sounds"}
+      aria-label={muted ? "Unmute sounds" : "Mute sounds"}
+    >
+      {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+    </button>
+  );
+}
+
 const TOOL_FACE_ON = "bg-[var(--mc-85)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100)]";
 const TOOL_FACE_OFF =
   "bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110";
@@ -8096,6 +8136,7 @@ const PaintToolbar = memo(function PaintToolbar({
         >
           <Network className="h-4 w-4" />
         </button>
+        <BoardMuteButton />
       </ToolTray>
       {/* The corner slot: view options are one button and a sheet at every
           width, reachable while the paint row is folded away on a phone. */}
