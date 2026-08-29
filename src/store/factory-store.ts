@@ -9,6 +9,7 @@ import {
   findDuplicateEdge,
 } from "@/lib/model/edge-identity";
 import { normalizeLoadedProject } from "@/lib/model/project-normalize";
+import { quietBoardSoundsFor } from "@/lib/board-sounds";
 import { setActiveRateUnit, type RateUnit } from "@/lib/model/rate-unit";
 import { registerBooksSink, solveBooks } from "./solve-books";
 import { applyRecipeInputOverrides, inputOverrideAmount } from "@/lib/model/recipe-input-overrides";
@@ -726,6 +727,9 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
     set({ rateUnit: unit, lastResult: solveBooks(project) });
   },
   setProject: (project) => {
+    // A plan ARRIVING (import, tab switch, setup open) is not an action;
+    // its writes must not be mistaken for a giant paste and swept audibly.
+    quietBoardSoundsFor(1500);
     const nextProject = touchProject(normalizeLoadedProject(project));
     set({
       project: nextProject,
@@ -739,6 +743,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
     });
   },
   markHydratedProject: (project) => {
+    quietBoardSoundsFor(1500);
     const nextProject = normalizeLoadedProject(project);
     set({
       project: nextProject,

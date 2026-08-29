@@ -84,6 +84,21 @@ export function setBoardSoundVolume(volume: number): void {
   }
 }
 
+/**
+ * A LOADED plan is not an action. Hydration, tab switches and setup opens
+ * can land a plan's content in a follow-up write that keeps the project id,
+ * and the diff watcher cannot tell that arrival from a giant paste - so the
+ * loading paths declare a quiet spell here and the engine sits it out.
+ */
+let quietUntil = 0;
+
+export function quietBoardSoundsFor(ms: number): void {
+  if (typeof performance === "undefined") {
+    return;
+  }
+  quietUntil = Math.max(quietUntil, performance.now() + ms);
+}
+
 export type BoardSoundKind =
   | "place" // a machine card lands: one flat thump
   | "placeProduct" // a drawer spawns to CATCH a product: thump stepping down
@@ -418,6 +433,9 @@ export function playBoardSound(kind: BoardSoundKind): void {
     return;
   }
   const now = performance.now();
+  if (now < quietUntil) {
+    return;
+  }
   const last = lastPlayedAt.get(kind);
   if (last !== undefined && now - last < DEDUPE_MS) {
     return;

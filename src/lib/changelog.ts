@@ -73,6 +73,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.38.1",
+    date: "2026-08-28",
+    headline: "Quiet loading",
+    notes: ["Opening the planner, switching tabs or loading a setup no longer makes a sound."],
+  },
+  {
     version: "2.38.0",
     date: "2026-08-28",
     headline: "The board makes sound",
