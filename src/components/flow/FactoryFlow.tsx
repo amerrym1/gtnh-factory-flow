@@ -3512,41 +3512,34 @@ export function FactoryFlow() {
     timelapseUpcomingRectRef.current =
       rectOf(timelapse.focusGroups[1] ?? timelapse.focusGroups[0]) ?? actionRect;
 
-    // CINEMATIC: the crane, not the cameraman. The whole island stays
-    // framed from afar and the camera drifts gently with the action's
-    // centre - one long pan per island, dissolving into the next island's
-    // pan when the show moves on. No deadband, no shot planning: the
-    // target creeps a little every beat and the slow chase makes that a
-    // single continuous motion.
-    if (
-      getBoardTimelapseCameraMode() === "cinematic" &&
-      !timelapse.finale &&
-      timelapse.sceneNodeIds &&
-      timelapse.sceneNodeIds.length > 0
-    ) {
-      const sceneRect = rectOf(timelapse.sceneNodeIds);
-      if (sceneRect) {
+    // CINEMATIC: the GROW camera. Frame everything that stands PLUS the
+    // next stretch of the script - the camera can see the future, so the
+    // frame creeps outward toward where things will land before they do,
+    // constantly centred on the whole build, never jumping. The union
+    // only ever grows, so the motion is one continuous outward glide; a
+    // plan that fits the screen simply stays fully in view throughout,
+    // and the finale's frame-everything is the same shot it was already
+    // holding. No islands, no deadband, no shot planning.
+    if (getBoardTimelapseCameraMode() === "cinematic" && !timelapse.finale) {
+      const coverIds = new Set<string>(timelapse.revealedNodeIds);
+      for (const group of timelapse.focusGroups) {
+        for (const id of group) {
+          coverIds.add(id);
+        }
+      }
+      const coverRect = coverIds.size > 0 ? rectOf([...coverIds]) : undefined;
+      if (coverRect) {
         timelapseCinematicRef.current = true;
-        const sceneCentre = rectCentre(sceneRect);
-        // Drift with the BUILT REGION's centre, not the beat's action: the
-        // union of what already stands grows monotonically, so its centre
-        // creeps smoothly from the island's first machine toward the
-        // middle - one slow pan however fast the beats land. Chasing the
-        // per-beat action made the crane dance at high playback speeds.
-        const builtIds = timelapse.sceneNodeIds.filter((id) =>
-          timelapse.revealedNodeIds.has(id),
-        );
-        const builtRect = builtIds.length > 0 ? rectOf(builtIds) : undefined;
-        const driftCentre = builtRect ? rectCentre(builtRect) : rectCentre(actionRect);
+        const centre = rectCentre(coverRect);
         timelapseCameraTargetRef.current = {
-          x: sceneCentre.x + (driftCentre.x - sceneCentre.x) * 0.45,
-          y: sceneCentre.y + (driftCentre.y - sceneCentre.y) * 0.45,
-          // The cine zoom dial multiplies the island-exact fit: above 1
-          // the crane sits closer and the pan crosses a cropped view.
+          x: centre.x,
+          y: centre.y,
+          // The Offset dial nudges the fit: above 1 sits closer than full
+          // coverage, below 1 hangs back with more air.
           zoom: Math.min(
             Math.max(zoomRange.max, zoomRange.min),
-            zoomForRect(sceneRect, planSize, {
-              padding: 0.24,
+            zoomForRect(coverRect, planSize, {
+              padding: 0.22,
               minZoom: BOARD_MIN_ZOOM,
               maxZoom: BOARD_CAMERA_MAX_ZOOM,
             }) * getBoardTimelapseCineZoom(),
