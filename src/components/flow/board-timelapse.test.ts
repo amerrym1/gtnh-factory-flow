@@ -150,7 +150,7 @@ describe("buildTimelapseScript", () => {
     ]);
   });
 
-  it("slides a drawer in with its wire on one beat", () => {
+  it("summons a drawer: its wire draws over, then it pops in", () => {
     const script = buildTimelapseScript({
       nodes: [node("a", 0, 0)],
       storages: [storage("drawer", 400, 0)],
@@ -158,7 +158,24 @@ describe("buildTimelapseScript", () => {
     });
 
     expect(revealedOrder(script)).toEqual(["a", "drawer"]);
-    expect(script.beats[1]).toEqual({ nodeIds: ["drawer"], edgeIds: ["ad"], kind: "card" });
+    expect(script.beats[1]).toEqual({
+      nodeIds: ["drawer"],
+      edgeIds: ["ad"],
+      kind: "wire",
+      focusNodeIds: ["drawer"],
+    });
+    expect(script.beats[2].popNodeIds).toEqual(["drawer"]);
+  });
+
+  it("lands a loose drawer with a plain pop, nothing to draw toward it", () => {
+    const script = buildTimelapseScript({
+      nodes: [node("a", 0, 0), node("b", 400, 0)],
+      storages: [storage("loose", 900, 0)],
+      edges: [edge("ab", "a", "b")],
+    });
+
+    const last = script.beats[script.beats.length - 1];
+    expect(last).toEqual({ nodeIds: ["loose"], edgeIds: [], kind: "card", popNodeIds: ["loose"] });
   });
 
   it("never lets a source lead: the machine lands, then its source spins in wired", () => {
@@ -170,9 +187,18 @@ describe("buildTimelapseScript", () => {
       edges: [edge("sm", "src", "m")],
     });
 
-    expect(script.beats.map((beat) => ({ kind: beat.kind, nodeIds: beat.nodeIds }))).toEqual([
-      { kind: "card", nodeIds: ["m"] },
-      { kind: "card", nodeIds: ["src"] },
+    // The machine lands, the wire draws OVER to where the source will sit
+    // (the source mounts pending on the wire's beat), then the source pops.
+    expect(
+      script.beats.map((beat) => ({
+        kind: beat.kind,
+        nodeIds: beat.nodeIds,
+        popNodeIds: beat.popNodeIds ?? [],
+      })),
+    ).toEqual([
+      { kind: "card", nodeIds: ["m"], popNodeIds: ["m"] },
+      { kind: "wire", nodeIds: ["src"], popNodeIds: [] },
+      { kind: "card", nodeIds: [], popNodeIds: ["src"] },
     ]);
     expect(script.beats[1].edgeIds).toEqual(["sm"]);
   });
@@ -204,13 +230,18 @@ describe("buildTimelapseScript", () => {
       script.beats.map((beat) => ({ kind: beat.kind, nodeIds: beat.nodeIds, edgeIds: beat.edgeIds })),
     ).toEqual([
       { kind: "card", nodeIds: ["A"], edgeIds: [] },
-      { kind: "card", nodeIds: ["srcA"], edgeIds: ["sA"] },
-      { kind: "card", nodeIds: ["b"], edgeIds: ["Ab"] },
+      { kind: "wire", nodeIds: ["srcA"], edgeIds: ["sA"] },
+      { kind: "card", nodeIds: [], edgeIds: [] },
+      { kind: "wire", nodeIds: ["b"], edgeIds: ["Ab"] },
+      { kind: "card", nodeIds: [], edgeIds: [] },
       { kind: "card", nodeIds: ["B"], edgeIds: [] },
       { kind: "wire", nodeIds: [], edgeIds: ["bB"] },
     ]);
-    // The wire beat keeps the camera on its near end - the card being wired.
-    expect(script.beats[4].focusNodeIds).toEqual(["B"]);
+    // The attendants pop on the beat after their wire arrives.
+    expect(script.beats[2].popNodeIds).toEqual(["srcA"]);
+    expect(script.beats[4].popNodeIds).toEqual(["b"]);
+    // The far dock keeps the camera on its near end - the card being wired.
+    expect(script.beats[6].focusNodeIds).toEqual(["B"]);
   });
 
   it("stands a nested empty board before the parent waiting on it", () => {

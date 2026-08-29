@@ -42,6 +42,15 @@ export interface TimelapseBeat {
    * was what kept the camera cutting instead of holding its vantage.
    */
   focusNodeIds?: string[];
+  /**
+   * Nodes that POP VISIBLE this beat. Usually the same ids as `nodeIds` -
+   * a machine lands and pops at once - but an attachment MOUNTS invisibly
+   * on its wire-lead beat (its wire needs both endpoints to render at
+   * all, so the card must exist while the ink travels toward it) and pops
+   * on the following beat, once the wire has arrived. A node in `nodeIds`
+   * with its pop in a later beat is PENDING in between.
+   */
+  popNodeIds?: string[];
 }
 
 export interface TimelapseScript {
@@ -199,7 +208,7 @@ export function buildTimelapseScript(
         return;
       }
       revealedNodes.add(ownerId);
-      beats.push({ nodeIds: [ownerId], edgeIds: [], kind: "board" });
+      beats.push({ nodeIds: [ownerId], edgeIds: [], kind: "board", popNodeIds: [ownerId] });
       ownerId = pocketById.get(ownerId)?.parentPocketId;
     }
   };
@@ -265,8 +274,10 @@ export function buildTimelapseScript(
     }
   };
 
-  // An attendant arrives with every wire it can already dock - usually just
-  // the one to the machine that summoned it.
+  // An attendant is SUMMONED: its wire draws over from the machine first,
+  // and the card pops in where the ink arrives. The card still MOUNTS on
+  // the wire's beat - pending, invisible - because a wire cannot render
+  // without both its endpoints on the canvas.
   const revealAttachment = (unitId: string) => {
     revealedNodes.add(unitId);
     const edgeIds: string[] = [];
@@ -283,7 +294,19 @@ export function buildTimelapseScript(
         }
       }
     }
-    beats.push({ nodeIds: [unitId], edgeIds, kind: "card" });
+    if (edgeIds.length === 0) {
+      // A loose drawer: nothing draws toward it, it just lands.
+      beats.push({ nodeIds: [unitId], edgeIds, kind: "card", popNodeIds: [unitId] });
+    } else {
+      beats.push({ nodeIds: [unitId], edgeIds, kind: "wire", focusNodeIds: [unitId] });
+      beats.push({
+        nodeIds: [],
+        edgeIds: [],
+        kind: "card",
+        focusNodeIds: [unitId],
+        popNodeIds: [unitId],
+      });
+    }
     settleFrames(unitOwner.get(unitId));
   };
 
@@ -297,7 +320,7 @@ export function buildTimelapseScript(
   // beat; then its sources spin in, then its products, each with their wire.
   const revealMachine = (unitId: string) => {
     revealedNodes.add(unitId);
-    beats.push({ nodeIds: [unitId], edgeIds: [], kind: "card" });
+    beats.push({ nodeIds: [unitId], edgeIds: [], kind: "card", popNodeIds: [unitId] });
     revealWiresOf(unitId);
     const sources: string[] = [];
     const products: string[] = [];
@@ -380,7 +403,7 @@ export function buildTimelapseScript(
   for (const pocket of [...view.openBoards].reverse()) {
     if (!revealedNodes.has(pocket.id)) {
       revealedNodes.add(pocket.id);
-      beats.push({ nodeIds: [pocket.id], edgeIds: [], kind: "board" });
+      beats.push({ nodeIds: [pocket.id], edgeIds: [], kind: "board", popNodeIds: [pocket.id] });
       // An empty child was the member its parent still waited on.
       settleFrames(pocket.parentPocketId);
     }
@@ -400,7 +423,7 @@ export function buildTimelapseScript(
       continue;
     }
     revealedNodes.add(inkId);
-    beats.push({ nodeIds: [inkId], edgeIds: [], kind: "ink" });
+    beats.push({ nodeIds: [inkId], edgeIds: [], kind: "ink", popNodeIds: [inkId] });
   }
 
   // Any edge the walk never claimed (dangling endpoints, edges into units
@@ -472,6 +495,13 @@ function absolutePositionLookup(project: ProjectSlice): (id: string) => Point | 
 export interface BoardTimelapseSnapshot {
   revealedNodeIds: ReadonlySet<string>;
   revealedEdgeIds: ReadonlySet<string>;
+  /**
+   * Revealed nodes whose POP has not fired yet: mounted so their wires can
+   * render and draw toward them, but visually held at nothing until their
+   * pop beat (see TimelapseBeat.popNodeIds). The board dresses these with
+   * the `timelapse-pending` class.
+   */
+  pendingNodeIds: ReadonlySet<string>;
   /**
    * What the camera should be watching, as an ordered lookahead: the
    * current beat's action first, then the next beats'. The follower in
@@ -654,6 +684,50 @@ export function setBoardTimelapseWireDrawMs(ms: number): void {
     window.localStorage.setItem(TIMELAPSE_WIRE_DRAW_KEY, String(timelapseWireDrawMs));
   } catch {
     // Session-only draw time is fine.
+  }
+}
+
+/**
+ * How long a card takes to POP in - the fade-and-grow, milliseconds at 1x.
+ * Shared, like the wire draw, between the CSS (via --timelapse-pop) and
+ * the scheduler, so a slow luxurious pop is part of the show's arithmetic
+ * rather than something the next beat tramples.
+ */
+const TIMELAPSE_POP_KEY = "gtnh-factory-flow.dev.timelapse-pop";
+export const TIMELAPSE_POP_MIN_MS = 80;
+export const TIMELAPSE_POP_MAX_MS = 1200;
+const TIMELAPSE_POP_DEFAULT_MS = 260;
+
+let timelapsePopMs = readStoredPopMs();
+
+function readStoredPopMs(): number {
+  if (typeof window === "undefined") {
+    return TIMELAPSE_POP_DEFAULT_MS;
+  }
+  try {
+    const raw = window.localStorage.getItem(TIMELAPSE_POP_KEY);
+    if (raw !== null) {
+      const value = Number(raw);
+      if (Number.isFinite(value)) {
+        return Math.min(TIMELAPSE_POP_MAX_MS, Math.max(TIMELAPSE_POP_MIN_MS, value));
+      }
+    }
+  } catch {
+    // Storage blocked: authored pop.
+  }
+  return TIMELAPSE_POP_DEFAULT_MS;
+}
+
+export function getBoardTimelapsePopMs(): number {
+  return timelapsePopMs;
+}
+
+export function setBoardTimelapsePopMs(ms: number): void {
+  timelapsePopMs = Math.min(TIMELAPSE_POP_MAX_MS, Math.max(TIMELAPSE_POP_MIN_MS, ms));
+  try {
+    window.localStorage.setItem(TIMELAPSE_POP_KEY, String(timelapsePopMs));
+  } catch {
+    // Session-only pop is fine.
   }
 }
 
@@ -891,6 +965,7 @@ export function startBoardTimelapse(): boolean {
   activeSnapshot = {
     revealedNodeIds: new Set(),
     revealedEdgeIds: new Set(),
+    pendingNodeIds: new Set(),
     // The approach shot: planned over the opening beats while the board is
     // still empty, so the camera is already standing where the first
     // machines will land.
@@ -941,8 +1016,16 @@ export function startBoardTimelapse(): boolean {
     const beat = script.beats[index];
     const revealedNodeIds = new Set(activeSnapshot.revealedNodeIds);
     const revealedEdgeIds = new Set(activeSnapshot.revealedEdgeIds);
+    const pendingNodeIds = new Set(activeSnapshot.pendingNodeIds);
+    const popped = new Set(beat.popNodeIds ?? []);
     for (const id of beat.nodeIds) {
       revealedNodeIds.add(id);
+      if (!popped.has(id)) {
+        pendingNodeIds.add(id);
+      }
+    }
+    for (const id of popped) {
+      pendingNodeIds.delete(id);
     }
     for (const id of beat.edgeIds) {
       revealedEdgeIds.add(id);
@@ -951,6 +1034,7 @@ export function startBoardTimelapse(): boolean {
     activeSnapshot = {
       revealedNodeIds,
       revealedEdgeIds,
+      pendingNodeIds,
       // This beat's action first, the upcoming beats' behind it; the last
       // beat hands over everything for the pull-back ending.
       focusGroups: isLastBeat ? [[...revealedNodeIds]] : focusGroupsAt(index),
@@ -1005,7 +1089,12 @@ export function startBoardTimelapse(): boolean {
     // holds until the ink is dry, however short its own gap would be.
     const inkDryMs =
       beat.edgeIds.length > 0 ? timelapseWireDrawMs + TIMELAPSE_WIRE_SETTLE_MS : 0;
-    scheduleNext(Math.max(delayBefore(script.beats[index]), inkDryMs) / timelapseSpeed);
+    // A pop is part of the arithmetic too: a beat that landed something
+    // holds until the grow-and-fade has mostly played.
+    const popMs = popped.size > 0 ? timelapsePopMs * 0.9 : 0;
+    scheduleNext(
+      Math.max(delayBefore(script.beats[index]), inkDryMs, popMs) / timelapseSpeed,
+    );
   };
 
   // One quiet moment on the emptied board before the first card lands.

@@ -141,6 +141,7 @@ import {
 import { isEditableKeyboardTarget } from "./keyboard";
 import {
   getBoardTimelapseCameraPace,
+  getBoardTimelapsePopMs,
   getBoardTimelapseSnapshot,
   getBoardTimelapseWireDrawMs,
   getBoardTimelapseZoomRange,
@@ -761,6 +762,14 @@ type ResourceEdgeData = {
    * object and the stale route would never redraw.
    */
   layoutEpoch: number;
+  /**
+   * Timelapse only (board-timelapse.ts): the edge's paths render with
+   * pathLength=1, so the draw-in animation's normalized dash covers any
+   * route exactly and every wire takes the wire-draw slider's duration.
+   * Never set outside a run - px-based dash styles (starved dots, the
+   * clog-lock dashes) read wrong against a normalized length.
+   */
+  timelapseDraw?: boolean;
 };
 
 type ResourceFlowEdge = Edge<ResourceEdgeData, "resourceEdge">;
@@ -3350,23 +3359,52 @@ export function FactoryFlow() {
       if (!timelapse.revealedNodeIds.has(node.id)) {
         return { ...node, hidden: true } as typeof node;
       }
+      // Mounted so its wire can draw toward it, held at nothing until its
+      // pop beat (globals.css dresses the class).
+      const pendingClass = timelapse.pendingNodeIds.has(node.id)
+        ? [node.className, "timelapse-pending"].filter(Boolean).join(" ")
+        : undefined;
       // A frame is drawn AROUND its members, after them - but React Flow
       // hides every child of a hidden parent, so until the frame's beat its
       // members stand parentless on the canvas at the same absolute spot,
       // and re-dock without moving when it arrives.
       if (node.parentId && !timelapse.revealedNodeIds.has(node.parentId)) {
-        return { ...node, parentId: undefined, position: absoluteOf(node) } as typeof node;
+        return {
+          ...node,
+          parentId: undefined,
+          position: absoluteOf(node),
+          ...(pendingClass ? { className: pendingClass } : undefined),
+        } as typeof node;
+      }
+      if (pendingClass) {
+        return { ...node, className: pendingClass } as typeof node;
       }
       return node;
     });
   }, [flowNodes, timelapse]);
+  // Revealed edges wear the draw-in flag through a WeakMap keyed on the
+  // real edge object, so their flagged copies keep identity across the
+  // beats and React Flow does not re-render every standing wire per beat.
+  const timelapseEdgeFlagCache = useRef(new WeakMap<ResourceFlowEdge, ResourceFlowEdge>());
   const visibleFlowEdges = useMemo(() => {
     if (!timelapse) {
       return edges;
     }
-    return edges.map((edge) =>
-      timelapse.revealedEdgeIds.has(edge.id) ? edge : { ...edge, hidden: true },
-    );
+    const cache = timelapseEdgeFlagCache.current;
+    return edges.map((edge) => {
+      if (!timelapse.revealedEdgeIds.has(edge.id)) {
+        return { ...edge, hidden: true };
+      }
+      let flagged = cache.get(edge);
+      if (!flagged) {
+        flagged = {
+          ...edge,
+          data: edge.data ? { ...edge.data, timelapseDraw: true } : edge.data,
+        };
+        cache.set(edge, flagged);
+      }
+      return flagged;
+    });
   }, [edges, timelapse]);
   // Esc or any press on the board ends the show; so does unmounting it.
   // Presses on the timelapse chip are the one exception: its speed buttons
@@ -5920,6 +5958,7 @@ export function FactoryFlow() {
           ...(timelapseActive && timelapse
             ? {
                 "--timelapse-wire-draw": `${Math.round(getBoardTimelapseWireDrawMs() / timelapse.speed)}ms`,
+                "--timelapse-pop": `${Math.round(getBoardTimelapsePopMs() / timelapse.speed)}ms`,
               }
             : undefined),
         } as CSSProperties
@@ -8943,6 +8982,9 @@ function ResourceEdgeComponent({
           <BaseEdge
             path={liveRoute.path}
             interactionWidth={0}
+            // Normalized during a timelapse so the draw-in covers any route
+            // exactly; see ResourceEdgeData.timelapseDraw.
+            pathLength={data?.timelapseDraw ? 1 : undefined}
             style={{
               // Highlighted, the casing IS the solid part of the glow: the
               // same gold line the cards outline in, 3px per side to match
@@ -8961,6 +9003,7 @@ function ResourceEdgeComponent({
           <BaseEdge
             path={liveRoute.path}
             interactionWidth={0}
+            pathLength={data?.timelapseDraw ? 1 : undefined}
             style={{
               ...style,
               stroke: edgeColor,

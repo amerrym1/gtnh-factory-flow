@@ -688,11 +688,35 @@ textarea {
    must not be animated), the scale-up on the card root inside it. Wires
    fade in a touch slower, landing after the card they plug into. */
 .factory-flow-board--timelapse .react-flow__node {
-  animation: board-card-arrive 220ms cubic-bezier(0.25, 1, 0.5, 1) backwards;
+  animation: board-card-arrive var(--timelapse-pop, 260ms) cubic-bezier(0.25, 1, 0.5, 1)
+    backwards;
 }
 
 .factory-flow-board--timelapse .react-flow__node > * {
-  animation: board-card-arrive-pop 260ms cubic-bezier(0.3, 1.4, 0.5, 1) backwards;
+  animation: board-card-arrive-pop calc(var(--timelapse-pop, 260ms) * 1.15)
+    cubic-bezier(0.3, 1.4, 0.5, 1) backwards;
+}
+
+/* PENDING: mounted so its wire can render and draw toward it, but held at
+   nothing until its pop beat. The release is a TRANSITION, not the mount
+   keyframe - the node mounted invisible beats ago - so dropping the class
+   fades and grows it over the same pop duration. */
+.factory-flow-board--timelapse .react-flow__node {
+  transition: opacity var(--timelapse-pop, 260ms) ease-out;
+}
+
+.factory-flow-board--timelapse .react-flow__node > * {
+  transition: scale var(--timelapse-pop, 260ms) cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+
+.factory-flow-board--timelapse .react-flow__node.timelapse-pending {
+  animation: none;
+  opacity: 0;
+}
+
+.factory-flow-board--timelapse .react-flow__node.timelapse-pending > * {
+  animation: none;
+  scale: 0.6;
 }
 
 /* A wire DRAWS itself from source to target when it mounts mid-show: a
@@ -704,9 +728,16 @@ textarea {
    number, so the next thing happens after the ink is dry. Dashed channel
    wires render solid for the run's duration; their pattern returns with
    the class's exit. */
-.factory-flow-board--timelapse .react-flow__edge path {
-  stroke-dasharray: 3200;
-  stroke-dashoffset: 3200;
+.factory-flow-board--timelapse .react-flow__edge path.react-flow__edge-path {
+  /* Against pathLength=1 (set on exactly these BaseEdge paths during a
+     run), so the stroke covers ANY route exactly and every wire spends
+     the full duration drawing. The first cut used a big pixel dash
+     instead, and a short wire completed inside the first few percent of
+     the window - which read as no animation at all. Scoped to the
+     BaseEdge class: a unit dash on a path WITHOUT the normalized length
+     renders as one-pixel dots. */
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
   animation: timelapse-wire-draw var(--timelapse-wire-draw, 450ms)
     cubic-bezier(0.3, 0.55, 0.4, 1) forwards;
 }

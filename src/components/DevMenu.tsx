@@ -5,11 +5,13 @@ import { useEffect, useRef, useState } from "react";
 import {
   BOARD_TIMELAPSE_SPEEDS,
   getBoardTimelapseCameraPace,
+  getBoardTimelapsePopMs,
   getBoardTimelapseSpeed,
   getBoardTimelapseVolume,
   getBoardTimelapseWireDrawMs,
   getBoardTimelapseZoomRange,
   setBoardTimelapseCameraPace,
+  setBoardTimelapsePopMs,
   setBoardTimelapseSpeed,
   setBoardTimelapseVolume,
   setBoardTimelapseWireDrawMs,
@@ -17,6 +19,8 @@ import {
   startBoardTimelapse,
   TIMELAPSE_CAMERA_PACE_MAX,
   TIMELAPSE_CAMERA_PACE_MIN,
+  TIMELAPSE_POP_MAX_MS,
+  TIMELAPSE_POP_MIN_MS,
   TIMELAPSE_WIRE_DRAW_MAX_MS,
   TIMELAPSE_WIRE_DRAW_MIN_MS,
   TIMELAPSE_ZOOM_CEILING,
@@ -256,6 +260,20 @@ export function DevMenu({
                 onChange={(event) => setBoardTimelapseWireDrawMs(Number(event.target.value))}
                 aria-label="How long a wire takes to draw itself in"
                 title="How long a wire takes to draw itself in"
+                className="h-1 w-full accent-cyan-500"
+              />
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-xs">
+              <span className="w-14 shrink-0 text-fg-subtle">Pop</span>
+              <input
+                type="range"
+                min={TIMELAPSE_POP_MIN_MS}
+                max={TIMELAPSE_POP_MAX_MS}
+                step={20}
+                defaultValue={getBoardTimelapsePopMs()}
+                onChange={(event) => setBoardTimelapsePopMs(Number(event.target.value))}
+                aria-label="How long a card takes to fade and grow in"
+                title="How long a card takes to fade and grow in"
                 className="h-1 w-full accent-cyan-500"
               />
             </div>
