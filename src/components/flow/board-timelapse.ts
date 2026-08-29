@@ -335,6 +335,59 @@ function absolutePositionLookup(project: ProjectSlice): (id: string) => Point | 
 export interface BoardTimelapseSnapshot {
   revealedNodeIds: ReadonlySet<string>;
   revealedEdgeIds: ReadonlySet<string>;
+  /**
+   * What the camera should be looking at right now: the last few beats'
+   * cards, so the shot follows the build around the factory instead of
+   * backing off once and watching from orbit. The final beat hands it the
+   * whole board for the pull-back ending. The board eases toward this
+   * every frame (the follower in FactoryFlow); it is a target, not a jump.
+   */
+  focusNodeIds: readonly string[];
+  /** The live playback speed multiplier, for the overlay chip. */
+  speed: number;
+}
+
+/** The speeds the chip offers. 1 is the scripted pace. */
+export const BOARD_TIMELAPSE_SPEEDS = [0.5, 1, 2, 4] as const;
+
+const TIMELAPSE_SPEED_KEY = "gtnh-factory-flow.dev.timelapse-speed";
+
+let timelapseSpeed = readStoredTimelapseSpeed();
+
+function readStoredTimelapseSpeed(): number {
+  if (typeof window === "undefined") {
+    return 1;
+  }
+  try {
+    const stored = Number(window.localStorage.getItem(TIMELAPSE_SPEED_KEY));
+    if (BOARD_TIMELAPSE_SPEEDS.some((speed) => speed === stored)) {
+      return stored;
+    }
+  } catch {
+    // Storage blocked: run at the scripted pace.
+  }
+  return 1;
+}
+
+export function getBoardTimelapseSpeed(): number {
+  return timelapseSpeed;
+}
+
+/** Takes effect from the next beat; mid-run changes are the point. */
+export function setBoardTimelapseSpeed(speed: number): void {
+  if (!BOARD_TIMELAPSE_SPEEDS.some((allowed) => allowed === speed)) {
+    return;
+  }
+  timelapseSpeed = speed;
+  try {
+    window.localStorage.setItem(TIMELAPSE_SPEED_KEY, String(speed));
+  } catch {
+    // Session-only speed is fine.
+  }
+  if (activeSnapshot) {
+    activeSnapshot = { ...activeSnapshot, speed };
+    emit();
+  }
 }
 
 /** The whole run aims at about this long, whatever the board's size... */
@@ -347,9 +400,9 @@ const TIMELAPSE_MAX_BEAT_MS = 650;
 const TIMELAPSE_INK_BEAT_MS = 220;
 /** The finished board holds for a breath before the overlay lifts. */
 const TIMELAPSE_FINISH_HOLD_MS = 1600;
-/** Camera refits are throttled: beats can be far quicker than the 420ms
- * camera glide, and restarting the glide every beat reads as a shudder. */
-const TIMELAPSE_CAMERA_MIN_GAP_MS = 380;
+/** How many beats back the camera's focus window reaches. Small enough to
+ * keep the shot on the action, big enough that it does not whip. */
+const TIMELAPSE_FOCUS_BEATS = 6;
 
 let activeSnapshot: BoardTimelapseSnapshot | undefined;
 const listeners = new Set<() => void>();
@@ -417,11 +470,19 @@ export function startBoardTimelapse(): boolean {
     Math.max(TIMELAPSE_MIN_BEAT_MS, Math.round(TIMELAPSE_TARGET_MS / cardBeats)),
   );
 
-  activeSnapshot = { revealedNodeIds: new Set(), revealedEdgeIds: new Set() };
+  activeSnapshot = {
+    revealedNodeIds: new Set(),
+    revealedEdgeIds: new Set(),
+    // The approach shot: the camera starts flying toward the first card
+    // while the board is still empty.
+    focusNodeIds: [...script.beats[0].nodeIds],
+    speed: timelapseSpeed,
+  };
   emit();
 
   let index = 0;
-  let lastCameraAt = 0;
+  // The focus window: the last few beats' cards, oldest first.
+  const recentBeats: string[][] = [];
   const step = () => {
     stepTimer = undefined;
     if (token !== playToken) {
@@ -444,26 +505,32 @@ export function startBoardTimelapse(): boolean {
     for (const id of beat.edgeIds) {
       revealedEdgeIds.add(id);
     }
-    activeSnapshot = { revealedNodeIds, revealedEdgeIds };
+    recentBeats.push([...beat.nodeIds]);
+    if (recentBeats.length > TIMELAPSE_FOCUS_BEATS) {
+      recentBeats.shift();
+    }
+    const isLastBeat = index === script.beats.length - 1;
+    activeSnapshot = {
+      revealedNodeIds,
+      revealedEdgeIds,
+      // The camera chases the recent action; the last beat pulls it back
+      // over everything for the ending.
+      focusNodeIds: isLastBeat ? [...revealedNodeIds] : recentBeats.flat(),
+      speed: timelapseSpeed,
+    };
     emit();
 
     playBoardSound(beat.kind === "ink" ? "adjust" : "place");
     if (beat.edgeIds.length > 0) {
-      soundTimer = setTimeout(() => {
-        soundTimer = undefined;
-        if (token === playToken) {
-          playBoardSound("connect");
-        }
-      }, Math.round(beatMs / 2));
-    }
-
-    // The camera fits everything built so far: it starts close on the first
-    // machine and backs off as the factory grows, ending on the whole plan.
-    const now = Date.now();
-    const isLastBeat = index === script.beats.length - 1;
-    if (isLastBeat || now - lastCameraAt >= TIMELAPSE_CAMERA_MIN_GAP_MS) {
-      lastCameraAt = now;
-      state.frameBoardNodes([...revealedNodeIds], { maxZoom: 1 });
+      soundTimer = setTimeout(
+        () => {
+          soundTimer = undefined;
+          if (token === playToken) {
+            playBoardSound("connect");
+          }
+        },
+        Math.round(beatMs / 2 / timelapseSpeed),
+      );
     }
 
     index += 1;
@@ -474,13 +541,18 @@ export function startBoardTimelapse(): boolean {
           playBoardSound("sweep");
           stopBoardTimelapse();
         }
-      }, TIMELAPSE_FINISH_HOLD_MS);
+      }, TIMELAPSE_FINISH_HOLD_MS / timelapseSpeed);
       return;
     }
-    stepTimer = setTimeout(step, beat.kind === "ink" ? TIMELAPSE_INK_BEAT_MS : beatMs);
+    // Speed is read here, at scheduling time, so a chip press mid-run
+    // changes the pace from the very next beat.
+    stepTimer = setTimeout(
+      step,
+      (beat.kind === "ink" ? TIMELAPSE_INK_BEAT_MS : beatMs) / timelapseSpeed,
+    );
   };
 
   // One quiet moment on the emptied board before the first card lands.
-  stepTimer = setTimeout(step, 420);
+  stepTimer = setTimeout(step, 420 / timelapseSpeed);
   return true;
 }

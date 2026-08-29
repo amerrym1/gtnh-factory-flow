@@ -140,8 +140,10 @@ import {
 } from "@/lib/designs/design-camera";
 import { isEditableKeyboardTarget } from "./keyboard";
 import {
+  BOARD_TIMELAPSE_SPEEDS,
   getBoardTimelapseSnapshot,
   getServerBoardTimelapseSnapshot,
+  setBoardTimelapseSpeed,
   stopBoardTimelapse,
   subscribeBoardTimelapse,
 } from "./board-timelapse";
@@ -3330,6 +3332,8 @@ export function FactoryFlow() {
     );
   }, [edges, timelapse]);
   // Esc or any press on the board ends the show; so does unmounting it.
+  // Presses on the timelapse chip are the one exception: its speed buttons
+  // are how the run is steered, not a reason to end it.
   const timelapseActive = timelapse !== undefined;
   useEffect(() => {
     if (!timelapseActive) {
@@ -3342,7 +3346,12 @@ export function FactoryFlow() {
       }
     };
     const board = boardRef.current;
-    const onPointerDown = () => stopBoardTimelapse();
+    const onPointerDown = (event: PointerEvent) => {
+      if ((event.target as Element | null)?.closest?.("[data-timelapse-chip]")) {
+        return;
+      }
+      stopBoardTimelapse();
+    };
     window.addEventListener("keydown", onKeyDown, true);
     board?.addEventListener("pointerdown", onPointerDown, true);
     return () => {
@@ -3351,6 +3360,89 @@ export function FactoryFlow() {
     };
   }, [timelapseActive]);
   useEffect(() => stopBoardTimelapse, []);
+  // The timelapse camera. Each beat retargets the focus window's rect; a
+  // rAF chase then eases the viewport toward it every frame, so the shot
+  // pans continuously after the action instead of hopping fit to fit. The
+  // chase runs only while a timelapse does, and reads the board size once
+  // per run, not per frame.
+  const timelapseCameraTargetRef = useRef<{ x: number; y: number; zoom: number } | undefined>(
+    undefined,
+  );
+  const timelapseSpeedRef = useRef(1);
+  useEffect(() => {
+    if (!timelapse) {
+      timelapseCameraTargetRef.current = undefined;
+      return;
+    }
+    timelapseSpeedRef.current = timelapse.speed;
+    const board = boardRef.current;
+    if (!board || timelapse.focusNodeIds.length === 0) {
+      return;
+    }
+    const size = board.getBoundingClientRect();
+    if (size.width === 0 || size.height === 0) {
+      return;
+    }
+    const { cards, measuredById } = cameraCards([...timelapse.focusNodeIds]);
+    const rect = framingRect(cards, measuredById);
+    if (!rect) {
+      return;
+    }
+    const centre = rectCentre(rect);
+    timelapseCameraTargetRef.current = {
+      x: centre.x,
+      y: centre.y,
+      zoom: zoomForRect(rect, size, {
+        padding: BOARD_CAMERA_PADDING,
+        minZoom: BOARD_MIN_ZOOM,
+        maxZoom: BOARD_CAMERA_MAX_ZOOM,
+      }),
+    };
+  }, [timelapse, cameraCards]);
+  useEffect(() => {
+    if (!timelapseActive) {
+      return;
+    }
+    const board = boardRef.current;
+    const size = board?.getBoundingClientRect();
+    if (!size || size.width === 0 || size.height === 0) {
+      return;
+    }
+    let frame = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      frame = requestAnimationFrame(tick);
+      const dt = Math.min(100, now - last);
+      last = now;
+      const target = timelapseCameraTargetRef.current;
+      const instance = flowInstanceRef.current;
+      if (!target || !instance) {
+        return;
+      }
+      // An exponential chase: a fixed fraction of the remaining distance per
+      // time slice, so arrival is asymptotic and every retarget mid-flight
+      // bends the path instead of restarting it. The time constant tightens
+      // with playback speed so a 4x run is not all camera lag.
+      const tau = Math.min(840, Math.max(140, 420 / timelapseSpeedRef.current));
+      const k = 1 - Math.exp(-dt / tau);
+      const viewport = instance.getViewport();
+      const zoom = viewport.zoom + (target.zoom - viewport.zoom) * k;
+      const wantX = size.width / 2 - target.x * zoom;
+      const wantY = size.height / 2 - target.y * zoom;
+      const x = viewport.x + (wantX - viewport.x) * k;
+      const y = viewport.y + (wantY - viewport.y) * k;
+      if (
+        Math.abs(x - viewport.x) < 0.05 &&
+        Math.abs(y - viewport.y) < 0.05 &&
+        Math.abs(zoom - viewport.zoom) < 0.0005
+      ) {
+        return;
+      }
+      void instance.setViewport({ x, y, zoom });
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [timelapseActive]);
 
   const connectResourceEdges = useCallback(
     (
@@ -5828,8 +5920,33 @@ export function FactoryFlow() {
           the help button; see PerfHud.tsx. */}
       <PerfHud />
       {timelapseActive ? (
-        <div className="pointer-events-none absolute bottom-4 left-1/2 z-40 -translate-x-1/2 rounded border border-line-strong bg-surface/90 px-3 py-1.5 text-xs text-fg-muted shadow-lg">
-          Build timelapse: press Esc or click to stop.
+        <div
+          data-timelapse-chip
+          className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1.5 rounded border border-line-strong bg-surface/90 px-2.5 py-1.5 text-xs text-fg-muted shadow-lg"
+        >
+          <span className="pr-1">Build timelapse</span>
+          {BOARD_TIMELAPSE_SPEEDS.map((speed) => (
+            <button
+              key={speed}
+              type="button"
+              onClick={() => setBoardTimelapseSpeed(speed)}
+              className={[
+                "rounded border px-1.5 py-0.5 tabular-nums",
+                timelapse?.speed === speed
+                  ? "border-cyan-600 bg-cyan-500/10 text-cyan-400"
+                  : "border-line hover:border-line-strong hover:text-fg",
+              ].join(" ")}
+            >
+              {speed}x
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => stopBoardTimelapse()}
+            className="ml-1 rounded border border-line px-1.5 py-0.5 hover:border-line-strong hover:text-fg"
+          >
+            Stop
+          </button>
         </div>
       ) : null}
       {overwritePicking ? (
@@ -6229,6 +6346,12 @@ const BoardFloors = memo(function BoardFloors() {
       let open: Array<{ pocket: FactoryPocket; width: number; height: number }> | undefined;
       for (const [, node] of state.nodeLookup) {
         if (node.type !== "boardNode") {
+          continue;
+        }
+        // A hidden frame paints no paper: the build timelapse hides frames
+        // until their beat, and the floor arriving before its board reads
+        // as a ghost room.
+        if (node.hidden) {
           continue;
         }
         const data = node.data as BoardNodeData | undefined;
