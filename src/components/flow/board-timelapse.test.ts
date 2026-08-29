@@ -52,14 +52,21 @@ const revealedOrder = (script: ReturnType<typeof buildTimelapseScript>) =>
   script.beats.flatMap((beat) => beat.nodeIds);
 
 describe("buildTimelapseScript", () => {
-  it("reveals a chain source first, wiring each hop on its second endpoint's beat", () => {
+  it("reveals a chain source first, wiring each hop as its own beat", () => {
     const script = buildTimelapseScript({
       nodes: [node("a", 0, 0), node("b", 400, 0), node("c", 800, 0)],
       edges: [edge("ab", "a", "b"), edge("bc", "b", "c")],
     });
 
     expect(revealedOrder(script)).toEqual(["a", "b", "c"]);
-    expect(script.beats.map((beat) => beat.edgeIds)).toEqual([[], ["ab"], ["bc"]]);
+    expect(script.beats.map((beat) => beat.kind)).toEqual([
+      "card",
+      "card",
+      "wire",
+      "card",
+      "wire",
+    ]);
+    expect(script.beats.map((beat) => beat.edgeIds)).toEqual([[], [], ["ab"], [], ["bc"]]);
   });
 
   it("walks downstream even when the sink sits nearer the source than a feeder", () => {
@@ -72,6 +79,7 @@ describe("buildTimelapseScript", () => {
 
     expect(revealedOrder(script)).toEqual(["a", "c", "d"]);
     const last = script.beats[script.beats.length - 1];
+    expect(last.kind).toBe("wire");
     expect([...last.edgeIds].sort()).toEqual(["ad", "cd"]);
   });
 
@@ -85,7 +93,7 @@ describe("buildTimelapseScript", () => {
     expect(script.beats.flatMap((beat) => beat.edgeIds).sort()).toEqual(["ab", "ba"]);
   });
 
-  it("stands an open board's frame up on the beat of its first member", () => {
+  it("draws an open board's frame only after everything in it is on the table", () => {
     const script = buildTimelapseScript({
       nodes: [node("a", 0, 0), node("m", 40, 60, "board")],
       storages: [],
@@ -93,9 +101,13 @@ describe("buildTimelapseScript", () => {
       edges: [edge("am", "a", "m")],
     });
 
-    expect(script.beats[0].nodeIds).toEqual(["a"]);
-    expect(script.beats[1].nodeIds).toEqual(["board", "m"]);
-    expect(script.beats[1].edgeIds).toEqual(["am"]);
+    expect(script.beats.map((beat) => ({ kind: beat.kind, nodeIds: beat.nodeIds }))).toEqual([
+      { kind: "card", nodeIds: ["a"] },
+      { kind: "card", nodeIds: ["m"] },
+      { kind: "wire", nodeIds: [] },
+      { kind: "board", nodeIds: ["board"] },
+    ]);
+    expect(script.beats[2].edgeIds).toEqual(["am"]);
   });
 
   it("treats a collapsed board as one unit standing for its members", () => {
@@ -106,9 +118,11 @@ describe("buildTimelapseScript", () => {
     });
 
     expect(revealedOrder(script)).toEqual(["a", "board"]);
-    // Both crossing wires land together; the internal one rides along as a
-    // stray so nothing stays hidden after the run.
-    expect(script.beats[1].edgeIds.sort()).toEqual(["am1", "am2", "mm"]);
+    // Both crossing wires land together on the bar's wire beat; the
+    // internal one rides along as a stray so nothing stays hidden.
+    const last = script.beats[script.beats.length - 1];
+    expect(last.kind).toBe("wire");
+    expect([...last.edgeIds].sort()).toEqual(["am1", "am2", "mm"]);
   });
 
   it("draws ink last, in reading order", () => {
@@ -120,10 +134,16 @@ describe("buildTimelapseScript", () => {
 
     const inkBeats = script.beats.filter((beat) => beat.kind === "ink");
     expect(inkBeats.map((beat) => beat.nodeIds)).toEqual([["note-high"], ["note-low"]]);
-    expect(script.beats.map((beat) => beat.kind)).toEqual(["card", "card", "ink", "ink"]);
+    expect(script.beats.map((beat) => beat.kind)).toEqual([
+      "card",
+      "card",
+      "wire",
+      "ink",
+      "ink",
+    ]);
   });
 
-  it("reveals storages like any other card", () => {
+  it("slides a drawer in with its wire on one beat", () => {
     const script = buildTimelapseScript({
       nodes: [node("a", 0, 0)],
       storages: [storage("drawer", 400, 0)],
@@ -131,6 +151,24 @@ describe("buildTimelapseScript", () => {
     });
 
     expect(revealedOrder(script)).toEqual(["a", "drawer"]);
-    expect(script.beats[1].edgeIds).toEqual(["ad"]);
+    expect(script.beats[1]).toEqual({ nodeIds: ["drawer"], edgeIds: ["ad"], kind: "card" });
+  });
+
+  it("stands a nested empty board before the parent waiting on it", () => {
+    const script = buildTimelapseScript({
+      nodes: [node("a", 0, 0), node("m", 40, 60, "outer")],
+      pockets: [
+        pocket("outer", 600, 0, true),
+        { ...pocket("inner", 40, 200, true), parentPocketId: "outer" },
+      ],
+      edges: [],
+    });
+
+    const boardBeats = script.beats.filter((beat) => beat.kind === "board");
+    expect(boardBeats.map((beat) => beat.nodeIds)).toEqual([["inner"], ["outer"]]);
+    // The member card still came before either frame.
+    expect(revealedOrder(script).indexOf("m")).toBeLessThan(
+      revealedOrder(script).indexOf("inner"),
+    );
   });
 });

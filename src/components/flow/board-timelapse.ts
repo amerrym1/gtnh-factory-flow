@@ -20,12 +20,19 @@ import { useFactoryStore } from "@/store/factory-store";
  */
 
 export interface TimelapseBeat {
-  /** Canvas node ids revealed this beat (a card, plus any frames it needs). */
+  /** Canvas node ids revealed this beat; empty for a pure wire beat. */
   nodeIds: string[];
   /** Project edge ids whose both endpoints are now on the canvas. */
   edgeIds: string[];
-  /** What the beat reveals, for pacing and sound. */
-  kind: "card" | "ink";
+  /**
+   * What the beat does, for pacing and sound. A machine lands as a `card`
+   * beat and its wires follow as a separate `wire` beat - placing and
+   * wiring are two acts. A storage is the exception: the app's own drawer
+   * gesture creates drawer and wire together, so its card beat carries its
+   * edges. A `board` beat stands an open frame up AFTER everything in it
+   * is on the table.
+   */
+  kind: "card" | "wire" | "board" | "ink";
 }
 
 export interface TimelapseScript {
@@ -130,24 +137,42 @@ export function buildTimelapseScript(
     }
   }
 
-  // The open frames a unit needs standing before it can appear: its owner
-  // chain, outermost first.
-  const framesFor = (unitId: string): string[] => {
-    const pocket = pocketById.get(unitId);
-    let ownerId = pocket
-      ? pocket.parentPocketId
-      : project.nodes.find((node) => node.id === unitId)?.pocketId ??
-        (project.storages ?? []).find((storage) => storage.id === unitId)?.pocketId ??
-        (project.annotations ?? []).find((annotation) => annotation.id === unitId)?.pocketId;
-    const frames: string[] = [];
-    const seen = new Set<string>();
-    while (ownerId !== undefined && !seen.has(ownerId)) {
-      seen.add(ownerId);
-      frames.unshift(ownerId);
-      ownerId = pocketById.get(ownerId)?.parentPocketId;
+  // Which open board a unit sits in directly (undefined = the root), and
+  // how many completion members each open board still waits on. A frame
+  // does NOT stand before its members - it is drawn AROUND them once the
+  // last one is on the table, the way Ctrl+G wraps a finished selection.
+  // Annotations deliberately do not hold a frame up; ink comes last.
+  const storageIds = new Set((project.storages ?? []).map((storage) => storage.id));
+  const unitOwner = new Map<string, string | undefined>();
+  for (const node of project.nodes) {
+    if (units.has(node.id)) {
+      unitOwner.set(node.id, node.pocketId);
     }
-    return frames;
+  }
+  for (const storage of project.storages ?? []) {
+    if (units.has(storage.id)) {
+      unitOwner.set(storage.id, storage.pocketId);
+    }
+  }
+  for (const pocket of view.collapsedBoards) {
+    unitOwner.set(pocket.id, pocket.parentPocketId);
+  }
+  const pendingMembers = new Map<string, number>();
+  for (const pocket of view.openBoards) {
+    pendingMembers.set(pocket.id, 0);
+  }
+  const countMemberOf = (ownerId: string | undefined) => {
+    if (ownerId !== undefined && pendingMembers.has(ownerId)) {
+      pendingMembers.set(ownerId, (pendingMembers.get(ownerId) ?? 0) + 1);
+    }
   };
+  for (const [, ownerId] of unitOwner) {
+    countMemberOf(ownerId);
+  }
+  for (const pocket of view.openBoards) {
+    // A child board's frame is itself a member its parent waits on.
+    countMemberOf(pocket.parentPocketId);
+  }
 
   const revealedNodes = new Set<string>();
   const revealedEdges = new Set<string>();
@@ -155,17 +180,26 @@ export function buildTimelapseScript(
 
   const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 
-  const revealUnit = (unitId: string) => {
-    const nodeIds: string[] = [];
-    for (const frameId of framesFor(unitId)) {
-      if (!revealedNodes.has(frameId)) {
-        revealedNodes.add(frameId);
-        nodeIds.push(frameId);
+  // A member landed: any open board whose last member this was gets its
+  // frame drawn, which can in turn finish the board above it.
+  const settleFrames = (ownerId: string | undefined) => {
+    while (ownerId !== undefined && pendingMembers.has(ownerId)) {
+      const left = (pendingMembers.get(ownerId) ?? 0) - 1;
+      pendingMembers.set(ownerId, left);
+      if (left > 0) {
+        return;
       }
+      revealedNodes.add(ownerId);
+      beats.push({ nodeIds: [ownerId], edgeIds: [], kind: "board" });
+      ownerId = pocketById.get(ownerId)?.parentPocketId;
     }
+  };
+
+  const revealUnit = (unitId: string) => {
     revealedNodes.add(unitId);
-    nodeIds.push(unitId);
-    // Wires land the moment their second endpoint exists.
+    // Wires land once their second endpoint exists - but as their OWN beat:
+    // placing and wiring read as two acts. A storage keeps its wire on the
+    // card beat, the way the drawer gesture creates both at once.
     const edgeIds: string[] = [];
     for (const other of neighbours.get(unitId) ?? []) {
       if (!revealedNodes.has(other)) {
@@ -180,7 +214,13 @@ export function buildTimelapseScript(
         }
       }
     }
-    beats.push({ nodeIds, edgeIds, kind: "card" });
+    if (storageIds.has(unitId) || edgeIds.length === 0) {
+      beats.push({ nodeIds: [unitId], edgeIds, kind: "card" });
+    } else {
+      beats.push({ nodeIds: [unitId], edgeIds: [], kind: "card" });
+      beats.push({ nodeIds: [], edgeIds, kind: "wire" });
+    }
+    settleFrames(unitOwner.get(unitId));
   };
 
   // Greedy build order. Each step scores every unrevealed unit by, in order:
@@ -233,19 +273,19 @@ export function buildTimelapseScript(
     lastPoint = pointFor(best);
   }
 
-  // Open boards nothing lives in still have a frame to show.
-  for (const pocket of view.openBoards) {
+  // Boards holding no completion members (empty, or ink-only) still have a
+  // frame to draw. Deepest last in view.openBoards order is parents-first;
+  // reversing it stands children before the parent that waits on nothing.
+  for (const pocket of [...view.openBoards].reverse()) {
     if (!revealedNodes.has(pocket.id)) {
-      const nodeIds = framesFor(pocket.id).filter((id) => !revealedNodes.has(id));
-      nodeIds.push(pocket.id);
-      for (const id of nodeIds) {
-        revealedNodes.add(id);
-      }
-      beats.push({ nodeIds, edgeIds: [], kind: "card" });
+      revealedNodes.add(pocket.id);
+      beats.push({ nodeIds: [pocket.id], edgeIds: [], kind: "board" });
+      // An empty child was the member its parent still waited on.
+      settleFrames(pocket.parentPocketId);
     }
   }
 
-  // Ink last, in reading order.
+  // Ink last, in reading order. Every frame already stands by now.
   const inkUnits = (project.annotations ?? [])
     .map((annotation) => view.representativeOf(annotation.id))
     .filter((id): id is string => Boolean(id && !revealedNodes.has(id)))
@@ -258,12 +298,8 @@ export function buildTimelapseScript(
     if (revealedNodes.has(inkId)) {
       continue;
     }
-    const nodeIds = framesFor(inkId).filter((id) => !revealedNodes.has(id));
-    nodeIds.push(inkId);
-    for (const id of nodeIds) {
-      revealedNodes.add(id);
-    }
-    beats.push({ nodeIds, edgeIds: [], kind: "ink" });
+    revealedNodes.add(inkId);
+    beats.push({ nodeIds: [inkId], edgeIds: [], kind: "ink" });
   }
 
   // Any edge the walk never claimed (dangling endpoints, edges into units
@@ -373,6 +409,54 @@ export function getBoardTimelapseSpeed(): number {
   return timelapseSpeed;
 }
 
+/**
+ * The timelapse's own sound level, 0..1, on top of the app's master volume.
+ * 0.5 plays the shuffle voices as authored; the dial reaches double that,
+ * and 0 skips scheduling entirely.
+ */
+const TIMELAPSE_VOLUME_KEY = "gtnh-factory-flow.dev.timelapse-volume";
+const DEFAULT_TIMELAPSE_VOLUME = 0.5;
+
+let timelapseVolume = readStoredTimelapseVolume();
+
+function readStoredTimelapseVolume(): number {
+  if (typeof window === "undefined") {
+    return DEFAULT_TIMELAPSE_VOLUME;
+  }
+  try {
+    const raw = window.localStorage.getItem(TIMELAPSE_VOLUME_KEY);
+    if (raw !== null) {
+      const value = Number(raw);
+      if (Number.isFinite(value)) {
+        return Math.min(1, Math.max(0, value));
+      }
+    }
+  } catch {
+    // Storage blocked: author's level.
+  }
+  return DEFAULT_TIMELAPSE_VOLUME;
+}
+
+export function getBoardTimelapseVolume(): number {
+  return timelapseVolume;
+}
+
+export function setBoardTimelapseVolume(volume: number): void {
+  timelapseVolume = Math.min(1, Math.max(0, volume));
+  try {
+    window.localStorage.setItem(TIMELAPSE_VOLUME_KEY, String(timelapseVolume));
+  } catch {
+    // Session-only volume is fine.
+  }
+}
+
+function playTimelapseSound(kind: Parameters<typeof playBoardSound>[0]): void {
+  if (timelapseVolume <= 0) {
+    return;
+  }
+  playBoardSound(kind, { gain: timelapseVolume * 2 });
+}
+
 /** Takes effect from the next beat; mid-run changes are the point. */
 export function setBoardTimelapseSpeed(speed: number): void {
   if (!BOARD_TIMELAPSE_SPEEDS.some((allowed) => allowed === speed)) {
@@ -465,10 +549,18 @@ export function startBoardTimelapse(): boolean {
   stopBoardTimelapse();
   const token = ++playToken;
   const projectId = project.id;
+  // Cards and frames set the pace; wire beats are half-steps between them
+  // and ink is a flourish, so neither buys the run more time.
   const beatMs = Math.min(
     TIMELAPSE_MAX_BEAT_MS,
     Math.max(TIMELAPSE_MIN_BEAT_MS, Math.round(TIMELAPSE_TARGET_MS / cardBeats)),
   );
+  const delayBefore = (beat: TimelapseBeat) =>
+    beat.kind === "wire"
+      ? beatMs * 0.55
+      : beat.kind === "ink"
+        ? TIMELAPSE_INK_BEAT_MS
+        : beatMs;
 
   activeSnapshot = {
     revealedNodeIds: new Set(),
@@ -505,9 +597,12 @@ export function startBoardTimelapse(): boolean {
     for (const id of beat.edgeIds) {
       revealedEdgeIds.add(id);
     }
-    recentBeats.push([...beat.nodeIds]);
-    if (recentBeats.length > TIMELAPSE_FOCUS_BEATS) {
-      recentBeats.shift();
+    // Pure wire beats reveal no cards and should not thin the window.
+    if (beat.nodeIds.length > 0) {
+      recentBeats.push([...beat.nodeIds]);
+      if (recentBeats.length > TIMELAPSE_FOCUS_BEATS) {
+        recentBeats.shift();
+      }
     }
     const isLastBeat = index === script.beats.length - 1;
     activeSnapshot = {
@@ -520,17 +615,32 @@ export function startBoardTimelapse(): boolean {
     };
     emit();
 
-    playBoardSound(beat.kind === "ink" ? "adjust" : "place");
-    if (beat.edgeIds.length > 0) {
-      soundTimer = setTimeout(
-        () => {
-          soundTimer = undefined;
-          if (token === playToken) {
-            playBoardSound("connect");
-          }
-        },
-        Math.round(beatMs / 2 / timelapseSpeed),
-      );
+    // The shuffle family: brushes, not thumps. A storage's combined beat
+    // slides the drawer in and whisks its wire a half-beat later.
+    switch (beat.kind) {
+      case "card":
+        playTimelapseSound("shuffle");
+        if (beat.edgeIds.length > 0) {
+          soundTimer = setTimeout(
+            () => {
+              soundTimer = undefined;
+              if (token === playToken) {
+                playTimelapseSound("shuffleWire");
+              }
+            },
+            Math.round(beatMs / 2 / timelapseSpeed),
+          );
+        }
+        break;
+      case "wire":
+        playTimelapseSound("shuffleWire");
+        break;
+      case "board":
+        playTimelapseSound("shuffleBoard");
+        break;
+      case "ink":
+        playTimelapseSound("shuffleWire");
+        break;
     }
 
     index += 1;
@@ -538,18 +648,16 @@ export function startBoardTimelapse(): boolean {
       stepTimer = setTimeout(() => {
         stepTimer = undefined;
         if (token === playToken) {
-          playBoardSound("sweep");
+          playTimelapseSound("sweep");
           stopBoardTimelapse();
         }
       }, TIMELAPSE_FINISH_HOLD_MS / timelapseSpeed);
       return;
     }
-    // Speed is read here, at scheduling time, so a chip press mid-run
-    // changes the pace from the very next beat.
-    stepTimer = setTimeout(
-      step,
-      (beat.kind === "ink" ? TIMELAPSE_INK_BEAT_MS : beatMs) / timelapseSpeed,
-    );
+    // Speed and the NEXT beat's kind decide the gap, read at scheduling
+    // time, so a chip press mid-run changes the pace from the very next
+    // beat and a wire follows its card quickly.
+    stepTimer = setTimeout(step, delayBefore(script.beats[index]) / timelapseSpeed);
   };
 
   // One quiet moment on the emptied board before the first card lands.

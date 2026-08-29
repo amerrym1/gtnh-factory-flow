@@ -142,8 +142,10 @@ import { isEditableKeyboardTarget } from "./keyboard";
 import {
   BOARD_TIMELAPSE_SPEEDS,
   getBoardTimelapseSnapshot,
+  getBoardTimelapseVolume,
   getServerBoardTimelapseSnapshot,
   setBoardTimelapseSpeed,
+  setBoardTimelapseVolume,
   stopBoardTimelapse,
   subscribeBoardTimelapse,
 } from "./board-timelapse";
@@ -3319,9 +3321,35 @@ export function FactoryFlow() {
     if (!timelapse) {
       return flowNodes;
     }
-    return flowNodes.map((node) =>
-      timelapse.revealedNodeIds.has(node.id) ? node : ({ ...node, hidden: true } as typeof node),
-    );
+    const byId = new Map(flowNodes.map((node) => [node.id, node]));
+    const absoluteOf = (node: BoardFlowNode) => {
+      let x = node.position.x;
+      let y = node.position.y;
+      let parentId = node.parentId;
+      while (parentId) {
+        const parent = byId.get(parentId);
+        if (!parent) {
+          break;
+        }
+        x += parent.position.x;
+        y += parent.position.y;
+        parentId = parent.parentId;
+      }
+      return { x, y };
+    };
+    return flowNodes.map((node) => {
+      if (!timelapse.revealedNodeIds.has(node.id)) {
+        return { ...node, hidden: true } as typeof node;
+      }
+      // A frame is drawn AROUND its members, after them - but React Flow
+      // hides every child of a hidden parent, so until the frame's beat its
+      // members stand parentless on the canvas at the same absolute spot,
+      // and re-dock without moving when it arrives.
+      if (node.parentId && !timelapse.revealedNodeIds.has(node.parentId)) {
+        return { ...node, parentId: undefined, position: absoluteOf(node) } as typeof node;
+      }
+      return node;
+    });
   }, [flowNodes, timelapse]);
   const visibleFlowEdges = useMemo(() => {
     if (!timelapse) {
@@ -5940,6 +5968,19 @@ export function FactoryFlow() {
               {speed}x
             </button>
           ))}
+          {/* The run's own sound level, on top of the app master volume.
+              Uncontrolled: the module reads it per beat, nothing rerenders. */}
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            defaultValue={Math.round(getBoardTimelapseVolume() * 100)}
+            onChange={(event) => setBoardTimelapseVolume(Number(event.target.value) / 100)}
+            aria-label="Timelapse sound volume"
+            title="Timelapse sound volume"
+            className="mx-1 h-1 w-16 accent-cyan-500"
+          />
           <button
             type="button"
             onClick={() => stopBoardTimelapse()}

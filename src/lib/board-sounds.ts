@@ -111,7 +111,14 @@ export type BoardSoundKind =
   | "open" // a board window unfolds from its summary card
   | "close" // a board window folds to its summary card
   | "adjust" // a setting on a card changed: machine count, drain pill, config
-  | "sweep"; // one sound for a bulk change (paste, arrange, import)
+  | "sweep" // one sound for a bulk change (paste, arrange, import)
+  // The build timelapse's family (board-timelapse.ts): the same events as
+  // place/connect/open, but SLID rather than set down - mostly brush, a
+  // whisper of tone - because dozens fire in a row and the thump family
+  // sums into a drum solo at that rate.
+  | "shuffle" // a card slides onto the table
+  | "shuffleWire" // its wires brush in
+  | "shuffleBoard"; // a frame is drawn around finished cards
 
 let audioContext: AudioContext | undefined;
 let masterGain: GainNode | undefined;
@@ -408,6 +415,24 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void
       puff(ctx, out, { frequency: 700, q: 0.9, duration: 0.3, peak: 0.34 });
       blip(ctx, out, { from: 233, to: 311, duration: 0.28, peak: 0.2 });
       break;
+    case "shuffle":
+      // A card SLID onto the table: two brushes - a soft body and a lighter
+      // trailing one - over a barely-there low tap for weight. No knock.
+      puff(ctx, out, { frequency: 750, q: 0.8, duration: 0.09, peak: 0.24 });
+      puff(ctx, out, { frequency: 1500, q: 1.6, duration: 0.05, peak: 0.1, delay: 0.035 });
+      blip(ctx, out, { from: 165, to: 165, duration: 0.1, peak: 0.1, delay: 0.02 });
+      break;
+    case "shuffleWire":
+      // The wire pass: a whisper of the connect click, mostly brush.
+      puff(ctx, out, { frequency: 1900, q: 2, duration: 0.04, peak: 0.12 });
+      blip(ctx, out, { from: 587, to: 587, duration: 0.06, peak: 0.08, delay: 0.015 });
+      break;
+    case "shuffleBoard":
+      // A frame drawn around finished cards: one longer brush with a quiet
+      // rise - the open sound's shape in the shuffle material.
+      puff(ctx, out, { frequency: 600, q: 0.8, duration: 0.18, peak: 0.2 });
+      blip(ctx, out, { from: 233, to: 294, duration: 0.16, peak: 0.1, delay: 0.02 });
+      break;
   }
 }
 
@@ -425,7 +450,17 @@ export function primeBoardSounds(): void {
   }
 }
 
-export function playBoardSound(kind: BoardSoundKind): void {
+export function playBoardSound(
+  kind: BoardSoundKind,
+  options?: {
+    /**
+     * Scales this one sound against the master volume (the timelapse's own
+     * dial rides here). Above 1 is allowed - the soft-clip roof rounds off
+     * anything pushed too far - but the voices are tuned for 1.
+     */
+    gain?: number;
+  },
+): void {
   if (typeof window === "undefined" || !areBoardSoundsEnabled()) {
     return;
   }
@@ -462,7 +497,7 @@ export function playBoardSound(kind: BoardSoundKind): void {
     // One gain node PER SOUND, so the whole sound (all its notes and
     // puffs) can be stolen as a unit by the next retrigger.
     const voice = ctx.createGain();
-    voice.gain.value = duck;
+    voice.gain.value = duck * (options?.gain ?? 1);
     voice.connect(out);
     activeVoices.set(kind, voice);
     schedule(kind, ctx, voice);
