@@ -33,6 +33,7 @@ import {
   Ban,
   Box,
   Cable,
+  Clapperboard,
   Grid2x2,
   Ellipsis,
   Anchor,
@@ -140,10 +141,12 @@ import {
 } from "@/lib/designs/design-camera";
 import { isEditableKeyboardTarget } from "./keyboard";
 import {
+  BOARD_TIMELAPSE_PRESETS,
   getBoardTimelapseCameraMode,
   getBoardTimelapseCameraPace,
   getBoardTimelapseCineZoom,
   getBoardTimelapsePopMs,
+  runBoardTimelapsePreset,
   getBoardTimelapseSnapshot,
   getBoardTimelapseWireDrawMs,
   getBoardTimelapseZoomRange,
@@ -3450,14 +3453,12 @@ export function FactoryFlow() {
     getBoardTiltSnapshot,
     getServerBoardTiltSnapshot,
   );
-  // The finale eases into the board's RESTING look and stays there: with
-  // the always-on tilt the ending stays tilted (the tilt-aware planning
-  // keeps the wide frame honest), and without it the finale's flatten IS
-  // the resting state. No dip to flat and back - the show must end in the
-  // exact pose the board will hold.
-  const tiltWorn = timelapseActive
-    ? !timelapse?.finale || boardTilt.always
-    : boardTilt.always;
+  // The tilt is the SHOW'S dress: on for the whole run, finale included -
+  // never a 2D moment mid-show - and when the show is done the board eases
+  // in one motion to its resting look, which is the tilt checkbox's state.
+  // Off (the usual case) means the lean arrives with the show and leaves
+  // with it.
+  const tiltWorn = timelapseActive || boardTilt.always;
   // The timelapse camera. Each beat retargets the focus window's rect; a
   // rAF chase then eases the viewport toward it every frame, so the shot
   // pans continuously after the action instead of hopping fit to fit. The
@@ -8174,6 +8175,71 @@ function ThemeSwatch({ theme }: { theme: CanvasTheme }) {
   );
 }
 
+/**
+ * The player's door to the build timelapse: one button in the corner beside
+ * the view options, two hand-tuned shows behind it (board-timelapse.ts).
+ * Each preset applies its whole look for the run and hands the player's own
+ * settings back when it ends; the dev menu remains the workbench where the
+ * dials live.
+ */
+const BoardTimelapseMenu = memo(function BoardTimelapseMenu() {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useFoldoutDismiss(open, rootRef, close);
+  const canPlay = useFactoryStore(
+    (state) => state.project.nodes.length + (state.project.storages?.length ?? 0) >= 2,
+  );
+
+  return (
+    <div ref={rootRef} className="pointer-events-auto relative flex">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        className={[
+          "relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)]",
+          open ? TOOL_FACE_ON : TOOL_FACE_OFF,
+        ].join(" ")}
+        title="Watch it build"
+        aria-label="Watch it build"
+      >
+        <Clapperboard className="h-4 w-4" />
+      </button>
+      {open ? (
+        <div className="absolute right-0 top-[calc(100%+6px)] z-30 flex w-[250px] max-w-[calc(100vw-24px)] flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+          {BOARD_TIMELAPSE_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              disabled={!canPlay}
+              onClick={() => {
+                setOpen(false);
+                // Let the fold-out leave before the board empties for the
+                // first beat.
+                requestAnimationFrame(() => runBoardTimelapsePreset(preset));
+              }}
+              className="border-2 border-[var(--mc-15)] bg-[var(--mc-49)] p-2 text-left hover:bg-[var(--mc-61)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[var(--mc-49)]"
+            >
+              <span className="block text-[12px] font-semibold leading-tight text-white">
+                {preset.name}
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-tight text-[var(--mc-ink)]">
+                {preset.line}
+              </span>
+            </button>
+          ))}
+          <div className="px-1 py-0.5 text-[11px] leading-tight text-[var(--mc-ink)]">
+            {canPlay
+              ? "Press Esc or click the board to stop it."
+              : "Needs at least two cards on the board."}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+});
+
 // Memoized because FactoryFlow re-renders every frame of a node drag; with
 // stable callbacks this menu renders only when the view or its open state
 // changes.
@@ -8659,8 +8725,11 @@ const PaintToolbar = memo(function PaintToolbar({
         <BoardMuteButton />
       </ToolTray>
       {/* The corner slot: view options are one button and a sheet at every
-          width, reachable while the paint row is folded away on a phone. */}
+          width, reachable while the paint row is folded away on a phone. The
+          timelapse door lives beside it: also a way of looking, not a tool
+          that changes the plan. */}
       <ToolTray>
+        <BoardTimelapseMenu />
         <BoardViewMenu
           view={view}
           onChange={onViewChange}
