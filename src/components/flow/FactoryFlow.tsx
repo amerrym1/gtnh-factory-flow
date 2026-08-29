@@ -142,6 +142,7 @@ import {
 import { isEditableKeyboardTarget } from "./keyboard";
 import {
   BOARD_TIMELAPSE_PRESETS,
+  didBoardTimelapseEndHeld,
   getBoardTimelapseCameraMode,
   getBoardTimelapseCameraPace,
   getBoardTimelapseCineZoom,
@@ -3458,8 +3459,20 @@ export function FactoryFlow() {
   // never a 2D moment mid-show - and when the show is done the board eases
   // in one motion to its resting look, which is the tilt checkbox's state.
   // Off (the usual case) means the lean arrives with the show and leaves
-  // with it.
-  const tiltWorn = timelapseActive || boardTilt.always;
+  // with it. A HELD ending is the exception: "do nothing after" includes
+  // the tilt, so the freeze-frame keeps its lean until the next run.
+  const [tiltHeldAfterShow, setTiltHeldAfterShow] = useState(false);
+  const wasTimelapseActiveRef = useRef(false);
+  useEffect(() => {
+    const was = wasTimelapseActiveRef.current;
+    wasTimelapseActiveRef.current = timelapseActive;
+    if (timelapseActive) {
+      setTiltHeldAfterShow(false);
+    } else if (was) {
+      setTiltHeldAfterShow(didBoardTimelapseEndHeld());
+    }
+  }, [timelapseActive]);
+  const tiltWorn = timelapseActive || boardTilt.always || tiltHeldAfterShow;
   // The timelapse camera. Each beat retargets the focus window's rect; a
   // rAF chase then eases the viewport toward it every frame, so the shot
   // pans continuously after the action instead of hopping fit to fit. The

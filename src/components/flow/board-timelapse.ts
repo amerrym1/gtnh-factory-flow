@@ -1129,7 +1129,23 @@ export function getServerBoardTimelapseSnapshot(): BoardTimelapseSnapshot | unde
  * framed for the TILTED view - far wider than a flat fit - so the fit
  * glides in while the tilt eases off, one closing motion.
  */
+/**
+ * Whether the LAST run ended on a held final shot (see the hold switch):
+ * the natural finish with the hold on is the only path that skips the
+ * reframe, and the board keeps the show's tilt on too - flattening at
+ * 27 degrees of turn reads as an enormous zoom, which is exactly the
+ * camera movement the hold promises not to make. Cleared by the next run.
+ */
+let lastRunEndedHeld = false;
+
+export function didBoardTimelapseEndHeld(): boolean {
+  return lastRunEndedHeld;
+}
+
 export function stopBoardTimelapse(options?: { reframe?: boolean }): void {
+  if (activeSnapshot) {
+    lastRunEndedHeld = options?.reframe === false;
+  }
   playToken += 1;
   if (stepTimer !== undefined) {
     clearTimeout(stepTimer);
