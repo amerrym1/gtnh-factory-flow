@@ -185,6 +185,7 @@ import {
   framingRect,
   rectCentre,
   zoomForRect,
+  type BoardRect,
 } from "./board-camera";
 import { RecipeNode, type RecipeFlowNode } from "./RecipeNode";
 import { GT_NODE_COLORS, GT_NODE_COLOR_PALETTE, flowRampColor } from "./node-colors";
@@ -3394,38 +3395,114 @@ export function FactoryFlow() {
     undefined,
   );
   const timelapseSpeedRef = useRef(1);
+  const timelapseFinaleRef = useRef(false);
   useEffect(() => {
     if (!timelapse) {
       timelapseCameraTargetRef.current = undefined;
       return;
     }
     timelapseSpeedRef.current = timelapse.speed;
+    timelapseFinaleRef.current = timelapse.finale;
     const board = boardRef.current;
-    if (!board || timelapse.focusNodeIds.length === 0) {
+    if (!board || timelapse.focusGroups.length === 0) {
       return;
     }
     const size = board.getBoundingClientRect();
     if (size.width === 0 || size.height === 0) {
       return;
     }
-    const { cards, measuredById } = cameraCards([...timelapse.focusNodeIds]);
-    const rect = framingRect(cards, measuredById);
-    if (!rect) {
+    const rectOf = (ids: readonly string[]) => {
+      const { cards, measuredById } = cameraCards([...ids]);
+      return framingRect(cards, measuredById);
+    };
+    const actionRect = rectOf(timelapse.focusGroups[0]);
+    if (!actionRect) {
       return;
     }
-    const centre = rectCentre(rect);
-    // Until the finale's pull-back, the shot never zooms out past the point
-    // where cards swap to their glance faces: a wide focus window gets
-    // centred and cropped rather than shrunk into LOD mode. The finale is
-    // the one beat allowed to frame everything, however small that is.
+
+    // The DEADBAND: while this beat's action sits comfortably inside the
+    // standing shot, the camera does not move at all. Ten things happening
+    // in one vicinity get one steady shot, not ten micro-adjustments.
+    const shot = timelapseCameraTargetRef.current;
+    if (shot && !timelapse.finale) {
+      const inset = 0.04;
+      const halfW = (size.width / shot.zoom) * (0.5 - inset);
+      const halfH = (size.height / shot.zoom) * (0.5 - inset);
+      if (
+        actionRect.x >= shot.x - halfW &&
+        actionRect.y >= shot.y - halfH &&
+        actionRect.x + actionRect.width <= shot.x + halfW &&
+        actionRect.y + actionRect.height <= shot.y + halfH
+      ) {
+        return;
+      }
+    }
+
+    // A NEW SHOT: start on this beat's action and widen over the script's
+    // upcoming beats while everything still fits without dropping to the
+    // glance faces - the vantage a cameraman would pick for the scene. The
+    // finale skips the planning and frames the whole board, however small.
+    const unionRects = (a: BoardRect, b: BoardRect): BoardRect => {
+      const x = Math.min(a.x, b.x);
+      const y = Math.min(a.y, b.y);
+      return {
+        x,
+        y,
+        width: Math.max(a.x + a.width, b.x + b.width) - x,
+        height: Math.max(a.y + a.height, b.y + b.height) - y,
+      };
+    };
+    let union = actionRect;
+    if (!timelapse.finale) {
+      for (const group of timelapse.focusGroups.slice(1)) {
+        const rect = rectOf(group);
+        if (!rect) {
+          continue;
+        }
+        const widened = unionRects(union, rect);
+        // Feasibility is checked with a slim padding: the question is only
+        // whether all of it stays above the glance zoom, and the standard
+        // camera padding here made the planner give up two beats in.
+        const fit = zoomForRect(widened, size, {
+          padding: 0.06,
+          minZoom: BOARD_MIN_ZOOM,
+          maxZoom: BOARD_CAMERA_MAX_ZOOM,
+        });
+        if (fit < NODE_GLANCE_LEAVE_ZOOM) {
+          break;
+        }
+        union = widened;
+      }
+    }
+    const centre = rectCentre(union);
+    if (process.env.NODE_ENV !== "production") {
+      // Probe instrumentation: how often the camera actually cuts.
+      const w = window as unknown as { __timelapseCuts?: number };
+      w.__timelapseCuts = (w.__timelapseCuts ?? 0) + 1;
+    }
     timelapseCameraTargetRef.current = {
       x: centre.x,
       y: centre.y,
-      zoom: zoomForRect(rect, size, {
-        padding: BOARD_CAMERA_PADDING,
-        minZoom: timelapse.finale ? BOARD_MIN_ZOOM : NODE_GLANCE_LEAVE_ZOOM,
-        maxZoom: BOARD_CAMERA_MAX_ZOOM,
-      }),
+      // Shots are ROOMY on purpose: capped well under 1:1 so the view around
+      // a small cluster has space for the next few beats to land inside the
+      // deadband, instead of a tight close-up that forces a cut every beat.
+      zoom: timelapse.finale
+        ? zoomForRect(union, size, {
+            padding: BOARD_CAMERA_PADDING,
+            minZoom: BOARD_MIN_ZOOM,
+            maxZoom: BOARD_CAMERA_MAX_ZOOM,
+          })
+        : Math.min(
+            0.8,
+            Math.max(
+              NODE_GLANCE_LEAVE_ZOOM,
+              zoomForRect(union, size, {
+                padding: BOARD_CAMERA_PADDING,
+                minZoom: BOARD_MIN_ZOOM,
+                maxZoom: BOARD_CAMERA_MAX_ZOOM,
+              }),
+            ),
+          ),
     };
   }, [timelapse, cameraCards]);
   useEffect(() => {
@@ -3450,23 +3527,32 @@ export function FactoryFlow() {
       }
       // An exponential chase: a fixed fraction of the remaining distance per
       // time slice, so arrival is asymptotic and every retarget mid-flight
-      // bends the path instead of restarting it. The time constant tightens
-      // with playback speed so a 4x run is not all camera lag.
-      const tau = Math.min(840, Math.max(140, 420 / timelapseSpeedRef.current));
+      // bends the path instead of restarting it. Shots are rare cuts, so a
+      // glide can take its time; the finale's pull-out is deliberately
+      // brisker, and the constant tightens with playback speed either way.
+      const tau = timelapseFinaleRef.current
+        ? 260
+        : Math.min(900, Math.max(200, 420 / timelapseSpeedRef.current));
       const k = 1 - Math.exp(-dt / tau);
       const viewport = instance.getViewport();
       const zoom = viewport.zoom + (target.zoom - viewport.zoom) * k;
       const wantX = size.width / 2 - target.x * zoom;
       const wantY = size.height / 2 - target.y * zoom;
-      const x = viewport.x + (wantX - viewport.x) * k;
-      const y = viewport.y + (wantY - viewport.y) * k;
+      // Within a pixel of the vantage: land EXACTLY and go still. The
+      // exponential tail otherwise drips sub-pixel drift for seconds, and a
+      // held shot must be a held shot.
       if (
-        Math.abs(x - viewport.x) < 0.05 &&
-        Math.abs(y - viewport.y) < 0.05 &&
-        Math.abs(zoom - viewport.zoom) < 0.0005
+        Math.abs(wantX - viewport.x) < 0.75 &&
+        Math.abs(wantY - viewport.y) < 0.75 &&
+        Math.abs(target.zoom - viewport.zoom) < 0.001
       ) {
+        if (viewport.x !== wantX || viewport.y !== wantY || viewport.zoom !== target.zoom) {
+          void instance.setViewport({ x: wantX, y: wantY, zoom: target.zoom });
+        }
         return;
       }
+      const x = viewport.x + (wantX - viewport.x) * k;
+      const y = viewport.y + (wantY - viewport.y) * k;
       void instance.setViewport({ x, y, zoom });
     };
     frame = requestAnimationFrame(tick);
@@ -5751,6 +5837,8 @@ export function FactoryFlow() {
         // Every card and wire MOUNTS mid-run during the build timelapse, so
         // the pop-in lives on a board class rather than on the nodes.
         timelapseActive ? "factory-flow-board--timelapse" : "",
+        // The finale flattens the demo-card tilt for the wide reveal.
+        timelapse?.finale ? "factory-flow-board--timelapse-finale" : "",
       ].join(" ")}
       style={
         {

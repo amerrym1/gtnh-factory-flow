@@ -35,8 +35,10 @@ export interface TimelapseBeat {
   kind: "card" | "wire" | "board" | "ink";
   /**
    * What the camera should watch during this beat when that is not the
-   * revealed nodes themselves - a wire beat names its two endpoints, so
-   * the shot holds both ends of the connection being made.
+   * revealed nodes themselves. A wire beat names only its NEAR end - the
+   * card whose wiring pass this is. The far end already stands, often a
+   * screen away, and a shot stretched to hold both ends of every dock
+   * was what kept the camera cutting instead of holding its vantage.
    */
   focusNodeIds?: string[];
 }
@@ -254,7 +256,7 @@ export function buildTimelapseScript(
               nodeIds: [],
               edgeIds: [edgeId],
               kind: "wire",
-              focusNodeIds: [unitId, other],
+              focusNodeIds: [unitId],
             });
           }
         }
@@ -470,13 +472,15 @@ export interface BoardTimelapseSnapshot {
   revealedNodeIds: ReadonlySet<string>;
   revealedEdgeIds: ReadonlySet<string>;
   /**
-   * What the camera should be looking at right now: the last few beats'
-   * cards, so the shot follows the build around the factory instead of
-   * backing off once and watching from orbit. The final beat hands it the
-   * whole board for the pull-back ending. The board eases toward this
-   * every frame (the follower in FactoryFlow); it is a target, not a jump.
+   * What the camera should be watching, as an ordered lookahead: the
+   * current beat's action first, then the next beats'. The follower in
+   * FactoryFlow plans a SHOT from these - a vantage covering as much of
+   * the upcoming action as fits without dropping to glance zoom - and then
+   * HOLDS it while beats land inside the view, so ten things happening in
+   * one vicinity get one steady shot, not ten micro-moves. The final beat
+   * hands over one group holding everything for the pull-back ending.
    */
-  focusNodeIds: readonly string[];
+  focusGroups: ReadonlyArray<readonly string[]>;
   /**
    * The last beat's pull-back over the whole board. Until it, the follow
    * camera holds a zoom floor above the glance threshold - the cards must
@@ -588,11 +592,11 @@ const TIMELAPSE_MAX_BEAT_MS = 650;
 const TIMELAPSE_INK_BEAT_MS = 220;
 /** The finished board holds for a breath before the overlay lifts. */
 const TIMELAPSE_FINISH_HOLD_MS = 1600;
-/** How many beats back the camera's focus window reaches. Three keeps the
- * shot ON the action - a machine and its attendants - and the zoom rides
- * every beat instead of parking wide; the chase easing is what keeps that
- * from whipping. */
-const TIMELAPSE_FOCUS_BEATS = 3;
+/** How far ahead the camera may read the script when planning a shot. Deep
+ * enough to cover a machine with all its attendants and wires plus the
+ * next machine or two when they are close; the zoom floor is what stops a
+ * shot from swallowing a distant cluster. */
+const TIMELAPSE_SHOT_LOOKAHEAD = 14;
 
 let activeSnapshot: BoardTimelapseSnapshot | undefined;
 const listeners = new Set<() => void>();
@@ -674,20 +678,36 @@ export function startBoardTimelapse(): boolean {
         ? TIMELAPSE_INK_BEAT_MS
         : beatMs;
 
+  // The camera's reading of the script from a given beat: the action of
+  // that beat and the next few, in order, empties skipped.
+  const focusGroupsAt = (startIndex: number): string[][] => {
+    const groups: string[][] = [];
+    for (
+      let i = startIndex;
+      i < script.beats.length && groups.length <= TIMELAPSE_SHOT_LOOKAHEAD;
+      i += 1
+    ) {
+      const focus = script.beats[i].focusNodeIds ?? script.beats[i].nodeIds;
+      if (focus.length > 0) {
+        groups.push([...focus]);
+      }
+    }
+    return groups;
+  };
+
   activeSnapshot = {
     revealedNodeIds: new Set(),
     revealedEdgeIds: new Set(),
-    // The approach shot: the camera starts flying toward the first card
-    // while the board is still empty.
-    focusNodeIds: [...script.beats[0].nodeIds],
+    // The approach shot: planned over the opening beats while the board is
+    // still empty, so the camera is already standing where the first
+    // machines will land.
+    focusGroups: focusGroupsAt(0),
     finale: false,
     speed: timelapseSpeed,
   };
   emit();
 
   let index = 0;
-  // The focus window: the last few beats' cards, oldest first.
-  const recentBeats: string[][] = [];
   const step = () => {
     stepTimer = undefined;
     if (token !== playToken) {
@@ -710,21 +730,13 @@ export function startBoardTimelapse(): boolean {
     for (const id of beat.edgeIds) {
       revealedEdgeIds.add(id);
     }
-    // A wire beat watches its two endpoints; a card beat watches the card.
-    const focus = beat.focusNodeIds ?? beat.nodeIds;
-    if (focus.length > 0) {
-      recentBeats.push([...focus]);
-      if (recentBeats.length > TIMELAPSE_FOCUS_BEATS) {
-        recentBeats.shift();
-      }
-    }
     const isLastBeat = index === script.beats.length - 1;
     activeSnapshot = {
       revealedNodeIds,
       revealedEdgeIds,
-      // The camera chases the recent action; the last beat pulls it back
-      // over everything for the ending.
-      focusNodeIds: isLastBeat ? [...revealedNodeIds] : recentBeats.flat(),
+      // This beat's action first, the upcoming beats' behind it; the last
+      // beat hands over everything for the pull-back ending.
+      focusGroups: isLastBeat ? [[...revealedNodeIds]] : focusGroupsAt(index),
       finale: isLastBeat,
       speed: timelapseSpeed,
     };

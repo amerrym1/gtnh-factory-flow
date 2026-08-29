@@ -209,8 +209,8 @@ describe("buildTimelapseScript", () => {
       { kind: "card", nodeIds: ["B"], edgeIds: [] },
       { kind: "wire", nodeIds: [], edgeIds: ["bB"] },
     ]);
-    // The wire beat tells the camera to hold both ends of the connection.
-    expect(script.beats[4].focusNodeIds?.sort()).toEqual(["B", "b"]);
+    // The wire beat keeps the camera on its near end - the card being wired.
+    expect(script.beats[4].focusNodeIds).toEqual(["B"]);
   });
 
   it("stands a nested empty board before the parent waiting on it", () => {

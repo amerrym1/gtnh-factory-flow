@@ -699,6 +699,44 @@ textarea {
   animation: board-card-arrive 340ms ease-out backwards;
 }
 
+/* The demo-card tilt: while the timelapse plays, the whole canvas leans
+   like a product page showing off a card, with a slow breathing drift on
+   the inner renderer so it feels held rather than pinned. Only the visual
+   layer tilts - React Flow's own viewport transform stays 2D, so the
+   camera math never knows. The finale flattens it for the wide reveal
+   (the drift rides a separate element, so killing its animation mid-swing
+   costs at most a couple of degrees under a moving camera). */
+.factory-flow-board--timelapse {
+  perspective: 1600px;
+}
+
+.factory-flow-board--timelapse .react-flow {
+  transition: transform 1200ms cubic-bezier(0.33, 1, 0.68, 1);
+  transform: rotateX(7deg) rotateY(-3deg);
+  transform-style: preserve-3d;
+}
+
+.factory-flow-board--timelapse .react-flow__renderer {
+  animation: timelapse-tilt-drift 9s ease-in-out infinite alternate;
+}
+
+.factory-flow-board--timelapse-finale .react-flow {
+  transform: none;
+}
+
+.factory-flow-board--timelapse-finale .react-flow__renderer {
+  animation: none;
+}
+
+@keyframes timelapse-tilt-drift {
+  from {
+    transform: rotateY(-2deg);
+  }
+  to {
+    transform: rotateY(2.5deg);
+  }
+}
+
 /* Value motion (board-motion.tsx): the port gauges glide to their new
    reading on the same clock the numbers ease on (VALUE_TWEEN_MS), so a bar
    and the rate under it tell one story while they move. */
