@@ -2,7 +2,9 @@
 
 import { Check, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { startBoardTimelapse } from "./flow/board-timelapse";
 import { isPerfHudEnabled, setPerfHudEnabled } from "./flow/PerfHud";
+import { useFactoryStore } from "@/store/factory-store";
 
 /**
  * The dev menu, behind a shift-click on the version chip.
@@ -21,6 +23,10 @@ export function DevMenu({
   onPreviewUpdatePopup: () => void;
 }) {
   const [perfHud, setPerfHud] = useState<boolean>(() => isPerfHudEnabled());
+  // Two cards is the least board that reads as a sequence at all.
+  const canPlayTimelapse = useFactoryStore(
+    (state) => state.project.nodes.length + (state.project.storages?.length ?? 0) >= 2,
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -103,6 +109,26 @@ export function DevMenu({
               </span>
               <span className="mt-0.5 block text-xs text-fg-muted">
                 Shows the what&apos;s-new popup exactly as a returning player sees it.
+              </span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            disabled={!canPlayTimelapse}
+            onClick={() => {
+              onClose();
+              // Let the menu's backdrop leave before the board empties for
+              // the first beat - the run starts on a clean canvas.
+              requestAnimationFrame(() => startBoardTimelapse());
+            }}
+            className="mt-2 flex w-full items-center gap-3 rounded border border-line px-3 py-2.5 text-left hover:border-line-strong hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-line disabled:hover:bg-transparent"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block text-base leading-tight text-fg">Play a build timelapse</span>
+              <span className="mt-0.5 block text-xs text-fg-muted">
+                Replays this board being built card by card, sources first. Esc or a click stops
+                it. Needs at least two cards.
               </span>
             </span>
           </button>

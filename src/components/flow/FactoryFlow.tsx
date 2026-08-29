@@ -139,6 +139,12 @@ import {
   type BoardCamera,
 } from "@/lib/designs/design-camera";
 import { isEditableKeyboardTarget } from "./keyboard";
+import {
+  getBoardTimelapseSnapshot,
+  getServerBoardTimelapseSnapshot,
+  stopBoardTimelapse,
+  subscribeBoardTimelapse,
+} from "./board-timelapse";
 import { BoardHelp } from "./BoardHelp";
 import { PerfHud } from "./PerfHud";
 import {
@@ -3297,6 +3303,55 @@ export function FactoryFlow() {
     storagesById,
   ]);
 
+  // The dev-menu build timelapse (board-timelapse.ts). While a run is on,
+  // not-yet-revealed cards and wires wear React Flow's `hidden` flag - applied
+  // HERE, downstream of every real memo, so the published geometry, the route
+  // solve and the whole drag machinery keep seeing the full board and no route
+  // moves an inch. Stopping hands back the original arrays untouched.
+  const timelapse = useSyncExternalStore(
+    subscribeBoardTimelapse,
+    getBoardTimelapseSnapshot,
+    getServerBoardTimelapseSnapshot,
+  );
+  const visibleFlowNodes = useMemo(() => {
+    if (!timelapse) {
+      return flowNodes;
+    }
+    return flowNodes.map((node) =>
+      timelapse.revealedNodeIds.has(node.id) ? node : ({ ...node, hidden: true } as typeof node),
+    );
+  }, [flowNodes, timelapse]);
+  const visibleFlowEdges = useMemo(() => {
+    if (!timelapse) {
+      return edges;
+    }
+    return edges.map((edge) =>
+      timelapse.revealedEdgeIds.has(edge.id) ? edge : { ...edge, hidden: true },
+    );
+  }, [edges, timelapse]);
+  // Esc or any press on the board ends the show; so does unmounting it.
+  const timelapseActive = timelapse !== undefined;
+  useEffect(() => {
+    if (!timelapseActive) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        stopBoardTimelapse();
+      }
+    };
+    const board = boardRef.current;
+    const onPointerDown = () => stopBoardTimelapse();
+    window.addEventListener("keydown", onKeyDown, true);
+    board?.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      board?.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [timelapseActive]);
+  useEffect(() => stopBoardTimelapse, []);
+
   const connectResourceEdges = useCallback(
     (
       sourceNodeId: string,
@@ -5572,6 +5627,9 @@ export function FactoryFlow() {
         // when the two layers stop being stacking contexts of their own.
         // Same lever thickness mode pulls; see globals.css.
         pocketView.openBoards.length > 0 ? "factory-flow-board--edges-under" : "",
+        // Every card and wire MOUNTS mid-run during the build timelapse, so
+        // the pop-in lives on a board class rather than on the nodes.
+        timelapseActive ? "factory-flow-board--timelapse" : "",
       ].join(" ")}
       style={
         {
@@ -5612,8 +5670,8 @@ export function FactoryFlow() {
       }}
     >
       <ReactFlow
-        nodes={flowNodes}
-        edges={edges}
+        nodes={visibleFlowNodes}
+        edges={visibleFlowEdges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onConnect={handleConnect}
@@ -5769,6 +5827,11 @@ export function FactoryFlow() {
       {/* Toggled from the dev menu (shift-click the version chip). Sits above
           the help button; see PerfHud.tsx. */}
       <PerfHud />
+      {timelapseActive ? (
+        <div className="pointer-events-none absolute bottom-4 left-1/2 z-40 -translate-x-1/2 rounded border border-line-strong bg-surface/90 px-3 py-1.5 text-xs text-fg-muted shadow-lg">
+          Build timelapse: press Esc or click to stop.
+        </div>
+      ) : null}
       {overwritePicking ? (
         <div
           className={[
