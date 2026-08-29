@@ -73,6 +73,12 @@ export function DevMenu({
   const [timelapseSpeed, setTimelapseSpeed] = useState<number>(() => getBoardTimelapseSpeed());
   const [cameraMode, setCameraMode] = useState(() => getBoardTimelapseCameraMode());
   const [cineZoom, setCineZoom] = useState(() => getBoardTimelapseCineZoom());
+  // Every dial shows its number: a setting you can read is a setting you
+  // can refer to, write down, and set back.
+  const [volume, setVolume] = useState(() => getBoardTimelapseVolume());
+  const [cameraPace, setCameraPace] = useState(() => getBoardTimelapseCameraPace());
+  const [wireDrawMs, setWireDrawMs] = useState(() => getBoardTimelapseWireDrawMs());
+  const [popMs, setPopMs] = useState(() => getBoardTimelapsePopMs());
   // The demo-card tilt: edits apply to the board live (a running timelapse
   // included - this menu opens over it without cancelling).
   const [tilt, setTilt] = useState<BoardTilt>(() => getBoardTiltSnapshot());
@@ -237,11 +243,17 @@ export function DevMenu({
                 min={0}
                 max={100}
                 step={5}
-                defaultValue={Math.round(getBoardTimelapseVolume() * 100)}
-                onChange={(event) => setBoardTimelapseVolume(Number(event.target.value) / 100)}
+                value={Math.round(volume * 100)}
+                onChange={(event) => {
+                  setBoardTimelapseVolume(Number(event.target.value) / 100);
+                  setVolume(getBoardTimelapseVolume());
+                }}
                 aria-label="Timelapse sound volume"
                 className="h-1 w-full accent-cyan-500"
               />
+              <span className="w-12 shrink-0 text-right tabular-nums text-fg-muted">
+                {Math.round(volume * 100)}%
+              </span>
             </div>
             <div className="mt-2 flex items-center gap-1.5 text-xs">
               <span className="w-14 shrink-0 text-fg-subtle">Style</span>
@@ -293,12 +305,18 @@ export function DevMenu({
                 min={TIMELAPSE_CAMERA_PACE_MIN}
                 max={TIMELAPSE_CAMERA_PACE_MAX}
                 step={0.05}
-                defaultValue={getBoardTimelapseCameraPace()}
-                onChange={(event) => setBoardTimelapseCameraPace(Number(event.target.value))}
+                value={cameraPace}
+                onChange={(event) => {
+                  setBoardTimelapseCameraPace(Number(event.target.value));
+                  setCameraPace(getBoardTimelapseCameraPace());
+                }}
                 aria-label="How briskly the camera travels between shots"
                 title="How briskly the camera travels between shots"
                 className="h-1 w-full accent-cyan-500"
               />
+              <span className="w-12 shrink-0 text-right tabular-nums text-fg-muted">
+                {cameraPace.toFixed(2)}x
+              </span>
             </div>
             <div className="mt-2 flex items-center gap-1.5 text-xs">
               <span className="w-14 shrink-0 text-fg-subtle">Wire draw</span>
@@ -307,12 +325,18 @@ export function DevMenu({
                 min={TIMELAPSE_WIRE_DRAW_MIN_MS}
                 max={TIMELAPSE_WIRE_DRAW_MAX_MS}
                 step={20}
-                defaultValue={getBoardTimelapseWireDrawMs()}
-                onChange={(event) => setBoardTimelapseWireDrawMs(Number(event.target.value))}
+                value={wireDrawMs}
+                onChange={(event) => {
+                  setBoardTimelapseWireDrawMs(Number(event.target.value));
+                  setWireDrawMs(getBoardTimelapseWireDrawMs());
+                }}
                 aria-label="How long a wire takes to draw itself in"
                 title="How long a wire takes to draw itself in"
                 className="h-1 w-full accent-cyan-500"
               />
+              <span className="w-12 shrink-0 text-right tabular-nums text-fg-muted">
+                {wireDrawMs}ms
+              </span>
             </div>
             <div className="mt-2 flex items-center gap-1.5 text-xs">
               <span className="w-14 shrink-0 text-fg-subtle">Pop</span>
@@ -321,12 +345,18 @@ export function DevMenu({
                 min={TIMELAPSE_POP_MIN_MS}
                 max={TIMELAPSE_POP_MAX_MS}
                 step={20}
-                defaultValue={getBoardTimelapsePopMs()}
-                onChange={(event) => setBoardTimelapsePopMs(Number(event.target.value))}
+                value={popMs}
+                onChange={(event) => {
+                  setBoardTimelapsePopMs(Number(event.target.value));
+                  setPopMs(getBoardTimelapsePopMs());
+                }}
                 aria-label="How long a card takes to fade and grow in"
                 title="How long a card takes to fade and grow in"
                 className="h-1 w-full accent-cyan-500"
               />
+              <span className="w-12 shrink-0 text-right tabular-nums text-fg-muted">
+                {popMs}ms
+              </span>
             </div>
             <div className="mt-2 flex items-center gap-1.5 text-xs">
               <span className="w-14 shrink-0 text-fg-subtle">Closest</span>
