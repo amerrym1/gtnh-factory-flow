@@ -3449,26 +3449,14 @@ export function FactoryFlow() {
     getBoardTiltSnapshot,
     getServerBoardTiltSnapshot,
   );
-  // The finale ALWAYS flattens, the always-on tilt included: a leaning
-  // plane's projection is asymmetric (the near side looms), so a tilted
-  // wide reveal never reads as centred however correctly it is framed.
-  // And the standing tilt does not snap back the instant the show ends -
-  // flat, back to leaning, in one breath read as a glitch - it RESTS on
-  // the flat wide reveal for a moment and then eases home.
-  const [tiltResting, setTiltResting] = useState(false);
-  const wasTimelapseActiveRef = useRef(false);
-  useEffect(() => {
-    const was = wasTimelapseActiveRef.current;
-    wasTimelapseActiveRef.current = timelapseActive;
-    if (was && !timelapseActive) {
-      setTiltResting(true);
-      const timer = window.setTimeout(() => setTiltResting(false), 2200);
-      return () => window.clearTimeout(timer);
-    }
-  }, [timelapseActive]);
+  // The finale eases into the board's RESTING look and stays there: with
+  // the always-on tilt the ending stays tilted (the tilt-aware planning
+  // keeps the wide frame honest), and without it the finale's flatten IS
+  // the resting state. No dip to flat and back - the show must end in the
+  // exact pose the board will hold.
   const tiltWorn = timelapseActive
-    ? !timelapse?.finale
-    : boardTilt.always && !tiltResting;
+    ? !timelapse?.finale || boardTilt.always
+    : boardTilt.always;
   // The timelapse camera. Each beat retargets the focus window's rect; a
   // rAF chase then eases the viewport toward it every frame, so the shot
   // pans continuously after the action instead of hopping fit to fit. The
