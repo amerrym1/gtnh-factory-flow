@@ -4,12 +4,14 @@ import { Check, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   BOARD_TIMELAPSE_SPEEDS,
+  getBoardTimelapseCameraMode,
   getBoardTimelapseCameraPace,
   getBoardTimelapsePopMs,
   getBoardTimelapseSpeed,
   getBoardTimelapseVolume,
   getBoardTimelapseWireDrawMs,
   getBoardTimelapseZoomRange,
+  setBoardTimelapseCameraMode,
   setBoardTimelapseCameraPace,
   setBoardTimelapsePopMs,
   setBoardTimelapseSpeed,
@@ -65,6 +67,7 @@ export function DevMenu({
   // The timelapse is CONFIGURED here, before it starts; during the run the
   // chip on the board only stops it. Both settings persist on this device.
   const [timelapseSpeed, setTimelapseSpeed] = useState<number>(() => getBoardTimelapseSpeed());
+  const [cameraMode, setCameraMode] = useState(() => getBoardTimelapseCameraMode());
   // The demo-card tilt: edits apply to the board live (a running timelapse
   // included - this menu opens over it without cancelling).
   const [tilt, setTilt] = useState<BoardTilt>(() => getBoardTiltSnapshot());
@@ -234,6 +237,27 @@ export function DevMenu({
                 aria-label="Timelapse sound volume"
                 className="h-1 w-full accent-cyan-500"
               />
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-xs">
+              <span className="w-14 shrink-0 text-fg-subtle">Style</span>
+              {(["follow", "cinematic"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setBoardTimelapseCameraMode(mode);
+                    setCameraMode(mode);
+                  }}
+                  className={[
+                    "rounded border px-2 py-1 capitalize",
+                    cameraMode === mode
+                      ? "border-cyan-600 bg-cyan-500/10 text-cyan-400"
+                      : "border-line text-fg-muted hover:border-line-strong hover:text-fg",
+                  ].join(" ")}
+                >
+                  {mode}
+                </button>
+              ))}
             </div>
             <div className="mt-2 flex items-center gap-1.5 text-xs">
               <span className="w-14 shrink-0 text-fg-subtle">Camera</span>

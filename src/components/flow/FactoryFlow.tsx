@@ -140,6 +140,7 @@ import {
 } from "@/lib/designs/design-camera";
 import { isEditableKeyboardTarget } from "./keyboard";
 import {
+  getBoardTimelapseCameraMode,
   getBoardTimelapseCameraPace,
   getBoardTimelapsePopMs,
   getBoardTimelapseSnapshot,
@@ -3459,6 +3460,7 @@ export function FactoryFlow() {
   );
   const timelapseSpeedRef = useRef(1);
   const timelapseFinaleRef = useRef(false);
+  const timelapseCinematicRef = useRef(false);
   // Where the NEXT beat happens, in flow space: the beat gate fires as soon
   // as this rect is inside the live viewport, mid-glide included.
   const timelapseUpcomingRectRef = useRef<BoardRect | undefined>(undefined);
@@ -3501,6 +3503,37 @@ export function FactoryFlow() {
     // beat's when the script ends here.
     timelapseUpcomingRectRef.current =
       rectOf(timelapse.focusGroups[1] ?? timelapse.focusGroups[0]) ?? actionRect;
+
+    // CINEMATIC: the crane, not the cameraman. The whole island stays
+    // framed from afar and the camera drifts gently with the action's
+    // centre - one long pan per island, dissolving into the next island's
+    // pan when the show moves on. No deadband, no shot planning: the
+    // target creeps a little every beat and the slow chase makes that a
+    // single continuous motion.
+    if (
+      getBoardTimelapseCameraMode() === "cinematic" &&
+      !timelapse.finale &&
+      timelapse.sceneNodeIds &&
+      timelapse.sceneNodeIds.length > 0
+    ) {
+      const sceneRect = rectOf(timelapse.sceneNodeIds);
+      if (sceneRect) {
+        timelapseCinematicRef.current = true;
+        const sceneCentre = rectCentre(sceneRect);
+        const actionCentre = rectCentre(actionRect);
+        timelapseCameraTargetRef.current = {
+          x: sceneCentre.x + (actionCentre.x - sceneCentre.x) * 0.35,
+          y: sceneCentre.y + (actionCentre.y - sceneCentre.y) * 0.35,
+          zoom: zoomForRect(sceneRect, planSize, {
+            padding: 0.24,
+            minZoom: BOARD_MIN_ZOOM,
+            maxZoom: Math.max(zoomRange.max, zoomRange.min),
+          }),
+        };
+        return;
+      }
+    }
+    timelapseCinematicRef.current = false;
 
     // The DEADBAND: while this beat's action sits comfortably inside the
     // standing shot, the camera does not move at all. Ten things happening
@@ -3568,12 +3601,16 @@ export function FactoryFlow() {
       // Shots are ROOMY on purpose: capped well under 1:1 so the view around
       // a small cluster has space for the next few beats to land inside the
       // deadband, instead of a tight close-up that forces a cut every beat.
+      // The finale goes WIDER than the arithmetic says it needs: a third
+      // of slack plus a shave off the fit, because an ending that clips
+      // one drawer reads as failure and an ending with generous air reads
+      // as intended.
       zoom: timelapse.finale
         ? zoomForRect(union, planSize, {
-            padding: BOARD_CAMERA_PADDING,
+            padding: 0.34,
             minZoom: BOARD_MIN_ZOOM,
             maxZoom: BOARD_CAMERA_MAX_ZOOM,
-          })
+          }) * 0.94
         : Math.min(
             Math.max(zoomRange.max, zoomRange.min),
             Math.max(
@@ -3618,7 +3655,11 @@ export function FactoryFlow() {
       const pace = getBoardTimelapseCameraPace();
       const tau = timelapseFinaleRef.current
         ? Math.min(8000, Math.max(40, 260 / pace))
-        : Math.min(12000, Math.max(40, 420 / (timelapseSpeedRef.current * pace)));
+        : timelapseCinematicRef.current
+          ? // The crane: far slower than any cut, so the drifting target
+            // reads as one long pan rather than a chase.
+            Math.min(20000, Math.max(400, 2600 / pace))
+          : Math.min(12000, Math.max(40, 420 / (timelapseSpeedRef.current * pace)));
       const k = 1 - Math.exp(-dt / tau);
       const viewport = instance.getViewport();
       const wantX = size.width / 2 - target.x * viewport.zoom;
@@ -3646,7 +3687,7 @@ export function FactoryFlow() {
       // pixels a second and the show read as frozen, then everything
       // arrived at once. A FLOOR on closing speed makes the landing
       // definite - exponential launch, straight touch-down.
-      const minClose = (340 * pace * dt) / 1000;
+      const minClose = ((timelapseCinematicRef.current ? 100 : 340) * pace * dt) / 1000;
       const factor =
         remaining > 0.01 ? Math.min(1, Math.max(k, minClose / remaining)) : 1;
       const zoom = viewport.zoom + (target.zoom - viewport.zoom) * factor;

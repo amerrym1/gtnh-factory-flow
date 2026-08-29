@@ -51,10 +51,18 @@ export interface TimelapseBeat {
    * with its pop in a later beat is PENDING in between.
    */
   popNodeIds?: string[];
+  /** Which island (script.scenes entry) this beat belongs to. */
+  sceneIndex?: number;
 }
 
 export interface TimelapseScript {
   beats: TimelapseBeat[];
+  /**
+   * The islands, in play order: every unit id of each connected component.
+   * The cinematic camera frames the CURRENT scene whole instead of chasing
+   * beats, so each island is one slow pan.
+   */
+  scenes: string[][];
   /** Every canvas node id the playback hides before the first beat. */
   hiddenNodeIds: string[];
   /** Every edge id the playback hides before the first beat. */
@@ -415,8 +423,12 @@ export function buildTimelapseScript(
     return a - b || (left[0] < right[0] ? -1 : 1);
   });
 
+  const scenes: string[][] = [];
   let lastPoint: Point | undefined;
   for (const component of components) {
+    const sceneIndex = scenes.length;
+    scenes.push(component);
+    const beatsBefore = beats.length;
     const remaining = new Set(component.filter((id) => !attachmentIds.has(id)));
     while (remaining.size > 0) {
       let best: string | undefined;
@@ -470,6 +482,9 @@ export function buildTimelapseScript(
     for (const attachment of strayAttachments) {
       revealAttachment(attachment);
     }
+    for (let i = beatsBefore; i < beats.length; i += 1) {
+      beats[i].sceneIndex = sceneIndex;
+    }
   }
 
   // Boards holding no completion members (empty, or ink-only) still have a
@@ -510,8 +525,16 @@ export function buildTimelapseScript(
     beats[beats.length - 1].edgeIds.push(...strayEdges);
   }
 
+  // Leftover frames and ink belong to the last act.
+  for (const beat of beats) {
+    if (beat.sceneIndex === undefined) {
+      beat.sceneIndex = Math.max(0, scenes.length - 1);
+    }
+  }
+
   return {
     beats,
+    scenes,
     hiddenNodeIds: [...revealedNodes],
     hiddenEdgeIds: project.edges.map((edge) => edge.id),
   };
@@ -587,6 +610,12 @@ export interface BoardTimelapseSnapshot {
    * hands over one group holding everything for the pull-back ending.
    */
   focusGroups: ReadonlyArray<readonly string[]>;
+  /**
+   * Every unit of the island currently being built, for the cinematic
+   * camera: it frames this whole and drifts with the action's centre
+   * instead of chasing shots. Absent on the finale.
+   */
+  sceneNodeIds?: readonly string[];
   /**
    * The last beat's pull-back over the whole board. Until it, the follow
    * camera holds a zoom floor above the glance threshold - the cards must
@@ -869,6 +898,44 @@ export function setBoardTimelapseZoomRange(patch: { min?: number; max?: number }
 }
 
 /**
+ * The camera's STYLE. `follow` is the cameraman: shots planned around the
+ * action, held, cut. `cinematic` is the crane: each island framed whole
+ * from afar, the camera drifting slowly with the action's centre - one
+ * long pan per island, dissolving to the next.
+ */
+export type TimelapseCameraMode = "follow" | "cinematic";
+
+const TIMELAPSE_CAMERA_MODE_KEY = "gtnh-factory-flow.dev.timelapse-camera-mode";
+
+let timelapseCameraMode: TimelapseCameraMode = readStoredCameraMode();
+
+function readStoredCameraMode(): TimelapseCameraMode {
+  if (typeof window === "undefined") {
+    return "follow";
+  }
+  try {
+    return window.localStorage.getItem(TIMELAPSE_CAMERA_MODE_KEY) === "cinematic"
+      ? "cinematic"
+      : "follow";
+  } catch {
+    return "follow";
+  }
+}
+
+export function getBoardTimelapseCameraMode(): TimelapseCameraMode {
+  return timelapseCameraMode;
+}
+
+export function setBoardTimelapseCameraMode(mode: TimelapseCameraMode): void {
+  timelapseCameraMode = mode;
+  try {
+    window.localStorage.setItem(TIMELAPSE_CAMERA_MODE_KEY, mode);
+  } catch {
+    // Session-only mode is fine.
+  }
+}
+
+/**
  * THE CAMERA SETS THE PACE. The board's follower reports how far the
  * viewport still is from its shot every frame; a beat whose gap has
  * elapsed does not fire until the camera has essentially arrived, so a
@@ -1056,6 +1123,7 @@ export function startBoardTimelapse(): boolean {
     // still empty, so the camera is already standing where the first
     // machines will land.
     focusGroups: focusGroupsAt(0),
+    sceneNodeIds: script.scenes[script.beats[0].sceneIndex ?? 0],
     finale: false,
     speed: timelapseSpeed,
   };
@@ -1127,6 +1195,9 @@ export function startBoardTimelapse(): boolean {
       // This beat's action first, the upcoming beats' behind it; the last
       // beat hands over everything for the pull-back ending.
       focusGroups: isLastBeat ? [[...revealedNodeIds]] : focusGroupsAt(index),
+      sceneNodeIds: isLastBeat
+        ? undefined
+        : script.scenes[beat.sceneIndex ?? script.scenes.length - 1],
       finale: isLastBeat,
       speed: timelapseSpeed,
     };

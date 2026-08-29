@@ -183,7 +183,7 @@ describe("buildTimelapseScript", () => {
     });
 
     expect(revealedOrder(script)).toEqual(["a", "drawer"]);
-    expect(script.beats[1]).toEqual({
+    expect(script.beats[1]).toMatchObject({
       nodeIds: ["drawer"],
       edgeIds: ["ad"],
       kind: "wire",
@@ -200,7 +200,15 @@ describe("buildTimelapseScript", () => {
     });
 
     const last = script.beats[script.beats.length - 1];
-    expect(last).toEqual({ nodeIds: ["loose"], edgeIds: [], kind: "card", popNodeIds: ["loose"] });
+    expect(last).toMatchObject({
+      nodeIds: ["loose"],
+      edgeIds: [],
+      kind: "card",
+      popNodeIds: ["loose"],
+    });
+    // The loose drawer is its own island - the coda's own scene.
+    expect(last.sceneIndex).toBe(1);
+    expect(script.scenes).toEqual([["a", "b"], ["loose"]]);
   });
 
   it("never lets a source lead: the machine lands, then its source spins in wired", () => {

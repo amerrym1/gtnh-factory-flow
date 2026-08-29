@@ -141,8 +141,15 @@ export function boardTiltVisibleFraction(tilt: BoardTilt): { x: number; y: numbe
   const yawDrop = Math.sin(yawSway * toRadians) * 1100;
   const keystoneX = (TILT_PERSPECTIVE_PX - pitchDrop) / (TILT_PERSPECTIVE_PX + pitchDrop);
   const keystoneY = (TILT_PERSPECTIVE_PX - yawDrop) / (TILT_PERSPECTIVE_PX + yawDrop);
+  // The NEAR edge leans toward the eye and magnifies, pushing content at
+  // that edge clean off screen - the first cut of this function only
+  // charged for the far edge shrinking, and framed shots that lost their
+  // near side. Each axis pays its own near-edge magnification too.
+  const nearPitch =
+    TILT_PERSPECTIVE_PX / Math.max(1, TILT_PERSPECTIVE_PX - pitchDrop);
+  const nearYaw = TILT_PERSPECTIVE_PX / Math.max(1, TILT_PERSPECTIVE_PX - yawDrop);
   return {
-    x: Math.max(0.2, keystoneX / cover),
-    y: Math.max(0.2, keystoneY / cover),
+    x: Math.max(0.15, keystoneX / (cover * nearYaw)),
+    y: Math.max(0.15, keystoneY / (cover * nearPitch)),
   };
 }
