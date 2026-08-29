@@ -3626,13 +3626,16 @@ export function FactoryFlow() {
       // The finale goes WIDER than the arithmetic says it needs: a third
       // of slack plus a shave off the fit, because an ending that clips
       // one drawer reads as failure and an ending with generous air reads
-      // as intended.
+      // as intended. In cinematic the Offset dial nudges the final
+      // resting frame exactly as it nudges every island's.
       zoom: timelapse.finale
         ? zoomForRect(union, planSize, {
             padding: 0.34,
             minZoom: BOARD_MIN_ZOOM,
             maxZoom: BOARD_CAMERA_MAX_ZOOM,
-          }) * 0.94
+          }) *
+          0.94 *
+          (getBoardTimelapseCameraMode() === "cinematic" ? getBoardTimelapseCineZoom() : 1)
         : Math.min(
             Math.max(zoomRange.max, zoomRange.min),
             Math.max(
