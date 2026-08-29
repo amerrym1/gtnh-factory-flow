@@ -3575,30 +3575,39 @@ export function FactoryFlow() {
         : Math.min(1800, Math.max(90, 420 / (timelapseSpeedRef.current * pace)));
       const k = 1 - Math.exp(-dt / tau);
       const viewport = instance.getViewport();
-      const zoom = viewport.zoom + (target.zoom - viewport.zoom) * k;
-      const wantX = size.width / 2 - target.x * zoom;
-      const wantY = size.height / 2 - target.y * zoom;
+      const wantX = size.width / 2 - target.x * viewport.zoom;
+      const wantY = size.height / 2 - target.y * viewport.zoom;
+      const remaining =
+        Math.hypot(wantX - viewport.x, wantY - viewport.y) +
+        Math.abs(target.zoom - viewport.zoom) * 900;
       // The playback holds beats until the camera has essentially arrived
       // (the camera sets the pace); zoom distance counts as travel too.
-      reportTimelapseCameraProgress(
-        Math.hypot(wantX - viewport.x, wantY - viewport.y) +
-          Math.abs(target.zoom - viewport.zoom) * 900,
-      );
+      reportTimelapseCameraProgress(remaining);
+      // A pure exponential launches well and lands never: its closing step
+      // is a fraction of what is left, so the last stretch crawled at
+      // pixels a second and the show read as frozen, then everything
+      // arrived at once. A FLOOR on closing speed makes the landing
+      // definite - exponential launch, straight touch-down.
+      const minClose = (340 * pace * dt) / 1000;
+      const factor =
+        remaining > 0.01 ? Math.min(1, Math.max(k, minClose / remaining)) : 1;
+      const zoom = viewport.zoom + (target.zoom - viewport.zoom) * factor;
+      const landX = size.width / 2 - target.x * zoom;
+      const landY = size.height / 2 - target.y * zoom;
       // Within a pixel of the vantage: land EXACTLY and go still. The
-      // exponential tail otherwise drips sub-pixel drift for seconds, and a
       // held shot must be a held shot.
       if (
-        Math.abs(wantX - viewport.x) < 0.75 &&
-        Math.abs(wantY - viewport.y) < 0.75 &&
+        Math.abs(landX - viewport.x) < 0.75 &&
+        Math.abs(landY - viewport.y) < 0.75 &&
         Math.abs(target.zoom - viewport.zoom) < 0.001
       ) {
-        if (viewport.x !== wantX || viewport.y !== wantY || viewport.zoom !== target.zoom) {
-          void instance.setViewport({ x: wantX, y: wantY, zoom: target.zoom });
+        if (viewport.x !== landX || viewport.y !== landY || viewport.zoom !== target.zoom) {
+          void instance.setViewport({ x: landX, y: landY, zoom: target.zoom });
         }
         return;
       }
-      const x = viewport.x + (wantX - viewport.x) * k;
-      const y = viewport.y + (wantY - viewport.y) * k;
+      const x = viewport.x + (landX - viewport.x) * factor;
+      const y = viewport.y + (landY - viewport.y) * factor;
       void instance.setViewport({ x, y, zoom });
     };
     frame = requestAnimationFrame(tick);
@@ -7556,25 +7565,29 @@ const NodeDetailController = memo(function NodeDetailController({
       boardRef.current?.style.setProperty("--board-zoom", String(rounded));
     };
 
-    const apply = (zoom: number) => {
-      publishZoom(zoom);
-      const next = getNodeDetailLevel(zoom, level);
-      if (next === level) {
-        return;
-      }
-      level = next;
-      setNodeDetailLevel(next);
-      // The hop map only exists at the glance step. Zooming back in has to take
-      // it with it, or a card would come back to full detail wearing a colour
-      // that means nothing at that size.
-      if (next === NODE_DETAIL_FULL) {
-        clearHopMap();
-      }
+    // The attribute carries the EFFECTIVE level - the dev menu's forced
+    // glance wins over the zoom-derived one - and is re-applied whenever
+    // either side changes. Idempotent, because the published-level
+    // subscription below also fires for the level flips this very code
+    // publishes.
+    let appliedValue: string | undefined;
+    const applyAttribute = () => {
       const board = boardRef.current;
       if (!board) {
         return;
       }
-      const value = nodeDetailAttributeValue(next);
+      const effective = getPublishedNodeDetailLevel();
+      // The hop map only exists at the glance step. Coming back to full
+      // detail has to take it with it, or a card would come back wearing a
+      // colour that means nothing at that size.
+      if (effective === NODE_DETAIL_FULL) {
+        clearHopMap();
+      }
+      const value = nodeDetailAttributeValue(effective);
+      if (value === appliedValue) {
+        return;
+      }
+      appliedValue = value;
       if (value) {
         board.setAttribute(NODE_DETAIL_ATTRIBUTE, value);
       } else {
@@ -7582,10 +7595,27 @@ const NodeDetailController = memo(function NodeDetailController({
       }
     };
 
+    const apply = (zoom: number) => {
+      publishZoom(zoom);
+      const next = getNodeDetailLevel(zoom, level);
+      if (next !== level) {
+        level = next;
+        setNodeDetailLevel(next);
+      }
+      applyAttribute();
+    };
+
     apply(flowStore.getState().transform[2]);
-    return flowStore.subscribe((state) => {
+    const unsubscribeZoom = flowStore.subscribe((state) => {
       apply(state.transform[2]);
     });
+    // Fires on the forced-glance toggle too, which changes the effective
+    // level with no zoom event anywhere near it.
+    const unsubscribeLevel = subscribeNodeDetailLevel(applyAttribute);
+    return () => {
+      unsubscribeZoom();
+      unsubscribeLevel();
+    };
   }, [boardRef, flowStore]);
 
   return null;

@@ -735,7 +735,10 @@ export function reportTimelapseCameraProgress(remainingPx: number): void {
   cameraReportedAt = Date.now();
 }
 
-const TIMELAPSE_CAMERA_ARRIVE_PX = 28;
+/** "Arrived" for pacing purposes is generous: the last stretch of a glide
+ * is a straight touch-down now, and beats resuming DURING it keeps the
+ * show breathing instead of waiting for stillness and then bursting. */
+const TIMELAPSE_CAMERA_ARRIVE_PX = 120;
 const TIMELAPSE_CAMERA_REPORT_FRESH_MS = 400;
 const TIMELAPSE_CAMERA_WAIT_CAP_MS = 5000;
 const TIMELAPSE_CAMERA_POLL_MS = 70;
