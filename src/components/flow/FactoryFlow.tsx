@@ -3451,9 +3451,24 @@ export function FactoryFlow() {
   );
   // The finale ALWAYS flattens, the always-on tilt included: a leaning
   // plane's projection is asymmetric (the near side looms), so a tilted
-  // wide reveal never reads as centred however correctly it is framed. The
-  // standing tilt eases back once the show is over.
-  const tiltWorn = timelapseActive ? !timelapse?.finale : boardTilt.always;
+  // wide reveal never reads as centred however correctly it is framed.
+  // And the standing tilt does not snap back the instant the show ends -
+  // flat, back to leaning, in one breath read as a glitch - it RESTS on
+  // the flat wide reveal for a moment and then eases home.
+  const [tiltResting, setTiltResting] = useState(false);
+  const wasTimelapseActiveRef = useRef(false);
+  useEffect(() => {
+    const was = wasTimelapseActiveRef.current;
+    wasTimelapseActiveRef.current = timelapseActive;
+    if (was && !timelapseActive) {
+      setTiltResting(true);
+      const timer = window.setTimeout(() => setTiltResting(false), 2200);
+      return () => window.clearTimeout(timer);
+    }
+  }, [timelapseActive]);
+  const tiltWorn = timelapseActive
+    ? !timelapse?.finale
+    : boardTilt.always && !tiltResting;
   // The timelapse camera. Each beat retargets the focus window's rect; a
   // rAF chase then eases the viewport toward it every frame, so the shot
   // pans continuously after the action instead of hopping fit to fit. The
@@ -3524,10 +3539,19 @@ export function FactoryFlow() {
       if (sceneRect) {
         timelapseCinematicRef.current = true;
         const sceneCentre = rectCentre(sceneRect);
-        const actionCentre = rectCentre(actionRect);
+        // Drift with the BUILT REGION's centre, not the beat's action: the
+        // union of what already stands grows monotonically, so its centre
+        // creeps smoothly from the island's first machine toward the
+        // middle - one slow pan however fast the beats land. Chasing the
+        // per-beat action made the crane dance at high playback speeds.
+        const builtIds = timelapse.sceneNodeIds.filter((id) =>
+          timelapse.revealedNodeIds.has(id),
+        );
+        const builtRect = builtIds.length > 0 ? rectOf(builtIds) : undefined;
+        const driftCentre = builtRect ? rectCentre(builtRect) : rectCentre(actionRect);
         timelapseCameraTargetRef.current = {
-          x: sceneCentre.x + (actionCentre.x - sceneCentre.x) * 0.35,
-          y: sceneCentre.y + (actionCentre.y - sceneCentre.y) * 0.35,
+          x: sceneCentre.x + (driftCentre.x - sceneCentre.x) * 0.45,
+          y: sceneCentre.y + (driftCentre.y - sceneCentre.y) * 0.45,
           zoom: zoomForRect(sceneRect, planSize, {
             padding: 0.24,
             minZoom: BOARD_MIN_ZOOM,
