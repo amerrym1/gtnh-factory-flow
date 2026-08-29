@@ -241,7 +241,7 @@ export function DevMenu({
                 type="range"
                 min={TIMELAPSE_CAMERA_PACE_MIN}
                 max={TIMELAPSE_CAMERA_PACE_MAX}
-                step={0.25}
+                step={0.05}
                 defaultValue={getBoardTimelapseCameraPace()}
                 onChange={(event) => setBoardTimelapseCameraPace(Number(event.target.value))}
                 aria-label="How briskly the camera travels between shots"
@@ -255,7 +255,7 @@ export function DevMenu({
                 type="range"
                 min={TIMELAPSE_WIRE_DRAW_MIN_MS}
                 max={TIMELAPSE_WIRE_DRAW_MAX_MS}
-                step={50}
+                step={20}
                 defaultValue={getBoardTimelapseWireDrawMs()}
                 onChange={(event) => setBoardTimelapseWireDrawMs(Number(event.target.value))}
                 aria-label="How long a wire takes to draw itself in"

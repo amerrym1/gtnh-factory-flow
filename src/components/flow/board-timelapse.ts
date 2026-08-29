@@ -597,8 +597,8 @@ export interface BoardTimelapseSnapshot {
   speed: number;
 }
 
-/** The speeds the chip offers. 1 is the scripted pace. */
-export const BOARD_TIMELAPSE_SPEEDS = [0.5, 1, 2, 4] as const;
+/** The speeds the menu offers. 1 is the scripted pace. */
+export const BOARD_TIMELAPSE_SPEEDS = [0.25, 0.5, 1, 2, 4, 8] as const;
 
 const TIMELAPSE_SPEED_KEY = "gtnh-factory-flow.dev.timelapse-speed";
 
@@ -671,8 +671,8 @@ export function setBoardTimelapseVolume(volume: number): void {
  * slow build can still want quick cuts, and the other way round.
  */
 const TIMELAPSE_CAMERA_PACE_KEY = "gtnh-factory-flow.dev.timelapse-camera-pace";
-export const TIMELAPSE_CAMERA_PACE_MIN = 0.25;
-export const TIMELAPSE_CAMERA_PACE_MAX = 3;
+export const TIMELAPSE_CAMERA_PACE_MIN = 0.05;
+export const TIMELAPSE_CAMERA_PACE_MAX = 6;
 
 let timelapseCameraPace = readStoredCameraPace();
 
@@ -720,8 +720,8 @@ export function setBoardTimelapseCameraPace(pace: number): void {
  * next thing happens.
  */
 const TIMELAPSE_WIRE_DRAW_KEY = "gtnh-factory-flow.dev.timelapse-wire-draw";
-export const TIMELAPSE_WIRE_DRAW_MIN_MS = 100;
-export const TIMELAPSE_WIRE_DRAW_MAX_MS = 1500;
+export const TIMELAPSE_WIRE_DRAW_MIN_MS = 40;
+export const TIMELAPSE_WIRE_DRAW_MAX_MS = 4000;
 const TIMELAPSE_WIRE_DRAW_DEFAULT_MS = 450;
 /** A breath after the ink dries before the next beat. */
 const TIMELAPSE_WIRE_SETTLE_MS = 70;
@@ -769,8 +769,8 @@ export function setBoardTimelapseWireDrawMs(ms: number): void {
  * rather than something the next beat tramples.
  */
 const TIMELAPSE_POP_KEY = "gtnh-factory-flow.dev.timelapse-pop";
-export const TIMELAPSE_POP_MIN_MS = 80;
-export const TIMELAPSE_POP_MAX_MS = 1200;
+export const TIMELAPSE_POP_MIN_MS = 40;
+export const TIMELAPSE_POP_MAX_MS = 3000;
 const TIMELAPSE_POP_DEFAULT_MS = 260;
 
 let timelapsePopMs = readStoredPopMs();
@@ -817,7 +817,7 @@ const TIMELAPSE_ZOOM_KEY = "gtnh-factory-flow.dev.timelapse-zoom-range";
 export const TIMELAPSE_ZOOM_MIN_DEFAULT = NODE_GLANCE_LEAVE_ZOOM;
 export const TIMELAPSE_ZOOM_MAX_DEFAULT = 0.8;
 export const TIMELAPSE_ZOOM_FLOOR = 0.05;
-export const TIMELAPSE_ZOOM_CEILING = 1.6;
+export const TIMELAPSE_ZOOM_CEILING = 1.8;
 
 let timelapseZoomRange = readStoredZoomRange();
 
@@ -877,19 +877,30 @@ export function setBoardTimelapseZoomRange(patch: { min?: number; max?: number }
  * follower from stalling the run forever.
  */
 let cameraRemainingPx = 0;
+let cameraUpcomingOnScreen = false;
 let cameraReportedAt = 0;
 
-export function reportTimelapseCameraProgress(remainingPx: number): void {
+export function reportTimelapseCameraProgress(
+  remainingPx: number,
+  upcomingOnScreen: boolean,
+): void {
   cameraRemainingPx = remainingPx;
+  cameraUpcomingOnScreen = upcomingOnScreen;
   cameraReportedAt = Date.now();
 }
 
-/** "Arrived" for pacing purposes is generous: the last stretch of a glide
- * is a straight touch-down now, and beats resuming DURING it keeps the
- * show breathing instead of waiting for stillness and then bursting. */
+/**
+ * The gate's PRINCIPLE: a beat may fire once the place it happens is on
+ * screen. The follower reports whether the upcoming action's rect sits
+ * inside the live viewport; mid-glide is fine - if the camera is sweeping
+ * PAST where the next card lands, the card may land while it sweeps. The
+ * arrive radius is the fallback for a shot whose action never quite fits
+ * (a cropped wide cluster), and the cap is pathology insurance only - a
+ * glacial camera pace is legitimate travel, not a stall.
+ */
 const TIMELAPSE_CAMERA_ARRIVE_PX = 120;
 const TIMELAPSE_CAMERA_REPORT_FRESH_MS = 400;
-const TIMELAPSE_CAMERA_WAIT_CAP_MS = 5000;
+const TIMELAPSE_CAMERA_WAIT_CAP_MS = 120_000;
 const TIMELAPSE_CAMERA_POLL_MS = 70;
 
 function playTimelapseSound(kind: Parameters<typeof playBoardSound>[0]): void {
@@ -1051,13 +1062,14 @@ export function startBoardTimelapse(): boolean {
   emit();
 
   let index = 0;
-  // The beat gap, then the camera: once the time has elapsed, the next
-  // beat still waits for the follower to report arrival (see
-  // reportTimelapseCameraProgress) - the camera is the star, and nothing
-  // happens off-screen while it is still travelling there.
-  const scheduleNext = (gapMs: number) => {
+  // The beat gap, then the camera: once the time has elapsed, what happens
+  // next still waits until its stage is IN VIEW (or the camera has all but
+  // arrived) - the camera is the star, and nothing happens off-screen
+  // while it is still travelling there. The finale rides the same gate, so
+  // the pull-back finishes before the show ends.
+  const scheduleGated = (gapMs: number, run: () => void) => {
     const waitedFrom = Date.now();
-    const tryStep = () => {
+    const attempt = () => {
       stepTimer = undefined;
       if (token !== playToken) {
         return;
@@ -1065,16 +1077,18 @@ export function startBoardTimelapse(): boolean {
       const reportIsFresh = Date.now() - cameraReportedAt < TIMELAPSE_CAMERA_REPORT_FRESH_MS;
       if (
         reportIsFresh &&
+        !cameraUpcomingOnScreen &&
         cameraRemainingPx > TIMELAPSE_CAMERA_ARRIVE_PX &&
         Date.now() - waitedFrom < TIMELAPSE_CAMERA_WAIT_CAP_MS
       ) {
-        stepTimer = setTimeout(tryStep, TIMELAPSE_CAMERA_POLL_MS);
+        stepTimer = setTimeout(attempt, TIMELAPSE_CAMERA_POLL_MS);
         return;
       }
-      step();
+      run();
     };
-    stepTimer = setTimeout(tryStep, gapMs);
+    stepTimer = setTimeout(attempt, gapMs);
   };
+  const scheduleNext = (gapMs: number) => scheduleGated(gapMs, step);
   const step = () => {
     stepTimer = undefined;
     if (token !== playToken) {
@@ -1148,14 +1162,14 @@ export function startBoardTimelapse(): boolean {
 
     index += 1;
     if (index >= script.beats.length) {
-      stepTimer = setTimeout(() => {
-        stepTimer = undefined;
-        if (token === playToken) {
-          playTimelapseSound("sweep");
-          // The finale's pull-back is already the last camera position.
-          stopBoardTimelapse({ reframe: false });
-        }
-      }, TIMELAPSE_FINISH_HOLD_MS / timelapseSpeed);
+      // Camera-gated like every other beat: the ending waits for the
+      // pull-back to actually show everything - stopping on a bare timer
+      // cut the finale off mid-flight on any big board.
+      scheduleGated(TIMELAPSE_FINISH_HOLD_MS / timelapseSpeed, () => {
+        playTimelapseSound("sweep");
+        // The finale's pull-back is already the last camera position.
+        stopBoardTimelapse({ reframe: false });
+      });
       return;
     }
     // Speed and the NEXT beat's kind decide the gap, read at scheduling

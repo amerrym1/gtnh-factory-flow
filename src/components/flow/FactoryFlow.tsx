@@ -3459,9 +3459,13 @@ export function FactoryFlow() {
   );
   const timelapseSpeedRef = useRef(1);
   const timelapseFinaleRef = useRef(false);
+  // Where the NEXT beat happens, in flow space: the beat gate fires as soon
+  // as this rect is inside the live viewport, mid-glide included.
+  const timelapseUpcomingRectRef = useRef<BoardRect | undefined>(undefined);
   useEffect(() => {
     if (!timelapse) {
       timelapseCameraTargetRef.current = undefined;
+      timelapseUpcomingRectRef.current = undefined;
       return;
     }
     timelapseSpeedRef.current = timelapse.speed;
@@ -3493,6 +3497,10 @@ export function FactoryFlow() {
     if (!actionRect) {
       return;
     }
+    // What the beat gate watches for: the next beat's stage, or this
+    // beat's when the script ends here.
+    timelapseUpcomingRectRef.current =
+      rectOf(timelapse.focusGroups[1] ?? timelapse.focusGroups[0]) ?? actionRect;
 
     // The DEADBAND: while this beat's action sits comfortably inside the
     // standing shot, the camera does not move at all. Ten things happening
@@ -3609,8 +3617,8 @@ export function FactoryFlow() {
       // slider takes hold mid-flight.
       const pace = getBoardTimelapseCameraPace();
       const tau = timelapseFinaleRef.current
-        ? Math.min(1000, Math.max(80, 260 / pace))
-        : Math.min(1800, Math.max(90, 420 / (timelapseSpeedRef.current * pace)));
+        ? Math.min(8000, Math.max(40, 260 / pace))
+        : Math.min(12000, Math.max(40, 420 / (timelapseSpeedRef.current * pace)));
       const k = 1 - Math.exp(-dt / tau);
       const viewport = instance.getViewport();
       const wantX = size.width / 2 - target.x * viewport.zoom;
@@ -3618,9 +3626,21 @@ export function FactoryFlow() {
       const remaining =
         Math.hypot(wantX - viewport.x, wantY - viewport.y) +
         Math.abs(target.zoom - viewport.zoom) * 900;
-      // The playback holds beats until the camera has essentially arrived
-      // (the camera sets the pace); zoom distance counts as travel too.
-      reportTimelapseCameraProgress(remaining);
+      // The playback holds beats until the next beat's stage is in view or
+      // the camera has essentially arrived (the camera sets the pace);
+      // zoom distance counts as travel too.
+      let upcomingOnScreen = false;
+      const upcoming = timelapseUpcomingRectRef.current;
+      if (upcoming) {
+        const insetX = size.width * 0.05;
+        const insetY = size.height * 0.05;
+        upcomingOnScreen =
+          upcoming.x * viewport.zoom + viewport.x >= insetX &&
+          upcoming.y * viewport.zoom + viewport.y >= insetY &&
+          (upcoming.x + upcoming.width) * viewport.zoom + viewport.x <= size.width - insetX &&
+          (upcoming.y + upcoming.height) * viewport.zoom + viewport.y <= size.height - insetY;
+      }
+      reportTimelapseCameraProgress(remaining, upcomingOnScreen);
       // A pure exponential launches well and lands never: its closing step
       // is a fraction of what is left, so the last stretch crawled at
       // pixels a second and the show read as frozen, then everything
@@ -6079,12 +6099,7 @@ export function FactoryFlow() {
         <NodeDetailController boardRef={boardRef} />
         <HopMapController boardRef={boardRef} />
         <SelectionHandoffController signal={selectionHandoffCount} />
-        {/* The marching dashes rest during a timelapse: the canvas paints a
-            wire's dashes whole the moment it mounts, stamping over the
-            draw-in underneath. */}
-        {linePulseMode && !timelapseActive ? (
-          <EdgePulseCanvas edgesUnderNodes={lineThicknessMode} />
-        ) : null}
+        {linePulseMode ? <EdgePulseCanvas edgesUnderNodes={lineThicknessMode} /> : null}
         {/* The paper's tooth, in board space so it pans and zooms with the
             factory. Mounted before the pattern so dots ink OVER the grain.
             A pocket keeps its flat violet room. */}
@@ -8923,20 +8938,34 @@ function ResourceEdgeComponent({
     // Hops bulge off the polyline; the cull box has to cover them or a line
     // would wink out a fraction early at the edge of the screen.
     const margin = EDGE_HOP_MAX_RADIUS + pulseStroke;
-    publishEdgePulse(id, {
-      path: livePath,
-      // Same numbers the SVG overlay used, so the marks are unchanged.
-      width: Math.max(2, pulseStroke * 0.38),
-      dash: pulseDash,
-      gap: pulseGap,
-      velocity: pulseVelocity,
-      left: left - margin,
-      right: right + margin,
-      top: top - margin,
-      bottom: bottom + margin,
-      // A morph frame's path is one-of-a-kind; keep it out of the Path2D cache.
-      transient: liveMorphing,
-    });
+    const publish = () =>
+      publishEdgePulse(id, {
+        path: livePath,
+        // Same numbers the SVG overlay used, so the marks are unchanged.
+        width: Math.max(2, pulseStroke * 0.38),
+        dash: pulseDash,
+        gap: pulseGap,
+        velocity: pulseVelocity,
+        left: left - margin,
+        right: right + margin,
+        top: top - margin,
+        bottom: bottom + margin,
+        // A morph frame's path is one-of-a-kind; keep it out of the Path2D cache.
+        transient: liveMorphing,
+      });
+    // The ants wait for the ink: a wire drawing itself in during a
+    // timelapse (the edge mounts as its draw starts) publishes its dashes
+    // only once the stroke has landed - the canvas paints them whole, and
+    // whole dashes over a half-drawn wire gave the route away instantly.
+    if (data?.timelapseDraw) {
+      const speed = getBoardTimelapseSnapshot()?.speed ?? 1;
+      const timer = window.setTimeout(
+        publish,
+        getBoardTimelapseWireDrawMs() / speed + 150,
+      );
+      return () => window.clearTimeout(timer);
+    }
+    publish();
   }, [
     id,
     pulseActive,
@@ -8947,6 +8976,7 @@ function ResourceEdgeComponent({
     pulseDash,
     pulseGap,
     pulseVelocity,
+    data?.timelapseDraw,
   ]);
   // Where this edge's waypoint dots sit, for the dash canvas to punch out —
   // the canvas paints above the SVG, so without this the dashes march right
