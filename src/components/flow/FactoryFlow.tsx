@@ -140,6 +140,7 @@ import {
 } from "@/lib/designs/design-camera";
 import { isEditableKeyboardTarget } from "./keyboard";
 import {
+  getBoardTimelapseCameraPace,
   getBoardTimelapseSnapshot,
   getServerBoardTimelapseSnapshot,
   stopBoardTimelapse,
@@ -147,6 +148,7 @@ import {
 } from "./board-timelapse";
 import {
   boardTiltCoverScale,
+  boardTiltVisibleFraction,
   getBoardTiltSnapshot,
   getServerBoardTiltSnapshot,
   subscribeBoardTilt,
@@ -3431,6 +3433,14 @@ export function FactoryFlow() {
     if (size.width === 0 || size.height === 0) {
       return;
     }
+    // The tilt shows LESS of the plane than the flat pixel size says: the
+    // cover scale magnifies and the lean keystones the picture. All the
+    // PLANNING below - deadband, feasibility, shot zoom - works against
+    // the tilted visible area, or the camera frames regions the tilt then
+    // pushes half out of view. The rAF chase keeps the real size: it maps
+    // React Flow's own 2D transform, which the tilt sits on top of.
+    const visible = tiltWorn ? boardTiltVisibleFraction(boardTilt) : { x: 1, y: 1 };
+    const planSize = { width: size.width * visible.x, height: size.height * visible.y };
     const rectOf = (ids: readonly string[]) => {
       const { cards, measuredById } = cameraCards([...ids]);
       return framingRect(cards, measuredById);
@@ -3446,8 +3456,8 @@ export function FactoryFlow() {
     const shot = timelapseCameraTargetRef.current;
     if (shot && !timelapse.finale) {
       const inset = 0.04;
-      const halfW = (size.width / shot.zoom) * (0.5 - inset);
-      const halfH = (size.height / shot.zoom) * (0.5 - inset);
+      const halfW = (planSize.width / shot.zoom) * (0.5 - inset);
+      const halfH = (planSize.height / shot.zoom) * (0.5 - inset);
       if (
         actionRect.x >= shot.x - halfW &&
         actionRect.y >= shot.y - halfH &&
@@ -3483,7 +3493,7 @@ export function FactoryFlow() {
         // Feasibility is checked with a slim padding: the question is only
         // whether all of it stays above the glance zoom, and the standard
         // camera padding here made the planner give up two beats in.
-        const fit = zoomForRect(widened, size, {
+        const fit = zoomForRect(widened, planSize, {
           padding: 0.06,
           minZoom: BOARD_MIN_ZOOM,
           maxZoom: BOARD_CAMERA_MAX_ZOOM,
@@ -3507,7 +3517,7 @@ export function FactoryFlow() {
       // a small cluster has space for the next few beats to land inside the
       // deadband, instead of a tight close-up that forces a cut every beat.
       zoom: timelapse.finale
-        ? zoomForRect(union, size, {
+        ? zoomForRect(union, planSize, {
             padding: BOARD_CAMERA_PADDING,
             minZoom: BOARD_MIN_ZOOM,
             maxZoom: BOARD_CAMERA_MAX_ZOOM,
@@ -3516,7 +3526,7 @@ export function FactoryFlow() {
             0.8,
             Math.max(
               NODE_GLANCE_LEAVE_ZOOM,
-              zoomForRect(union, size, {
+              zoomForRect(union, planSize, {
                 padding: BOARD_CAMERA_PADDING,
                 minZoom: BOARD_MIN_ZOOM,
                 maxZoom: BOARD_CAMERA_MAX_ZOOM,
@@ -3524,7 +3534,7 @@ export function FactoryFlow() {
             ),
           ),
     };
-  }, [timelapse, cameraCards]);
+  }, [timelapse, cameraCards, tiltWorn, boardTilt]);
   useEffect(() => {
     if (!timelapseActive) {
       return;
@@ -3550,9 +3560,13 @@ export function FactoryFlow() {
       // bends the path instead of restarting it. Shots are rare cuts, so a
       // glide can take its time; the finale's pull-out is deliberately
       // brisker, and the constant tightens with playback speed either way.
+      // The camera pace dial divides the time constant: 1 is the authored
+      // glide, 3 snaps, 0.25 floats. Read per frame so the dev menu's
+      // slider takes hold mid-flight.
+      const pace = getBoardTimelapseCameraPace();
       const tau = timelapseFinaleRef.current
-        ? 260
-        : Math.min(900, Math.max(200, 420 / timelapseSpeedRef.current));
+        ? Math.min(1000, Math.max(80, 260 / pace))
+        : Math.min(1800, Math.max(90, 420 / (timelapseSpeedRef.current * pace)));
       const k = 1 - Math.exp(-dt / tau);
       const viewport = instance.getViewport();
       const zoom = viewport.zoom + (target.zoom - viewport.zoom) * k;

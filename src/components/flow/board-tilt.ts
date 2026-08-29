@@ -115,3 +115,34 @@ export function boardTiltCoverScale(tilt: BoardTilt): number {
   const shrink = Math.min(0.55, pitchShrink + yawShrink);
   return Math.min(2.6, 1.02 / (1 - shrink));
 }
+
+/**
+ * How much of the flat viewport the timelapse camera may actually PLAN
+ * with while the tilt is worn, per axis.
+ *
+ * The shot planner works in React Flow's 2D space, but the viewer sees
+ * that space through the tilt: the cover scale magnifies everything by S
+ * (so only 1/S of the plane fits the frame per axis), and the lean
+ * keystones the picture - the pitched-away edge is narrower, the turned
+ * edge shorter - so the reliable region is the inscribed rectangle, the
+ * far edge's extent, not the full frame. Planning against the plain
+ * pixel size made the camera frame regions the tilt then pushed half out
+ * of view. Approximate on purpose: a shot a little tighter than needed
+ * still reads right, one too wide does not.
+ */
+export function boardTiltVisibleFraction(tilt: BoardTilt): { x: number; y: number } {
+  const toRadians = Math.PI / 180;
+  const cover = boardTiltCoverScale(tilt);
+  // Pitch narrows the far (top or bottom) edge's WIDTH; yaw plus the
+  // drift's sway shortens the far side's HEIGHT. Same generous
+  // half-extents as the cover scale.
+  const pitchDrop = Math.sin(Math.abs(tilt.pitch) * toRadians) * 620;
+  const yawSway = Math.abs(tilt.yaw) + (tilt.drift ? TILT_DRIFT_DEGREES : 0);
+  const yawDrop = Math.sin(yawSway * toRadians) * 1100;
+  const keystoneX = (TILT_PERSPECTIVE_PX - pitchDrop) / (TILT_PERSPECTIVE_PX + pitchDrop);
+  const keystoneY = (TILT_PERSPECTIVE_PX - yawDrop) / (TILT_PERSPECTIVE_PX + yawDrop);
+  return {
+    x: Math.max(0.2, keystoneX / cover),
+    y: Math.max(0.2, keystoneY / cover),
+  };
+}

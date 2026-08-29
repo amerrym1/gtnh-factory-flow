@@ -558,6 +558,55 @@ export function setBoardTimelapseVolume(volume: number): void {
   }
 }
 
+/**
+ * How briskly the camera travels between shots, as a multiplier on the
+ * chase's pace: 1 is the authored glide, higher is snappier, lower is
+ * lazier. Its own dial because it is taste separate from beat speed - a
+ * slow build can still want quick cuts, and the other way round.
+ */
+const TIMELAPSE_CAMERA_PACE_KEY = "gtnh-factory-flow.dev.timelapse-camera-pace";
+export const TIMELAPSE_CAMERA_PACE_MIN = 0.25;
+export const TIMELAPSE_CAMERA_PACE_MAX = 3;
+
+let timelapseCameraPace = readStoredCameraPace();
+
+function readStoredCameraPace(): number {
+  if (typeof window === "undefined") {
+    return 1;
+  }
+  try {
+    const raw = window.localStorage.getItem(TIMELAPSE_CAMERA_PACE_KEY);
+    if (raw !== null) {
+      const value = Number(raw);
+      if (Number.isFinite(value)) {
+        return Math.min(
+          TIMELAPSE_CAMERA_PACE_MAX,
+          Math.max(TIMELAPSE_CAMERA_PACE_MIN, value),
+        );
+      }
+    }
+  } catch {
+    // Storage blocked: authored pace.
+  }
+  return 1;
+}
+
+export function getBoardTimelapseCameraPace(): number {
+  return timelapseCameraPace;
+}
+
+export function setBoardTimelapseCameraPace(pace: number): void {
+  timelapseCameraPace = Math.min(
+    TIMELAPSE_CAMERA_PACE_MAX,
+    Math.max(TIMELAPSE_CAMERA_PACE_MIN, pace),
+  );
+  try {
+    window.localStorage.setItem(TIMELAPSE_CAMERA_PACE_KEY, String(timelapseCameraPace));
+  } catch {
+    // Session-only pace is fine.
+  }
+}
+
 function playTimelapseSound(kind: Parameters<typeof playBoardSound>[0]): void {
   if (timelapseVolume <= 0) {
     return;
@@ -624,8 +673,15 @@ export function getServerBoardTimelapseSnapshot(): BoardTimelapseSnapshot | unde
   return undefined;
 }
 
-/** Stops the run and lifts every hidden flag at once. Safe to call idle. */
-export function stopBoardTimelapse(): void {
+/**
+ * Stops the run and lifts every hidden flag at once. Safe to call idle.
+ * A CANCELLED run reframes the whole board (the camera was mid-shot,
+ * somewhere tight); the natural finish passes `reframe: false`, because
+ * the finale's own pull-back already framed everything and a second fit
+ * right after it read as the camera taking one more, slightly different
+ * position for no reason.
+ */
+export function stopBoardTimelapse(options?: { reframe?: boolean }): void {
   playToken += 1;
   if (stepTimer !== undefined) {
     clearTimeout(stepTimer);
@@ -638,8 +694,9 @@ export function stopBoardTimelapse(): void {
   if (activeSnapshot) {
     activeSnapshot = undefined;
     emit();
-    // The board is whole again: frame it, the way an arrange or import does.
-    useFactoryStore.getState().frameBoardNodes();
+    if (options?.reframe !== false) {
+      useFactoryStore.getState().frameBoardNodes();
+    }
   }
 }
 
@@ -776,7 +833,8 @@ export function startBoardTimelapse(): boolean {
         stepTimer = undefined;
         if (token === playToken) {
           playTimelapseSound("sweep");
-          stopBoardTimelapse();
+          // The finale's pull-back is already the last camera position.
+          stopBoardTimelapse({ reframe: false });
         }
       }, TIMELAPSE_FINISH_HOLD_MS / timelapseSpeed);
       return;

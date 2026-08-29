@@ -4,11 +4,15 @@ import { Check, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   BOARD_TIMELAPSE_SPEEDS,
+  getBoardTimelapseCameraPace,
   getBoardTimelapseSpeed,
   getBoardTimelapseVolume,
+  setBoardTimelapseCameraPace,
   setBoardTimelapseSpeed,
   setBoardTimelapseVolume,
   startBoardTimelapse,
+  TIMELAPSE_CAMERA_PACE_MAX,
+  TIMELAPSE_CAMERA_PACE_MIN,
 } from "./flow/board-timelapse";
 import {
   BOARD_TILT_MAX_ANGLE,
@@ -209,6 +213,20 @@ export function DevMenu({
                 defaultValue={Math.round(getBoardTimelapseVolume() * 100)}
                 onChange={(event) => setBoardTimelapseVolume(Number(event.target.value) / 100)}
                 aria-label="Timelapse sound volume"
+                className="h-1 w-full accent-cyan-500"
+              />
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-xs">
+              <span className="w-14 shrink-0 text-fg-subtle">Camera</span>
+              <input
+                type="range"
+                min={TIMELAPSE_CAMERA_PACE_MIN}
+                max={TIMELAPSE_CAMERA_PACE_MAX}
+                step={0.25}
+                defaultValue={getBoardTimelapseCameraPace()}
+                onChange={(event) => setBoardTimelapseCameraPace(Number(event.target.value))}
+                aria-label="How briskly the camera travels between shots"
+                title="How briskly the camera travels between shots"
                 className="h-1 w-full accent-cyan-500"
               />
             </div>
