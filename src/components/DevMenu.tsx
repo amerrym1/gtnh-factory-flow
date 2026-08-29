@@ -7,6 +7,7 @@ import {
   getBoardTimelapseCameraMode,
   getBoardTimelapseCameraPace,
   getBoardTimelapseCineZoom,
+  getBoardTimelapseHoldEnding,
   getBoardTimelapsePopMs,
   getBoardTimelapseSpeed,
   getBoardTimelapseVolume,
@@ -15,6 +16,7 @@ import {
   setBoardTimelapseCameraMode,
   setBoardTimelapseCameraPace,
   setBoardTimelapseCineZoom,
+  setBoardTimelapseHoldEnding,
   setBoardTimelapsePopMs,
   setBoardTimelapseSpeed,
   setBoardTimelapseVolume,
@@ -92,6 +94,7 @@ export function DevMenu({
     setZoomRange(getBoardTimelapseZoomRange());
   };
   const [forceGlance, setForceGlance] = useState(() => isNodeDetailGlanceForced());
+  const [holdEnding, setHoldEnding] = useState(() => getBoardTimelapseHoldEnding());
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -390,6 +393,18 @@ export function DevMenu({
                 {zoomRange.min.toFixed(2)}
               </span>
             </div>
+            <label className="mt-2.5 flex cursor-pointer items-center gap-2 text-xs text-fg-muted">
+              <input
+                type="checkbox"
+                checked={holdEnding}
+                onChange={(event) => {
+                  setBoardTimelapseHoldEnding(event.target.checked);
+                  setHoldEnding(getBoardTimelapseHoldEnding());
+                }}
+                className="accent-cyan-500"
+              />
+              Hold the final shot: when the last thing lands, the camera stays put
+            </label>
             <button
               type="button"
               disabled={!canPlayTimelapse}

@@ -939,6 +939,44 @@ export function setBoardTimelapseCameraMode(mode: TimelapseCameraMode): void {
 }
 
 /**
+ * HOLD THE ENDING: when the last thing lands, the camera does nothing -
+ * no finale pull-back, no closing fit-to-screen, the shot simply stays
+ * where the build left it. A dev switch for endings meant to be framed
+ * by hand or recorded mid-scene; cancelling a run still reframes.
+ */
+const TIMELAPSE_HOLD_END_KEY = "gtnh-factory-flow.dev.timelapse-hold-end";
+
+let timelapseHoldEnding = readStoredHoldEnding();
+
+function readStoredHoldEnding(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  try {
+    return window.localStorage.getItem(TIMELAPSE_HOLD_END_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
+
+export function getBoardTimelapseHoldEnding(): boolean {
+  return timelapseHoldEnding;
+}
+
+export function setBoardTimelapseHoldEnding(hold: boolean): void {
+  timelapseHoldEnding = hold;
+  try {
+    if (hold) {
+      window.localStorage.setItem(TIMELAPSE_HOLD_END_KEY, "on");
+    } else {
+      window.localStorage.removeItem(TIMELAPSE_HOLD_END_KEY);
+    }
+  } catch {
+    // Session-only hold is fine.
+  }
+}
+
+/**
  * The cinematic crane's own zoom dial: a multiplier on the frame-the-
  * whole-island fit. 1 shows the island exactly; above 1 the crane sits
  * closer and the pan crosses a cropped view; below 1 it hangs back with
@@ -1410,7 +1448,9 @@ export function startBoardTimelapse(): boolean {
         // view, which is far wider than a flat fit needs - so the stop
         // reframes to the ordinary fit-to-screen while the tilt eases
         // off, one motion into the exact view the fit button gives.
-        stopBoardTimelapse();
+        // Unless the ending is HELD, in which case the camera does not
+        // move at all.
+        stopBoardTimelapse({ reframe: !timelapseHoldEnding });
       });
       return;
     }

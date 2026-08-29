@@ -145,6 +145,7 @@ import {
   getBoardTimelapseCameraMode,
   getBoardTimelapseCameraPace,
   getBoardTimelapseCineZoom,
+  getBoardTimelapseHoldEnding,
   getBoardTimelapsePopMs,
   runBoardTimelapsePreset,
   getBoardTimelapseSnapshot,
@@ -3486,6 +3487,11 @@ export function FactoryFlow() {
     }
     timelapseSpeedRef.current = timelapse.speed;
     timelapseFinaleRef.current = timelapse.finale;
+    // A HELD ending: the finale beat retargets nothing - the camera stays
+    // exactly where the build left it, and the stop skips its closing fit.
+    if (timelapse.finale && getBoardTimelapseHoldEnding()) {
+      return;
+    }
     const board = boardRef.current;
     if (!board || timelapse.focusGroups.length === 0) {
       return;
