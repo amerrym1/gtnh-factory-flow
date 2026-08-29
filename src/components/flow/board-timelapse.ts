@@ -1086,11 +1086,10 @@ export function getServerBoardTimelapseSnapshot(): BoardTimelapseSnapshot | unde
 
 /**
  * Stops the run and lifts every hidden flag at once. Safe to call idle.
- * A CANCELLED run reframes the whole board (the camera was mid-shot,
- * somewhere tight); the natural finish passes `reframe: false`, because
- * the finale's own pull-back already framed everything and a second fit
- * right after it read as the camera taking one more, slightly different
- * position for no reason.
+ * Every ending reframes to the ordinary fit-to-screen: a cancelled run's
+ * camera was mid-shot somewhere tight, and a finished run's finale was
+ * framed for the TILTED view - far wider than a flat fit - so the fit
+ * glides in while the tilt eases off, one closing motion.
  */
 export function stopBoardTimelapse(options?: { reframe?: boolean }): void {
   playToken += 1;
@@ -1407,8 +1406,11 @@ export function startBoardTimelapse(): boolean {
       // cut the finale off mid-flight on any big board.
       scheduleGated(TIMELAPSE_FINISH_HOLD_MS / timelapseSpeed, () => {
         playTimelapseSound("sweep");
-        // The finale's pull-back is already the last camera position.
-        stopBoardTimelapse({ reframe: false });
+        // The closing move: the finale's frame was sized for the TILTED
+        // view, which is far wider than a flat fit needs - so the stop
+        // reframes to the ordinary fit-to-screen while the tilt eases
+        // off, one motion into the exact view the fit button gives.
+        stopBoardTimelapse();
       });
       return;
     }
