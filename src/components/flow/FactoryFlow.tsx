@@ -3470,6 +3470,11 @@ export function FactoryFlow() {
   const timelapseSpeedRef = useRef(1);
   const timelapseFinaleRef = useRef(false);
   const timelapseCinematicRef = useRef(false);
+  // When the current camera move LAUNCHED: a fresh shot restarts the short
+  // ease-in ramp, so a move swells into motion instead of starting at full
+  // speed. Only a genuine jump resets it - the cinematic creep retargets
+  // every beat by inches and must not live permanently inside the ramp.
+  const timelapseCameraLaunchRef = useRef(0);
   // Where the NEXT beat happens, in flow space: the beat gate fires as soon
   // as this rect is inside the live viewport, mid-glide included.
   const timelapseUpcomingRectRef = useRef<BoardRect | undefined>(undefined);
@@ -3500,6 +3505,19 @@ export function FactoryFlow() {
     // The player's working zoom range, read per plan so slider edits take
     // hold on the next shot.
     const zoomRange = getBoardTimelapseZoomRange();
+    // Every new shot goes through here so a genuine jump restarts the
+    // launch ramp (screen-space distance at the destination zoom).
+    const setShot = (next: { x: number; y: number; zoom: number }) => {
+      const previous = timelapseCameraTargetRef.current;
+      if (
+        !previous ||
+        Math.hypot((next.x - previous.x) * next.zoom, (next.y - previous.y) * next.zoom) > 150 ||
+        Math.abs(next.zoom - previous.zoom) > 0.08
+      ) {
+        timelapseCameraLaunchRef.current = performance.now();
+      }
+      timelapseCameraTargetRef.current = next;
+    };
     const rectOf = (ids: readonly string[]) => {
       const { cards, measuredById } = cameraCards([...ids]);
       return framingRect(cards, measuredById);
@@ -3532,7 +3550,7 @@ export function FactoryFlow() {
       if (coverRect) {
         timelapseCinematicRef.current = true;
         const centre = rectCentre(coverRect);
-        timelapseCameraTargetRef.current = {
+        setShot({
           x: centre.x,
           y: centre.y,
           // The Offset dial nudges the fit: above 1 sits closer than full
@@ -3545,7 +3563,7 @@ export function FactoryFlow() {
               maxZoom: BOARD_CAMERA_MAX_ZOOM,
             }) * getBoardTimelapseCineZoom(),
           ),
-        };
+        });
         return;
       }
     }
@@ -3611,7 +3629,7 @@ export function FactoryFlow() {
       const w = window as unknown as { __timelapseCuts?: number };
       w.__timelapseCuts = (w.__timelapseCuts ?? 0) + 1;
     }
-    timelapseCameraTargetRef.current = {
+    setShot({
       x: centre.x,
       y: centre.y,
       // Shots are ROOMY on purpose: capped well under 1:1 so the view around
@@ -3641,7 +3659,7 @@ export function FactoryFlow() {
               }),
             ),
           ),
-    };
+    });
   }, [timelapse, cameraCards, tiltWorn, boardTilt]);
   useEffect(() => {
     if (!timelapseActive) {
@@ -3715,8 +3733,17 @@ export function FactoryFlow() {
       // arrived at once. A FLOOR on closing speed makes the landing
       // definite - exponential launch, straight touch-down.
       const minClose = ((timelapseCinematicRef.current ? 100 : 340) * pace * dt) / 1000;
+      // The LAUNCH ramp: a fresh move swells into motion over a short
+      // smoothstep instead of starting at full speed - a gentle mirror of
+      // the taper it already ends with. Deliberately subtle, and scaled by
+      // the pace dial like everything else.
+      const rampMs = Math.min(600, Math.max(90, 240 / pace));
+      const launch = Math.min(1, (now - timelapseCameraLaunchRef.current) / rampMs);
+      const launchEase = launch * launch * (3 - 2 * launch);
       const factor =
-        remaining > 0.01 ? Math.min(1, Math.max(k, minClose / remaining)) : 1;
+        remaining > 0.01
+          ? Math.min(1, Math.max(k, minClose / remaining) * launchEase)
+          : 1;
       const zoom = viewport.zoom + (target.zoom - viewport.zoom) * factor;
       const landX = size.width / 2 - target.x * zoom;
       const landY = size.height / 2 - target.y * zoom;
