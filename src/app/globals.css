@@ -770,7 +770,14 @@ textarea {
 }
 
 .factory-flow-board--tilted .react-flow {
-  transform: rotateX(var(--board-tilt-pitch, 7deg)) rotateY(var(--board-tilt-yaw, -3deg))
+  /* The breathe variables are the timelapse follower's: written straight
+     onto the board element per frame from the camera's velocity, additive
+     over the dev menu's base angles, never touched by React. The
+     transition above is what turns per-frame writes into a lean. */
+  transform: rotateX(
+      calc(var(--board-tilt-pitch, 7deg) + var(--board-tilt-breathe-pitch, 0deg))
+    )
+    rotateY(calc(var(--board-tilt-yaw, -3deg) + var(--board-tilt-breathe-yaw, 0deg)))
     scale(var(--board-tilt-cover, 1.12));
   transform-style: preserve-3d;
 }

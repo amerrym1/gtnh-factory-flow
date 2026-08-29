@@ -499,21 +499,19 @@ export function buildTimelapseScript(
     }
   }
 
-  // Ink last, in reading order. Every frame already stands by now.
+  // Ink last, ALL AT ONCE: the annotations pop in together as one closing
+  // flourish, and the finale's pull-back follows right behind them.
   const inkUnits = (project.annotations ?? [])
     .map((annotation) => view.representativeOf(annotation.id))
-    .filter((id): id is string => Boolean(id && !revealedNodes.has(id)))
-    .sort((left, right) => {
-      const a = pointFor(left);
-      const b = pointFor(right);
-      return a.y - b.y || a.x - b.x || (left < right ? -1 : 1);
-    });
-  for (const inkId of inkUnits) {
-    if (revealedNodes.has(inkId)) {
-      continue;
+    .filter((id): id is string => Boolean(id && !revealedNodes.has(id)));
+  if (inkUnits.length > 0) {
+    for (const inkId of inkUnits) {
+      revealedNodes.add(inkId);
     }
-    revealedNodes.add(inkId);
-    beats.push({ nodeIds: [inkId], edgeIds: [], kind: "ink", popNodeIds: [inkId] });
+    beats.push({ nodeIds: inkUnits, edgeIds: [], kind: "ink", popNodeIds: [...inkUnits] });
+    // The curtain: an empty beat so the pull-back is its own moment AFTER
+    // the ink has landed, not the same breath.
+    beats.push({ nodeIds: [], edgeIds: [], kind: "card" });
   }
 
   // Any edge the walk never claimed (dangling endpoints, edges into units
@@ -1204,7 +1202,13 @@ export function startBoardTimelapse(): boolean {
     emit();
 
     // The shuffle family: brushes, not thumps. A storage's combined beat
-    // slides the drawer in and whisks its wire a half-beat later.
+    // slides the drawer in and whisks its wire a half-beat later. An empty
+    // beat (the curtain before the finale) makes no sound at all.
+    const beatHasContent =
+      beat.nodeIds.length > 0 || beat.edgeIds.length > 0 || (beat.popNodeIds?.length ?? 0) > 0;
+    if (!beatHasContent) {
+      // Nothing landed; nothing sounds.
+    } else
     switch (beat.kind) {
       case "card":
         playTimelapseSound("shuffle");

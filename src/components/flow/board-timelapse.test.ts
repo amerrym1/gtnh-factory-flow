@@ -136,7 +136,7 @@ describe("buildTimelapseScript", () => {
     expect(wireBeats.flatMap((beat) => beat.edgeIds).sort()).toEqual(["am1", "am2", "mm"]);
   });
 
-  it("draws ink last, in reading order", () => {
+  it("pops all the ink at once at the end, then leaves a beat for the pull-back", () => {
     const script = buildTimelapseScript({
       nodes: [node("a", 0, 0), node("b", 400, 0)],
       annotations: [annotation("note-low", 0, 500), annotation("note-high", 0, -100)],
@@ -144,13 +144,19 @@ describe("buildTimelapseScript", () => {
     });
 
     const inkBeats = script.beats.filter((beat) => beat.kind === "ink");
-    expect(inkBeats.map((beat) => beat.nodeIds)).toEqual([["note-high"], ["note-low"]]);
+    expect(inkBeats.length).toBe(1);
+    expect([...inkBeats[0].nodeIds].sort()).toEqual(["note-high", "note-low"]);
+    expect(inkBeats[0].popNodeIds).toEqual(inkBeats[0].nodeIds);
+    // The curtain: the last beat is empty, so the finale's pull-back is its
+    // own moment after the ink has landed.
+    const last = script.beats[script.beats.length - 1];
+    expect(last).toMatchObject({ nodeIds: [], edgeIds: [], kind: "card" });
     expect(script.beats.map((beat) => beat.kind)).toEqual([
       "card",
       "wire",
       "card",
       "ink",
-      "ink",
+      "card",
     ]);
   });
 

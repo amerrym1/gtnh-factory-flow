@@ -35,6 +35,11 @@ const KEY = "gtnh-factory-flow.dev.board-tilt";
 const TILT_PERSPECTIVE_PX = 1600;
 /** How far the drift sways beyond the set yaw, degrees (globals.css). */
 const TILT_DRIFT_DEGREES = 2.5;
+/** And how far the camera-motion breathe can lean past that (the follower
+ * writes up to 4 degrees of yaw and 2.5 of pitch); the cover and the
+ * visible fraction budget for the worst case. */
+const TILT_BREATHE_YAW_DEGREES = 4;
+const TILT_BREATHE_PITCH_DEGREES = 2.5;
 
 const listeners = new Set<() => void>();
 
@@ -109,8 +114,10 @@ export function writeBoardTilt(patch: Partial<BoardTilt>): void {
  */
 export function boardTiltCoverScale(tilt: BoardTilt): number {
   const toRadians = Math.PI / 180;
-  const pitchShrink = (Math.sin(Math.abs(tilt.pitch) * toRadians) * 620) / TILT_PERSPECTIVE_PX;
-  const yawSway = Math.abs(tilt.yaw) + (tilt.drift ? TILT_DRIFT_DEGREES : 0);
+  const pitchSway = Math.abs(tilt.pitch) + TILT_BREATHE_PITCH_DEGREES;
+  const pitchShrink = (Math.sin(pitchSway * toRadians) * 620) / TILT_PERSPECTIVE_PX;
+  const yawSway =
+    Math.abs(tilt.yaw) + (tilt.drift ? TILT_DRIFT_DEGREES : 0) + TILT_BREATHE_YAW_DEGREES;
   const yawShrink = (Math.sin(yawSway * toRadians) * 1100) / TILT_PERSPECTIVE_PX;
   const shrink = Math.min(0.55, pitchShrink + yawShrink);
   return Math.min(2.6, 1.02 / (1 - shrink));
@@ -136,8 +143,10 @@ export function boardTiltVisibleFraction(tilt: BoardTilt): { x: number; y: numbe
   // Pitch narrows the far (top or bottom) edge's WIDTH; yaw plus the
   // drift's sway shortens the far side's HEIGHT. Same generous
   // half-extents as the cover scale.
-  const pitchDrop = Math.sin(Math.abs(tilt.pitch) * toRadians) * 620;
-  const yawSway = Math.abs(tilt.yaw) + (tilt.drift ? TILT_DRIFT_DEGREES : 0);
+  const pitchDrop =
+    Math.sin((Math.abs(tilt.pitch) + TILT_BREATHE_PITCH_DEGREES) * toRadians) * 620;
+  const yawSway =
+    Math.abs(tilt.yaw) + (tilt.drift ? TILT_DRIFT_DEGREES : 0) + TILT_BREATHE_YAW_DEGREES;
   const yawDrop = Math.sin(yawSway * toRadians) * 1100;
   const keystoneX = (TILT_PERSPECTIVE_PX - pitchDrop) / (TILT_PERSPECTIVE_PX + pitchDrop);
   const keystoneY = (TILT_PERSPECTIVE_PX - yawDrop) / (TILT_PERSPECTIVE_PX + yawDrop);

@@ -3449,7 +3449,11 @@ export function FactoryFlow() {
     getBoardTiltSnapshot,
     getServerBoardTiltSnapshot,
   );
-  const tiltWorn = boardTilt.always || (timelapseActive && !timelapse?.finale);
+  // The finale ALWAYS flattens, the always-on tilt included: a leaning
+  // plane's projection is asymmetric (the near side looms), so a tilted
+  // wide reveal never reads as centred however correctly it is framed. The
+  // standing tilt eases back once the show is over.
+  const tiltWorn = timelapseActive ? !timelapse?.finale : boardTilt.always;
   // The timelapse camera. Each beat retargets the focus window's rect; a
   // rAF chase then eases the viewport toward it every frame, so the shot
   // pans continuously after the action instead of hopping fit to fit. The
@@ -3633,6 +3637,14 @@ export function FactoryFlow() {
     if (!size || size.width === 0 || size.height === 0) {
       return;
     }
+    // The tilt BREATHES with the camera: panning leans the plane into the
+    // motion, written as additive CSS variables the React style never
+    // touches (the base angles are React's; these are the follower's).
+    // The .react-flow transform transition smooths the per-frame writes.
+    const setBreathe = (yawDeg: number, pitchDeg: number) => {
+      board?.style.setProperty("--board-tilt-breathe-yaw", `${yawDeg.toFixed(2)}deg`);
+      board?.style.setProperty("--board-tilt-breathe-pitch", `${pitchDeg.toFixed(2)}deg`);
+    };
     let frame = 0;
     let last = performance.now();
     const tick = (now: number) => {
@@ -3703,14 +3715,27 @@ export function FactoryFlow() {
         if (viewport.x !== landX || viewport.y !== landY || viewport.zoom !== target.zoom) {
           void instance.setViewport({ x: landX, y: landY, zoom: target.zoom });
         }
+        setBreathe(0, 0);
         return;
       }
       const x = viewport.x + (landX - viewport.x) * factor;
       const y = viewport.y + (landY - viewport.y) * factor;
+      // Lean into the pan: velocity in screen px/s, clamped to a few
+      // degrees either way, easing back to level as the camera settles.
+      const velocityX = ((x - viewport.x) / Math.max(1, dt)) * 1000;
+      const velocityY = ((y - viewport.y) / Math.max(1, dt)) * 1000;
+      setBreathe(
+        Math.max(-4, Math.min(4, -velocityX * 0.006)),
+        Math.max(-2.5, Math.min(2.5, velocityY * 0.004)),
+      );
       void instance.setViewport({ x, y, zoom });
     };
     frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      board?.style.removeProperty("--board-tilt-breathe-yaw");
+      board?.style.removeProperty("--board-tilt-breathe-pitch");
+    };
   }, [timelapseActive]);
 
   const connectResourceEdges = useCallback(
