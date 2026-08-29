@@ -73,6 +73,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.39.0",
+    date: "2026-08-29",
+    headline: "Watch your factory build itself",
+    notes: [
+      "A new clapperboard button by the view options replays your board being built, machine by machine, wires drawing themselves in.",
+      "Two shows to pick from: one slow shot from afar, or a camera that follows each machine up close.",
+      "Press Esc or click the board to stop it.",
+    ],
+  },
+  {
     version: "2.38.1",
     date: "2026-08-28",
     headline: "Quiet loading",
