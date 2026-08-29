@@ -2497,21 +2497,26 @@ img {
 @keyframes edge-doomed-flash {
   from {
     opacity: 1;
+    filter: drop-shadow(0 0 4px #ef4444) drop-shadow(0 0 10px rgba(239, 68, 68, 0.8));
   }
   to {
-    opacity: 0.35;
+    opacity: 0.3;
+    filter: drop-shadow(0 0 2px rgba(239, 68, 68, 0.5));
   }
 }
 .edge-doomed path {
-  stroke: #ef4444 !important;
-  stroke-dasharray: 8 7 !important;
+  stroke: #ff5555 !important;
+  stroke-width: 7px !important;
+  stroke-dasharray: 10 8 !important;
+  stroke-linecap: round;
 }
 .edge-doomed {
-  animation: edge-doomed-flash 0.45s linear infinite alternate;
+  animation: edge-doomed-flash 0.35s linear infinite alternate;
 }
 @media (prefers-reduced-motion: reduce) {
   .edge-doomed {
     animation: none;
-    opacity: 0.65;
+    opacity: 0.8;
+    filter: drop-shadow(0 0 5px #ef4444);
   }
 }
