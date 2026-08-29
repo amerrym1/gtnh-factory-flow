@@ -578,6 +578,70 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
   );
 }
 
+/**
+ * The tile's LOOK alone - silhouette, role tint, header, icon, net line -
+ * for anything that must show a drawer that is not (yet) a node: the
+ * void-drop ghost previews the exact drawer a release would spawn with it.
+ * Built from the same parts as the real card (StorageHeader, NetLine,
+ * ResourceIcon, the storage-shape layers), so the preview can never drift
+ * from the thing it predicts. No handles, no glance, no tooltip, no washes:
+ * those belong to the node.
+ */
+export function StorageTileFace({
+  storage,
+  role,
+  net = 0,
+}: {
+  storage: FactoryStorage;
+  role: StorageRole;
+  net?: number;
+}) {
+  const isTank = storage.kind === "fluid";
+  const isPlainFluid = isTank && !storage.iconPath && !storage.iconAtlas;
+  const tint =
+    (storage.colorTag ? GT_NODE_COLORS[storage.colorTag].swatch : undefined) ?? ROLE_TINTS[role];
+  const borderColor = `color-mix(in srgb, ${tint} 55%, #262b34)`;
+  return (
+    <div className="storage-node-card relative flex h-[80px] w-[100px] flex-col p-1 text-[#e8e9ee]">
+      <span
+        aria-hidden
+        data-storage-shape={role}
+        className="storage-shape pointer-events-none absolute inset-0"
+        style={{ background: borderColor }}
+      >
+        <span
+          className="storage-shape-fill absolute inset-[2px]"
+          style={{
+            background: `color-mix(in srgb, ${tint} 24%, #101318)`,
+            boxShadow: "inset 2px 2px 0 rgba(255,255,255,0.08), inset -2px -2px 0 rgba(0,0,0,0.45)",
+          }}
+        />
+      </span>
+      <div
+        data-storage-shape={role}
+        className="storage-shape-content relative z-10 flex min-h-0 flex-1 flex-col"
+      >
+        <StorageHeader storage={storage} isTank={isTank} tint={tint} role={role} />
+        <div className="relative mx-auto flex min-h-0 w-full flex-1 flex-col">
+          <div className="grid min-h-0 w-full flex-1 place-items-center">
+            <ResourceIcon
+              resource={{ ...storage, id: storage.resourceId, amount: 1 }}
+              showAmount={false}
+              bare
+              iconPixelSize={storageIconPixelSize(
+                isPlainFluid ? CARD_ICON_PX - FLUID_BREATHE_PX : CARD_ICON_PX,
+                storage,
+              )}
+              className="!h-[36px] !w-[36px]"
+            />
+          </div>
+          <NetLine net={net} kind={storage.kind} role={role} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Position props change every drag frame; the component only reads `data` and
 // `selected`, so comparing exactly those keeps the card from re-rendering while
 // its wrapper is translated (see RecipeNode for the long version).

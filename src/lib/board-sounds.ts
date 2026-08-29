@@ -1,0 +1,465 @@
+/**
+ * Synthesized interface sounds for the board - no audio files, everything
+ * built from Web Audio oscillators and filtered noise.
+ *
+ * Sounds mark EVENTS THAT CHANGED THE PLAN (a card landing, a wire snapping
+ * in or refusing, a knob turning), never raw UI interaction: a global
+ * every-button tick was tried and rejected as noise. The vocabulary lives in
+ * `playBoardSound`'s switch; who calls what is the watcher's business
+ * (`use-board-sound-effects.ts`) plus the one gesture hook for refusals.
+ *
+ * Three hard-won rules keep them clean:
+ * - Every envelope RAMPS in over a few ms and ramps fully out. A gain that
+ *   steps straight to its peak is a click stacked on the note - that was
+ *   the first version's "clicky" sound.
+ * - Nothing is scheduled against a suspended AudioContext. The context
+ *   suspends whenever the tab loses focus or autoplay policy holds it, and
+ *   notes scheduled while suspended play late, clipped, or not at all -
+ *   that was the "sometimes I don't hear it" bug. `playBoardSound` resumes
+ *   first and schedules in the resume callback.
+ * - The output stream is KEPT HOT. Chrome (Windows especially) parks the
+ *   hardware audio stream after a few seconds of silence while
+ *   `currentTime` keeps running, and a 100ms note scheduled into the
+ *   wake-up gap is clipped or lost entirely - which reads as "the first
+ *   sound played, then nothing". An inaudible constant source holds the
+ *   stream open, and every note starts a beat after "now" so it never
+ *   begins mid-wakeup.
+ * - Fundamentals sit at 200Hz+ (laptop speakers roll off below), and the
+ *   whole mix runs through one gentle lowpass so nothing spits.
+ */
+
+const KEY = "gtnh-factory-flow.board-sounds.v1";
+const VOLUME_KEY = "gtnh-factory-flow.board-sounds-volume.v1";
+
+/** The default master volume; the settings slider works in this scale. */
+export const DEFAULT_BOARD_SOUND_VOLUME = 0.5;
+
+export function areBoardSoundsEnabled(): boolean {
+  try {
+    return window.localStorage.getItem(KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+export function setBoardSoundsEnabled(enabled: boolean): void {
+  try {
+    if (enabled) {
+      window.localStorage.removeItem(KEY);
+    } else {
+      window.localStorage.setItem(KEY, "off");
+    }
+  } catch {
+    // A blocked quota must never break the app.
+  }
+}
+
+/** Master volume, 0..1. Applied live: a slider drag is audible immediately. */
+export function getBoardSoundVolume(): number {
+  try {
+    const raw = window.localStorage.getItem(VOLUME_KEY);
+    if (raw === null) {
+      return DEFAULT_BOARD_SOUND_VOLUME;
+    }
+    const value = Number(raw);
+    return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : DEFAULT_BOARD_SOUND_VOLUME;
+  } catch {
+    return DEFAULT_BOARD_SOUND_VOLUME;
+  }
+}
+
+export function setBoardSoundVolume(volume: number): void {
+  const clamped = Math.min(1, Math.max(0, volume));
+  try {
+    if (clamped === DEFAULT_BOARD_SOUND_VOLUME) {
+      window.localStorage.removeItem(VOLUME_KEY);
+    } else {
+      window.localStorage.setItem(VOLUME_KEY, String(clamped));
+    }
+  } catch {
+    // A blocked quota must never break the app.
+  }
+  if (masterGain) {
+    masterGain.gain.value = clamped;
+  }
+}
+
+export type BoardSoundKind =
+  | "place" // a machine card lands: one flat thump
+  | "placeProduct" // a drawer spawns to CATCH a product: thump stepping down
+  | "placeSource" // a drawer spawns to SUPPLY something: thump stepping up
+  | "delete" // a card leaves the board
+  | "connect" // a wire snaps in
+  | "snap" // the dragged wire catches a compatible slot mid-drag
+  | "unwire" // a wire is cut
+  | "error" // a wire drop was refused
+  | "open" // a board window unfolds from its summary card
+  | "close" // a board window folds to its summary card
+  | "adjust" // a setting on a card changed: machine count, drain pill, config
+  | "sweep"; // one sound for a bulk change (paste, arrange, import)
+
+let audioContext: AudioContext | undefined;
+let masterGain: GainNode | undefined;
+let noiseBuffer: AudioBuffer | undefined;
+const lastPlayedAt = new Map<BoardSoundKind, number>();
+
+/**
+ * RETRIGGER STEALS, never stacks and never drops. Playing a kind that is
+ * already sounding fades the old voice out in a few ms and starts fresh -
+ * the way every game UI does it. The alternatives both failed in use: let
+ * voices overlap and rapid deletes SUM their 250ms tails into a crescendo;
+ * throttle repeats away and rapid deletes lose their feedback entirely
+ * ("some sounds don't play"). One live voice per kind, so a burst of the
+ * same action sounds like a fast drum roll at one volume.
+ */
+const activeVoices = new Map<BoardSoundKind, GainNode>();
+
+/** Only a same-frame duplicate is dropped outright. */
+const DEDUPE_MS = 30;
+
+/** How fast a stolen voice gets out of the way. */
+const STEAL_FADE = 0.015;
+
+/**
+ * Fast REPEATS duck. Even with stealing, a burst of full-volume retriggers
+ * (wheel-scrolling a tier chip) reads two or three times louder than one
+ * note - the ear sums repeated pulses inside ~200ms. So repeats inside
+ * this window play progressively quieter, like an OS scroll tick, and the
+ * first note after a pause is back at full voice. The window is deliberately
+ * TIGHT: wheel steps arrive every 30-80ms, but two deliberate actions in
+ * quick succession can be 150ms apart, and ducking those read as broken
+ * volume rather than as a scroll tick.
+ */
+const REPEAT_WINDOW_MS = 120;
+const REPEAT_DUCK = 0.6;
+const REPEAT_DUCK_FLOOR = 3;
+const repeatStreak = new Map<BoardSoundKind, number>();
+
+/**
+ * Every note fades in over this long; instant attacks click, and even a
+ * clean 5ms onset reads as hard-edged - 10ms is where the notes stop
+ * sounding struck and start sounding placed.
+ */
+const ATTACK = 0.01;
+
+/**
+ * Notes start this far after "now". Scheduling AT currentTime asks the
+ * graph to begin a 5ms attack in the past by the time it renders, which
+ * eats the front of the note.
+ */
+const SCHEDULE_AHEAD = 0.03;
+
+function getContext(): AudioContext | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+  // A context can die under us (device switch, "closed" state); a dead one
+  // is discarded and rebuilt rather than silently swallowing every note.
+  if (audioContext && audioContext.state === "closed") {
+    audioContext = undefined;
+    masterGain = undefined;
+    noiseBuffer = undefined;
+    // These voices belong to the dead context; stealing them from the new
+    // one would schedule ramps on a foreign clock.
+    activeVoices.clear();
+  }
+  if (!audioContext) {
+    try {
+      audioContext = new AudioContext();
+      masterGain = audioContext.createGain();
+      // The one master volume. Everything below is relative to this.
+      masterGain.gain.value = getBoardSoundVolume();
+      // A soft roof over the whole mix: synthesized edges high up are what
+      // makes little UI notes sound cheap and spitty. 5.5kHz keeps the
+      // presence band (1-4kHz) intact - loudness LIVES there, and an
+      // earlier 3.2kHz roof was part of why everything read as faint.
+      const roof = audioContext.createBiquadFilter();
+      roof.type = "lowpass";
+      roof.frequency.value = 4500;
+      // Overload protection must be STATELESS. A DynamicsCompressor here
+      // made identical actions play at different volumes: its ~100ms
+      // release meant a sound landing shortly after another went through
+      // partially-engaged gain reduction while an isolated one did not.
+      // A tanh soft-clip shapes each sample on its own - no memory, so
+      // the same note is always the same loudness, and a rare overlap
+      // rounds off instead of clipping.
+      const softClip = audioContext.createWaveShaper();
+      const curve = new Float32Array(1024);
+      for (let i = 0; i < curve.length; i += 1) {
+        const x = (i / (curve.length - 1)) * 2 - 1;
+        // Unity slope at zero (transparent at normal levels), saturating
+        // toward ~0.83 as overlaps push past full scale.
+        curve[i] = Math.tanh(x * 1.2) / 1.2;
+      }
+      softClip.curve = curve;
+      softClip.oversample = "2x";
+      masterGain.connect(roof);
+      roof.connect(softClip);
+      softClip.connect(audioContext.destination);
+      // The keep-alive: an inaudible DC-ish hum that never stops, so the
+      // hardware output stream never parks between sounds. Routed straight
+      // to the destination - it must survive the master volume at zero.
+      const keepAlive = audioContext.createConstantSource();
+      const keepAliveGain = audioContext.createGain();
+      keepAliveGain.gain.value = 0.0001;
+      keepAlive.connect(keepAliveGain);
+      keepAliveGain.connect(audioContext.destination);
+      keepAlive.start();
+    } catch {
+      return undefined;
+    }
+  }
+  return audioContext;
+}
+
+/** A short white-noise buffer, built once, reused by every puff. */
+function getNoiseBuffer(ctx: AudioContext): AudioBuffer {
+  if (!noiseBuffer) {
+    const length = Math.floor(ctx.sampleRate * 0.25);
+    noiseBuffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < length; i += 1) {
+      data[i] = Math.random() * 2 - 1;
+    }
+  }
+  return noiseBuffer;
+}
+
+/**
+ * Fade in over ATTACK, decay with a BODY, end at true zero. The body stage
+ * (down to a third of peak at mid-duration, then out) matters for loudness:
+ * the ear integrates over ~150ms, so a note that is all attack measures
+ * loud on a scope and still sounds like a faint tap.
+ */
+function shapeEnvelope(gain: AudioParam, t0: number, peak: number, duration: number): void {
+  gain.setValueAtTime(0.0001, t0);
+  gain.linearRampToValueAtTime(peak, t0 + ATTACK);
+  gain.exponentialRampToValueAtTime(peak * 0.35, t0 + duration * 0.45);
+  gain.exponentialRampToValueAtTime(0.002, t0 + duration);
+  gain.linearRampToValueAtTime(0, t0 + duration + 0.015);
+}
+
+interface BlipOptions {
+  /** Start frequency in Hz. */
+  from: number;
+  /** End frequency; equal to `from` for a flat note. */
+  to: number;
+  /** Seconds from the scheduled start. */
+  delay?: number;
+  duration: number;
+  peak: number;
+}
+
+/**
+ * One enveloped note - a ROUNDED tone, not a beep. Raw oscillator types
+ * (triangle especially) all read as beeps whatever the envelope does. The
+ * tone here is a sine fundamental with a quiet, slightly-detuned octave
+ * partial for body, through a per-note lowpass that tracks the pitch - the
+ * soft mallet-on-wood family rather than the alarm family. Pitch contours
+ * stay exactly as the voice tables state them.
+ */
+function blip(ctx: AudioContext, out: AudioNode, options: BlipOptions): void {
+  const t0 = ctx.currentTime + SCHEDULE_AHEAD + (options.delay ?? 0);
+  // A few cents of drift so repeated actions never sound stamped out.
+  const drift = 1 + (Math.random() - 0.5) * 0.03;
+  const gain = ctx.createGain();
+  const rounder = ctx.createBiquadFilter();
+  rounder.type = "lowpass";
+  rounder.frequency.value = Math.min(options.from * 3.5, 3000);
+  rounder.Q.value = 0.5;
+  shapeEnvelope(gain.gain, t0, options.peak, options.duration);
+  rounder.connect(gain);
+  gain.connect(out);
+  const partials = [
+    { multiple: 1, level: 1 },
+    { multiple: 2.004, level: 0.22 },
+  ];
+  for (const partial of partials) {
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    const partialGain = ctx.createGain();
+    partialGain.gain.value = partial.level;
+    osc.frequency.setValueAtTime(options.from * drift * partial.multiple, t0);
+    if (options.to !== options.from) {
+      osc.frequency.exponentialRampToValueAtTime(
+        options.to * drift * partial.multiple,
+        t0 + options.duration,
+      );
+    }
+    osc.connect(partialGain);
+    partialGain.connect(rounder);
+    osc.start(t0);
+    osc.stop(t0 + options.duration + 0.03);
+  }
+}
+
+/** A filtered puff of noise: the knock and brush material. */
+function puff(
+  ctx: AudioContext,
+  out: AudioNode,
+  options: { frequency: number; q?: number; duration: number; peak: number; delay?: number },
+): void {
+  const t0 = ctx.currentTime + SCHEDULE_AHEAD + (options.delay ?? 0);
+  const source = ctx.createBufferSource();
+  source.buffer = getNoiseBuffer(ctx);
+  // A random start point so two puffs never replay the identical grains.
+  const offset = Math.random() * 0.1;
+  const filter = ctx.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.value = options.frequency;
+  filter.Q.value = options.q ?? 1.2;
+  const gain = ctx.createGain();
+  shapeEnvelope(gain.gain, t0, options.peak, options.duration);
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(out);
+  source.start(t0, offset);
+  source.stop(t0 + options.duration + 0.03);
+}
+
+/**
+ * The voices. Tuning lesson learned the hard way: short pure sines below
+ * 300Hz are perceptually near-silent whatever their amplitude. Loudness
+ * needs duration (the body stage of the envelope), harmonics (triangle
+ * over sine), and some energy above 500Hz. Every voice carries all three.
+ */
+function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void {
+  switch (kind) {
+    case "place":
+      // One FLAT rounded thump with a knock: a card set down. No pitch
+      // fall at all - any downward movement here read as the delete
+      // family, however shallow.
+      blip(ctx, out, { from: 196, to: 196, duration: 0.2, peak: 0.44 });
+      puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.18 });
+      break;
+    case "placeProduct":
+      // Two discrete taps stepping UP a fourth. The first assignment had
+      // this pair the other way round and the down-step read as failure;
+      // Jack's call: product rises, source settles.
+      blip(ctx, out, { from: 147, to: 147, duration: 0.14, peak: 0.36 });
+      blip(ctx, out, { from: 196, to: 196, duration: 0.16, peak: 0.4, delay: 0.09 });
+      puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.16 });
+      break;
+    case "placeSource":
+      // ONE flat tap, a shade above the machine thump. The knock-knock
+      // pair kept reading wrong (and a burst could steal its second knock,
+      // so the same action sounded different run to run); the single beat
+      // is what survived the ear test. Down-motion stays reserved for
+      // delete.
+      blip(ctx, out, { from: 185, to: 185, duration: 0.16, peak: 0.4 });
+      puff(ctx, out, { frequency: 1400, duration: 0.05, peak: 0.16 });
+      break;
+    case "delete":
+      // A small settling step down - removed, not mourned. The octave
+      // plunge this used to be made every cleanup sound like a loss.
+      blip(ctx, out, { from: 311, to: 233, duration: 0.18, peak: 0.34 });
+      break;
+    case "connect":
+      // A click and a settled tone one step up: latched, not celebrated.
+      // The old wide-interval chime read as a fanfare.
+      blip(ctx, out, { from: 523, to: 523, duration: 0.08, peak: 0.24 });
+      blip(ctx, out, { from: 587, to: 587, duration: 0.14, peak: 0.26, delay: 0.06 });
+      break;
+    case "snap":
+      // A quick grab: the scratch material but snappier - a short brush
+      // with a small tick of tone, pitched mid rather than high. Fires on
+      // the TRANSITION into a snap, never per frame.
+      puff(ctx, out, { frequency: 1300, q: 1.4, duration: 0.045, peak: 0.22 });
+      blip(ctx, out, { from: 523, to: 523, duration: 0.04, peak: 0.1, delay: 0.01 });
+      break;
+    case "unwire":
+      // One falling note, softer than delete: only a wire went.
+      blip(ctx, out, { from: 440, to: 330, duration: 0.16, peak: 0.28 });
+      break;
+    case "error":
+      // Not a buzzer: a soft SCRATCH of noise, "nothing happened". Two
+      // little brushes, no tone at all - a dead wire drag should feel like
+      // paper, not like an alarm.
+      puff(ctx, out, { frequency: 900, q: 1.2, duration: 0.06, peak: 0.2 });
+      puff(ctx, out, { frequency: 550, q: 1, duration: 0.1, peak: 0.18, delay: 0.05 });
+      break;
+    case "open":
+      blip(ctx, out, { from: 262, to: 440, duration: 0.2, peak: 0.28 });
+      break;
+    case "close":
+      blip(ctx, out, { from: 440, to: 262, duration: 0.2, peak: 0.28 });
+      break;
+    case "adjust":
+      // A neutral mid tap: a knob turned, a pill cycled, a count stepped.
+      blip(ctx, out, { from: 523, to: 523, duration: 0.08, peak: 0.2 });
+      break;
+    case "sweep":
+      // One broad soft brush for a bulk change, however big it was.
+      puff(ctx, out, { frequency: 700, q: 0.9, duration: 0.3, peak: 0.34 });
+      blip(ctx, out, { from: 233, to: 311, duration: 0.28, peak: 0.2 });
+      break;
+  }
+}
+
+/**
+ * Builds and resumes the context ahead of the first real sound, so it never
+ * plays into a cold output stream. Call from any early user gesture.
+ */
+export function primeBoardSounds(): void {
+  if (typeof window === "undefined" || !areBoardSoundsEnabled()) {
+    return;
+  }
+  const ctx = getContext();
+  if (ctx && ctx.state !== "running") {
+    void ctx.resume().catch(() => {});
+  }
+}
+
+export function playBoardSound(kind: BoardSoundKind): void {
+  if (typeof window === "undefined" || !areBoardSoundsEnabled()) {
+    return;
+  }
+  if (typeof document !== "undefined" && document.hidden) {
+    return;
+  }
+  const now = performance.now();
+  const last = lastPlayedAt.get(kind);
+  if (last !== undefined && now - last < DEDUPE_MS) {
+    return;
+  }
+  const streak =
+    last !== undefined && now - last < REPEAT_WINDOW_MS ? (repeatStreak.get(kind) ?? 0) + 1 : 0;
+  repeatStreak.set(kind, streak);
+  lastPlayedAt.set(kind, now);
+  const duck = Math.pow(REPEAT_DUCK, Math.min(streak, REPEAT_DUCK_FLOOR));
+
+  const ctx = getContext();
+  const out = masterGain;
+  if (!ctx || !out) {
+    return;
+  }
+  const play = () => {
+    // Steal, don't stack: fade any live voice of this kind out fast.
+    const previous = activeVoices.get(kind);
+    if (previous) {
+      const t = ctx.currentTime;
+      previous.gain.setValueAtTime(previous.gain.value, t);
+      previous.gain.linearRampToValueAtTime(0.0001, t + STEAL_FADE);
+    }
+    // One gain node PER SOUND, so the whole sound (all its notes and
+    // puffs) can be stolen as a unit by the next retrigger.
+    const voice = ctx.createGain();
+    voice.gain.value = duck;
+    voice.connect(out);
+    activeVoices.set(kind, voice);
+    schedule(kind, ctx, voice);
+    window.setTimeout(() => {
+      if (activeVoices.get(kind) === voice) {
+        activeVoices.delete(kind);
+      }
+      voice.disconnect();
+    }, 1000);
+  };
+  if (ctx.state !== "running") {
+    // Never schedule against a suspended clock: resume first, play in the
+    // callback. Sounds fire from user gestures, so the resume succeeds.
+    void ctx.resume().then(play).catch(() => {});
+    return;
+  }
+  play();
+}

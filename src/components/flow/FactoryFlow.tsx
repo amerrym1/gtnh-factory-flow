@@ -55,6 +55,8 @@ import {
   Redo2,
   Square,
   Trash2,
+  Volume2,
+  VolumeX,
   TriangleAlert,
   Type,
   Undo2,
@@ -107,6 +109,7 @@ import type {
   FactoryNodeColorTag,
   FactoryPocket,
   FactoryProject,
+  FactoryStorage,
   Recipe,
   ResourceAmount,
   ResourceKind,
@@ -114,11 +117,19 @@ import type {
 } from "@/lib/model/types";
 import {
   captureBoardSelection,
+  findToggleDuplicateEdge,
   useFactoryStore,
+  wouldConnectionStorageSpawn,
   type BoardClipboardPayload,
   type BoardFraming,
 } from "@/store/factory-store";
 import { useBlueprintStore } from "@/store/blueprint-store";
+import {
+  areBoardSoundsEnabled,
+  playBoardSound,
+  setBoardSoundsEnabled,
+} from "@/lib/board-sounds";
+import { projectSoundFingerprint } from "./use-board-sound-effects";
 import { useDesignStore } from "@/store/design-store";
 import { useSolvingBooks } from "./use-solving-books";
 import {
@@ -246,6 +257,7 @@ import { useBoardPulseSync } from "./animation-phase";
 import { getDockTabsRight, getDockTopInset } from "./dock-insets";
 import {
   isWiringConnection,
+  onWiringConnectionChange,
   markWireDrop,
   setWiringConnection,
   wasRecentWireDrop,
@@ -287,7 +299,7 @@ import {
   snapshotEdgePulses,
   snapshotEdgeWaypointDots,
 } from "./edge-pulse";
-import { StorageNode, type StorageFlowNode } from "./StorageNode";
+import { StorageNode, StorageTileFace, type StorageFlowNode } from "./StorageNode";
 import { TrashNode, type TrashFlowNode } from "./TrashNode";
 import {
   POCKET_CARD_SOURCE_HANDLE,
@@ -433,8 +445,6 @@ const FLOW_WRAPPER_STYLE = { backgroundColor: "transparent" } as const;
 const MIN_FRAMED_WIDTH = 420;
 
 /** The delay plus four pulses of the keyframes in globals.css, plus some slack. */
-const PLACED_FLASH_CLASS = "board-card-placed";
-const PLACED_FLASH_MS = 3100;
 /**
  * Mid-drag live rerouting. A held card's wires used to keep their last
  * solved route until the drop; on boards under this many wires the REAL
@@ -1580,6 +1590,69 @@ let publishedBoardGeometryById = new Map<
  */
 const activeDropTargets = new Map<string, ResolvedResourceHandle | null>();
 
+/**
+ * The cards a wire drop can land ON (or be refused by): everything except
+ * annotations (ink) and open board frames (rooms - a drop on their floor is
+ * a void drop that spawns inside). The connection line hit-tests against
+ * these to tell "over a refusing card" from "over the void".
+ */
+let publishedSolidCardIds = new Set<string>();
+
+/**
+ * While a wire is being dragged: whether releasing it into the VOID would
+ * leave anything on the board. Computed once at drag start (it depends on
+ * the plan and the dragged port, never the pointer) and read per frame by
+ * the connection line, which colors the pipe green-dashed (release makes a
+ * drawer) or red-dashed (release does nothing - this port's drawer already
+ * exists). Module state for the same reason as `activeDropTargets`.
+ */
+let voidDropWillSpawn = false;
+
+/**
+ * The exact drawer a void release would spawn, for the ghost to render with
+ * the real tile face: the storage record it would create and the role it
+ * would wear (an input drag spawns a SOURCE feeding it, an output drag a
+ * PRODUCT catching it).
+ */
+let voidDropGhostStorage: FactoryStorage | undefined;
+let voidDropGhostRole: "source" | "product" = "product";
+
+/**
+ * The connection line's live end, published each render in FLOW coords. The
+ * ghost positions from THIS rather than converting pointer events itself:
+ * two separate conversions drifted apart (the ghost sat well off the
+ * pointer), and the line's own coordinates are the ground truth by
+ * definition.
+ */
+let lastConnectionFlowPoint: { x: number; y: number } | undefined;
+
+/** The dragged port itself, for the snap loop's toggle-delete question. */
+let liveDraggedResource: DraggedResourceConnection | undefined;
+
+/**
+ * While the drag is snapped onto a pair whose release would DELETE the
+ * existing wire (drawing a wire that exists toggles it off), that wire is
+ * painted doomed and the connection line reads red. The class is applied
+ * imperatively to the one edge element - never a board rebuild.
+ */
+let snapWillDeleteEdge = false;
+let doomedEdgeId: string | undefined;
+
+function paintDoomedEdge(edgeId: string | undefined): void {
+  if (edgeId === doomedEdgeId) {
+    return;
+  }
+  if (doomedEdgeId && typeof document !== "undefined") {
+    document
+      .querySelector(`[data-testid="rf__edge-${doomedEdgeId}"]`)
+      ?.classList.remove("edge-doomed");
+  }
+  doomedEdgeId = edgeId;
+  if (edgeId && typeof document !== "undefined") {
+    document.querySelector(`[data-testid="rf__edge-${edgeId}"]`)?.classList.add("edge-doomed");
+  }
+}
+
 // Slot endpoints cached relative to their node's origin, keyed by node size.
 // Measuring through the DOM made an edge's endpoints depend on whether its
 // node happened to be mounted (`onlyRenderVisibleElements` culls off-screen
@@ -2001,6 +2074,17 @@ export function FactoryFlow() {
   const draggedResourceRef = useRef<DraggedResourceConnection | undefined>(undefined);
   const lastConnectionPointerRef = useRef<{ x: number; y: number } | undefined>(undefined);
   const connectCompletedRef = useRef(false);
+  // For the failure sound: the plan as it stood when the wire drag began
+  // (onConnect runs before onConnectEnd, so "did this gesture change
+  // anything" must compare against drag START, not connect-end entry), and
+  // whether the gesture handed off to the async loose-cell ratio fetch.
+  const connectStartFingerprintRef = useRef<string | undefined>(undefined);
+  const pendingLooseWireRef = useRef(false);
+  // The gesture's origin card, tracked separately from draggedResourceRef:
+  // a drag can start on a handle whose resource cannot be resolved, and
+  // such a drag ending dead must still buzz rather than slip through the
+  // "was there even a drag" check.
+  const wireGestureOriginRef = useRef<string | undefined>(undefined);
   const dropFitFrameRef = useRef<number | undefined>(undefined);
   // Export requests run one after another rather than bouncing: the dialog
   // fires its preview capture the moment it opens, and a second request
@@ -2448,6 +2532,13 @@ export function FactoryFlow() {
       });
     }
     publishedBoardGeometryById = geometryById;
+    const solidCardIds = new Set<string>();
+    for (const node of flowNodesRef.current) {
+      if (node.type !== "annotationNode" && node.type !== "boardNode") {
+        solidCardIds.add(node.id);
+      }
+    }
+    publishedSolidCardIds = solidCardIds;
     // Annotations are ink on the board, not furniture. A box drawn AROUND a
     // cluster used to be a solid obstacle spanning all of it, so every wire
     // inside was forced to detour around its own group — the drawing changed
@@ -3394,6 +3485,7 @@ export function FactoryFlow() {
               ? getCrossFormCellMatch(outputResource, inputResource)
               : undefined;
             if (crossFormMatch && outputHandle.handleId && inputHandle.handleId) {
+              pendingLooseWireRef.current = true;
               void connectLooseCellWire(
                 { nodeId: outputHandle.nodeId, handleId: outputHandle.handleId },
                 { nodeId: inputHandle.nodeId, handleId: inputHandle.handleId },
@@ -3441,6 +3533,11 @@ export function FactoryFlow() {
     setWiringConnection(false);
     boardRef.current?.classList.remove(WIRING_BOARD_CLASS);
     clearNodeDropFit();
+    voidDropWillSpawn = false;
+    voidDropGhostStorage = undefined;
+    liveDraggedResource = undefined;
+    snapWillDeleteEdge = false;
+    paintDoomedEdge(undefined);
   }, []);
 
   const startDropFitPainting = useCallback(() => {
@@ -3460,6 +3557,42 @@ export function FactoryFlow() {
     clearHopMap();
 
     paintNodeDropFit(project, draggedResourceRef.current, false);
+
+    // What a VOID release would do, decided once per drag: it depends on
+    // the plan and the dragged port, never on where the pointer is. The
+    // connection line reads this per frame to color the pipe.
+    const dragged = draggedResourceRef.current;
+    liveDraggedResource = dragged;
+    if (dragged && !isPocketId(project, dragged.nodeId)) {
+      const originIsStorage = (project.storages ?? []).some(
+        (storage) => storage.id === dragged.nodeId,
+      );
+      const spawnSide = originIsStorage ? "input" : dragged.side;
+      const spawnHandleId = originIsStorage
+        ? makeResourceHandleId("input", { kind: dragged.kind, id: dragged.id })
+        : dragged.handleId;
+      voidDropWillSpawn = wouldConnectionStorageSpawn(
+        project,
+        dragged,
+        dragged.nodeId,
+        spawnSide,
+        spawnHandleId,
+      );
+      voidDropGhostStorage = {
+        id: "__void-drop-ghost__",
+        kind: dragged.kind,
+        resourceId: dragged.id,
+        displayName: dragged.displayName,
+        iconPath: dragged.iconPath,
+        iconAtlas: dragged.iconAtlas,
+        dominantColor: dragged.dominantColor ?? dragged.iconAtlas?.dominantColor,
+        position: { x: 0, y: 0 },
+      };
+      voidDropGhostRole = spawnSide === "input" ? "source" : "product";
+    } else {
+      voidDropWillSpawn = false;
+      voidDropGhostStorage = undefined;
+    }
 
     // One cheap selector per frame — it matches nothing until auto-pan mounts
     // a card that has not been given a verdict yet.
@@ -3510,6 +3643,14 @@ export function FactoryFlow() {
       const handleId = params.handleId ?? eventHandle?.handleId;
 
       connectCompletedRef.current = false;
+      // A content fingerprint, not the reference: a refused spawn commits a
+      // rebuilt-but-identical project, and treating that as "changed"
+      // silenced the failure sound for exactly that refusal.
+      connectStartFingerprintRef.current = projectSoundFingerprint(
+        useFactoryStore.getState().project,
+      );
+      pendingLooseWireRef.current = false;
+      wireGestureOriginRef.current = nodeId ?? undefined;
       lastConnectionPointerRef.current = getClientPosition(event);
       draggedResourceRef.current =
         nodeId && handleId ? getDraggedResourceForHandle(project, nodeId, handleId) : undefined;
@@ -3644,6 +3785,7 @@ export function FactoryFlow() {
               : undefined;
             if (crossFormMatch) {
               connectCompletedRef.current = true;
+              pendingLooseWireRef.current = true;
               void connectLooseCellWire(source, target, outputResource, crossFormMatch);
             }
             return;
@@ -3724,6 +3866,44 @@ export function FactoryFlow() {
       connectTrash,
       project,
     ],
+  );
+
+  // A wire drag that ended and changed NOTHING is a failure the ear should
+  // hear - a drop on a red-washed card, a full input, a release into a
+  // void that spawned nothing. The verdict is the PLAN alone, measured
+  // from drag START (React Flow runs onConnect before onConnectEnd, and
+  // handleConnect marks the gesture completed before it validates, so
+  // neither the completed flag nor connect-end entry state can tell a
+  // refused handle drop from a wired one). The silent endings: the plan
+  // changed (success - the watcher plays it), the async loose-cell fetch
+  // owns the outcome, or the release was back on the origin card - a
+  // cancel, and also what a plain CLICK on a port row looks like, so
+  // buzzing it would buzz every browse.
+  const handleConnectEndWithSound = useCallback(
+    (event: MouseEvent | TouchEvent) => {
+      const dragNodeId = draggedResourceRef.current?.nodeId ?? wireGestureOriginRef.current;
+      const fingerprintAtStart = connectStartFingerprintRef.current;
+      connectStartFingerprintRef.current = undefined;
+      wireGestureOriginRef.current = undefined;
+      // Read the pointer BEFORE the handler, which clears it as it runs.
+      const clientPosition = getClientPosition(event) ?? lastConnectionPointerRef.current;
+      handleConnectEnd(event);
+      if (fingerprintAtStart === undefined) {
+        return;
+      }
+      if (projectSoundFingerprint(useFactoryStore.getState().project) !== fingerprintAtStart) {
+        return;
+      }
+      if (pendingLooseWireRef.current) {
+        return;
+      }
+      const dropCardId = clientPosition ? getBoardNodeIdAtPosition(clientPosition) : undefined;
+      if (dropCardId === dragNodeId) {
+        return;
+      }
+      playBoardSound("error");
+    },
+    [handleConnectEnd],
   );
 
   useEffect(() => {
@@ -4481,13 +4661,14 @@ export function FactoryFlow() {
   );
   const handleFitView = useCallback(() => frameBoardCards(), [frameBoardCards]);
 
-  // Whatever just landed says so, twice. Done to the DOM rather than through the
-  // node objects on purpose: a transient outline is not state the board should
-  // rebuild for, and threading it through would hand every card a new identity
-  // twice per placement — which is what the node memos exist to prevent.
+  // A freshly landed card gets the arrive pop (board motion) and nothing
+  // else. The white placed-flash beacon that used to pulse here for three
+  // seconds is gone by request - the thump and the pop already say it.
+  // Done to the DOM rather than through the node objects on purpose: a
+  // transient class is not state the board should rebuild for.
   const placedBoardToken = useFactoryStore((state) => state.placedBoardToken);
   useEffect(() => {
-    if (placedBoardToken === 0) {
+    if (placedBoardToken === 0 || !readBoardMotionSnapshot().moveMotion) {
       return undefined;
     }
 
@@ -4496,31 +4677,21 @@ export function FactoryFlow() {
     // One frame: the cards are placed by the same commit that raised the token,
     // so they are not in the DOM yet.
     const frame = requestAnimationFrame(() => {
-      const flashed = ids
+      const arrived = ids
         .map((id) => boardRef.current?.querySelector(`.react-flow__node[data-id="${id}"]`))
         .filter((element): element is Element => element !== null && element !== undefined);
-      const arrive = readBoardMotionSnapshot().moveMotion;
-      for (const element of flashed) {
-        element.classList.add(PLACED_FLASH_CLASS);
-        if (arrive) {
-          element.classList.add(BOARD_ARRIVE_CLASS);
-        }
+      for (const element of arrived) {
+        element.classList.add(BOARD_ARRIVE_CLASS);
       }
       const arriveTimer = window.setTimeout(() => {
-        for (const element of flashed) {
+        for (const element of arrived) {
           element.classList.remove(BOARD_ARRIVE_CLASS);
         }
       }, BOARD_ARRIVE_MS);
-      const timer = window.setTimeout(() => {
-        for (const element of flashed) {
-          element.classList.remove(PLACED_FLASH_CLASS);
-        }
-      }, PLACED_FLASH_MS);
       cleanup = () => {
-        window.clearTimeout(timer);
         window.clearTimeout(arriveTimer);
-        for (const element of flashed) {
-          element.classList.remove(PLACED_FLASH_CLASS, BOARD_ARRIVE_CLASS);
+        for (const element of arrived) {
+          element.classList.remove(BOARD_ARRIVE_CLASS);
         }
       };
     });
@@ -5447,7 +5618,7 @@ export function FactoryFlow() {
         edgeTypes={edgeTypes}
         onConnect={handleConnect}
         onConnectStart={handleConnectStart}
-        onConnectEnd={handleConnectEnd}
+        onConnectEnd={handleConnectEndWithSound}
         onInit={handleInit}
         onMoveStart={handleMoveStart}
         onMoveEnd={handleMoveEnd}
@@ -5559,6 +5730,7 @@ export function FactoryFlow() {
           />
         )}
         <BoardFloors />
+        <VoidDropGhost />
         {annotationDraft && annotationTool ? (
           <AnnotationDraftPreview
             tool={annotationTool}
@@ -6225,6 +6397,40 @@ function useFoldoutDismiss(
  * swatches keep their cyan ring alone: a selection mark there has to stand
  * against any hue, including this very grey.
  */
+/**
+ * The corner mute: the same switch Settings' Sound section throws, one click
+ * from the board. A slashed speaker means silent. Unmuting plays the little
+ * settings tap so the answer is audible immediately; muting is, naturally,
+ * its own confirmation.
+ */
+function BoardMuteButton() {
+  const [muted, setMuted] = useState<boolean>(
+    () => typeof window !== "undefined" && !areBoardSoundsEnabled(),
+  );
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const nextMuted = !muted;
+        setBoardSoundsEnabled(!nextMuted);
+        setMuted(nextMuted);
+        if (!nextMuted) {
+          playBoardSound("adjust");
+        }
+      }}
+      aria-pressed={muted}
+      className={[
+        "pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)]",
+        muted ? TOOL_FACE_ON : TOOL_FACE_OFF,
+      ].join(" ")}
+      title={muted ? "Unmute sounds" : "Mute sounds"}
+      aria-label={muted ? "Unmute sounds" : "Mute sounds"}
+    >
+      {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+    </button>
+  );
+}
+
 const TOOL_FACE_ON = "bg-[var(--mc-85)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100)]";
 const TOOL_FACE_OFF =
   "bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110";
@@ -7930,6 +8136,7 @@ const PaintToolbar = memo(function PaintToolbar({
         >
           <Network className="h-4 w-4" />
         </button>
+        <BoardMuteButton />
       </ToolTray>
       {/* The corner slot: view options are one button and a sheet at every
           width, reachable while the paint row is folded away on a phone. */}
@@ -8666,6 +8873,8 @@ function ResourceConnectionLine({
   toPosition,
   connectionStatus,
 }: ConnectionLineComponentProps<BoardFlowNode>) {
+  // The ghost overlay follows this exact point; see lastConnectionFlowPoint.
+  lastConnectionFlowPoint = { x: toX, y: toY };
   // Over a card that takes this resource, the pipe jumps to the slot it will
   // land on rather than following the cursor across the card.
   const snap = getConnectionSnap(toX, toY);
@@ -8681,9 +8890,34 @@ function ResourceConnectionLine({
     targetY: endY,
     targetPosition: endPosition,
   });
-  // A snapped end is by definition a connection that will work, whatever React
-  // Flow thinks — it only ever reports "valid" when the pointer is on a handle.
-  const color = !snap && connectionStatus === "invalid" ? "#ef4444" : "#00d9ff";
+  // What THIS release would do, told by the pipe itself. A snapped end is a
+  // connection that will work, whatever React Flow thinks — it only ever
+  // reports "valid" when the pointer is on a handle. Off every card, the
+  // pipe turns green-dashed when release will spawn a drawer, red-dashed
+  // when it will do nothing (this port's drawer already exists). Over a
+  // refusing card it goes red, agreeing with the card's own wash.
+  const overSolidCard = !snap && isPointOverSolidCard(toX, toY);
+  const verdict = snap
+    ? "connect"
+    : connectionStatus === "invalid" || overSolidCard
+      ? "refuse"
+      : voidDropWillSpawn
+        ? "spawn"
+        : "dead";
+  // Snapped is GREEN and solid - "this will connect" - with white marching
+  // dots running toward the caught slot; a spawnable void is green dashed;
+  // refusals and dead voids are red. A snap whose release would DELETE the
+  // wire already on this pair reads red-dashed instead, agreeing with the
+  // doomed wire's own flashing.
+  const deleting = verdict === "connect" && snapWillDeleteEdge;
+  // In the delete state the dragged pipe DISAPPEARS: nothing new happens
+  // on release, so drawing a fresh line promised the wrong thing. The
+  // doomed wire's own red flashing is the whole story.
+  if (deleting) {
+    return <g className="react-flow__connection" />;
+  }
+  const color = verdict === "connect" ? "#22c55e" : verdict === "spawn" ? "#22c55e" : "#ef4444";
+  const dashed = verdict === "spawn" || verdict === "dead";
 
   return (
     <g className="react-flow__connection">
@@ -8701,12 +8935,204 @@ function ResourceConnectionLine({
         stroke={color}
         strokeWidth={5}
         strokeLinecap="round"
+        strokeDasharray={dashed ? "10 8" : undefined}
         opacity={0.98}
         style={{ filter: `drop-shadow(0 0 5px ${color})` }}
       />
-      <circle cx={endX} cy={endY} r={6} fill={color} stroke="#052e36" strokeWidth={2} />
+      {verdict === "connect" ? (
+        <path
+          className="connection-march"
+          d={edgePath}
+          fill="none"
+          stroke="#ffffff"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeDasharray="2 10"
+          opacity={0.9}
+        />
+      ) : null}
+      {/* A hollow end says "will make something here"; a solid dot says the
+          end lands on something that exists; a bare cross-ish dot for dead. */}
+      <circle
+        cx={endX}
+        cy={endY}
+        r={6}
+        fill={verdict === "spawn" ? "none" : color}
+        stroke={verdict === "spawn" ? color : "#052e36"}
+        strokeWidth={2}
+      />
+      {/* Over the void, the HTML overlay (VoidDropGhost) carries the rest:
+          the drawer preview when release spawns one, the reason card when
+          it does nothing. The line only signals. */}
     </g>
   );
+}
+
+/**
+ * The GHOST of the drawer a void release would spawn: the real footprint,
+ * the real icon, grayed out, riding the pointer. Mounted only while a wire
+ * is out (via the wiring listener - one tiny component per gesture, never
+ * the board), positioned imperatively per pointermove (no re-render), and
+ * hidden whenever the pointer is over a card or a snapping slot, where the
+ * release means something else.
+ */
+function VoidDropGhost() {
+  const [wiring, setWiring] = useState(false);
+  const ghostRef = useRef<HTMLDivElement | null>(null);
+  const lastSnapKeyRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => onWiringConnectionChange(setWiring), []);
+
+  const ghostStorage = wiring ? voidDropGhostStorage : undefined;
+  const willSpawn = wiring && voidDropWillSpawn;
+
+  useEffect(() => {
+    if (!ghostStorage) {
+      return;
+    }
+    let frame: number;
+    const tick = () => {
+      frame = requestAnimationFrame(tick);
+      const ghost = ghostRef.current;
+      const point = lastConnectionFlowPoint;
+      if (!ghost || !point) {
+        return;
+      }
+      const snap = getConnectionSnap(point.x, point.y);
+      // The grab is audible on the TRANSITION into a snap (or onto a
+      // different slot), never per frame. The slot's fixed endpoint is the
+      // identity - getConnectionSnap returns no ids.
+      const snapKey = snap ? `${snap.point.x}|${snap.point.y}` : undefined;
+      if (snapKey !== lastSnapKeyRef.current) {
+        if (snapKey) {
+          playBoardSound("snap");
+        }
+        // Would this release DELETE the wire that is already here? Same
+        // ends and handles the release will use; the doomed wire wears
+        // the warning and the line drops its green.
+        const dragged = liveDraggedResource;
+        const target = snap?.target;
+        let doomed: FactoryEdge | undefined;
+        if (dragged && target && target.nodeId !== dragged.nodeId) {
+          const draggedIsSource = target.side === "input";
+          const draggedHandleId = dragged.bidirectional
+            ? makeResourceHandleId(draggedIsSource ? "output" : "input", {
+                kind: dragged.kind,
+                id: dragged.id,
+              })
+            : dragged.handleId;
+          const sourceEnd = draggedIsSource
+            ? { nodeId: dragged.nodeId, handleId: draggedHandleId }
+            : { nodeId: target.nodeId, handleId: target.handleId };
+          const targetEnd = draggedIsSource
+            ? { nodeId: target.nodeId, handleId: target.handleId }
+            : { nodeId: dragged.nodeId, handleId: draggedHandleId };
+          doomed = findToggleDuplicateEdge(
+            useFactoryStore.getState().project,
+            sourceEnd.nodeId,
+            targetEnd.nodeId,
+            {
+              kind: dragged.kind,
+              id: dragged.id,
+              displayName: dragged.displayName,
+              sourceHandle: sourceEnd.handleId,
+              targetHandle: targetEnd.handleId,
+            },
+          );
+        }
+        snapWillDeleteEdge = Boolean(doomed);
+        paintDoomedEdge(doomed?.id);
+      }
+      lastSnapKeyRef.current = snapKey;
+      const elsewhere = snap || isPointOverSolidCard(point.x, point.y);
+      ghost.style.display = elsewhere ? "none" : "";
+      // Both cards sit CENTERED on the pointer - the drawer preview because
+      // that is exactly where a release puts it, the reason card because an
+      // offset card read as sitting off the mouse (tried, rejected).
+      ghost.style.transform = `translate(${point.x - STORAGE_NODE_WIDTH / 2}px, ${point.y - STORAGE_NODE_HEIGHT / 2}px)`;
+    };
+    frame = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(frame);
+      lastSnapKeyRef.current = undefined;
+      lastConnectionFlowPoint = undefined;
+    };
+  }, [ghostStorage, willSpawn]);
+
+  if (!ghostStorage) {
+    return null;
+  }
+
+  return (
+    <ViewportPortal>
+      <div
+        ref={ghostRef}
+        className="pointer-events-none absolute left-0 top-0"
+        style={{
+          // Above the connection line's own layer: the pipe runs UNDER the
+          // ghost and disappears behind it, exactly as a docked wire does
+          // behind the real drawer.
+          zIndex: 1500,
+          width: STORAGE_NODE_WIDTH,
+          height: STORAGE_NODE_HEIGHT,
+          display: "none",
+        }}
+      >
+        {willSpawn ? (
+          <>
+            {/* An opaque board-dark backing in the tile's own silhouette,
+                so the ghost occludes the wire completely while the face
+                above it still reads as faded. Transparency alone let the
+                pipe shine through the preview. */}
+            <span
+              aria-hidden
+              data-storage-shape={voidDropGhostRole}
+              className="storage-shape absolute inset-0"
+              style={{ background: "#0d1117" }}
+            />
+            <div
+              className="relative h-full w-full"
+              style={{
+                // The real tile at half presence: recognisably the drawer
+                // that will exist, visibly not existing yet.
+                opacity: 0.62,
+              }}
+            >
+              <StorageTileFace storage={ghostStorage} role={voidDropGhostRole} />
+            </div>
+          </>
+        ) : (
+          // The reason card for a dead release: same footprint as the
+          // drawer that will NOT appear, dashed to say "nothing solid",
+          // opaque so the wire runs underneath and the words stay
+          // readable, wrapped inside.
+          <div
+            className="flex h-full w-full items-center justify-center rounded-[4px] border-2 border-dashed border-[#ef4444] p-1.5 text-center text-[11px] font-bold leading-tight text-[#ff9d9d]"
+            style={{ background: "#0d1117" }}
+          >
+            Drawer already exists
+          </div>
+        )}
+      </div>
+    </ViewportPortal>
+  );
+}
+
+/** Flow-space hit test against the published card set (no DOM per frame). */
+function isPointOverSolidCard(x: number, y: number): boolean {
+  for (const id of publishedSolidCardIds) {
+    const geometry = publishedBoardGeometryById.get(id);
+    if (
+      geometry &&
+      x >= geometry.x &&
+      x <= geometry.x + geometry.width &&
+      y >= geometry.y &&
+      y <= geometry.y + geometry.height
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function getEdgeBundles(
@@ -11347,6 +11773,13 @@ function findNodeDropTargetOnSide(
 
   const storage = (project.storages ?? []).find((entry) => entry.id === nodeId);
   if (storage) {
+    // A drawer never offers ITSELF: the store refuses a drawer feeding
+    // itself, so snapping and washing green on the origin drawer promised
+    // a wire the release could not deliver. Machines are different on
+    // purpose - one that eats what it makes really can self-wire.
+    if (storage.id === draggedResource.nodeId) {
+      return undefined;
+    }
     const held = { kind: storage.kind, id: storage.resourceId };
     return accepts(held) ? port(held) : undefined;
   }
@@ -11533,7 +11966,7 @@ function getConnectionSnap(toX: number, toY: number) {
     edgeSide: best.target.side === "input" ? "left" : "right",
   });
 
-  return point ? { point, side: best.target.side } : undefined;
+  return point ? { point, side: best.target.side, target: best.target } : undefined;
 }
 
 function brightenHexColor(color: string, amount: number) {

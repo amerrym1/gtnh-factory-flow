@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.38.0",
+    date: "2026-08-28",
+    headline: "The board makes sound",
+    notes: [
+      "Quiet sounds mark placing, wiring, deleting and knob turns, with a volume slider in Settings and a mute button by the view options.",
+      "While you drag a wire, the line shows what letting go will do: green to connect, a ghost drawer for the void, red when nothing can happen.",
+      "Drawing a wire that already exists flashes it red first: letting go deletes it.",
+      "New cards no longer flash white when they land.",
+    ],
+  },
+  {
     version: "2.37.0",
     date: "2026-08-27",
     headline: "A tidier board toolbar",
