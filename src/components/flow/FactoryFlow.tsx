@@ -142,7 +142,10 @@ import { isEditableKeyboardTarget } from "./keyboard";
 import {
   getBoardTimelapseCameraPace,
   getBoardTimelapseSnapshot,
+  getBoardTimelapseWireDrawMs,
+  getBoardTimelapseZoomRange,
   getServerBoardTimelapseSnapshot,
+  reportTimelapseCameraProgress,
   stopBoardTimelapse,
   subscribeBoardTimelapse,
 } from "./board-timelapse";
@@ -3441,6 +3444,9 @@ export function FactoryFlow() {
     // React Flow's own 2D transform, which the tilt sits on top of.
     const visible = tiltWorn ? boardTiltVisibleFraction(boardTilt) : { x: 1, y: 1 };
     const planSize = { width: size.width * visible.x, height: size.height * visible.y };
+    // The player's working zoom range, read per plan so slider edits take
+    // hold on the next shot.
+    const zoomRange = getBoardTimelapseZoomRange();
     const rectOf = (ids: readonly string[]) => {
       const { cards, measuredById } = cameraCards([...ids]);
       return framingRect(cards, measuredById);
@@ -3491,14 +3497,14 @@ export function FactoryFlow() {
         }
         const widened = unionRects(union, rect);
         // Feasibility is checked with a slim padding: the question is only
-        // whether all of it stays above the glance zoom, and the standard
+        // whether all of it stays above the wide limit, and the standard
         // camera padding here made the planner give up two beats in.
         const fit = zoomForRect(widened, planSize, {
           padding: 0.06,
           minZoom: BOARD_MIN_ZOOM,
           maxZoom: BOARD_CAMERA_MAX_ZOOM,
         });
-        if (fit < NODE_GLANCE_LEAVE_ZOOM) {
+        if (fit < zoomRange.min) {
           break;
         }
         union = widened;
@@ -3523,9 +3529,9 @@ export function FactoryFlow() {
             maxZoom: BOARD_CAMERA_MAX_ZOOM,
           })
         : Math.min(
-            0.8,
+            Math.max(zoomRange.max, zoomRange.min),
             Math.max(
-              NODE_GLANCE_LEAVE_ZOOM,
+              zoomRange.min,
               zoomForRect(union, planSize, {
                 padding: BOARD_CAMERA_PADDING,
                 minZoom: BOARD_MIN_ZOOM,
@@ -3572,6 +3578,12 @@ export function FactoryFlow() {
       const zoom = viewport.zoom + (target.zoom - viewport.zoom) * k;
       const wantX = size.width / 2 - target.x * zoom;
       const wantY = size.height / 2 - target.y * zoom;
+      // The playback holds beats until the camera has essentially arrived
+      // (the camera sets the pace); zoom distance counts as travel too.
+      reportTimelapseCameraProgress(
+        Math.hypot(wantX - viewport.x, wantY - viewport.y) +
+          Math.abs(target.zoom - viewport.zoom) * 900,
+      );
       // Within a pixel of the vantage: land EXACTLY and go still. The
       // exponential tail otherwise drips sub-pixel drift for seconds, and a
       // held shot must be a held shot.
@@ -5891,6 +5903,14 @@ export function FactoryFlow() {
                 "--board-tilt-pitch": `${boardTilt.pitch}deg`,
                 "--board-tilt-yaw": `${boardTilt.yaw}deg`,
                 "--board-tilt-cover": String(boardTiltCoverScale(boardTilt)),
+              }
+            : undefined),
+          // The wire draw-in's duration, shared with the beat scheduler so
+          // a beat holds until its ink is dry. Scaled by playback speed
+          // like every other gap.
+          ...(timelapseActive && timelapse
+            ? {
+                "--timelapse-wire-draw": `${Math.round(getBoardTimelapseWireDrawMs() / timelapse.speed)}ms`,
               }
             : undefined),
         } as CSSProperties

@@ -7,12 +7,20 @@ import {
   getBoardTimelapseCameraPace,
   getBoardTimelapseSpeed,
   getBoardTimelapseVolume,
+  getBoardTimelapseWireDrawMs,
+  getBoardTimelapseZoomRange,
   setBoardTimelapseCameraPace,
   setBoardTimelapseSpeed,
   setBoardTimelapseVolume,
+  setBoardTimelapseWireDrawMs,
+  setBoardTimelapseZoomRange,
   startBoardTimelapse,
   TIMELAPSE_CAMERA_PACE_MAX,
   TIMELAPSE_CAMERA_PACE_MIN,
+  TIMELAPSE_WIRE_DRAW_MAX_MS,
+  TIMELAPSE_WIRE_DRAW_MIN_MS,
+  TIMELAPSE_ZOOM_CEILING,
+  TIMELAPSE_ZOOM_FLOOR,
 } from "./flow/board-timelapse";
 import {
   BOARD_TILT_MAX_ANGLE,
@@ -20,6 +28,7 @@ import {
   writeBoardTilt,
   type BoardTilt,
 } from "./flow/board-tilt";
+import { isNodeDetailGlanceForced, setNodeDetailGlanceForced } from "./flow/node-detail";
 import { isPerfHudEnabled, setPerfHudEnabled } from "./flow/PerfHud";
 import { useFactoryStore } from "@/store/factory-store";
 
@@ -59,6 +68,12 @@ export function DevMenu({
     writeBoardTilt(patch);
     setTilt(getBoardTiltSnapshot());
   };
+  const [zoomRange, setZoomRange] = useState(() => getBoardTimelapseZoomRange());
+  const patchZoomRange = (patch: { min?: number; max?: number }) => {
+    setBoardTimelapseZoomRange(patch);
+    setZoomRange(getBoardTimelapseZoomRange());
+  };
+  const [forceGlance, setForceGlance] = useState(() => isNodeDetailGlanceForced());
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -230,6 +245,52 @@ export function DevMenu({
                 className="h-1 w-full accent-cyan-500"
               />
             </div>
+            <div className="mt-2 flex items-center gap-1.5 text-xs">
+              <span className="w-14 shrink-0 text-fg-subtle">Wire draw</span>
+              <input
+                type="range"
+                min={TIMELAPSE_WIRE_DRAW_MIN_MS}
+                max={TIMELAPSE_WIRE_DRAW_MAX_MS}
+                step={50}
+                defaultValue={getBoardTimelapseWireDrawMs()}
+                onChange={(event) => setBoardTimelapseWireDrawMs(Number(event.target.value))}
+                aria-label="How long a wire takes to draw itself in"
+                title="How long a wire takes to draw itself in"
+                className="h-1 w-full accent-cyan-500"
+              />
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-xs">
+              <span className="w-14 shrink-0 text-fg-subtle">Closest</span>
+              <input
+                type="range"
+                min={TIMELAPSE_ZOOM_FLOOR}
+                max={TIMELAPSE_ZOOM_CEILING}
+                step={0.01}
+                value={zoomRange.max}
+                onChange={(event) => patchZoomRange({ max: Number(event.target.value) })}
+                aria-label="The closest the camera may get"
+                className="h-1 w-full accent-cyan-500"
+              />
+              <span className="w-10 shrink-0 text-right tabular-nums text-fg-muted">
+                {zoomRange.max.toFixed(2)}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-xs">
+              <span className="w-14 shrink-0 text-fg-subtle">Widest</span>
+              <input
+                type="range"
+                min={TIMELAPSE_ZOOM_FLOOR}
+                max={TIMELAPSE_ZOOM_CEILING}
+                step={0.01}
+                value={zoomRange.min}
+                onChange={(event) => patchZoomRange({ min: Number(event.target.value) })}
+                aria-label="The widest the camera may go before the finale"
+                className="h-1 w-full accent-cyan-500"
+              />
+              <span className="w-10 shrink-0 text-right tabular-nums text-fg-muted">
+                {zoomRange.min.toFixed(2)}
+              </span>
+            </div>
             <button
               type="button"
               disabled={!canPlayTimelapse}
@@ -301,6 +362,37 @@ export function DevMenu({
               Keep the board tilted outside the timelapse too
             </label>
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              const next = !forceGlance;
+              setNodeDetailGlanceForced(next);
+              setForceGlance(next);
+            }}
+            aria-pressed={forceGlance}
+            className={[
+              "mt-2 flex w-full items-center gap-3 rounded border px-3 py-2.5 text-left",
+              forceGlance
+                ? "border-cyan-600 bg-cyan-500/10"
+                : "border-line hover:border-line-strong hover:bg-surface-raised",
+            ].join(" ")}
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block text-base leading-tight text-fg">
+                Zoomed-out card faces everywhere
+              </span>
+              <span className="mt-0.5 block text-xs text-fg-muted">
+                Every card wears its glance face at every zoom, however far in you are.
+              </span>
+            </span>
+            <Check
+              aria-hidden
+              className={["h-4 w-4 shrink-0", forceGlance ? "text-cyan-400" : "invisible"].join(
+                " ",
+              )}
+            />
+          </button>
         </div>
     </div>
   );

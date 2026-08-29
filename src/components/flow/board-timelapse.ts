@@ -2,6 +2,7 @@ import { playBoardSound } from "@/lib/board-sounds";
 import { computeBoardLevelView } from "@/lib/model/board-windows";
 import type { FactoryProject } from "@/lib/model/types";
 import { useFactoryStore } from "@/store/factory-store";
+import { NODE_GLANCE_LEAVE_ZOOM } from "./node-detail";
 
 /**
  * The build timelapse's SCRIPT: the order the board's cards, wires and ink
@@ -607,6 +608,138 @@ export function setBoardTimelapseCameraPace(pace: number): void {
   }
 }
 
+/**
+ * How long a wire takes to DRAW itself in, milliseconds at 1x playback.
+ * The reveal animation (globals.css) and the beat scheduler share this
+ * number: a beat that drew wires holds until the ink is dry before the
+ * next thing happens.
+ */
+const TIMELAPSE_WIRE_DRAW_KEY = "gtnh-factory-flow.dev.timelapse-wire-draw";
+export const TIMELAPSE_WIRE_DRAW_MIN_MS = 100;
+export const TIMELAPSE_WIRE_DRAW_MAX_MS = 1500;
+const TIMELAPSE_WIRE_DRAW_DEFAULT_MS = 450;
+/** A breath after the ink dries before the next beat. */
+const TIMELAPSE_WIRE_SETTLE_MS = 70;
+
+let timelapseWireDrawMs = readStoredWireDrawMs();
+
+function readStoredWireDrawMs(): number {
+  if (typeof window === "undefined") {
+    return TIMELAPSE_WIRE_DRAW_DEFAULT_MS;
+  }
+  try {
+    const raw = window.localStorage.getItem(TIMELAPSE_WIRE_DRAW_KEY);
+    if (raw !== null) {
+      const value = Number(raw);
+      if (Number.isFinite(value)) {
+        return Math.min(TIMELAPSE_WIRE_DRAW_MAX_MS, Math.max(TIMELAPSE_WIRE_DRAW_MIN_MS, value));
+      }
+    }
+  } catch {
+    // Storage blocked: authored draw time.
+  }
+  return TIMELAPSE_WIRE_DRAW_DEFAULT_MS;
+}
+
+export function getBoardTimelapseWireDrawMs(): number {
+  return timelapseWireDrawMs;
+}
+
+export function setBoardTimelapseWireDrawMs(ms: number): void {
+  timelapseWireDrawMs = Math.min(
+    TIMELAPSE_WIRE_DRAW_MAX_MS,
+    Math.max(TIMELAPSE_WIRE_DRAW_MIN_MS, ms),
+  );
+  try {
+    window.localStorage.setItem(TIMELAPSE_WIRE_DRAW_KEY, String(timelapseWireDrawMs));
+  } catch {
+    // Session-only draw time is fine.
+  }
+}
+
+/**
+ * The camera's working zoom range while following the action: how close a
+ * shot may get and how wide it may go. Defaults are what the camera always
+ * did - wide stops exactly at the glance threshold, close stops well under
+ * 1:1 so shots stay roomy. Both are the player's now; the finale ignores
+ * the wide limit, as it always framed everything.
+ */
+const TIMELAPSE_ZOOM_KEY = "gtnh-factory-flow.dev.timelapse-zoom-range";
+export const TIMELAPSE_ZOOM_MIN_DEFAULT = NODE_GLANCE_LEAVE_ZOOM;
+export const TIMELAPSE_ZOOM_MAX_DEFAULT = 0.8;
+export const TIMELAPSE_ZOOM_FLOOR = 0.05;
+export const TIMELAPSE_ZOOM_CEILING = 1.6;
+
+let timelapseZoomRange = readStoredZoomRange();
+
+function clampZoom(value: number, fallback: number): number {
+  return Number.isFinite(value)
+    ? Math.min(TIMELAPSE_ZOOM_CEILING, Math.max(TIMELAPSE_ZOOM_FLOOR, value))
+    : fallback;
+}
+
+function readStoredZoomRange(): { min: number; max: number } {
+  if (typeof window === "undefined") {
+    return { min: TIMELAPSE_ZOOM_MIN_DEFAULT, max: TIMELAPSE_ZOOM_MAX_DEFAULT };
+  }
+  try {
+    const raw = window.localStorage.getItem(TIMELAPSE_ZOOM_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { min?: number; max?: number };
+      return {
+        min: clampZoom(Number(parsed.min), TIMELAPSE_ZOOM_MIN_DEFAULT),
+        max: clampZoom(Number(parsed.max), TIMELAPSE_ZOOM_MAX_DEFAULT),
+      };
+    }
+  } catch {
+    // Storage blocked: authored range.
+  }
+  return { min: TIMELAPSE_ZOOM_MIN_DEFAULT, max: TIMELAPSE_ZOOM_MAX_DEFAULT };
+}
+
+export function getBoardTimelapseZoomRange(): { min: number; max: number } {
+  return timelapseZoomRange;
+}
+
+export function setBoardTimelapseZoomRange(patch: { min?: number; max?: number }): void {
+  timelapseZoomRange = {
+    min:
+      patch.min !== undefined
+        ? clampZoom(patch.min, timelapseZoomRange.min)
+        : timelapseZoomRange.min,
+    max:
+      patch.max !== undefined
+        ? clampZoom(patch.max, timelapseZoomRange.max)
+        : timelapseZoomRange.max,
+  };
+  try {
+    window.localStorage.setItem(TIMELAPSE_ZOOM_KEY, JSON.stringify(timelapseZoomRange));
+  } catch {
+    // Session-only range is fine.
+  }
+}
+
+/**
+ * THE CAMERA SETS THE PACE. The board's follower reports how far the
+ * viewport still is from its shot every frame; a beat whose gap has
+ * elapsed does not fire until the camera has essentially arrived, so a
+ * slow camera stretches the whole show and a parked one lets a 4x run
+ * blaze. A staleness check and a hard cap keep a missing or wedged
+ * follower from stalling the run forever.
+ */
+let cameraRemainingPx = 0;
+let cameraReportedAt = 0;
+
+export function reportTimelapseCameraProgress(remainingPx: number): void {
+  cameraRemainingPx = remainingPx;
+  cameraReportedAt = Date.now();
+}
+
+const TIMELAPSE_CAMERA_ARRIVE_PX = 28;
+const TIMELAPSE_CAMERA_REPORT_FRESH_MS = 400;
+const TIMELAPSE_CAMERA_WAIT_CAP_MS = 5000;
+const TIMELAPSE_CAMERA_POLL_MS = 70;
+
 function playTimelapseSound(kind: Parameters<typeof playBoardSound>[0]): void {
   if (timelapseVolume <= 0) {
     return;
@@ -765,6 +898,30 @@ export function startBoardTimelapse(): boolean {
   emit();
 
   let index = 0;
+  // The beat gap, then the camera: once the time has elapsed, the next
+  // beat still waits for the follower to report arrival (see
+  // reportTimelapseCameraProgress) - the camera is the star, and nothing
+  // happens off-screen while it is still travelling there.
+  const scheduleNext = (gapMs: number) => {
+    const waitedFrom = Date.now();
+    const tryStep = () => {
+      stepTimer = undefined;
+      if (token !== playToken) {
+        return;
+      }
+      const reportIsFresh = Date.now() - cameraReportedAt < TIMELAPSE_CAMERA_REPORT_FRESH_MS;
+      if (
+        reportIsFresh &&
+        cameraRemainingPx > TIMELAPSE_CAMERA_ARRIVE_PX &&
+        Date.now() - waitedFrom < TIMELAPSE_CAMERA_WAIT_CAP_MS
+      ) {
+        stepTimer = setTimeout(tryStep, TIMELAPSE_CAMERA_POLL_MS);
+        return;
+      }
+      step();
+    };
+    stepTimer = setTimeout(tryStep, gapMs);
+  };
   const step = () => {
     stepTimer = undefined;
     if (token !== playToken) {
@@ -841,11 +998,14 @@ export function startBoardTimelapse(): boolean {
     }
     // Speed and the NEXT beat's kind decide the gap, read at scheduling
     // time, so a chip press mid-run changes the pace from the very next
-    // beat and a wire follows its card quickly.
-    stepTimer = setTimeout(step, delayBefore(script.beats[index]) / timelapseSpeed);
+    // beat and a wire follows its card quickly. A beat that drew wires
+    // holds until the ink is dry, however short its own gap would be.
+    const inkDryMs =
+      beat.edgeIds.length > 0 ? timelapseWireDrawMs + TIMELAPSE_WIRE_SETTLE_MS : 0;
+    scheduleNext(Math.max(delayBefore(script.beats[index]), inkDryMs) / timelapseSpeed);
   };
 
   // One quiet moment on the emptied board before the first card lands.
-  stepTimer = setTimeout(step, 420 / timelapseSpeed);
+  scheduleNext(420 / timelapseSpeed);
   return true;
 }
