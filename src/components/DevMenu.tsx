@@ -6,6 +6,7 @@ import {
   BOARD_TIMELAPSE_SPEEDS,
   getBoardTimelapseCameraMode,
   getBoardTimelapseCameraPace,
+  getBoardTimelapseCineZoom,
   getBoardTimelapsePopMs,
   getBoardTimelapseSpeed,
   getBoardTimelapseVolume,
@@ -13,6 +14,7 @@ import {
   getBoardTimelapseZoomRange,
   setBoardTimelapseCameraMode,
   setBoardTimelapseCameraPace,
+  setBoardTimelapseCineZoom,
   setBoardTimelapsePopMs,
   setBoardTimelapseSpeed,
   setBoardTimelapseVolume,
@@ -21,6 +23,8 @@ import {
   startBoardTimelapse,
   TIMELAPSE_CAMERA_PACE_MAX,
   TIMELAPSE_CAMERA_PACE_MIN,
+  TIMELAPSE_CINE_ZOOM_MAX,
+  TIMELAPSE_CINE_ZOOM_MIN,
   TIMELAPSE_POP_MAX_MS,
   TIMELAPSE_POP_MIN_MS,
   TIMELAPSE_WIRE_DRAW_MAX_MS,
@@ -68,6 +72,7 @@ export function DevMenu({
   // chip on the board only stops it. Both settings persist on this device.
   const [timelapseSpeed, setTimelapseSpeed] = useState<number>(() => getBoardTimelapseSpeed());
   const [cameraMode, setCameraMode] = useState(() => getBoardTimelapseCameraMode());
+  const [cineZoom, setCineZoom] = useState(() => getBoardTimelapseCineZoom());
   // The demo-card tilt: edits apply to the board live (a running timelapse
   // included - this menu opens over it without cancelling).
   const [tilt, setTilt] = useState<BoardTilt>(() => getBoardTiltSnapshot());
@@ -259,6 +264,28 @@ export function DevMenu({
                 </button>
               ))}
             </div>
+            {cameraMode === "cinematic" ? (
+              <div className="mt-2 flex items-center gap-1.5 text-xs">
+                <span className="w-14 shrink-0 text-fg-subtle">Offset</span>
+                <input
+                  type="range"
+                  min={TIMELAPSE_CINE_ZOOM_MIN}
+                  max={TIMELAPSE_CINE_ZOOM_MAX}
+                  step={0.05}
+                  value={cineZoom}
+                  onChange={(event) => {
+                    setBoardTimelapseCineZoom(Number(event.target.value));
+                    setCineZoom(getBoardTimelapseCineZoom());
+                  }}
+                  aria-label="A constant nudge on the crane's own framing: 1 is the island-exact fit"
+                  title="A constant nudge on whatever the crane decides: 1.00x frames the island exactly, higher sits closer, lower hangs back"
+                  className="h-1 w-full accent-cyan-500"
+                />
+                <span className="w-10 shrink-0 text-right tabular-nums text-fg-muted">
+                  {cineZoom.toFixed(2)}x
+                </span>
+              </div>
+            ) : null}
             <div className="mt-2 flex items-center gap-1.5 text-xs">
               <span className="w-14 shrink-0 text-fg-subtle">Camera</span>
               <input

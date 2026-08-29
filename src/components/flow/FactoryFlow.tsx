@@ -142,6 +142,7 @@ import { isEditableKeyboardTarget } from "./keyboard";
 import {
   getBoardTimelapseCameraMode,
   getBoardTimelapseCameraPace,
+  getBoardTimelapseCineZoom,
   getBoardTimelapsePopMs,
   getBoardTimelapseSnapshot,
   getBoardTimelapseWireDrawMs,
@@ -3540,11 +3541,16 @@ export function FactoryFlow() {
         timelapseCameraTargetRef.current = {
           x: sceneCentre.x + (driftCentre.x - sceneCentre.x) * 0.45,
           y: sceneCentre.y + (driftCentre.y - sceneCentre.y) * 0.45,
-          zoom: zoomForRect(sceneRect, planSize, {
-            padding: 0.24,
-            minZoom: BOARD_MIN_ZOOM,
-            maxZoom: Math.max(zoomRange.max, zoomRange.min),
-          }),
+          // The cine zoom dial multiplies the island-exact fit: above 1
+          // the crane sits closer and the pan crosses a cropped view.
+          zoom: Math.min(
+            Math.max(zoomRange.max, zoomRange.min),
+            zoomForRect(sceneRect, planSize, {
+              padding: 0.24,
+              minZoom: BOARD_MIN_ZOOM,
+              maxZoom: BOARD_CAMERA_MAX_ZOOM,
+            }) * getBoardTimelapseCineZoom(),
+          ),
         };
         return;
       }

@@ -934,6 +934,51 @@ export function setBoardTimelapseCameraMode(mode: TimelapseCameraMode): void {
 }
 
 /**
+ * The cinematic crane's own zoom dial: a multiplier on the frame-the-
+ * whole-island fit. 1 shows the island exactly; above 1 the crane sits
+ * closer and the pan crosses a cropped view; below 1 it hangs back with
+ * air around the island. Cinematic deliberately ignores the follow
+ * camera's Widest floor - from afar is its whole point - so this is its
+ * one zoom control (Closest still caps it).
+ */
+const TIMELAPSE_CINE_ZOOM_KEY = "gtnh-factory-flow.dev.timelapse-cine-zoom";
+export const TIMELAPSE_CINE_ZOOM_MIN = 0.4;
+export const TIMELAPSE_CINE_ZOOM_MAX = 3;
+
+let timelapseCineZoom = readStoredCineZoom();
+
+function readStoredCineZoom(): number {
+  if (typeof window === "undefined") {
+    return 1;
+  }
+  try {
+    const raw = window.localStorage.getItem(TIMELAPSE_CINE_ZOOM_KEY);
+    if (raw !== null) {
+      const value = Number(raw);
+      if (Number.isFinite(value)) {
+        return Math.min(TIMELAPSE_CINE_ZOOM_MAX, Math.max(TIMELAPSE_CINE_ZOOM_MIN, value));
+      }
+    }
+  } catch {
+    // Storage blocked: island-exact framing.
+  }
+  return 1;
+}
+
+export function getBoardTimelapseCineZoom(): number {
+  return timelapseCineZoom;
+}
+
+export function setBoardTimelapseCineZoom(zoom: number): void {
+  timelapseCineZoom = Math.min(TIMELAPSE_CINE_ZOOM_MAX, Math.max(TIMELAPSE_CINE_ZOOM_MIN, zoom));
+  try {
+    window.localStorage.setItem(TIMELAPSE_CINE_ZOOM_KEY, String(timelapseCineZoom));
+  } catch {
+    // Session-only zoom is fine.
+  }
+}
+
+/**
  * THE CAMERA SETS THE PACE. The board's follower reports how far the
  * viewport still is from its shot every frame; a beat whose gap has
  * elapsed does not fire until the camera has essentially arrived, so a
