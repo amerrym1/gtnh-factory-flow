@@ -33,6 +33,12 @@ export interface TimelapseBeat {
    * is on the table.
    */
   kind: "card" | "wire" | "board" | "ink";
+  /**
+   * What the camera should watch during this beat when that is not the
+   * revealed nodes themselves - a wire beat names its two endpoints, so
+   * the shot holds both ends of the connection being made.
+   */
+  focusNodeIds?: string[];
 }
 
 export interface TimelapseScript {
@@ -195,11 +201,71 @@ export function buildTimelapseScript(
     }
   };
 
-  const revealUnit = (unitId: string) => {
+  // MACHINES anchor the show; sources and products are their attendants. A
+  // drawer, tank or custom-rate card never leads - it spins in beside the
+  // machine that wants it, wire attached, the way the drawer gesture makes
+  // both at once. Everything else lands bare and wires up beat by beat.
+  const attachmentIds = new Set<string>();
+  for (const id of storageIds) {
+    if (units.has(id)) {
+      attachmentIds.add(id);
+    }
+  }
+  for (const node of project.nodes) {
+    if (units.has(node.id) && node.customRate) {
+      attachmentIds.add(node.id);
+    }
+  }
+  const machineIds = [...units].filter((id) => !attachmentIds.has(id));
+
+  // A machine's REAL feeders for the build order: upstream machines, seen
+  // directly or through one attachment (a buffer between two machines). A
+  // pure source drawer is not a feeder - it spawns on demand, so a machine
+  // fed only by sources counts as ready.
+  const machinePreds = new Map<string, Set<string>>();
+  for (const machineId of machineIds) {
+    const preds = new Set<string>();
+    for (const pred of predecessors.get(machineId) ?? []) {
+      if (!attachmentIds.has(pred)) {
+        preds.add(pred);
+      } else {
+        for (const behind of predecessors.get(pred) ?? []) {
+          if (!attachmentIds.has(behind)) {
+            preds.add(behind);
+          }
+        }
+      }
+    }
+    machinePreds.set(machineId, preds);
+  }
+
+  // Every wire is its own action: one edge per beat, drawn only once both
+  // ends stand.
+  const revealWiresOf = (unitId: string) => {
+    for (const other of neighbours.get(unitId) ?? []) {
+      if (!revealedNodes.has(other)) {
+        continue;
+      }
+      for (const pairKey of [`${unitId}|${other}`, `${other}|${unitId}`]) {
+        for (const edgeId of edgesByUnitPair.get(pairKey) ?? []) {
+          if (!revealedEdges.has(edgeId)) {
+            revealedEdges.add(edgeId);
+            beats.push({
+              nodeIds: [],
+              edgeIds: [edgeId],
+              kind: "wire",
+              focusNodeIds: [unitId, other],
+            });
+          }
+        }
+      }
+    }
+  };
+
+  // An attendant arrives with every wire it can already dock - usually just
+  // the one to the machine that summoned it.
+  const revealAttachment = (unitId: string) => {
     revealedNodes.add(unitId);
-    // Wires land once their second endpoint exists - but as their OWN beat:
-    // placing and wiring read as two acts. A storage keeps its wire on the
-    // card beat, the way the drawer gesture creates both at once.
     const edgeIds: string[] = [];
     for (const other of neighbours.get(unitId) ?? []) {
       if (!revealedNodes.has(other)) {
@@ -214,28 +280,51 @@ export function buildTimelapseScript(
         }
       }
     }
-    if (storageIds.has(unitId) || edgeIds.length === 0) {
-      beats.push({ nodeIds: [unitId], edgeIds, kind: "card" });
-    } else {
-      beats.push({ nodeIds: [unitId], edgeIds: [], kind: "card" });
-      beats.push({ nodeIds: [], edgeIds, kind: "wire" });
+    beats.push({ nodeIds: [unitId], edgeIds, kind: "card" });
+    settleFrames(unitOwner.get(unitId));
+  };
+
+  const readingOrder = (left: string, right: string) => {
+    const a = pointFor(left);
+    const b = pointFor(right);
+    return a.y - b.y || a.x - b.x || (left < right ? -1 : 1);
+  };
+
+  // The machine lands bare; each wire to what already stands is its own
+  // beat; then its sources spin in, then its products, each with their wire.
+  const revealMachine = (unitId: string) => {
+    revealedNodes.add(unitId);
+    beats.push({ nodeIds: [unitId], edgeIds: [], kind: "card" });
+    revealWiresOf(unitId);
+    const sources: string[] = [];
+    const products: string[] = [];
+    for (const other of neighbours.get(unitId) ?? []) {
+      if (!attachmentIds.has(other) || revealedNodes.has(other)) {
+        continue;
+      }
+      (edgesByUnitPair.has(`${other}|${unitId}`) ? sources : products).push(other);
+    }
+    sources.sort(readingOrder);
+    products.sort(readingOrder);
+    for (const attachment of [...sources, ...products]) {
+      revealAttachment(attachment);
     }
     settleFrames(unitOwner.get(unitId));
   };
 
-  // Greedy build order. Each step scores every unrevealed unit by, in order:
-  // how many of its feeders are still missing (0 = every input already on the
-  // board), whether anything it is wired to is on the board at all, and how
-  // far it sits from the last card placed. Deterministic: ties fall through
-  // to the id.
-  const remaining = new Set(units);
+  // Greedy build order over the MACHINES. Each step scores every unplaced
+  // machine by, in order: how many of its feeder machines are still missing
+  // (0 = its whole upstream already runs), whether anything it is wired to
+  // is on the board at all, and how far it sits from the last machine
+  // placed. Deterministic: ties fall through to the id.
+  const remaining = new Set(machineIds);
   let lastPoint: Point | undefined;
   while (remaining.size > 0) {
     let best: string | undefined;
     let bestKey: [number, number, number, string] | undefined;
     for (const unitId of remaining) {
       let missingFeeders = 0;
-      for (const pred of predecessors.get(unitId) ?? []) {
+      for (const pred of machinePreds.get(unitId) ?? []) {
         if (!revealedNodes.has(pred)) {
           missingFeeders += 1;
         }
@@ -269,8 +358,17 @@ export function buildTimelapseScript(
       break;
     }
     remaining.delete(best);
-    revealUnit(best);
+    revealMachine(best);
     lastPoint = pointFor(best);
+  }
+
+  // Attendants nothing summoned: loose drawers, or attachment-only chains.
+  // They arrive last among the cards, in reading order, wires included.
+  const strayAttachments = [...attachmentIds]
+    .filter((id) => !revealedNodes.has(id))
+    .sort(readingOrder);
+  for (const attachment of strayAttachments) {
+    revealAttachment(attachment);
   }
 
   // Boards holding no completion members (empty, or ink-only) still have a
@@ -379,6 +477,12 @@ export interface BoardTimelapseSnapshot {
    * every frame (the follower in FactoryFlow); it is a target, not a jump.
    */
   focusNodeIds: readonly string[];
+  /**
+   * The last beat's pull-back over the whole board. Until it, the follow
+   * camera holds a zoom floor above the glance threshold - the cards must
+   * never drop to their zoomed-out faces mid-show.
+   */
+  finale: boolean;
   /** The live playback speed multiplier, for the overlay chip. */
   speed: number;
 }
@@ -484,9 +588,11 @@ const TIMELAPSE_MAX_BEAT_MS = 650;
 const TIMELAPSE_INK_BEAT_MS = 220;
 /** The finished board holds for a breath before the overlay lifts. */
 const TIMELAPSE_FINISH_HOLD_MS = 1600;
-/** How many beats back the camera's focus window reaches. Small enough to
- * keep the shot on the action, big enough that it does not whip. */
-const TIMELAPSE_FOCUS_BEATS = 6;
+/** How many beats back the camera's focus window reaches. Three keeps the
+ * shot ON the action - a machine and its attendants - and the zoom rides
+ * every beat instead of parking wide; the chase easing is what keeps that
+ * from whipping. */
+const TIMELAPSE_FOCUS_BEATS = 3;
 
 let activeSnapshot: BoardTimelapseSnapshot | undefined;
 const listeners = new Set<() => void>();
@@ -549,11 +655,17 @@ export function startBoardTimelapse(): boolean {
   stopBoardTimelapse();
   const token = ++playToken;
   const projectId = project.id;
-  // Cards and frames set the pace; wire beats are half-steps between them
-  // and ink is a flourish, so neither buys the run more time.
+  // Cards and frames pace at a full beat, wires at their half-step - and
+  // with every wire its own beat now they are the bulk of the show, so the
+  // target length is spread over the WEIGHTED count, not the card count.
+  const paceUnits = script.beats.reduce(
+    (sum, beat) =>
+      sum + (beat.kind === "wire" ? 0.55 : beat.kind === "ink" ? 0 : 1),
+    0,
+  );
   const beatMs = Math.min(
     TIMELAPSE_MAX_BEAT_MS,
-    Math.max(TIMELAPSE_MIN_BEAT_MS, Math.round(TIMELAPSE_TARGET_MS / cardBeats)),
+    Math.max(TIMELAPSE_MIN_BEAT_MS, Math.round(TIMELAPSE_TARGET_MS / Math.max(1, paceUnits))),
   );
   const delayBefore = (beat: TimelapseBeat) =>
     beat.kind === "wire"
@@ -568,6 +680,7 @@ export function startBoardTimelapse(): boolean {
     // The approach shot: the camera starts flying toward the first card
     // while the board is still empty.
     focusNodeIds: [...script.beats[0].nodeIds],
+    finale: false,
     speed: timelapseSpeed,
   };
   emit();
@@ -597,9 +710,10 @@ export function startBoardTimelapse(): boolean {
     for (const id of beat.edgeIds) {
       revealedEdgeIds.add(id);
     }
-    // Pure wire beats reveal no cards and should not thin the window.
-    if (beat.nodeIds.length > 0) {
-      recentBeats.push([...beat.nodeIds]);
+    // A wire beat watches its two endpoints; a card beat watches the card.
+    const focus = beat.focusNodeIds ?? beat.nodeIds;
+    if (focus.length > 0) {
+      recentBeats.push([...focus]);
       if (recentBeats.length > TIMELAPSE_FOCUS_BEATS) {
         recentBeats.shift();
       }
@@ -611,6 +725,7 @@ export function startBoardTimelapse(): boolean {
       // The camera chases the recent action; the last beat pulls it back
       // over everything for the ending.
       focusNodeIds: isLastBeat ? [...revealedNodeIds] : recentBeats.flat(),
+      finale: isLastBeat,
       speed: timelapseSpeed,
     };
     emit();

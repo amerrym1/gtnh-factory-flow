@@ -2,7 +2,14 @@
 
 import { Check, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { startBoardTimelapse } from "./flow/board-timelapse";
+import {
+  BOARD_TIMELAPSE_SPEEDS,
+  getBoardTimelapseSpeed,
+  getBoardTimelapseVolume,
+  setBoardTimelapseSpeed,
+  setBoardTimelapseVolume,
+  startBoardTimelapse,
+} from "./flow/board-timelapse";
 import { isPerfHudEnabled, setPerfHudEnabled } from "./flow/PerfHud";
 import { useFactoryStore } from "@/store/factory-store";
 
@@ -27,6 +34,9 @@ export function DevMenu({
   const canPlayTimelapse = useFactoryStore(
     (state) => state.project.nodes.length + (state.project.storages?.length ?? 0) >= 2,
   );
+  // The timelapse is CONFIGURED here, before it starts; during the run the
+  // chip on the board only stops it. Both settings persist on this device.
+  const [timelapseSpeed, setTimelapseSpeed] = useState<number>(() => getBoardTimelapseSpeed());
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -113,25 +123,60 @@ export function DevMenu({
             </span>
           </button>
 
-          <button
-            type="button"
-            disabled={!canPlayTimelapse}
-            onClick={() => {
-              onClose();
-              // Let the menu's backdrop leave before the board empties for
-              // the first beat - the run starts on a clean canvas.
-              requestAnimationFrame(() => startBoardTimelapse());
-            }}
-            className="mt-2 flex w-full items-center gap-3 rounded border border-line px-3 py-2.5 text-left hover:border-line-strong hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-line disabled:hover:bg-transparent"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block text-base leading-tight text-fg">Play a build timelapse</span>
-              <span className="mt-0.5 block text-xs text-fg-muted">
-                Replays this board being built card by card, sources first. Esc or a click stops
-                it. Needs at least two cards.
-              </span>
+          <div className="mt-2 rounded border border-line px-3 py-2.5">
+            <span className="block text-base leading-tight text-fg">Build timelapse</span>
+            <span className="mt-0.5 block text-xs text-fg-muted">
+              Replays this board being built: each machine lands, wires and drawers follow.
+              Esc or a click stops it. Needs at least two cards.
             </span>
-          </button>
+            <div className="mt-2.5 flex items-center gap-1.5 text-xs">
+              <span className="w-14 shrink-0 text-fg-subtle">Speed</span>
+              {BOARD_TIMELAPSE_SPEEDS.map((speed) => (
+                <button
+                  key={speed}
+                  type="button"
+                  onClick={() => {
+                    setBoardTimelapseSpeed(speed);
+                    setTimelapseSpeed(speed);
+                  }}
+                  className={[
+                    "rounded border px-2 py-1 tabular-nums",
+                    timelapseSpeed === speed
+                      ? "border-cyan-600 bg-cyan-500/10 text-cyan-400"
+                      : "border-line text-fg-muted hover:border-line-strong hover:text-fg",
+                  ].join(" ")}
+                >
+                  {speed}x
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-xs">
+              <span className="w-14 shrink-0 text-fg-subtle">Volume</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                defaultValue={Math.round(getBoardTimelapseVolume() * 100)}
+                onChange={(event) => setBoardTimelapseVolume(Number(event.target.value) / 100)}
+                aria-label="Timelapse sound volume"
+                className="h-1 w-full accent-cyan-500"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={!canPlayTimelapse}
+              onClick={() => {
+                onClose();
+                // Let the menu's backdrop leave before the board empties for
+                // the first beat - the run starts on a clean canvas.
+                requestAnimationFrame(() => startBoardTimelapse());
+              }}
+              className="mt-2.5 w-full rounded border border-cyan-700 bg-cyan-500/10 px-3 py-1.5 text-sm text-cyan-300 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:border-line disabled:bg-transparent disabled:text-fg-subtle"
+            >
+              Play
+            </button>
+          </div>
         </div>
       </div>
     </div>

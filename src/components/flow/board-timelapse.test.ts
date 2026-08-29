@@ -78,9 +78,16 @@ describe("buildTimelapseScript", () => {
     });
 
     expect(revealedOrder(script)).toEqual(["a", "c", "d"]);
-    const last = script.beats[script.beats.length - 1];
-    expect(last.kind).toBe("wire");
-    expect([...last.edgeIds].sort()).toEqual(["ad", "cd"]);
+    // Every wire is its own beat: d's two inputs dock one at a time.
+    expect(script.beats.map((beat) => beat.kind)).toEqual([
+      "card",
+      "card",
+      "wire",
+      "card",
+      "wire",
+      "wire",
+    ]);
+    expect(script.beats.slice(4).map((beat) => beat.edgeIds)).toEqual([["ad"], ["cd"]]);
   });
 
   it("still finishes a plan whose graph is one big cycle", () => {
@@ -118,11 +125,11 @@ describe("buildTimelapseScript", () => {
     });
 
     expect(revealedOrder(script)).toEqual(["a", "board"]);
-    // Both crossing wires land together on the bar's wire beat; the
-    // internal one rides along as a stray so nothing stays hidden.
-    const last = script.beats[script.beats.length - 1];
-    expect(last.kind).toBe("wire");
-    expect([...last.edgeIds].sort()).toEqual(["am1", "am2", "mm"]);
+    // Each crossing wire is its own beat; the internal one rides the last
+    // beat as a stray so nothing stays hidden.
+    const wireBeats = script.beats.filter((beat) => beat.kind === "wire");
+    expect(wireBeats.length).toBe(2);
+    expect(wireBeats.flatMap((beat) => beat.edgeIds).sort()).toEqual(["am1", "am2", "mm"]);
   });
 
   it("draws ink last, in reading order", () => {
@@ -152,6 +159,58 @@ describe("buildTimelapseScript", () => {
 
     expect(revealedOrder(script)).toEqual(["a", "drawer"]);
     expect(script.beats[1]).toEqual({ nodeIds: ["drawer"], edgeIds: ["ad"], kind: "card" });
+  });
+
+  it("never lets a source lead: the machine lands, then its source spins in wired", () => {
+    // The source drawer sits left of and above the machine - reading order
+    // would pick it first; the machine-first rule must not.
+    const script = buildTimelapseScript({
+      nodes: [node("m", 800, 400)],
+      storages: [storage("src", 0, 0)],
+      edges: [edge("sm", "src", "m")],
+    });
+
+    expect(script.beats.map((beat) => ({ kind: beat.kind, nodeIds: beat.nodeIds }))).toEqual([
+      { kind: "card", nodeIds: ["m"] },
+      { kind: "card", nodeIds: ["src"] },
+    ]);
+    expect(script.beats[1].edgeIds).toEqual(["sm"]);
+  });
+
+  it("treats a custom-rate card as an attendant, not a machine", () => {
+    const script = buildTimelapseScript({
+      nodes: [
+        { ...node("supply", 0, 0), customRate: { perSecond: 10, mode: "supply" } },
+        node("m", 800, 400),
+      ],
+      edges: [edge("sm", "supply", "m")],
+    });
+
+    expect(revealedOrder(script)).toEqual(["m", "supply"]);
+    expect(script.beats[1].edgeIds).toEqual(["sm"]);
+  });
+
+  it("spins sources in before products, then wires the next machine to the buffer", () => {
+    // A feeds buffer b; b feeds B. B's whole upstream is A (through the
+    // buffer), so A goes first with b as its product attendant; B then
+    // lands and docks onto the existing buffer as its own wire beat.
+    const script = buildTimelapseScript({
+      nodes: [node("A", 0, 0), node("B", 900, 0)],
+      storages: [storage("b", 450, 0), storage("srcA", 0, 300)],
+      edges: [edge("sA", "srcA", "A"), edge("Ab", "A", "b"), edge("bB", "b", "B")],
+    });
+
+    expect(
+      script.beats.map((beat) => ({ kind: beat.kind, nodeIds: beat.nodeIds, edgeIds: beat.edgeIds })),
+    ).toEqual([
+      { kind: "card", nodeIds: ["A"], edgeIds: [] },
+      { kind: "card", nodeIds: ["srcA"], edgeIds: ["sA"] },
+      { kind: "card", nodeIds: ["b"], edgeIds: ["Ab"] },
+      { kind: "card", nodeIds: ["B"], edgeIds: [] },
+      { kind: "wire", nodeIds: [], edgeIds: ["bB"] },
+    ]);
+    // The wire beat tells the camera to hold both ends of the connection.
+    expect(script.beats[4].focusNodeIds?.sort()).toEqual(["B", "b"]);
   });
 
   it("stands a nested empty board before the parent waiting on it", () => {

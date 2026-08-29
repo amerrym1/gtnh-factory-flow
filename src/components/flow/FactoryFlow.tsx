@@ -140,12 +140,8 @@ import {
 } from "@/lib/designs/design-camera";
 import { isEditableKeyboardTarget } from "./keyboard";
 import {
-  BOARD_TIMELAPSE_SPEEDS,
   getBoardTimelapseSnapshot,
-  getBoardTimelapseVolume,
   getServerBoardTimelapseSnapshot,
-  setBoardTimelapseSpeed,
-  setBoardTimelapseVolume,
   stopBoardTimelapse,
   subscribeBoardTimelapse,
 } from "./board-timelapse";
@@ -290,6 +286,7 @@ import {
   getPublishedNodeDetailLevel,
   getServerNodeDetailLevel,
   nodeDetailAttributeValue,
+  NODE_GLANCE_LEAVE_ZOOM,
   setNodeDetailLevel,
   subscribeNodeDetailLevel,
   type NodeDetailLevel,
@@ -3417,12 +3414,16 @@ export function FactoryFlow() {
       return;
     }
     const centre = rectCentre(rect);
+    // Until the finale's pull-back, the shot never zooms out past the point
+    // where cards swap to their glance faces: a wide focus window gets
+    // centred and cropped rather than shrunk into LOD mode. The finale is
+    // the one beat allowed to frame everything, however small that is.
     timelapseCameraTargetRef.current = {
       x: centre.x,
       y: centre.y,
       zoom: zoomForRect(rect, size, {
         padding: BOARD_CAMERA_PADDING,
-        minZoom: BOARD_MIN_ZOOM,
+        minZoom: timelapse.finale ? BOARD_MIN_ZOOM : NODE_GLANCE_LEAVE_ZOOM,
         maxZoom: BOARD_CAMERA_MAX_ZOOM,
       }),
     };
@@ -5948,43 +5949,17 @@ export function FactoryFlow() {
           the help button; see PerfHud.tsx. */}
       <PerfHud />
       {timelapseActive ? (
+        // Settings live in the dev menu, set BEFORE the run; this only ends
+        // it (as do Esc and any click on the board).
         <div
           data-timelapse-chip
-          className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1.5 rounded border border-line-strong bg-surface/90 px-2.5 py-1.5 text-xs text-fg-muted shadow-lg"
+          className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded border border-line-strong bg-surface/90 px-2.5 py-1.5 text-xs text-fg-muted shadow-lg"
         >
-          <span className="pr-1">Build timelapse</span>
-          {BOARD_TIMELAPSE_SPEEDS.map((speed) => (
-            <button
-              key={speed}
-              type="button"
-              onClick={() => setBoardTimelapseSpeed(speed)}
-              className={[
-                "rounded border px-1.5 py-0.5 tabular-nums",
-                timelapse?.speed === speed
-                  ? "border-cyan-600 bg-cyan-500/10 text-cyan-400"
-                  : "border-line hover:border-line-strong hover:text-fg",
-              ].join(" ")}
-            >
-              {speed}x
-            </button>
-          ))}
-          {/* The run's own sound level, on top of the app master volume.
-              Uncontrolled: the module reads it per beat, nothing rerenders. */}
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={5}
-            defaultValue={Math.round(getBoardTimelapseVolume() * 100)}
-            onChange={(event) => setBoardTimelapseVolume(Number(event.target.value) / 100)}
-            aria-label="Timelapse sound volume"
-            title="Timelapse sound volume"
-            className="mx-1 h-1 w-16 accent-cyan-500"
-          />
+          <span>Build timelapse</span>
           <button
             type="button"
             onClick={() => stopBoardTimelapse()}
-            className="ml-1 rounded border border-line px-1.5 py-0.5 hover:border-line-strong hover:text-fg"
+            className="rounded border border-line px-1.5 py-0.5 hover:border-line-strong hover:text-fg"
           >
             Stop
           </button>
