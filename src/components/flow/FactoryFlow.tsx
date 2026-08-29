@@ -115,6 +115,7 @@ import type {
 } from "@/lib/model/types";
 import {
   captureBoardSelection,
+  findToggleDuplicateEdge,
   useFactoryStore,
   wouldConnectionStorageSpawn,
   type BoardClipboardPayload,
@@ -1620,6 +1621,33 @@ let voidDropGhostRole: "source" | "product" = "product";
  * definition.
  */
 let lastConnectionFlowPoint: { x: number; y: number } | undefined;
+
+/** The dragged port itself, for the snap loop's toggle-delete question. */
+let liveDraggedResource: DraggedResourceConnection | undefined;
+
+/**
+ * While the drag is snapped onto a pair whose release would DELETE the
+ * existing wire (drawing a wire that exists toggles it off), that wire is
+ * painted doomed and the connection line reads red. The class is applied
+ * imperatively to the one edge element - never a board rebuild.
+ */
+let snapWillDeleteEdge = false;
+let doomedEdgeId: string | undefined;
+
+function paintDoomedEdge(edgeId: string | undefined): void {
+  if (edgeId === doomedEdgeId) {
+    return;
+  }
+  if (doomedEdgeId && typeof document !== "undefined") {
+    document
+      .querySelector(`[data-testid="rf__edge-${doomedEdgeId}"]`)
+      ?.classList.remove("edge-doomed");
+  }
+  doomedEdgeId = edgeId;
+  if (edgeId && typeof document !== "undefined") {
+    document.querySelector(`[data-testid="rf__edge-${edgeId}"]`)?.classList.add("edge-doomed");
+  }
+}
 
 // Slot endpoints cached relative to their node's origin, keyed by node size.
 // Measuring through the DOM made an edge's endpoints depend on whether its
@@ -3503,6 +3531,9 @@ export function FactoryFlow() {
     clearNodeDropFit();
     voidDropWillSpawn = false;
     voidDropGhostStorage = undefined;
+    liveDraggedResource = undefined;
+    snapWillDeleteEdge = false;
+    paintDoomedEdge(undefined);
   }, []);
 
   const startDropFitPainting = useCallback(() => {
@@ -3527,6 +3558,7 @@ export function FactoryFlow() {
     // the plan and the dragged port, never on where the pointer is. The
     // connection line reads this per frame to color the pipe.
     const dragged = draggedResourceRef.current;
+    liveDraggedResource = dragged;
     if (dragged && !isPocketId(project, dragged.nodeId)) {
       const originIsStorage = (project.storages ?? []).some(
         (storage) => storage.id === dragged.nodeId,
@@ -8844,9 +8876,13 @@ function ResourceConnectionLine({
         : "dead";
   // Snapped is GREEN and solid - "this will connect" - with white marching
   // dots running toward the caught slot; a spawnable void is green dashed;
-  // refusals and dead voids are red.
-  const color = verdict === "connect" ? "#22c55e" : verdict === "spawn" ? "#22c55e" : "#ef4444";
-  const dashed = verdict === "spawn" || verdict === "dead";
+  // refusals and dead voids are red. A snap whose release would DELETE the
+  // wire already on this pair reads red-dashed instead, agreeing with the
+  // doomed wire's own flashing.
+  const deleting = verdict === "connect" && snapWillDeleteEdge;
+  const color =
+    verdict === "connect" && !deleting ? "#22c55e" : verdict === "spawn" ? "#22c55e" : "#ef4444";
+  const dashed = verdict === "spawn" || verdict === "dead" || deleting;
 
   return (
     <g className="react-flow__connection">
@@ -8868,7 +8904,7 @@ function ResourceConnectionLine({
         opacity={0.98}
         style={{ filter: `drop-shadow(0 0 5px ${color})` }}
       />
-      {verdict === "connect" ? (
+      {verdict === "connect" && !deleting ? (
         <path
           className="connection-march"
           d={edgePath}
@@ -8932,8 +8968,45 @@ function VoidDropGhost() {
       // different slot), never per frame. The slot's fixed endpoint is the
       // identity - getConnectionSnap returns no ids.
       const snapKey = snap ? `${snap.point.x}|${snap.point.y}` : undefined;
-      if (snapKey && snapKey !== lastSnapKeyRef.current) {
-        playBoardSound("snap");
+      if (snapKey !== lastSnapKeyRef.current) {
+        if (snapKey) {
+          playBoardSound("snap");
+        }
+        // Would this release DELETE the wire that is already here? Same
+        // ends and handles the release will use; the doomed wire wears
+        // the warning and the line drops its green.
+        const dragged = liveDraggedResource;
+        const target = snap?.target;
+        let doomed: FactoryEdge | undefined;
+        if (dragged && target && target.nodeId !== dragged.nodeId) {
+          const draggedIsSource = target.side === "input";
+          const draggedHandleId = dragged.bidirectional
+            ? makeResourceHandleId(draggedIsSource ? "output" : "input", {
+                kind: dragged.kind,
+                id: dragged.id,
+              })
+            : dragged.handleId;
+          const sourceEnd = draggedIsSource
+            ? { nodeId: dragged.nodeId, handleId: draggedHandleId }
+            : { nodeId: target.nodeId, handleId: target.handleId };
+          const targetEnd = draggedIsSource
+            ? { nodeId: target.nodeId, handleId: target.handleId }
+            : { nodeId: dragged.nodeId, handleId: draggedHandleId };
+          doomed = findToggleDuplicateEdge(
+            useFactoryStore.getState().project,
+            sourceEnd.nodeId,
+            targetEnd.nodeId,
+            {
+              kind: dragged.kind,
+              id: dragged.id,
+              displayName: dragged.displayName,
+              sourceHandle: sourceEnd.handleId,
+              targetHandle: targetEnd.handleId,
+            },
+          );
+        }
+        snapWillDeleteEdge = Boolean(doomed);
+        paintDoomedEdge(doomed?.id);
       }
       lastSnapKeyRef.current = snapKey;
       const elsewhere = snap || isPointOverSolidCard(point.x, point.y);
@@ -11858,7 +11931,7 @@ function getConnectionSnap(toX: number, toY: number) {
     edgeSide: best.target.side === "input" ? "left" : "right",
   });
 
-  return point ? { point, side: best.target.side } : undefined;
+  return point ? { point, side: best.target.side, target: best.target } : undefined;
 }
 
 function brightenHexColor(color: string, amount: number) {

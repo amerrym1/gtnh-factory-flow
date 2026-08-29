@@ -4439,6 +4439,22 @@ function hasDuplicateEdge(edges: FactoryEdge[], edge: FactoryEdge): boolean {
 }
 
 /**
+ * The edge a connect gesture would TOGGLE AWAY, if any: drawing a wire that
+ * already exists deletes it (connectNodesBatch), and the drag preview turns
+ * the doomed wire red before the release commits. Same construction the
+ * release will run, asked hypothetically.
+ */
+export function findToggleDuplicateEdge(
+  project: FactoryProject,
+  sourceNodeId: string,
+  targetNodeId: string,
+  resource?: Parameters<typeof buildEdgeBetweenNodes>[3],
+): FactoryEdge | undefined {
+  const edge = buildEdgeBetweenNodes(project, sourceNodeId, targetNodeId, resource);
+  return edge ? findDuplicateEdge(project.edges, edge) : undefined;
+}
+
+/**
  * Would releasing this wire drag into the VOID leave something on the board?
  * The exact refusal logic of `addStorageForConnection`, run against a
  * hypothetical drawer and committed nowhere: a spawn survives when at least

@@ -2490,3 +2490,28 @@ img {
     animation: none;
   }
 }
+
+/* A wire whose pair is snapped by the CURRENT drag - releasing would toggle
+   it away. Dashed, red, breathing: "this is what gets deleted". Applied
+   imperatively to the one edge element by the snap loop. */
+@keyframes edge-doomed-flash {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.35;
+  }
+}
+.edge-doomed path {
+  stroke: #ef4444 !important;
+  stroke-dasharray: 8 7 !important;
+}
+.edge-doomed {
+  animation: edge-doomed-flash 0.45s linear infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  .edge-doomed {
+    animation: none;
+    opacity: 0.65;
+  }
+}
