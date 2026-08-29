@@ -8880,9 +8880,14 @@ function ResourceConnectionLine({
   // wire already on this pair reads red-dashed instead, agreeing with the
   // doomed wire's own flashing.
   const deleting = verdict === "connect" && snapWillDeleteEdge;
-  const color =
-    verdict === "connect" && !deleting ? "#22c55e" : verdict === "spawn" ? "#22c55e" : "#ef4444";
-  const dashed = verdict === "spawn" || verdict === "dead" || deleting;
+  // In the delete state the dragged pipe DISAPPEARS: nothing new happens
+  // on release, so drawing a fresh line promised the wrong thing. The
+  // doomed wire's own red flashing is the whole story.
+  if (deleting) {
+    return <g className="react-flow__connection" />;
+  }
+  const color = verdict === "connect" ? "#22c55e" : verdict === "spawn" ? "#22c55e" : "#ef4444";
+  const dashed = verdict === "spawn" || verdict === "dead";
 
   return (
     <g className="react-flow__connection">
@@ -8904,7 +8909,7 @@ function ResourceConnectionLine({
         opacity={0.98}
         style={{ filter: `drop-shadow(0 0 5px ${color})` }}
       />
-      {verdict === "connect" && !deleting ? (
+      {verdict === "connect" ? (
         <path
           className="connection-march"
           d={edgePath}
