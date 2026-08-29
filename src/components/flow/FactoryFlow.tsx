@@ -6079,7 +6079,12 @@ export function FactoryFlow() {
         <NodeDetailController boardRef={boardRef} />
         <HopMapController boardRef={boardRef} />
         <SelectionHandoffController signal={selectionHandoffCount} />
-        {linePulseMode ? <EdgePulseCanvas edgesUnderNodes={lineThicknessMode} /> : null}
+        {/* The marching dashes rest during a timelapse: the canvas paints a
+            wire's dashes whole the moment it mounts, stamping over the
+            draw-in underneath. */}
+        {linePulseMode && !timelapseActive ? (
+          <EdgePulseCanvas edgesUnderNodes={lineThicknessMode} />
+        ) : null}
         {/* The paper's tooth, in board space so it pans and zooms with the
             factory. Mounted before the pattern so dots ink OVER the grain.
             A pocket keeps its flat violet room. */}
@@ -8990,7 +8995,14 @@ function ResourceEdgeComponent({
               // same gold line the cards outline in, 3px per side to match
               // their outline, with the resource colour still in the core.
               stroke: isHighlighted ? "var(--glow-line)" : "#111827",
-              strokeDasharray: isGlobalView && isEdgeStarved(data) ? "2 8" : style?.strokeDasharray,
+              // While a timelapse draws this wire, no inline dash: an inline
+              // strokeDasharray outranks the draw-in's normalized dash, and
+              // the starved dots spawning whole gave the wire away instantly.
+              strokeDasharray: data?.timelapseDraw
+                ? undefined
+                : isGlobalView && isEdgeStarved(data)
+                  ? "2 8"
+                  : style?.strokeDasharray,
               strokeLinecap: "round",
               strokeLinejoin: "round",
               strokeOpacity: isHighlighted ? 1 : 0.72,
@@ -9007,7 +9019,11 @@ function ResourceEdgeComponent({
             style={{
               ...style,
               stroke: edgeColor,
-              strokeDasharray: isGlobalView && isEdgeStarved(data) ? "2 8" : style?.strokeDasharray,
+              strokeDasharray: data?.timelapseDraw
+                ? undefined
+                : isGlobalView && isEdgeStarved(data)
+                  ? "2 8"
+                  : style?.strokeDasharray,
               strokeLinecap: "round",
               strokeLinejoin: "round",
               // Zoom changes how much of the board you can see, never how the

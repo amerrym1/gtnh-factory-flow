@@ -316,11 +316,49 @@ export function buildTimelapseScript(
     return a.y - b.y || a.x - b.x || (left < right ? -1 : 1);
   };
 
-  // The machine lands bare; each wire to what already stands is its own
-  // beat; then its sources spin in, then its products, each with their wire.
+  // A machine already wired to the standing build is SUMMONED like an
+  // attendant: its lead wire sweeps over from the build first (the card
+  // mounting pending at the far end), the machine pops where the ink
+  // lands, and only then do its remaining wires dock and its attendants
+  // spin in. The first machine of an island has nothing to sweep from and
+  // simply lands.
   const revealMachine = (unitId: string) => {
     revealedNodes.add(unitId);
-    beats.push({ nodeIds: [unitId], edgeIds: [], kind: "card", popNodeIds: [unitId] });
+    let leadEdgeId: string | undefined;
+    // Prefer an incoming wire - the build flows downstream, so the sweep
+    // should arrive WITH the material.
+    for (const direction of ["in", "out"] as const) {
+      for (const other of neighbours.get(unitId) ?? []) {
+        if (leadEdgeId || !revealedNodes.has(other)) {
+          continue;
+        }
+        const pairKey = direction === "in" ? `${other}|${unitId}` : `${unitId}|${other}`;
+        for (const edgeId of edgesByUnitPair.get(pairKey) ?? []) {
+          if (!revealedEdges.has(edgeId)) {
+            leadEdgeId = edgeId;
+            break;
+          }
+        }
+      }
+    }
+    if (leadEdgeId) {
+      revealedEdges.add(leadEdgeId);
+      beats.push({
+        nodeIds: [unitId],
+        edgeIds: [leadEdgeId],
+        kind: "wire",
+        focusNodeIds: [unitId],
+      });
+      beats.push({
+        nodeIds: [],
+        edgeIds: [],
+        kind: "card",
+        focusNodeIds: [unitId],
+        popNodeIds: [unitId],
+      });
+    } else {
+      beats.push({ nodeIds: [unitId], edgeIds: [], kind: "card", popNodeIds: [unitId] });
+    }
     revealWiresOf(unitId);
     const sources: string[] = [];
     const products: string[] = [];
@@ -338,63 +376,100 @@ export function buildTimelapseScript(
     settleFrames(unitOwner.get(unitId));
   };
 
-  // Greedy build order over the MACHINES. Each step scores every unplaced
-  // machine by, in order: how many of its feeder machines are still missing
-  // (0 = its whole upstream already runs), whether anything it is wired to
-  // is on the board at all, and how far it sits from the last machine
-  // placed. Deterministic: ties fall through to the id.
-  const remaining = new Set(machineIds);
-  let lastPoint: Point | undefined;
-  while (remaining.size > 0) {
-    let best: string | undefined;
-    let bestKey: [number, number, number, string] | undefined;
-    for (const unitId of remaining) {
-      let missingFeeders = 0;
-      for (const pred of machinePreds.get(unitId) ?? []) {
-        if (!revealedNodes.has(pred)) {
-          missingFeeders += 1;
+  // NO ISLAND-HOPPING. The units split into their connected components,
+  // and each island is built to COMPLETION before the next one starts -
+  // biggest first, so the main line is the opening act and the loose odds
+  // and ends are the coda. Within an island the machine walk is the same
+  // greedy: feeders-complete first, then wired-to-standing, then nearest.
+  const componentIndexOf = new Map<string, number>();
+  const components: string[][] = [];
+  for (const unit of units) {
+    if (componentIndexOf.has(unit)) {
+      continue;
+    }
+    const index = components.length;
+    const member: string[] = [];
+    const queue = [unit];
+    componentIndexOf.set(unit, index);
+    while (queue.length > 0) {
+      const current = queue.pop()!;
+      member.push(current);
+      for (const other of neighbours.get(current) ?? []) {
+        if (!componentIndexOf.has(other)) {
+          componentIndexOf.set(other, index);
+          queue.push(other);
         }
       }
-      let adjacent = 0;
-      if (revealedNodes.size > 0) {
-        adjacent = 1;
-        for (const other of neighbours.get(unitId) ?? []) {
-          if (revealedNodes.has(other)) {
-            adjacent = 0;
-            break;
+    }
+    components.push(member);
+  }
+  components.sort((left, right) => {
+    if (left.length !== right.length) {
+      return right.length - left.length;
+    }
+    const a = left.reduce((min, id) => Math.min(min, pointFor(id).y * 4 + pointFor(id).x), Infinity);
+    const b = right.reduce(
+      (min, id) => Math.min(min, pointFor(id).y * 4 + pointFor(id).x),
+      Infinity,
+    );
+    return a - b || (left[0] < right[0] ? -1 : 1);
+  });
+
+  let lastPoint: Point | undefined;
+  for (const component of components) {
+    const remaining = new Set(component.filter((id) => !attachmentIds.has(id)));
+    while (remaining.size > 0) {
+      let best: string | undefined;
+      let bestKey: [number, number, number, string] | undefined;
+      for (const unitId of remaining) {
+        let missingFeeders = 0;
+        for (const pred of machinePreds.get(unitId) ?? []) {
+          if (!revealedNodes.has(pred)) {
+            missingFeeders += 1;
           }
         }
+        let adjacent = 0;
+        if (revealedNodes.size > 0) {
+          adjacent = 1;
+          for (const other of neighbours.get(unitId) ?? []) {
+            if (revealedNodes.has(other)) {
+              adjacent = 0;
+              break;
+            }
+          }
+        }
+        const point = pointFor(unitId);
+        const travel = lastPoint ? distance(point, lastPoint) : point.y * 4 + point.x;
+        const key: [number, number, number, string] = [missingFeeders, adjacent, travel, unitId];
+        if (
+          !bestKey ||
+          key[0] < bestKey[0] ||
+          (key[0] === bestKey[0] &&
+            (key[1] < bestKey[1] ||
+              (key[1] === bestKey[1] &&
+                (key[2] < bestKey[2] || (key[2] === bestKey[2] && key[3] < bestKey[3])))))
+        ) {
+          bestKey = key;
+          best = unitId;
+        }
       }
-      const point = pointFor(unitId);
-      const travel = lastPoint ? distance(point, lastPoint) : point.y * 4 + point.x;
-      const key: [number, number, number, string] = [missingFeeders, adjacent, travel, unitId];
-      if (
-        !bestKey ||
-        key[0] < bestKey[0] ||
-        (key[0] === bestKey[0] &&
-          (key[1] < bestKey[1] ||
-            (key[1] === bestKey[1] &&
-              (key[2] < bestKey[2] || (key[2] === bestKey[2] && key[3] < bestKey[3])))))
-      ) {
-        bestKey = key;
-        best = unitId;
+      if (!best) {
+        break;
       }
+      remaining.delete(best);
+      revealMachine(best);
+      lastPoint = pointFor(best);
     }
-    if (!best) {
-      break;
-    }
-    remaining.delete(best);
-    revealMachine(best);
-    lastPoint = pointFor(best);
-  }
 
-  // Attendants nothing summoned: loose drawers, or attachment-only chains.
-  // They arrive last among the cards, in reading order, wires included.
-  const strayAttachments = [...attachmentIds]
-    .filter((id) => !revealedNodes.has(id))
-    .sort(readingOrder);
-  for (const attachment of strayAttachments) {
-    revealAttachment(attachment);
+    // This island's attendants nothing summoned: loose drawers, or
+    // attachment-only chains. In reading order, wires included, before the
+    // NEXT island - an island is finished before the show moves on.
+    const strayAttachments = component
+      .filter((id) => attachmentIds.has(id) && !revealedNodes.has(id))
+      .sort(readingOrder);
+    for (const attachment of strayAttachments) {
+      revealAttachment(attachment);
+    }
   }
 
   // Boards holding no completion members (empty, or ink-only) still have a
