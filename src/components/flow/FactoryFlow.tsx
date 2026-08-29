@@ -145,6 +145,12 @@ import {
   stopBoardTimelapse,
   subscribeBoardTimelapse,
 } from "./board-timelapse";
+import {
+  boardTiltCoverScale,
+  getBoardTiltSnapshot,
+  getServerBoardTiltSnapshot,
+  subscribeBoardTilt,
+} from "./board-tilt";
 import { BoardHelp } from "./BoardHelp";
 import { PerfHud } from "./PerfHud";
 import {
@@ -3367,6 +3373,11 @@ export function FactoryFlow() {
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        // A dialog above the board (the dev menu, tuning the tilt mid-run)
+        // owns its own Escape; that press must close it, not end the show.
+        if (document.querySelector('[role="dialog"]')) {
+          return;
+        }
         event.stopPropagation();
         stopBoardTimelapse();
       }
@@ -3386,6 +3397,15 @@ export function FactoryFlow() {
     };
   }, [timelapseActive]);
   useEffect(() => stopBoardTimelapse, []);
+  // The demo-card tilt (board-tilt.ts): worn during a timelapse (until the
+  // finale flattens it for the wide reveal) or all the time when the dev
+  // menu says so. Angles are CSS variables so slider edits apply live.
+  const boardTilt = useSyncExternalStore(
+    subscribeBoardTilt,
+    getBoardTiltSnapshot,
+    getServerBoardTiltSnapshot,
+  );
+  const tiltWorn = boardTilt.always || (timelapseActive && !timelapse?.finale);
   // The timelapse camera. Each beat retargets the focus window's rect; a
   // rAF chase then eases the viewport toward it every frame, so the shot
   // pans continuously after the action instead of hopping fit to fit. The
@@ -5837,8 +5857,8 @@ export function FactoryFlow() {
         // Every card and wire MOUNTS mid-run during the build timelapse, so
         // the pop-in lives on a board class rather than on the nodes.
         timelapseActive ? "factory-flow-board--timelapse" : "",
-        // The finale flattens the demo-card tilt for the wide reveal.
-        timelapse?.finale ? "factory-flow-board--timelapse-finale" : "",
+        tiltWorn ? "factory-flow-board--tilted" : "",
+        tiltWorn && boardTilt.drift ? "factory-flow-board--tilted-drift" : "",
       ].join(" ")}
       style={
         {
@@ -5852,6 +5872,13 @@ export function FactoryFlow() {
           backgroundImage: canvasTheme.vignette,
           "--canvas": canvasTheme.base,
           "--canvas-dot": canvasTheme.patternColor,
+          ...(tiltWorn
+            ? {
+                "--board-tilt-pitch": `${boardTilt.pitch}deg`,
+                "--board-tilt-yaw": `${boardTilt.yaw}deg`,
+                "--board-tilt-cover": String(boardTiltCoverScale(boardTilt)),
+              }
+            : undefined),
         } as CSSProperties
       }
       onPointerDownCapture={handleAnnotationPointerDown}

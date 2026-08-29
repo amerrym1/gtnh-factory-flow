@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BOARD_TIMELAPSE_SPEEDS,
   getBoardTimelapseSpeed,
@@ -10,6 +10,12 @@ import {
   setBoardTimelapseVolume,
   startBoardTimelapse,
 } from "./flow/board-timelapse";
+import {
+  BOARD_TILT_MAX_ANGLE,
+  getBoardTiltSnapshot,
+  writeBoardTilt,
+  type BoardTilt,
+} from "./flow/board-tilt";
 import { isPerfHudEnabled, setPerfHudEnabled } from "./flow/PerfHud";
 import { useFactoryStore } from "@/store/factory-store";
 
@@ -20,6 +26,11 @@ import { useFactoryStore } from "@/store/factory-store";
  * that preview now lives in here as one row among the dev tools, so new ones
  * get a home instead of each claiming its own secret click. Deliberately
  * undocumented in the UI - it is a workbench, not a feature.
+ *
+ * A floating PALETTE, not a modal: no backdrop, no dim, no blur, dragged
+ * around by its header. The tools in here act on the board live - the tilt
+ * sliders especially - so the board has to stay visible and the panel has
+ * to get out of the way of whatever it is adjusting.
  */
 export function DevMenu({
   onClose,
@@ -37,6 +48,13 @@ export function DevMenu({
   // The timelapse is CONFIGURED here, before it starts; during the run the
   // chip on the board only stops it. Both settings persist on this device.
   const [timelapseSpeed, setTimelapseSpeed] = useState<number>(() => getBoardTimelapseSpeed());
+  // The demo-card tilt: edits apply to the board live (a running timelapse
+  // included - this menu opens over it without cancelling).
+  const [tilt, setTilt] = useState<BoardTilt>(() => getBoardTiltSnapshot());
+  const patchTilt = (patch: Partial<BoardTilt>) => {
+    writeBoardTilt(patch);
+    setTilt(getBoardTiltSnapshot());
+  };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -48,33 +66,64 @@ export function DevMenu({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  // Dragged by the header, plain pointer capture. Clamped so the header can
+  // never leave reach - a palette dragged offscreen is a palette lost.
+  const [position, setPosition] = useState({ x: 16, y: 56 });
+  const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number }>(undefined);
+
   return (
     <div
-      // Same no-backdrop-filter-on-a-phone rule as every other overlay.
-      className="fixed inset-0 z-[120] grid place-items-center bg-neutral-950/75 p-4 backdrop-blur-sm compact:bg-neutral-950/92 compact:[backdrop-filter:none]"
-      onClick={onClose}
+      role="dialog"
+      aria-label="Dev menu"
+      className="fixed z-[120] flex max-h-[85vh] w-96 max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-lg border border-line-strong bg-surface shadow-2xl"
+      style={{ left: position.x, top: position.y }}
     >
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Dev menu"
-        className="flex max-h-[88vh] w-full max-w-sm flex-col overflow-hidden rounded-lg border border-line-strong bg-surface shadow-2xl compact:max-h-[92vh]"
-        onClick={(event) => event.stopPropagation()}
+        className="relative shrink-0 cursor-move touch-none select-none border-b border-line bg-gradient-to-br from-surface-raised to-surface px-5 py-4 compact:px-4"
+        onPointerDown={(event) => {
+          if ((event.target as Element).closest("button")) {
+            return;
+          }
+          dragRef.current = {
+            pointerId: event.pointerId,
+            offsetX: event.clientX - position.x,
+            offsetY: event.clientY - position.y,
+          };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const drag = dragRef.current;
+          if (!drag || drag.pointerId !== event.pointerId) {
+            return;
+          }
+          setPosition({
+            x: Math.min(
+              window.innerWidth - 72,
+              Math.max(72 - 384, event.clientX - drag.offsetX),
+            ),
+            y: Math.min(window.innerHeight - 48, Math.max(0, event.clientY - drag.offsetY)),
+          });
+        }}
+        onPointerUp={() => {
+          dragRef.current = undefined;
+        }}
+        onPointerCancel={() => {
+          dragRef.current = undefined;
+        }}
       >
-        <div className="relative shrink-0 border-b border-line bg-gradient-to-br from-surface-raised to-surface px-5 py-4 compact:px-4">
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="absolute right-3 top-3 rounded p-1.5 text-fg-subtle hover:bg-surface-raised hover:text-fg"
-          >
-            <X className="h-4 w-4" />
-          </button>
-          <h2 className="text-xl font-black leading-none tracking-tight">Dev menu</h2>
-          <p className="mt-1.5 text-sm text-fg-muted">
-            Tools for working on the planner. Saved on this device.
-          </p>
-        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-3 top-3 rounded p-1.5 text-fg-subtle hover:bg-surface-raised hover:text-fg"
+        >
+          <X className="h-4 w-4" />
+        </button>
+        <h2 className="text-xl font-black leading-none tracking-tight">Dev menu</h2>
+        <p className="mt-1.5 text-sm text-fg-muted">
+          Tools for working on the planner. Saved on this device. Drag me aside.
+        </p>
+      </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4 compact:p-3">
           <button
@@ -177,8 +226,64 @@ export function DevMenu({
               Play
             </button>
           </div>
+
+          <div className="mt-2 rounded border border-line px-3 py-2.5">
+            <span className="block text-base leading-tight text-fg">Board tilt</span>
+            <span className="mt-0.5 block text-xs text-fg-muted">
+              The demo-card lean the timelapse plays under. Edits apply live, mid-run too.
+            </span>
+            <div className="mt-2.5 flex items-center gap-1.5 text-xs">
+              <span className="w-14 shrink-0 text-fg-subtle">Pitch</span>
+              <input
+                type="range"
+                min={-BOARD_TILT_MAX_ANGLE}
+                max={BOARD_TILT_MAX_ANGLE}
+                step={0.5}
+                value={tilt.pitch}
+                onChange={(event) => patchTilt({ pitch: Number(event.target.value) })}
+                aria-label="Tilt pitch"
+                className="h-1 w-full accent-cyan-500"
+              />
+              <span className="w-10 shrink-0 text-right tabular-nums text-fg-muted">
+                {tilt.pitch}&deg;
+              </span>
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-xs">
+              <span className="w-14 shrink-0 text-fg-subtle">Turn</span>
+              <input
+                type="range"
+                min={-BOARD_TILT_MAX_ANGLE}
+                max={BOARD_TILT_MAX_ANGLE}
+                step={0.5}
+                value={tilt.yaw}
+                onChange={(event) => patchTilt({ yaw: Number(event.target.value) })}
+                aria-label="Tilt turn"
+                className="h-1 w-full accent-cyan-500"
+              />
+              <span className="w-10 shrink-0 text-right tabular-nums text-fg-muted">
+                {tilt.yaw}&deg;
+              </span>
+            </div>
+            <label className="mt-2.5 flex cursor-pointer items-center gap-2 text-xs text-fg-muted">
+              <input
+                type="checkbox"
+                checked={tilt.drift}
+                onChange={(event) => patchTilt({ drift: event.target.checked })}
+                className="accent-cyan-500"
+              />
+              Slow sway on top of the set angles
+            </label>
+            <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs text-fg-muted">
+              <input
+                type="checkbox"
+                checked={tilt.always}
+                onChange={(event) => patchTilt({ always: event.target.checked })}
+                className="accent-cyan-500"
+              />
+              Keep the board tilted outside the timelapse too
+            </label>
+          </div>
         </div>
-      </div>
     </div>
   );
 }

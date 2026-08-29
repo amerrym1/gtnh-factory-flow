@@ -699,33 +699,35 @@ textarea {
   animation: board-card-arrive 340ms ease-out backwards;
 }
 
-/* The demo-card tilt: while the timelapse plays, the whole canvas leans
-   like a product page showing off a card, with a slow breathing drift on
-   the inner renderer so it feels held rather than pinned. Only the visual
-   layer tilts - React Flow's own viewport transform stays 2D, so the
-   camera math never knows. The finale flattens it for the wide reveal
-   (the drift rides a separate element, so killing its animation mid-swing
-   costs at most a couple of degrees under a moving camera). */
-.factory-flow-board--timelapse {
+/* The demo-card tilt (board-tilt.ts): the whole canvas leans like a
+   product page showing off a card, with a slow breathing drift on the
+   inner renderer so it feels held rather than pinned. Angles ride CSS
+   variables from the board container, so the dev menu's sliders apply
+   live; the cover scale keeps the leaning plane's corners under the 2D
+   chrome (a rotated plane's projection shrinks toward the centre, and
+   the canvas edges peeked out from behind the toolbars without it).
+   Only the visual layer tilts - React Flow's own viewport transform
+   stays 2D, so the camera math never knows. The transition lives on the
+   base class so putting the tilt on and taking it off both ease; the
+   timelapse finale takes it off by dropping the class for the wide
+   reveal (the drift rides a separate element, so killing its animation
+   mid-swing costs at most a couple of degrees under a moving camera). */
+.factory-flow-board .react-flow {
+  transition: transform 1200ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.factory-flow-board--tilted {
   perspective: 1600px;
 }
 
-.factory-flow-board--timelapse .react-flow {
-  transition: transform 1200ms cubic-bezier(0.33, 1, 0.68, 1);
-  transform: rotateX(7deg) rotateY(-3deg);
+.factory-flow-board--tilted .react-flow {
+  transform: rotateX(var(--board-tilt-pitch, 7deg)) rotateY(var(--board-tilt-yaw, -3deg))
+    scale(var(--board-tilt-cover, 1.12));
   transform-style: preserve-3d;
 }
 
-.factory-flow-board--timelapse .react-flow__renderer {
+.factory-flow-board--tilted-drift .react-flow__renderer {
   animation: timelapse-tilt-drift 9s ease-in-out infinite alternate;
-}
-
-.factory-flow-board--timelapse-finale .react-flow {
-  transform: none;
-}
-
-.factory-flow-board--timelapse-finale .react-flow__renderer {
-  animation: none;
 }
 
 @keyframes timelapse-tilt-drift {
