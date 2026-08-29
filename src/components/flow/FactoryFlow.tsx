@@ -439,8 +439,6 @@ const FLOW_WRAPPER_STYLE = { backgroundColor: "transparent" } as const;
 const MIN_FRAMED_WIDTH = 420;
 
 /** The delay plus four pulses of the keyframes in globals.css, plus some slack. */
-const PLACED_FLASH_CLASS = "board-card-placed";
-const PLACED_FLASH_MS = 3100;
 /**
  * Mid-drag live rerouting. A held card's wires used to keep their last
  * solved route until the drop; on boards under this many wires the REAL
@@ -4657,13 +4655,14 @@ export function FactoryFlow() {
   );
   const handleFitView = useCallback(() => frameBoardCards(), [frameBoardCards]);
 
-  // Whatever just landed says so, twice. Done to the DOM rather than through the
-  // node objects on purpose: a transient outline is not state the board should
-  // rebuild for, and threading it through would hand every card a new identity
-  // twice per placement — which is what the node memos exist to prevent.
+  // A freshly landed card gets the arrive pop (board motion) and nothing
+  // else. The white placed-flash beacon that used to pulse here for three
+  // seconds is gone by request - the thump and the pop already say it.
+  // Done to the DOM rather than through the node objects on purpose: a
+  // transient class is not state the board should rebuild for.
   const placedBoardToken = useFactoryStore((state) => state.placedBoardToken);
   useEffect(() => {
-    if (placedBoardToken === 0) {
+    if (placedBoardToken === 0 || !readBoardMotionSnapshot().moveMotion) {
       return undefined;
     }
 
@@ -4672,31 +4671,21 @@ export function FactoryFlow() {
     // One frame: the cards are placed by the same commit that raised the token,
     // so they are not in the DOM yet.
     const frame = requestAnimationFrame(() => {
-      const flashed = ids
+      const arrived = ids
         .map((id) => boardRef.current?.querySelector(`.react-flow__node[data-id="${id}"]`))
         .filter((element): element is Element => element !== null && element !== undefined);
-      const arrive = readBoardMotionSnapshot().moveMotion;
-      for (const element of flashed) {
-        element.classList.add(PLACED_FLASH_CLASS);
-        if (arrive) {
-          element.classList.add(BOARD_ARRIVE_CLASS);
-        }
+      for (const element of arrived) {
+        element.classList.add(BOARD_ARRIVE_CLASS);
       }
       const arriveTimer = window.setTimeout(() => {
-        for (const element of flashed) {
+        for (const element of arrived) {
           element.classList.remove(BOARD_ARRIVE_CLASS);
         }
       }, BOARD_ARRIVE_MS);
-      const timer = window.setTimeout(() => {
-        for (const element of flashed) {
-          element.classList.remove(PLACED_FLASH_CLASS);
-        }
-      }, PLACED_FLASH_MS);
       cleanup = () => {
-        window.clearTimeout(timer);
         window.clearTimeout(arriveTimer);
-        for (const element of flashed) {
-          element.classList.remove(PLACED_FLASH_CLASS, BOARD_ARRIVE_CLASS);
+        for (const element of arrived) {
+          element.classList.remove(BOARD_ARRIVE_CLASS);
         }
       };
     });

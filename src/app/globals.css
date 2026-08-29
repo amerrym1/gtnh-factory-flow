@@ -495,48 +495,10 @@ textarea {
   }
 }
 
-/*
- * Just landed. A card added to a plan of two hundred is indistinguishable from
- * the other hundred and ninety-nine, and on a phone it arrives behind whichever
- * drawer you added it from — so it says where it is, twice, and then stops.
- *
- * An outline and a filter on the wrapper: no layout, no repaint of the card's
- * contents, and nothing that could be confused with the board's own signals. The
- * amber glow means "this carries the resource you are pointing at" and cyan means
- * "this is selected" (which a new card also is); white belongs to neither.
- */
-.board-card-placed {
-  /* Half a second before the first pulse: the card has just appeared and the
-     panel that placed it is still sliding away, and a flash underneath all that
-     is one more thing happening at the same time. It waits until the eye is
-     free. Then four slow pulses, which reads as a beacon rather than a glitch. */
-  outline: 4px solid transparent;
-  outline-offset: 4px;
-  animation: board-card-placed 620ms ease-in-out 500ms 4;
-}
-
-/* Not just a frame. On a board of framed cards an outline alone is another frame;
-   the wash is what carries at a glance, the same trick the hovered-resource glow
-   uses. Opacity on one absolutely positioned layer, so the card's own contents
-   are never repainted. */
-.board-card-placed::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: #ffffff;
-  opacity: 0;
-  pointer-events: none;
-  z-index: 3;
-  animation: board-card-placed-wash 620ms ease-in-out 500ms 4;
-}
-
-@keyframes board-card-placed {
-  50% {
-    outline-color: rgba(255, 255, 255, 0.95);
-    filter: brightness(1.28);
-  }
-}
+/* The white placed-flash beacon (four pulses, white outline and wash on a
+   fresh card) used to live here. Removed by request 2026-08-28: the landing
+   thump and the arrive pop carry the moment, and the flash read as noise on
+   a polished board. */
 
 /* The chip the recipe book leaves behind while a pressed plus button's recipe
    is still on the wire. The animation delay is the point: an add answered
@@ -550,19 +512,6 @@ textarea {
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes board-card-placed-wash {
-  50% {
-    opacity: 0.26;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .board-card-placed,
-  .board-card-placed::after {
-    animation: none;
   }
 }
 
