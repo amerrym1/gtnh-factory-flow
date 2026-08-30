@@ -252,8 +252,13 @@ Working notes for future agents on GTNH Factory Flow.
   - Still on scraped data, deliberately: the 11 fusion reactors (need
     `fixedVoltageTier` and their own overclock), and the machines whose
     coefficients read recipe metadata or the recipe type (Nano Forge, PCB
-    Factory, Naquadah Fuel Refinery, Component Assembly Line, Dangote
-    Distillus, Precise Auto-Assembler, QFT, Eye of Harmony).
+    Factory, Component Assembly Line, Dangote Distillus, Precise
+    Auto-Assembler, QFT, Eye of Harmony). The Naquadah Fuel Refinery
+    graduated off that list: its recipe metadata is the special value (the
+    minimum field restriction coil tier), which `ctx.recipeSpecialValue`
+    now carries into the table, and a control may declare
+    `minimumFromSpecialValue` to make the recipe's special value its
+    per-recipe minimum tier.
   - Steam machines are handled in code, not scraped. The 8 steam multiblocks
     (Steam Grinder/Squasher/Separator/Purifier/Presser/Blender/Fuser/Hearth)
     are table entries: `1.6 / tierMachine` duration, 8 parallels, no

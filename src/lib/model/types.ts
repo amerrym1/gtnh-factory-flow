@@ -198,6 +198,13 @@ export interface MachineConfigControl {
   label: string;
   minimumKey: string;
   defaultKey?: string;
+  /**
+   * The recipe's own special value is a 1-based minimum tier on this ladder
+   * (the Naquadah Fuel Refinery's field restriction coils), so `minimumKey`
+   * is overridden per recipe to `tiers[specialValue - 1]`. Declared by
+   * curated machine-table controls only; the dataset never emits it.
+   */
+  minimumFromSpecialValue?: boolean;
   tiers: MachineConfigTierOption[];
 }
 

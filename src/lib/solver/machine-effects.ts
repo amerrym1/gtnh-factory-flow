@@ -1,6 +1,7 @@
 import {
   getRecipeCoilTierControl,
   getRecipeMachineConfigTierControls,
+  getRecipeSpecialValue,
 } from "@/lib/model/recipe-rules";
 import {
   BEE_APIARY_BASE_PRODUCTION_TERM,
@@ -73,9 +74,16 @@ export function buildMachineContext(
       if (!control) {
         return 0;
       }
-      return Math.max(
-        0,
-        control.tiers.findIndex((entry) => entry.key === control.current.key),
+      // The position on the FULL ladder, as the table's formulas are written
+      // against ("0 for cupronickel, 3 for TPV"): a control's tier list starts
+      // at its minimum, so a per-recipe minimum (the NFR's field restriction
+      // coils) must not renumber the rungs above it.
+      return (
+        (control.minimumIndex ?? 0) +
+        Math.max(
+          0,
+          control.tiers.findIndex((entry) => entry.key === control.current.key),
+        )
       );
     },
     value: (controlId) => {
@@ -108,6 +116,7 @@ export function buildMachineContext(
       getNodeRunTier(recipe as Recipe, node),
     ),
     recipeVoltageTier: getVoltageTierIndex(getVoltageTierForEuT(Math.abs(recipe.eut ?? 0))),
+    recipeSpecialValue: getRecipeSpecialValue(recipe),
   };
 }
 
