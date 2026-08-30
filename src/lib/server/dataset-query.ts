@@ -32,6 +32,7 @@ import {
   isVirtualChoiceResource,
   resourceMatchesInput,
 } from "@/lib/model";
+import { machineTableControlResourceIds } from "@/lib/machines/machine-table";
 import {
   MAX_RECIPE_QUERY_CLAUSES,
   recipeQueryClauseMode,
@@ -272,8 +273,15 @@ function withSynthesizedHandlerIcons(catalog: LoadedRecipeIndex): MachineHandler
 }
 
 function getMachineConfigResources(catalog: LoadedRecipeIndex): DatasetResourceIndexEntry[] {
+  // The curated machine table names its control blocks by dataset id (field
+  // restriction coils); ship those faces too, or the client can only draw
+  // its labelled-slot fallback for them.
+  const tableIds = machineTableControlResourceIds();
   return catalog.resources
-    .filter((resource) => resource.tooltip?.some(isMachineConfigTooltipLine))
+    .filter(
+      (resource) =>
+        resource.tooltip?.some(isMachineConfigTooltipLine) || tableIds.has(resource.id),
+    )
     .map((resource) => ({
       ...resource,
       recipeCount: 0,

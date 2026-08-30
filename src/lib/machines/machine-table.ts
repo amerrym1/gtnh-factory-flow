@@ -477,7 +477,9 @@ const FIELD_COIL_TIERS: Array<[key: string, label: string, block: string]> = [
 ];
 const FIELD_COIL_CONTROL: MachineConfigControl = {
   id: FIELD_COIL,
-  label: "Field Restriction Coil",
+  // "Field Coil", not the full block name: the config panel's knob labels sit
+  // in a half-card column and three words wrap.
+  label: "Field Coil",
   minimumKey: "t1",
   defaultKey: "t1",
   minimumFromSpecialValue: true,
@@ -1251,6 +1253,26 @@ export function resolveOverclockSpec(
 /** Every machine name the table answers to, for coverage reporting in tests. */
 export function machineTableNames(): string[] {
   return Object.keys(MACHINES);
+}
+
+/**
+ * Every real dataset resource a table-declared control puts on a card (coil
+ * blocks, casings). The catalog ships these in its machine-config resource
+ * index so the client can swap the labelled-slot fallback for the block's own
+ * icon; `factoryflow:` ids are synthetic and have no texture to find.
+ */
+export function machineTableControlResourceIds(): Set<string> {
+  const ids = new Set<string>();
+  for (const behaviour of Object.values(MACHINES)) {
+    for (const control of behaviour.controls ?? []) {
+      for (const tier of control.tiers) {
+        if (!tier.resource.id.startsWith("factoryflow:")) {
+          ids.add(tier.resource.id);
+        }
+      }
+    }
+  }
+  return ids;
 }
 
 export function normalizeMachineName(name: string): string {

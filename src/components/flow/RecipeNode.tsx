@@ -342,6 +342,17 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     ).map((control) => ({
       ...control,
       resource: resolveDatasetMachineConfigResource(control.resource, dataset),
+      // Table-declared controls carry bare resource ids (field restriction
+      // coils); look every option's face up too, or only the current slot
+      // gets an icon while the dropdown falls back to lettered squares.
+      current: {
+        ...control.current,
+        resource: resolveDatasetMachineConfigResource(control.current.resource, dataset),
+      },
+      tiers: control.tiers.map((tier) => ({
+        ...tier,
+        resource: resolveDatasetMachineConfigResource(tier.resource, dataset),
+      })),
     }));
     const cropProductionControls = isCropProductionRecipe(effectiveRecipe)
       ? machineConfigControls.filter((control) => isCropProductionConfigControl(control.id))

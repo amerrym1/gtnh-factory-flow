@@ -73,6 +73,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.39.1",
+    date: "2026-08-29",
+    headline: "The Naquadah Fuel Refinery gets its real coils",
+    notes: [
+      "Naquadah Fuel Refinery cards now offer field restriction coils instead of heating coils.",
+      "Each recipe starts at its own minimum coil tier.",
+      "Every coil tier adds 4 parallels, and each tier above the recipe's minimum is a perfect overclock.",
+    ],
+  },
+  {
     version: "2.39.0",
     date: "2026-08-29",
     headline: "Watch your factory build itself",
