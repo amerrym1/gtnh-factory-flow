@@ -1,0 +1,168 @@
+/**
+ * Singleblock generators: 1 amp of their tier while running, with a
+ * per-family per-tier efficiency ladder. Burn rate is the workbook's
+ * (V + packetLoss) / (fuelValue x efficiency) x 20 - the sheet charges GT's
+ * per-amp output loss and so do we.
+ */
+import { findFuel, fuelOptions, powerPlannerData, type PowerFuelEntry } from "../planner-data";
+import type { PowerModel, PowerSourceDefinition } from "../types";
+import { familyTierOptions, formatAmount, items, liters, percent, stat, tierPower } from "./helpers";
+
+interface SingleblockSpec {
+  id: string;
+  name: string;
+  family: string;
+  unlock: string;
+  blurb: string;
+  fuels: PowerFuelEntry[] | "steam";
+  /** Solid fuels burn whole items; the sheet prices them per hour. */
+  solid?: boolean;
+  /** The fuel players actually run, so a fresh card starts sane. */
+  defaultFuel?: string;
+}
+
+const SPECS: SingleblockSpec[] = [
+  {
+    id: "steam-turbine",
+    name: "Steam Turbine",
+    family: "steamTurbine",
+    unlock: "LV",
+    blurb: "Burns steam at 2 L per EU before efficiency.",
+    fuels: "steam",
+  },
+  {
+    id: "gas-turbine",
+    name: "Gas Turbine",
+    family: "gasTurbine",
+    unlock: "LV",
+    blurb: "Burns gas fuels: benzene, methane, nitrobenzene and friends.",
+    fuels: powerPlannerData.gasFuels,
+    defaultFuel: "Benzene",
+  },
+  {
+    id: "combustion-generator",
+    name: "Combustion Generator",
+    family: "combustion",
+    unlock: "LV",
+    blurb: "Burns diesel-line fuels from light fuel to high octane gasoline.",
+    fuels: powerPlannerData.combustionFuels,
+    defaultFuel: "Diesel",
+  },
+  {
+    id: "semifluid-generator",
+    name: "Semifluid Generator",
+    family: "semifluid",
+    unlock: "LV",
+    blurb: "Burns heavy and waste oils, creosote and other semifluids.",
+    fuels: powerPlannerData.semifluidFuels,
+    defaultFuel: "Creosote Oil",
+  },
+  {
+    id: "rocket-fuel-generator",
+    name: "Rocket Fuel Generator",
+    family: "rocket",
+    unlock: "EV",
+    blurb: "Burns mixed rocket fuels at falling efficiency per tier.",
+    fuels: powerPlannerData.rocketFuels,
+  },
+  {
+    id: "plasma-generator",
+    name: "Plasma Generator",
+    family: "plasma",
+    unlock: "EV",
+    blurb: "Burns plasma straight from a fusion reactor.",
+    fuels: powerPlannerData.plasmas,
+    defaultFuel: "Helium Plasma",
+  },
+  {
+    id: "naquadah-reactor",
+    name: "Naquadah Reactor",
+    family: "naquadah",
+    unlock: "EV",
+    blurb: "Depletes naquadah and tiberium rods; efficiency rises with tier.",
+    fuels: powerPlannerData.naquadahRods,
+    solid: true,
+  },
+  {
+    id: "magic-energy-absorber",
+    name: "Magic Energy Absorber",
+    family: "magicAbsorber",
+    unlock: "LV",
+    blurb: "Consumes magical items and essence for power.",
+    fuels: powerPlannerData.magicSolids,
+    solid: true,
+  },
+];
+
+const STEAM_EU_PER_LITER = 0.5;
+
+function buildSingleblock(spec: SingleblockSpec): PowerSourceDefinition {
+  const tiers = familyTierOptions(spec.family);
+  const settings: PowerSourceDefinition["settings"] = [
+    {
+      type: "select",
+      id: "tier",
+      label: "Tier",
+      options: tiers.options,
+      defaultKey: tiers.options[0]?.key ?? "LV",
+    },
+  ];
+  if (spec.fuels !== "steam") {
+    settings.push({
+      type: "select",
+      id: "fuel",
+      label: "Fuel",
+      options: fuelOptions(spec.fuels),
+      defaultKey: spec.defaultFuel ?? spec.fuels[0]?.name ?? "",
+    });
+  }
+
+  return {
+    id: spec.id,
+    name: spec.name,
+    group: "burners",
+    unlock: spec.unlock,
+    blurb: spec.blurb,
+    settings,
+    compute(read): PowerModel {
+      const tier = read.select("tier");
+      const { voltage, ampLoss } = tierPower(tier);
+      const efficiency = tiers.efficiencyFor(tier);
+      const fuel =
+        spec.fuels === "steam"
+          ? { name: "Steam", euPerLiter: STEAM_EU_PER_LITER }
+          : findFuel(spec.fuels, read.select("fuel"));
+
+      if (spec.solid) {
+        const euPerItem = fuel.euPerItem ?? 0;
+        // The workbook prices solids per hour: (V+loss)/EU/eff x 20 x 3600.
+        const perHour = euPerItem > 0 ? ((voltage + ampLoss) / (euPerItem * efficiency)) * 20 * 3600 : 0;
+        return {
+          euPerTick: voltage,
+          inputs: [items(fuel.name, perHour / 3600)],
+          outputs: [],
+          stats: [
+            stat("Efficiency", percent(efficiency)),
+            stat("Fuel per hour", formatAmount(perHour)),
+            stat("EU per item", formatAmount(euPerItem * efficiency)),
+          ],
+        };
+      }
+
+      const euPerLiter = fuel.euPerLiter ?? 0;
+      const litersPerSecond =
+        euPerLiter > 0 ? ((voltage + ampLoss) / (euPerLiter * efficiency)) * 20 : 0;
+      return {
+        euPerTick: voltage,
+        inputs: [liters(fuel.name, litersPerSecond)],
+        outputs: [],
+        stats: [
+          stat("Efficiency", percent(efficiency)),
+          stat("EU per L", formatAmount(euPerLiter * efficiency)),
+        ],
+      };
+    },
+  };
+}
+
+export const singleblockSources: PowerSourceDefinition[] = SPECS.map(buildSingleblock);

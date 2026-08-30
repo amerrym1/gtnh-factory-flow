@@ -15,6 +15,7 @@ import { registerBooksSink, solveBooks } from "./solve-books";
 import { applyRecipeInputOverrides, inputOverrideAmount } from "@/lib/model/recipe-input-overrides";
 import type { AlternativeCycleFace } from "@/lib/nei/alternative-cycle";
 import { createCropFarmPlaceholderRecipe, isCropFarmRecipe } from "@/lib/model/passive-production";
+import { buildPowerRecipe, isPowerRecipe } from "@/lib/power/power-recipe";
 import {
   createCustomRatePlaceholderRecipe,
   getCustomRateDial,
@@ -267,6 +268,18 @@ interface FactoryStore {
   updateNode: (nodeId: string, patch: Partial<FactoryNode>) => void;
   /** Drops an empty crop source node; a crop is picked on the node itself. */
   addCropFarmNode: () => void;
+  /** The power source picker overlay (src/lib/power). */
+  powerMenuOpen: boolean;
+  openPowerMenu: () => void;
+  closePowerMenu: () => void;
+  /** Places a power card: a node owning a synthesized generator recipe. */
+  addPowerSourceNode: (sourceId: string) => void;
+  /**
+   * Writes one power card setting and rebuilds its owned recipe in the same
+   * step, so the knobs, the slots and the books never disagree. Wires whose
+   * resource left the card (a fuel change) are pruned like any edit.
+   */
+  setPowerSetting: (nodeId: string, settingId: string, value: string) => void;
   /** A dial-a-rate source/sink node; adopts its resource from the first wire. */
   addCustomRateNode: () => void;
   /** Rate stored per second. Flipping the mode reverses direction and drops wires. */
@@ -701,6 +714,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   recipeBrowserSeed: undefined,
   recipeBrowserRefactorNodeId: undefined,
   recipeResourceHistory: [],
+  powerMenuOpen: false,
   pendingRecipeAdds: [],
   pendingResourceConnection: undefined,
   nodeColorPaintMode: undefined,
@@ -1215,6 +1229,51 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         colorTag: "green",
       }),
     );
+  },
+  openPowerMenu: () => set({ powerMenuOpen: true }),
+  closePowerMenu: () => set({ powerMenuOpen: false }),
+  addPowerSourceNode: (sourceId) => {
+    set((state) => {
+      // Each power card owns its recipe, custom-rate style; settings are
+      // defaults until the card's knobs write machineConfigTiers.
+      const recipe = buildPowerRecipe(sourceId, undefined, createId("recipe"));
+      if (!recipe) {
+        return state;
+      }
+      return {
+        ...addRecipeNodeToState(state, recipe, undefined, { focusCamera: true }),
+        powerMenuOpen: false,
+      };
+    });
+  },
+  setPowerSetting: (nodeId, settingId, value) => {
+    set((state) => {
+      const node = state.project.nodes.find((entry) => entry.id === nodeId);
+      const recipe = node
+        ? state.project.recipes.find((entry) => entry.id === node.recipeId)
+        : undefined;
+      if (!node || !recipe || !isPowerRecipe(recipe)) {
+        return state;
+      }
+      const nextSettings = { ...(node.machineConfigTiers ?? {}), [settingId]: value };
+      const nextRecipe = buildPowerRecipe(recipe.power.sourceId, nextSettings, recipe.id);
+      if (!nextRecipe) {
+        return state;
+      }
+      const project = touchProject(
+        // A fuel change swaps the card's slots, so wires to the old fuel drop.
+        pruneInvalidEdgesAndOrphanStorages({
+          ...state.project,
+          nodes: state.project.nodes.map((entry) =>
+            entry.id === nodeId ? { ...entry, machineConfigTiers: nextSettings } : entry,
+          ),
+          recipes: state.project.recipes.map((entry) =>
+            entry.id === recipe.id ? nextRecipe : entry,
+          ),
+        }),
+      );
+      return withProjectHistory(state, { project, lastResult: solveBooks(project) });
+    });
   },
   addCustomRateNode: () => {
     // Each custom rate node owns its recipe (the rate lives on it). No paint

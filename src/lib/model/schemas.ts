@@ -218,6 +218,15 @@ export const recipeSchema = z.object({
   machineProfile: machineProfileSchema.optional(),
   machineHandlers: z.array(machineHandlerSchema).optional(),
   machineConfigControls: z.array(machineConfigControlSchema).optional(),
+  // Power cards (src/lib/power): the generator behind a synthesized recipe.
+  power: z
+    .object({
+      sourceId: z.string().min(1),
+      euPerTick: z.number(),
+      stats: z.array(z.object({ label: z.string(), value: z.string() })),
+      warnings: z.array(z.string()).optional(),
+    })
+    .optional(),
   runtimeCalculation: runtimeCalculationSchema.optional(),
   isDemo: z.boolean().optional(),
   source: z

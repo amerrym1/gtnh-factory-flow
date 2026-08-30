@@ -10,6 +10,7 @@ import {
   List,
   Search,
   X,
+  Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { PointerEvent, RefObject, WheelEvent } from "react";
@@ -196,6 +197,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const setHighlightSearch = useFactoryStore((state) => state.setHighlightSearch);
   const setMaxTier = useFactoryStore((state) => state.setMaxTierFilter);
   const browseResource = useFactoryStore((state) => state.browseResource);
+  const openPowerMenu = useFactoryStore((state) => state.openPowerMenu);
   const clearResourceBrowser = useFactoryStore((state) => state.clearResourceBrowser);
   const selectRecipe = useFactoryStore((state) => state.selectRecipe);
   const addNodeForRecipe = useFactoryStore((state) => state.addNodeForRecipeObject);
@@ -1227,6 +1229,17 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
               ) : (
                 <ChevronsUpDown className="h-4 w-4" />
               )}
+            </button>
+            {/* The power source picker: generators are not dataset items, so
+                they get their own catalog beside the item search. */}
+            <button
+              type="button"
+              onClick={openPowerMenu}
+              title="Add a power source"
+              aria-label="Add a power source"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-amber-300/80 hover:text-amber-200"
+            >
+              <Zap className="h-4 w-4" />
             </button>
           </div>
 

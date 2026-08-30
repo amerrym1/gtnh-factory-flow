@@ -6,7 +6,17 @@ an honest EU/t figure, summed in a generation summary beside the existing
 power-draw summary. Revised 2026-08-30 after decoding the community power
 spreadsheet; first draft's notes are folded in.
 
-Status: PRD. Nothing here is built. The math appendix is
+Status: Phase 1 is BUILT on the `power-sector` branch (2026-08-30, not
+merged): the power lib lives in `src/lib/power/` (source catalog, workbook
+data extracted by `tools/power-planner-extract.mjs`, fuel names resolved to
+dataset resources by `tools/power-resource-map.mjs`, golden tests in
+`power.test.ts`), the picker is `PowerSourceOverlay`, the summary is
+`PowerMadePanel`, and each placed card owns a synthesized one-second recipe
+(`power-recipe.ts`, the custom-rate pattern) so wiring, the books and
+import/export need no special cases. Known gaps of the first pass: two
+unidentified singleblock panels and one Large Engines block from the
+workbook are left out; LCE/LRE side-flow units and the DEHP figure should
+still be double-checked against game source. The math appendix is
 `docs/power-planner-math.md`.
 
 ## What players are asking for

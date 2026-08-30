@@ -27,6 +27,7 @@ import { PlanIdentityDrawer } from "./PlanIdentityDrawer";
 import { SharedAddressSync } from "./SharedAddressSync";
 import { planContentFingerprint } from "@/lib/community/plan-fingerprint";
 import { BlueprintSaveDialog } from "./BlueprintSaveDialog";
+import { PowerSourceOverlay } from "./PowerSourceOverlay";
 import { DesignTabs } from "./DesignTabs";
 import { FactoryFlow } from "./flow/FactoryFlow";
 import { useBoardSoundEffects } from "./flow/use-board-sound-effects";
@@ -259,6 +260,9 @@ export function FactoryPlannerApp() {
       ) : (
         <ColumnWorkspace workspace={workspace} onLoadDatasetVersion={loadDatasetVersion} />
       )}
+      {/* The power source picker portals to the body, so it works from either
+          layout and outranks the drawers on compact. */}
+      <PowerSourceOverlay />
       {/* Every pocket-to-shelf path (card save, share-a-pocket,
           overwrite) confirms through this one dialog. */}
       <BlueprintSaveDialog />

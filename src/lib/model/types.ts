@@ -234,6 +234,17 @@ export interface Recipe {
   machineProfile?: MachineProfile;
   machineHandlers?: MachineHandler[];
   machineConfigControls?: MachineConfigControl[];
+  /**
+   * Power cards only (src/lib/power): the generator this synthesized recipe
+   * was built from and its net EU/t at the baked settings. Presence of this
+   * field is what marks a recipe as a power card.
+   */
+  power?: {
+    sourceId: string;
+    euPerTick: number;
+    stats: Array<{ label: string; value: string }>;
+    warnings?: string[];
+  };
   runtimeCalculation?: RuntimeCalculation;
   isDemo?: boolean;
   source?: {

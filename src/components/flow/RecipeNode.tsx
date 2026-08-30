@@ -109,6 +109,7 @@ import { useMachineHandlerIcons, type MachineHandlerIcon } from "./machine-icons
 import { publishDockTopInset } from "./dock-insets";
 import { useRenderedHandles } from "./use-rendered-handles";
 import { MinecraftSelect } from "./MinecraftSelect";
+import { PowerConfigPanel } from "./PowerConfigPanel";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { useWorkspaceView } from "@/lib/workspace-view";
 import { MachineStatsContent } from "./MachineStatsContent";
@@ -446,6 +447,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       steamReport,
       showHatchControl,
       energyHatchType,
+      // A power card (src/lib/power): its knobs and PRODUCES figure come off
+      // the raw recipe - the panel writes settings there, custom-rate style.
+      powerInfo: recipe.power,
     };
   }, [dataset, previewedNode, recipe]);
 
@@ -477,6 +481,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     steamReport,
     showHatchControl,
     energyHatchType,
+    powerInfo,
   } = derived;
   // The chip's own art: the concrete hatch item this tier-and-family pair
   // names, from the once-per-dataset catalog.
@@ -1440,6 +1445,17 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           !isCustomRatePlaceholder &&
           (!calmMode || !isCustomRateNode) ? (
             <GridBlock minCells={3} align="end" className="min-w-0">
+              {/* A power card's knobs: fuel, tier, rotor, boost - written
+                  through setPowerSetting so the owned recipe follows. */}
+              {!calmMode && powerInfo ? (
+                <PowerConfigPanel
+                  nodeId={projectNode.id}
+                  sourceId={powerInfo.sourceId}
+                  values={projectNode.machineConfigTiers}
+                  stats={powerInfo.stats}
+                  warnings={powerInfo.warnings}
+                />
+              ) : null}
               {calmMode ? null : machineConfigPanel}
               {calmMode ? null : passiveProductionPanel}
               <div
@@ -1501,6 +1517,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                           ? "auto"
                           : [
                               "auto",
+                              ...(powerInfo ? ["auto"] : []),
                               ...(powerReport ? ["auto"] : []),
                               ...(steamReport ? ["auto"] : []),
                               ...(machineParallelMultiplier > 1 && !parallelChipLifts
@@ -1521,6 +1538,19 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                       />
                       {!isCustomRateNode ? (
                         <>
+                          {powerInfo ? (
+                            <Stat
+                              label={powerInfo.euPerTick >= 0 ? "Makes" : "Draws"}
+                              value={`${formatCompact(
+                                Math.abs(powerInfo.euPerTick) *
+                                  projectNode.machineCount *
+                                  Math.max(1, projectNode.parallel),
+                              )} EU/t`}
+                              valueClassName={
+                                powerInfo.euPerTick >= 0 ? "text-emerald-300" : "text-red-300"
+                              }
+                            />
+                          ) : null}
                           {powerReport ? (
                             <PowerStat
                               report={powerReport}

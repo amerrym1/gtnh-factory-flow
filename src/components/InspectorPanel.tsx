@@ -13,6 +13,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { MachineShoppingList } from "./MachineShoppingList";
+import { PowerMadePanel } from "./PowerMadePanel";
 import { formatCompact } from "@/lib/model";
 import { makeResourceKey } from "@/lib/model/resources";
 import { getStorageRoles } from "@/lib/model/storage-role";
@@ -294,6 +295,9 @@ export function InspectorPanel() {
       {/* The build list rides the panel's floor: what to build, at which
           tier, and what one of each draws. */}
       <MachineShoppingList />
+      {/* Generation beside consumption, deliberately uncoupled: the player
+          compares the two totals, the planner does not (docs/power-sector.md). */}
+      <PowerMadePanel />
     </aside>
   );
 }
