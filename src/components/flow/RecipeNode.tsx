@@ -510,6 +510,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     verdict,
   );
   const powerStalled = powerReport !== undefined && powerReport.state !== "ok";
+  // A generator's EU rides the output rail as its first row; machines that
+  // only DRAW (parasitic reactors, fusion) keep the figure in the footer.
+  const showEuSocket = powerInfo !== undefined && powerInfo.euPerTick > 0;
+  const hasOutputSide = rails.outputs.length > 0 || showEuSocket;
   // The card's draw figures follow the PEAK/AVG switch. PEAK is the full
   // draw the machine spikes to when it runs, 0 only at exactly 0% (a machine
   // that never starts draws nothing); AVG weights it by the solve's usage.
@@ -1396,9 +1400,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           <div
             className={[
               "flex items-start gap-1",
-              rails.inputs.length > 0 && rails.outputs.length > 0
+              rails.inputs.length > 0 && hasOutputSide
                 ? "justify-between"
-                : rails.outputs.length > 0
+                : hasOutputSide
                   ? "justify-end"
                   : "justify-start",
             ].join(" ")}
@@ -1409,17 +1413,34 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               ports={rails.inputs}
               pending={pendingResourceConnection}
             />
-            {rails.inputs.length > 0 && rails.outputs.length > 0 ? (
+            {rails.inputs.length > 0 && hasOutputSide ? (
               <div className="flex w-4 shrink-0 items-center justify-center self-stretch text-[15px] font-black text-[var(--mc-ink-muted)]">
                 →
               </div>
             ) : null}
-            <PortRail
-              nodeId={projectNode.id}
-              side="output"
-              ports={rails.outputs}
-              pending={pendingResourceConnection}
-            />
+            {/* A generator's product IS power, so its EU row leads the output
+                rail; the material byproducts (steam, exhaust) queue under it. */}
+            {showEuSocket ? (
+              <div className="flex w-[176px] shrink-0 flex-col">
+                <PowerEuSocketRow
+                  euPerTick={powerInfo?.euPerTick ?? 0}
+                  machines={projectNode.machineCount * Math.max(1, projectNode.parallel)}
+                />
+                <PortRail
+                  nodeId={projectNode.id}
+                  side="output"
+                  ports={rails.outputs}
+                  pending={pendingResourceConnection}
+                />
+              </div>
+            ) : (
+              <PortRail
+                nodeId={projectNode.id}
+                side="output"
+                ports={rails.outputs}
+                pending={pendingResourceConnection}
+              />
+            )}
           </div>
           )}
           {/* The dial is on the card whether it holds a resource or not: an
@@ -1517,7 +1538,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                           ? "auto"
                           : [
                               "auto",
-                              ...(powerInfo ? ["auto"] : []),
+                              ...(powerInfo && powerInfo.euPerTick < 0 ? ["auto"] : []),
                               ...(powerReport ? ["auto"] : []),
                               ...(steamReport ? ["auto"] : []),
                               ...(machineParallelMultiplier > 1 && !parallelChipLifts
@@ -1538,17 +1559,15 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                       />
                       {!isCustomRateNode ? (
                         <>
-                          {powerInfo ? (
+                          {powerInfo && powerInfo.euPerTick < 0 ? (
                             <Stat
-                              label={powerInfo.euPerTick >= 0 ? "Makes" : "Draws"}
+                              label="Draws"
                               value={`${formatCompact(
                                 Math.abs(powerInfo.euPerTick) *
                                   projectNode.machineCount *
                                   Math.max(1, projectNode.parallel),
                               )} EU/t`}
-                              valueClassName={
-                                powerInfo.euPerTick >= 0 ? "text-emerald-300" : "text-red-300"
-                              }
+                              valueClassName="text-red-300"
                             />
                           ) : null}
                           {powerReport ? (
@@ -2386,6 +2405,45 @@ function PortRail({
           <OutputSocketRow key={port.key} nodeId={nodeId} port={port} pending={pending} />
         ),
       )}
+    </div>
+  );
+}
+
+/**
+ * A power card's EU, worn as the FIRST output row: the product of a
+ * generator is power, so it sits where the products sit, lightning bolt for
+ * a face. The coupling slot is deliberately inert - nothing wires to power
+ * yet - but the row already holds the place wires will land.
+ */
+function PowerEuSocketRow({ euPerTick, machines }: { euPerTick: number; machines: number }) {
+  const totalEuT = euPerTick * machines;
+  return (
+    <div className="relative flex items-stretch">
+      <MinecraftTooltip label="Power this card makes. Power does not wire to machines yet; it counts in POWER MADE, bottom right.">
+        <div
+          className={`flow-port relative flex h-[40px] ${PORT_CHIP_WIDTH_CLASS} flex-none items-center gap-1 px-0.5 py-0`}
+        >
+          <span className="pointer-events-none relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden">
+            <span className="flex h-7 w-7 items-center justify-center border border-[var(--mc-47)] bg-[var(--mc-55)]">
+              <Zap className="h-4 w-4 text-amber-300" aria-hidden />
+            </span>
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col justify-center pr-0.5">
+            <span className="block truncate text-[11px] font-bold leading-[13px] text-[var(--mc-ink)]">
+              EU
+            </span>
+            <span className="block truncate text-[10px] leading-[12px] tabular-nums text-amber-200/90">
+              <MotionNumberText
+                values={[totalEuT]}
+                render={(shown) => `${formatCompact(shown[0] ?? totalEuT)} EU/t`}
+              />
+            </span>
+          </span>
+        </div>
+      </MinecraftTooltip>
+      <span className="flow-socket-empty">
+        <Zap className="h-3 w-3 text-amber-300/60" aria-hidden />
+      </span>
     </div>
   );
 }
