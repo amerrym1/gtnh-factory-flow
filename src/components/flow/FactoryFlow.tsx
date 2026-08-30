@@ -8808,12 +8808,7 @@ const PaintToolbar = memo(function PaintToolbar({
             <Network className="h-4 w-4" />
           </button>
           {isArrangeMenuOpen ? (
-            <div className="absolute right-0 top-[calc(100%+6px)] z-30 flex w-[320px] max-w-[calc(100vw-24px)] flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
-              <p className="px-1 pt-1 font-mono text-[11px] leading-snug text-[var(--mc-ink)] opacity-70">
-                Lays the whole plan out. Loose cards are grouped into new
-                boards. Boards you made keep their contents and are only
-                moved.
-              </p>
+            <div className="absolute right-0 top-[calc(100%+6px)] z-30 flex w-[300px] max-w-[calc(100vw-24px)] flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
               <button
                 type="button"
                 onClick={onToggleTidyBoards}
@@ -8836,25 +8831,19 @@ const PaintToolbar = memo(function PaintToolbar({
                     <Check className="h-3 w-3 text-[var(--mc-15)]" strokeWidth={4} />
                   ) : null}
                 </span>
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="flex items-baseline justify-between gap-2">
-                    <span className="font-mono text-[12px] font-black uppercase">
-                      Rearrange inside boards
-                    </span>
-                    <span
-                      className={[
-                        "font-mono text-[10px] font-black tracking-[1px]",
-                        tidyBoardInteriors
-                          ? "text-[var(--mc-good)]"
-                          : "text-[var(--mc-ink-muted)]",
-                      ].join(" ")}
-                    >
-                      {tidyBoardInteriors ? "ON" : "OFF"}
-                    </span>
+                <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
+                  <span className="font-mono text-[12px] font-black uppercase">
+                    Rearrange inside boards
                   </span>
-                  <span className="font-mono text-[11px] leading-snug opacity-80">
-                    Every open board is laid out again too. Its cards, name and
-                    color stay with it.
+                  <span
+                    className={[
+                      "font-mono text-[10px] font-black tracking-[1px]",
+                      tidyBoardInteriors
+                        ? "text-[var(--mc-good)]"
+                        : "text-[var(--mc-ink-muted)]",
+                    ].join(" ")}
+                  >
+                    {tidyBoardInteriors ? "ON" : "OFF"}
                   </span>
                 </span>
               </button>
