@@ -73,6 +73,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.40.0",
+    date: "2026-08-29",
+    headline: "Auto-arrange leaves your boards alone",
+    notes: [
+      "Boards you made keep their contents: auto-arrange only moves the board itself.",
+      "Loose cards are still grouped into new boards.",
+      "The arrange button now opens a small sheet with one setting: let it rearrange inside your boards too.",
+    ],
+  },
+  {
     version: "2.39.1",
     date: "2026-08-29",
     headline: "The Naquadah Fuel Refinery gets its real coils",

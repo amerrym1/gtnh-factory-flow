@@ -440,35 +440,48 @@ Working notes for future agents on GTNH Factory Flow.
 - Opening a legacy pocket (`size` absent - the "coordinates are their own
   old space" signal) rebases members to fit the frame and drops waypoints
   on wires touching them; minimize mirrors the waypoint rule.
-- Auto-arrange DUMPS EVERY BOARD FIRST and builds zones from scratch, and
-  it draws no ink (`computeAutoArrangement`). Phase 0 spills every frame's
-  cards onto the canvas at their absolute positions (`removeBoards` on
-  `applyBoardArrangement`), then scouts with a throwaway arrange: each
-  natural island becomes a fresh open board ("Zone N", `addBoards` /
-  `setOwners`, all one undo entry). A rebuilt zone holding exactly the same
-  cards as a dumped board inherits its NAME and paper — the layout is
-  decided from scratch either way, and renaming somebody's zone on every
-  arrange is its own small betrayal. Hand-drawn frames therefore never
-  fence the layout in, and the button gives the same answer for the same
-  factory. Shelf strays and interchange buffers (the arranger's
-  `backdrop: false` islands) stay loose between zones. Then the
-  layout passes: every open board arranges its own members inside its
-  frame (deepest first, in frame space, origin one cell under the title
-  bar) and the frame REFITS around the result (`setBoardSizes`); the root
-  then arranges with every board as one meta card at its fresh size, wire
-  length between blocks doing the placing. Interior passes pin no
-  waypoints (stored waypoints are flow-space); ink on every arranged level
-  is cleared and nothing replaces it - the zones are the grouping.
-- The interior passes are BOUNDARY-AWARE: every wire crossing a frame gets
-  a phantom partner card (one per outer neighbour and direction, weight
-  x3), so members that talk across the border land against the edge their
-  wires leave through; phantoms are discarded and the members re-normalise
-  to the frame corner. Each interior pass records where every crossing
-  wire's member landed (`boundaryPortY`, "edgeId:boardId" from frame top),
-  and outer passes use those as the board card's PORT heights - which is
-  what lines frames up so wires between boards run straight instead of
-  crossing. The arrange also paints every unpainted board from
-  `ZONE_PAINTS`, skipping coats other boards already wear.
+- Auto-arrange LOCKS EVERY EXISTING BOARD (Jack, 2026-08-29, from player
+  feedback: the dump-first arrange read as destructive). A board someone
+  drew is the player's: its contents are never rearranged, its frame keeps
+  its size, name, paper and ink, and the arrange only PLACES the board -
+  one solid meta card in the root pass, wire length between blocks doing
+  the placing. Waypoints pinned on wires wholly inside one locked board
+  ride the board's move (translated, not wiped); every other re-laid wire
+  still loses its stops and dragged label, and only ROOT-level ink is
+  cleared. Do not resurrect the dump (`removeBoards` on
+  `applyBoardArrangement` survives as API only).
+- The arrange button opens a small SHEET (same pattern as Setup Rules
+  beside it): one setting, "Rearrange inside boards", and the Arrange
+  button under it. The setting is a browser preference
+  (`gtnh-factory-flow.arrange-tidy-boards.v1`, off by default), never part
+  of the plan. ON, every OPEN board takes the full interior pass in place:
+  members re-laid, frame refit, that level's ink and pinned waypoints
+  reset - but membership, name and paper still stand, and minimized
+  boards stay sealed either way. This is what makes the button repeatable
+  once everything lives in boards.
+- What the arrange still builds is ZONES for the strays
+  (`computeAutoArrangement`, all one undo entry): loose root cards are
+  scouted with a throwaway arrange and each natural island of two or more
+  becomes a fresh open board ("Zone N", numbered past any existing
+  "Zone N", `addBoards` / `setOwners`). Existing boards stand in the scout
+  so islands form around them but are never swallowed into a zone. Shelf
+  strays and interchange buffers (the arranger's `backdrop: false`
+  islands) stay loose between zones. Each fresh zone arranges its own
+  members in frame space (origin one cell under the title bar) and the
+  frame FITS around the result (`setBoardSizes`); zone interiors pin no
+  waypoints (stored waypoints are flow-space).
+- The zone interior passes are BOUNDARY-AWARE: every wire crossing a frame
+  gets a phantom partner card (one per outer neighbour and direction,
+  weight x3), so members that talk across the border land against the edge
+  their wires leave through; phantoms are discarded and the members
+  re-normalise to the frame corner. Each interior pass records where every
+  crossing wire's member landed (`boundaryPortY`, "edgeId:boardId" from
+  frame top) - and locked top-level boards record the same from where
+  their members already STAND - and the root pass uses those as the board
+  card's PORT heights, which is what lines frames up so wires between
+  boards run straight instead of crossing. The arrange also papers every
+  fresh zone from `ZONE_PAPERS`, skipping coats other boards already wear;
+  locked boards are never re-dressed.
 - The board title bar has a paint button (palette in a NodeToolbar portal,
   because the frame's own layer sits under the cards); the paint TOOL works
   on boards too. Both go through `paintPocket`.

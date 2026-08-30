@@ -98,7 +98,6 @@ import {
 import { getCrossFormCellMatch } from "@/lib/model/resources";
 import { fetchLitresPerCell } from "@/lib/datasets/cell-ratio";
 import {
-  collectPocketMembers,
   getEffectiveNodeRecipe,
   isPocketId,
 } from "@/lib/model/pocket-connections";
@@ -5228,7 +5227,7 @@ export function FactoryFlow() {
   // Auto-arrange: lay the visible level out left to right and reframe. Reads
   // the store at click time so the callback stays stable — the toolbar it
   // lives on must not re-render per project edit.
-  const handleAutoArrange = useCallback(() => {
+  const handleAutoArrange = useCallback((options: { tidyBoardInteriors: boolean }) => {
     const state = useFactoryStore.getState();
     const {
       moves,
@@ -5239,7 +5238,6 @@ export function FactoryFlow() {
       addBoards,
       setOwners,
       setBoardThemes,
-      removeBoards,
     } = computeAutoArrangement(
         state.project,
         state.lastResult,
@@ -5249,6 +5247,7 @@ export function FactoryFlow() {
           spacing: "compact",
           islands: "normal",
         },
+        options,
       );
     if (moves.length === 0) {
       return;
@@ -5257,8 +5256,10 @@ export function FactoryFlow() {
     // them: lines weighted by volume, wires docking freely, rate pills off.
     writeBoardView({ lineThicknessMode: true, freeDockMode: true, lineLabelsMode: false });
     // The arrange draws no ink: its islands become ZONES — real boards the
-    // cards move into. Old notes (and old releases' island boxes) go; they
-    // point at a layout that no longer exists.
+    // stray cards move into. Root notes (and old releases' island boxes)
+    // go; they point at a layout that no longer exists. Boards the player
+    // drew are locked: contents, size, name, paper and ink all stand, only
+    // the board itself is placed.
     state.applyBoardArrangement({
       moves,
       resetEdgeIds,
@@ -5267,7 +5268,6 @@ export function FactoryFlow() {
       addBoards,
       setOwners,
       setBoardThemes,
-      removeBoards,
       removeAnnotationIds: staleInkIds,
     });
     useFactoryStore.getState().frameBoardNodes();
@@ -8504,6 +8504,11 @@ const BoardViewMenu = memo(function BoardViewMenu({
   );
 });
 
+// Whether auto-arrange may lay out the inside of boards the player drew.
+// A browser preference, not part of the plan: two people sharing a setup
+// each keep their own habit.
+const ARRANGE_TIDY_BOARDS_KEY = "gtnh-factory-flow.arrange-tidy-boards.v1";
+
 const PaintToolbar = memo(function PaintToolbar({
   paintMode,
   onPaintModeChange,
@@ -8536,8 +8541,8 @@ const PaintToolbar = memo(function PaintToolbar({
   view: BoardView;
   onViewChange: (patch: Partial<BoardView>) => void;
   dockToggleWarning?: string;
-  /** One press lays the whole visible level out left to right. */
-  onAutoArrange: () => void;
+  /** Runs the arrange; the fold-out's setting rides along per press. */
+  onAutoArrange: (options: { tidyBoardInteriors: boolean }) => void;
   compact: boolean;
   openGroup?: ToolGroupId;
   onToggleGroup: (group: ToolGroupId | undefined) => void;
@@ -8566,6 +8571,29 @@ const PaintToolbar = memo(function PaintToolbar({
   // lift its z while either is out, same as it does for the palette.
   const [isViewMenuOpen, setViewMenuOpen] = useState(false);
   const [isRulesOpen, setRulesOpen] = useState(false);
+  // The arrange sheet: one setting and the button that runs it. The setting
+  // is remembered per browser; the default respects the boards you drew.
+  const [isArrangeMenuOpen, setArrangeMenuOpen] = useState(false);
+  const arrangeRef = useRef<HTMLDivElement | null>(null);
+  const closeArrangeMenu = useCallback(() => setArrangeMenuOpen(false), []);
+  useFoldoutDismiss(isArrangeMenuOpen, arrangeRef, closeArrangeMenu);
+  const [tidyBoardInteriors, setTidyBoardInteriors] = useState(() => {
+    try {
+      return localStorage.getItem(ARRANGE_TIDY_BOARDS_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const onToggleTidyBoards = useCallback(() => {
+    setTidyBoardInteriors((was) => {
+      try {
+        localStorage.setItem(ARRANGE_TIDY_BOARDS_KEY, was ? "0" : "1");
+      } catch {
+        // Private windows without storage still get the toggle for the session.
+      }
+      return !was;
+    });
+  }, []);
 
   return (
     <div
@@ -8578,7 +8606,9 @@ const PaintToolbar = memo(function PaintToolbar({
         // OVER it and take its clicks: the colours were once visible and
         // unpickable. The row lifts above every other toolbar for as long as
         // any of its fold-outs is out.
-        isPaletteOpen || isDrawMenuOpen || isViewMenuOpen || isRulesOpen ? "z-40" : "z-20",
+        isPaletteOpen || isDrawMenuOpen || isViewMenuOpen || isRulesOpen || isArrangeMenuOpen
+          ? "z-40"
+          : "z-20",
       ].join(" ")}
     >
       <ToolGroup
@@ -8759,15 +8789,90 @@ const PaintToolbar = memo(function PaintToolbar({
           with the view button rather than among the card tools. */}
       <ToolTray>
         <SetupRulesButton open={isRulesOpen} onOpenChange={setRulesOpen} />
-        <button
-          type="button"
-          onClick={onAutoArrange}
-          className="pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
-          title="Auto-arrange"
-          aria-label="Auto-arrange the board"
-        >
-          <Network className="h-4 w-4" />
-        </button>
+        {/* Auto-arrange opens a small sheet, like the rules beside it: one
+            setting saying whether boards you drew are opened up, and the
+            button that runs the arrange. The arrange respects boards by
+            default, so the setting is where you say otherwise. */}
+        <div ref={arrangeRef} className="pointer-events-auto flex">
+          <button
+            type="button"
+            onClick={() => setArrangeMenuOpen((was) => !was)}
+            aria-expanded={isArrangeMenuOpen}
+            className={[
+              "relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)]",
+              isArrangeMenuOpen ? TOOL_FACE_ON : TOOL_FACE_OFF,
+            ].join(" ")}
+            title="Auto-arrange"
+            aria-label="Auto-arrange the board"
+          >
+            <Network className="h-4 w-4" />
+          </button>
+          {isArrangeMenuOpen ? (
+            <div className="absolute right-0 top-[calc(100%+6px)] z-30 flex w-[320px] max-w-[calc(100vw-24px)] flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+              <p className="px-1 pt-1 font-mono text-[11px] leading-snug text-[var(--mc-ink)] opacity-70">
+                Lays the whole plan out. Loose cards are grouped into new
+                boards. Boards you made keep their contents and are only
+                moved.
+              </p>
+              <button
+                type="button"
+                onClick={onToggleTidyBoards}
+                aria-pressed={tidyBoardInteriors}
+                className={[
+                  "flex items-start gap-2 border-2 p-2 text-left",
+                  tidyBoardInteriors
+                    ? `border-[var(--mc-good)] ${TOOL_FACE_ON}`
+                    : `border-[var(--mc-15)] ${TOOL_FACE_OFF}`,
+                ].join(" ")}
+              >
+                <span
+                  aria-hidden
+                  className={[
+                    "mt-[1px] flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)]",
+                    tidyBoardInteriors ? "bg-[var(--mc-good)]" : "bg-[var(--mc-24)]",
+                  ].join(" ")}
+                >
+                  {tidyBoardInteriors ? (
+                    <Check className="h-3 w-3 text-[var(--mc-15)]" strokeWidth={4} />
+                  ) : null}
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="flex items-baseline justify-between gap-2">
+                    <span className="font-mono text-[12px] font-black uppercase">
+                      Rearrange inside boards
+                    </span>
+                    <span
+                      className={[
+                        "font-mono text-[10px] font-black tracking-[1px]",
+                        tidyBoardInteriors
+                          ? "text-[var(--mc-good)]"
+                          : "text-[var(--mc-ink-muted)]",
+                      ].join(" ")}
+                    >
+                      {tidyBoardInteriors ? "ON" : "OFF"}
+                    </span>
+                  </span>
+                  <span className="font-mono text-[11px] leading-snug opacity-80">
+                    Every open board is laid out again too. Its cards, name and
+                    color stay with it.
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  closeArrangeMenu();
+                  onAutoArrange({ tidyBoardInteriors });
+                }}
+                className="flex items-center justify-center gap-2 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] p-2 font-mono text-[12px] font-black uppercase text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+                aria-label="Arrange the board"
+              >
+                <Network className="h-4 w-4" />
+                Arrange
+              </button>
+            </div>
+          ) : null}
+        </div>
         <BoardMuteButton />
       </ToolTray>
       {/* The corner slot: view options are one button and a sheet at every
@@ -11247,6 +11352,15 @@ function computeAutoArrangement(
   baseProject: FactoryProject,
   result: ThroughputResult | undefined,
   taste: ArrangeTaste,
+  options: {
+    /**
+     * Off (the default), a board someone drew is sealed: its interior is
+     * never touched and the arrange only places the board. On, every OPEN
+     * board is laid out again in place - membership, name and paper still
+     * stand, only the interior layout and the frame's fit change.
+     */
+    tidyBoardInteriors: boolean;
+  },
 ): {
   moves: Array<{ id: string; position: { x: number; y: number } }>;
   wireRoutes: Array<{ id: string; waypoints: Array<{ x: number; y: number }> }>;
@@ -11256,7 +11370,6 @@ function computeAutoArrangement(
   addBoards: FactoryPocket[];
   setOwners: Array<{ id: string; pocketId?: string }>;
   setBoardThemes: Array<{ id: string; theme: string }>;
-  removeBoards: string[];
 } {
   const recipesById = new Map(baseProject.recipes.map((recipe) => [recipe.id, recipe]));
   // Frames refitted by the interior passes, read by every OUTER pass so a
@@ -11412,86 +11525,18 @@ function computeAutoArrangement(
     return { gatherLevel, representativeAt };
   };
 
-  // ---- Phase 0: dump every board, then zone from scratch. ----
+  // ---- Zoning: boards are the player's; only loose cards get rooms. ----
   //
-  // The arrange lays the plan out as if no board had ever been drawn: every
-  // frame is dumped, its cards spilled onto the canvas where they stand,
-  // and the zoning below decides the rooms afresh from the wiring alone. A
-  // board that survives is a board the arrange would have built anyway — so
-  // hand-drawn frames never fence the layout in, and the button always
-  // gives the same answer for the same factory.
+  // A board someone drew is LOCKED (Jack, 2026-08-29): its contents are
+  // never rearranged and its frame keeps its size — the arrange only
+  // places the board itself, one solid meta card among the others. What
+  // the arrange still does is house the strays: cards on the open canvas
+  // are scouted with a throwaway arrange, and every natural island of two
+  // or more becomes a fresh open zone. Existing boards stand in the scout
+  // so islands form around them, but a zone may never swallow one —
+  // nothing sits in two boards at once.
   const basePockets = baseProject.pockets ?? [];
-  const removeBoards = basePockets.map((pocket) => pocket.id);
-
-  // Absolute origin of every frame, so a dumped card lands where it looked
-  // like it was. A board that never stood open (no size) kept its members
-  // in their own old space, which is nobody's coordinates — those spill as
-  // they are, exactly as unwrapping one by hand does.
-  const originById = new Map<string, { x: number; y: number }>();
-  const originOf = (pocketId: string): { x: number; y: number } => {
-    const cached = originById.get(pocketId);
-    if (cached) {
-      return cached;
-    }
-    originById.set(pocketId, { x: 0, y: 0 });
-    const pocket = basePockets.find((entry) => entry.id === pocketId);
-    if (!pocket) {
-      return { x: 0, y: 0 };
-    }
-    const parent = pocket.parentPocketId ? originOf(pocket.parentPocketId) : { x: 0, y: 0 };
-    const origin =
-      pocket.size === undefined
-        ? parent
-        : { x: parent.x + pocket.position.x, y: parent.y + pocket.position.y };
-    originById.set(pocketId, origin);
-    return origin;
-  };
-  const spill = <T extends { pocketId?: string; position: { x: number; y: number } }>(
-    items: T[],
-  ): T[] =>
-    items.map((item) => {
-      if (item.pocketId === undefined) {
-        return item;
-      }
-      const origin = originOf(item.pocketId);
-      return {
-        ...item,
-        pocketId: undefined,
-        position: { x: item.position.x + origin.x, y: item.position.y + origin.y },
-      };
-    });
-
-  const flat: FactoryProject = {
-    ...baseProject,
-    nodes: spill(baseProject.nodes),
-    storages: baseProject.storages ? spill(baseProject.storages) : undefined,
-    annotations: baseProject.annotations ? spill(baseProject.annotations) : undefined,
-    pockets: [],
-  };
-
-  // What each dumped board held and what it was wearing. A rebuilt zone
-  // covering exactly the same cards inherits the name and paper: the layout
-  // is decided from scratch either way, and silently renaming somebody's
-  // "Platline" to "Zone 3" on every arrange would be its own small betrayal.
-  const clothesByMembers = new Map<
-    string,
-    { name: string; theme?: string; colorTag?: FactoryNodeColorTag }
-  >();
-  const memberKey = (ids: string[]) => [...ids].sort().join("|");
-  for (const pocket of basePockets) {
-    const members = collectPocketMembers(baseProject, pocket.id);
-    const ids = [
-      ...members.nodes.map((node) => node.id),
-      ...members.storages.map((storage) => storage.id),
-    ];
-    if (ids.length > 0) {
-      clothesByMembers.set(memberKey(ids), {
-        name: pocket.name,
-        theme: pocket.theme,
-        colorTag: pocket.colorTag,
-      });
-    }
-  }
+  const lockedBoardIds = new Set(basePockets.map((pocket) => pocket.id));
 
   const mintZoneId = () =>
     `pocket-${
@@ -11501,16 +11546,20 @@ function computeAutoArrangement(
     }`;
   const addBoards: FactoryPocket[] = [];
   const setOwners: Array<{ id: string; pocketId?: string }> = [];
-  const scout = makeGatherer(flat).gatherLevel(undefined);
+  const scout = makeGatherer(baseProject).gatherLevel(undefined);
   if (scout.cards.length > 0) {
     const scouted = arrangeBoard({ cards: scout.cards, wires: scout.wires, taste });
     const scoutPositionById = new Map(
       scouted.moves.map((move) => [move.id, move.position] as const),
     );
     // Membership falls out of the geometry: every island rect covers
-    // exactly its own cards.
+    // exactly its own cards. Locked boards helped shape the islands but
+    // are never claimed by one.
     const islandMembers: string[][] = scouted.islands.map(() => []);
     for (const card of scout.cards) {
+      if (lockedBoardIds.has(card.id)) {
+        continue;
+      }
       const position = scoutPositionById.get(card.id);
       const size = scout.sizeById.get(card.id);
       if (!position || !size) {
@@ -11532,19 +11581,23 @@ function computeAutoArrangement(
         islandMembers[index].push(card.id);
       }
     }
+    // Fresh zones number past any "Zone N" already standing on the plan.
     let zoneNumber = 1;
+    for (const pocket of basePockets) {
+      const match = /^Zone (\d+)$/.exec(pocket.name);
+      if (match) {
+        zoneNumber = Math.max(zoneNumber, Number(match[1]) + 1);
+      }
+    }
     for (const members of islandMembers) {
       if (members.length < 2) {
         continue;
       }
-      const clothes = clothesByMembers.get(memberKey(members));
       const zone: FactoryPocket = {
         id: mintZoneId(),
-        name: clothes?.name ?? `Zone ${zoneNumber}`,
+        name: `Zone ${zoneNumber}`,
         position: { x: 0, y: 0 },
         expanded: true,
-        ...(clothes?.theme ? { theme: clothes.theme } : undefined),
-        ...(clothes?.colorTag ? { colorTag: clothes.colorTag } : undefined),
       };
       zoneNumber += 1;
       addBoards.push(zone);
@@ -11554,29 +11607,32 @@ function computeAutoArrangement(
     }
   }
 
-  // Everything the zoning did not claim goes on the canvas — which, since
-  // every board was dumped, is where it already is.
+  // Everything the zoning did not claim stays loose on the canvas.
   const zoneOwner = new Map(setOwners.map((owner) => [owner.id, owner.pocketId]));
 
-  // The plan as the layout passes see it: no old frames, the fresh zones in
-  // place, cards moved into them. Positions are stale here, which is fine —
-  // every arranged card gets a new one, and the passes read positions only
-  // for the default-origin anchor.
+  // The plan as the layout passes see it: every existing board intact, the
+  // fresh zones in place, stray cards moved into them. Zoned positions are
+  // stale here, which is fine — every arranged card gets a new one, and
+  // locked members are read only where they already stand.
   const project: FactoryProject = {
-    ...flat,
-    nodes: flat.nodes.map((node) =>
+    ...baseProject,
+    nodes: baseProject.nodes.map((node) =>
       zoneOwner.has(node.id) ? { ...node, pocketId: zoneOwner.get(node.id) } : node,
     ),
-    storages: flat.storages?.map((storage) =>
+    storages: baseProject.storages?.map((storage) =>
       zoneOwner.has(storage.id) ? { ...storage, pocketId: zoneOwner.get(storage.id) } : storage,
     ),
-    pockets: addBoards,
+    pockets: [...basePockets, ...addBoards],
   };
 
   const { gatherLevel, representativeAt } = makeGatherer(project);
   const view = computeBoardLevelView(project);
   const moves: Array<{ id: string; position: { x: number; y: number } }> = [];
   const boardSizes: Array<{ id: string; size: { width: number; height: number } }> = [];
+  // Boards whose interior the arrange re-laid this run: fresh zones always,
+  // existing open boards only with tidy-inside on. Waypoints and ink inside
+  // any other board stand.
+  const tidiedBoards = new Set<string>();
 
   // Interior passes, deepest board first (openBoards comes parents-first),
   // so every parent already knows its nested boards' fresh frames. Member
@@ -11588,6 +11644,34 @@ function computeAutoArrangement(
     if (bundle.cards.length === 0) {
       continue;
     }
+
+    // A locked board's interior is the player's: nothing inside moves and
+    // the frame keeps its size. Its crossing wires still report where
+    // their members stand, so the root pass can line frames up by real
+    // port heights. Boards nested inside a locked board have no outer
+    // pass reading them, so only top-level frames record theirs. With
+    // tidy-inside on, existing open boards take the full interior pass
+    // below instead, exactly as fresh zones do.
+    if (lockedBoardIds.has(board.id) && !options.tidyBoardInteriors) {
+      if (board.parentPocketId === undefined) {
+        const lockedCards = new Map(bundle.cards.map((card) => [card.id, card]));
+        for (const edge of project.edges) {
+          const sourceRep = representativeAt(board.id, edge.source);
+          const targetRep = representativeAt(board.id, edge.target);
+          const inbound = targetRep !== undefined && sourceRep === undefined;
+          const outbound = sourceRep !== undefined && targetRep === undefined;
+          if (!inbound && !outbound) {
+            continue;
+          }
+          const member = lockedCards.get((inbound ? targetRep : sourceRep) as string);
+          if (member) {
+            boundaryPortY.set(`${edge.id}:${board.id}`, member.y + member.height / 2);
+          }
+        }
+      }
+      continue;
+    }
+    tidiedBoards.add(board.id);
 
     // Boundary pulls. A member whose wires cross the frame must end up by
     // the edge those wires leave through: every crossing edge gets a
@@ -11701,40 +11785,85 @@ function computeAutoArrangement(
   const arranged = arrangeBoard({ cards: root.cards, wires: root.wires, taste });
   moves.push(...arranged.moves);
 
-  // Every wire the arranged view draws loses its hand-pinned stops and
-  // dragged label — both aim at a layout that no longer exists. Wires
-  // hidden behind a minimized board keep theirs; nothing they render
-  // against moved.
+  // How far each locked top-level board moved: waypoints pinned on wires
+  // wholly inside one are flow-space points, and the whole room took the
+  // same step.
+  const arrangedPositionById = new Map(
+    arranged.moves.map((move) => [move.id, move.position] as const),
+  );
+  const lockedBoardDelta = new Map<string, { x: number; y: number }>();
+  for (const pocket of basePockets) {
+    if (pocket.parentPocketId !== undefined) {
+      continue;
+    }
+    const position = arrangedPositionById.get(pocket.id);
+    if (position) {
+      lockedBoardDelta.set(pocket.id, {
+        x: position.x - pocket.position.x,
+        y: position.y - pocket.position.y,
+      });
+    }
+  }
+
+  // Every wire the arrange re-laid loses its hand-pinned stops and dragged
+  // label — both aim at a layout that no longer exists. A wire living
+  // wholly inside one locked board is different: its layout stands and
+  // only the whole room moved, so its stops ride the board's step instead
+  // of being wiped.
   const resetEdgeIds: string[] = [];
+  const carriedWaypoints: Array<{
+    id: string;
+    waypoints: Array<{ x: number; y: number }>;
+  }> = [];
   for (const edge of project.edges) {
     if (!edge.waypoints?.length && !edge.labelOffset) {
       continue;
     }
-    const sourceRep = view.representativeOf(edge.source);
-    const targetRep = view.representativeOf(edge.target);
-    if (sourceRep && targetRep && sourceRep !== targetRep) {
-      resetEdgeIds.push(edge.id);
+    const sourceTop = representativeAt(undefined, edge.source);
+    const targetTop = representativeAt(undefined, edge.target);
+    if (
+      sourceTop !== undefined &&
+      sourceTop === targetTop &&
+      lockedBoardIds.has(sourceTop) &&
+      !tidiedBoards.has(sourceTop)
+    ) {
+      const delta = lockedBoardDelta.get(sourceTop);
+      if (delta && (delta.x !== 0 || delta.y !== 0) && edge.waypoints?.length) {
+        carriedWaypoints.push({
+          id: edge.id,
+          waypoints: edge.waypoints.map((point) => ({
+            x: point.x + delta.x,
+            y: point.y + delta.y,
+          })),
+        });
+      }
+      continue;
     }
+    resetEdgeIds.push(edge.id);
   }
 
-  // The arrange owns the ink of every level it touched: the root and every
-  // open board. Old notes and boxes — including the island boxes earlier
-  // releases drew — point at a layout that no longer exists, and the zones
-  // themselves are the grouping now.
+  // The arrange owns the ink of the levels it re-laid: the root, its fresh
+  // zones (which have none yet), and any board tidy-inside re-laid. Ink
+  // inside an untouched board still points at a layout that stands, and it
+  // rides the frame, so it stays.
   const staleInkIds = (project.annotations ?? [])
-    .filter((annotation) => view.isLevelShown(annotation.pocketId))
+    .filter(
+      (annotation) =>
+        annotation.pocketId === undefined || tidiedBoards.has(annotation.pocketId),
+    )
     .map((annotation) => annotation.id);
 
-  // Every board without paper gets one, cycling through the subdued
-  // canvas papers so the zones read apart without shouting. Papers other
-  // boards already lie on - hand-picked or from an earlier run - are passed
-  // over until the cycle runs dry, and a second run re-papers nothing.
+  // Every fresh zone gets a paper, cycling through the subdued canvas
+  // papers so the zones read apart without shouting. Papers other boards
+  // already lie on - hand-picked or from an earlier run - are passed over
+  // until the cycle runs dry. Locked boards are never re-dressed: an
+  // unpapered one keeps its id colour.
   const setBoardThemes: Array<{ id: string; theme: string }> = [];
   const wornPapers = new Set(
     (project.pockets ?? []).map((pocket) => pocket.theme).filter(Boolean),
   );
   let paperIndex = 0;
-  for (const pocket of project.pockets ?? []) {
+  for (const pocket of addBoards) {
     if (pocket.theme) {
       continue;
     }
@@ -11754,14 +11883,13 @@ function computeAutoArrangement(
 
   return {
     moves,
-    wireRoutes: arranged.wireRoutes,
+    wireRoutes: [...arranged.wireRoutes, ...carriedWaypoints],
     resetEdgeIds,
     staleInkIds,
     boardSizes,
     addBoards,
     setOwners,
     setBoardThemes,
-    removeBoards,
   };
 }
 
