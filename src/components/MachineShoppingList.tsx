@@ -582,7 +582,7 @@ function DrawModePill({ average }: { average: boolean }) {
             : "bg-[var(--mc-56)] text-[var(--mc-ink)]",
         ].join(" ")}
       >
-        PEAK
+        <span className="block -translate-y-px">PEAK</span>
       </button>
       <button
         type="button"
@@ -596,7 +596,7 @@ function DrawModePill({ average }: { average: boolean }) {
             : "text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]",
         ].join(" ")}
       >
-        AVG
+        <span className="block -translate-y-px">AVG</span>
       </button>
     </div>
   );

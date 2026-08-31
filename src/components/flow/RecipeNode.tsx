@@ -10,7 +10,17 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { ChevronDown, Copy, Cpu, Minus, Plus, RefreshCw, Sprout, Zap } from "lucide-react";
+import {
+  ChevronDown,
+  Copy,
+  Cpu,
+  Image as ImageIcon,
+  Minus,
+  Plus,
+  RefreshCw,
+  Sprout,
+  Zap,
+} from "lucide-react";
 import type {
   FactoryNode,
   MachineConfigTierOption,
@@ -111,6 +121,8 @@ import { useRenderedHandles } from "./use-rendered-handles";
 import { MinecraftSelect } from "./MinecraftSelect";
 import { PowerConfigPanel } from "./PowerConfigPanel";
 import { getPowerSource } from "@/lib/power/registry";
+import { getPowerStructureArt } from "@/lib/power/structure-art";
+import { getPowerMachineIcon, type PowerMachineIcon } from "@/lib/power/planner-data";
 import type { PowerSelectSetting } from "@/lib/power/types";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { useWorkspaceView } from "@/lib/workspace-view";
@@ -185,49 +197,11 @@ const CUSTOM_RATE_UNIVERSAL_HANDLE_IDS: readonly string[] = [
 /**
  * The power sector's card face: the window ground warmed toward amber - a
  * different material, with every element on it keeping its ordinary colours.
+ * The face is the WHOLE mark (a chamfered-corner variant was tried and
+ * dropped: the frame's flash and the selection ring could not be made to
+ * traverse the cuts convincingly).
  */
 const POWER_CARD_FACE = "color-mix(in srgb, var(--mc-78) 85%, #d99a2b 15%)";
-/** The corner cut, in px. The card is an octagon, not a clipped rectangle. */
-const POWER_CHAMFER = 14;
-
-/** An octagon inset `t` px from the box, corners cut `c` px along each edge. */
-function octagon(t: number, c: number): string {
-  const lo = `${t + c}px`;
-  const hi = `calc(100% - ${t + c}px)`;
-  const edge = `${t}px`;
-  const farEdge = `calc(100% - ${t}px)`;
-  return `polygon(${lo} ${edge}, ${hi} ${edge}, ${farEdge} ${lo}, ${farEdge} ${hi}, ${hi} ${farEdge}, ${lo} ${farEdge}, ${edge} ${hi}, ${edge} ${lo})`;
-}
-
-/**
- * The window clip that lets rings and glows survive: it runs 12px OUTSIDE
- * the box along the edges, and the corner cut lines extend outward at 45°,
- * so a selection ring follows the chamfer instead of being squared off.
- */
-const POWER_CARD_CLIP = (() => {
-  const m = 12;
-  const k = `${POWER_CHAMFER + m}px`;
-  const kFar = `calc(100% - ${POWER_CHAMFER + m}px)`;
-  const out = `${-m}px`;
-  const outFar = `calc(100% + ${m}px)`;
-  return `polygon(${k} ${out}, ${kFar} ${out}, ${outFar} ${k}, ${outFar} ${kFar}, ${kFar} ${outFar}, ${k} ${outFar}, ${out} ${kFar}, ${out} ${k})`;
-})();
-
-/**
- * The octagonal frame, drawn as stacked background layers because the
- * rectangular inset box-shadows cannot turn a corner: outermost the 2px
- * frame line, then the 4px bevel (lit toward the top-left like every card),
- * then the amber face. The chamfer shrinks per layer so the frame and bevel
- * keep their width along the diagonals too.
- */
-const POWER_CARD_LAYERS: Array<{ clipPath: string; background: string }> = [
-  { clipPath: octagon(0, POWER_CHAMFER), background: "var(--mc-96)" },
-  {
-    clipPath: octagon(2, POWER_CHAMFER - 1),
-    background: "linear-gradient(135deg, var(--mc-100), var(--mc-33))",
-  },
-  { clipPath: octagon(6, POWER_CHAMFER - 4), background: POWER_CARD_FACE },
-];
 
 export interface RecipeNodeData extends Record<string, unknown> {
   projectNode: FactoryNode;
@@ -248,6 +222,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     key: string;
   }>();
   const [isCropMenuOpen, setCropMenuOpen] = useState(false);
+  // A power card's picture window, hidden or shown from the header button.
+  // The choice is this browser's, per card, never the plan's.
+  const [powerArtHidden, setPowerArtHidden] = useState(() =>
+    readPowerArtCollapsed(projectNode.id),
+  );
   // Screen coords of each chip's corner while its dropdown is open; the
   // menus are fixed body portals, so they need a place, not just a flag.
   const [supplyMenuAnchor, setSupplyMenuAnchor] = useState<{ x: number; top: number; bottom: number }>();
@@ -298,9 +277,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       ? "green"
       : undefined;
   // A generator wears the power sector's face: the card BACKGROUND warms
-  // very slightly toward amber and the corners take a slight hexagon cut.
-  // Everything ON the card keeps its exact ordinary colours - this is not
-  // the paint ramp, just the window's own ground.
+  // toward amber. Everything ON the card keeps its exact ordinary colours -
+  // this is not the paint ramp, just the window's own ground.
   const isPowerCard = Boolean(recipe.power);
   const paintColor = paintTag ? GT_NODE_COLORS[paintTag] : undefined;
   const nodeColor = paintColor;
@@ -565,6 +543,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     verdict,
   );
   const powerStalled = powerReport !== undefined && powerReport.state !== "ok";
+  // The picture window's material: the workbook render for a multiblock,
+  // the machine item for a singleblock. Both are map lookups.
+  const powerArt = powerInfo ? getPowerStructureArt(powerInfo.sourceId) : undefined;
+  const powerMachineIcon = powerInfo ? getPowerMachineIcon(powerInfo.sourceId) : undefined;
+  const hasPowerPicture = Boolean(powerArt || powerMachineIcon?.iconPath);
   // A generator's EU rides the output rail as its first row; machines that
   // only DRAW (parasitic reactors, fusion) keep the figure in the footer.
   const showEuSocket = powerInfo !== undefined && powerInfo.euPerTick > 0;
@@ -923,30 +906,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 boxShadow: `inset 0 0 0 2px ${nodeColor.border}, inset 4px 4px 0 var(--mc-100), inset -4px -4px 0 var(--mc-33), 0 0 0 2px ${nodeColor.shadow}`,
               }
             : undefined),
-          ...(isPowerCard
-            ? {
-                // The rectangle's own paint goes; the octagon layers below
-                // carry the frame, bevel and face along the real shape.
-                backgroundColor: "transparent",
-                boxShadow: "none",
-                clipPath: POWER_CARD_CLIP,
-                // Lets the layers sit at negative z INSIDE this card only,
-                // under even the statically-positioned content.
-                isolation: "isolate",
-              }
-            : undefined),
+          ...(isPowerCard ? { backgroundColor: POWER_CARD_FACE } : undefined),
         }}
       >
-      {isPowerCard
-        ? POWER_CARD_LAYERS.map((layer, index) => (
-            <div
-              key={index}
-              aria-hidden
-              className="pointer-events-none absolute inset-0 z-[-1]"
-              style={layer}
-            />
-          ))
-        : null}
       {/* The ring's mark, and the reason it is an ELEMENT rather than the
           window's ::after: a pseudo-element's box is only as trustworthy as
           the selector that made it, and this one kept coming out around the
@@ -1145,7 +1107,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 ? []
                 : isCropFarmPlaceholder || isCustomRateNode
                   ? ["24px", "24px"]
-                  : ["24px", "24px", "24px"]),
+                  : hasPowerPicture
+                    ? ["24px", "24px", "24px", "24px"]
+                    : ["24px", "24px", "24px"]),
               "minmax(0,1fr)",
               // The tier chip, with its hatch sister fused on the left when
               // the machine is a multiblock that takes energy hatches. The
@@ -1195,6 +1159,29 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   aria-label="Refactor node"
                 >
                   <RefreshCw aria-hidden className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+              {hasPowerPicture ? (
+                // The picture window's switch lives with the card chrome:
+                // hidden, the window renders nothing at all.
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setPowerArtHidden((hidden) => {
+                      writePowerArtCollapsed(projectNode.id, !hidden);
+                      return !hidden;
+                    });
+                  }}
+                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
+                  title={powerArtHidden ? "Show the machine picture" : "Hide the machine picture"}
+                  aria-label={powerArtHidden ? "Show the machine picture" : "Hide the machine picture"}
+                  aria-pressed={!powerArtHidden}
+                >
+                  <ImageIcon
+                    aria-hidden
+                    className={powerArtHidden ? "h-3.5 w-3.5 opacity-40" : "h-3.5 w-3.5"}
+                  />
                 </button>
               ) : null}
             </>
@@ -1471,6 +1458,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           ) : null}
         </div>
         </div>
+        {/* The picture window sits under the title bar, over the ports:
+            the multiblock render (or the machine item), full card width. */}
+        {!calmMode && hasPowerPicture && !powerArtHidden ? (
+          <PowerStructureWindow art={powerArt} icon={powerMachineIcon} />
+        ) : null}
         {/* The card body. No paint of its own: the window behind it is
             already the ramp's face, painted or not. */}
         <div>
@@ -2499,6 +2491,85 @@ function PortRail({
         ) : (
           <OutputSocketRow key={port.key} nodeId={nodeId} port={port} pending={pending} />
         ),
+      )}
+    </div>
+  );
+}
+
+const POWER_ART_COLLAPSED_KEY = "gtnh-factory-flow.power-art-collapsed.v1";
+
+function readPowerArtCollapsed(nodeId: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = window.localStorage.getItem(POWER_ART_COLLAPSED_KEY);
+    return raw ? (JSON.parse(raw) as string[]).includes(nodeId) : false;
+  } catch {
+    return false;
+  }
+}
+
+function writePowerArtCollapsed(nodeId: string, collapsed: boolean) {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(POWER_ART_COLLAPSED_KEY);
+    const ids = new Set<string>(raw ? (JSON.parse(raw) as string[]) : []);
+    if (collapsed) {
+      ids.add(nodeId);
+    } else {
+      ids.delete(nodeId);
+    }
+    // The list only ever grows by cards someone deliberately folded; cap it
+    // so a long-lived browser profile never accumulates unbounded ids.
+    window.localStorage.setItem(POWER_ART_COLLAPSED_KEY, JSON.stringify([...ids].slice(-200)));
+  } catch {
+    // Storage unavailable: the toggle still holds for this session.
+  }
+}
+
+/**
+ * The picture window: the workbook's own multiblock render (a singleblock
+ * shows its machine item), spanning the card between the title bar and the
+ * ports, on a recessed ground from the card's own palette with a whisper
+ * of the power amber - there to help you see the thing you are planning.
+ * The header's picture button hides it entirely; hidden, nothing renders.
+ * Height plus the breathing room below stays a whole number of grid cells.
+ */
+function PowerStructureWindow({ art, icon }: { art?: string; icon?: PowerMachineIcon }) {
+  if (!art && !icon?.iconPath) {
+    return null;
+  }
+  return (
+    <div
+      className="box-border mb-2 flex h-[112px] w-full items-center justify-center overflow-hidden border-2 border-[var(--mc-47)] p-1 shadow-[inset_2px_2px_0_rgba(0,0,0,0.3),inset_-2px_-2px_0_rgba(255,255,255,0.04)]"
+      style={{ backgroundColor: "color-mix(in srgb, var(--mc-33) 92%, #d99a2b 8%)" }}
+    >
+      {art ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={art}
+          alt=""
+          draggable={false}
+          className="max-h-full max-w-full object-contain [image-rendering:pixelated]"
+        />
+      ) : (
+        <ResourceIcon
+          resource={{
+            kind: "item",
+            id: icon!.id,
+            amount: 1,
+            displayName: icon!.displayName,
+            iconPath: icon!.iconPath,
+            dominantColor: icon!.dominantColor,
+          }}
+          bare
+          tooltip={false}
+          showAmount={false}
+          showConsumedState={false}
+          // Same zoom-and-crop ratio the picker's banner uses, scaled to
+          // this window's height: the render's padding goes, its face stays.
+          iconPixelSize={170}
+          className="!h-[100px] !w-[100px]"
+        />
       )}
     </div>
   );
