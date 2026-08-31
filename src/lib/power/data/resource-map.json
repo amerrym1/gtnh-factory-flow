@@ -344,6 +344,13 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/caesium_dust-cedbe4033fc1.png",
    "dominantColor": "#8695a9"
   },
+  "Caesium Hydroxide Dust": {
+   "kind": "item",
+   "id": "gregtech:gt.metaitem.01@2244",
+   "displayName": "Caesium Hydroxide Dust",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/caesium_hydroxide_dust-ddde4dcb560f.png",
+   "dominantColor": "#666c80"
+  },
   "Caesium Plasma": {
    "kind": "fluid",
    "id": "plasma.caesium",
@@ -553,6 +560,13 @@
    "displayName": "Gelid Cryotheum",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/gelid_cryotheum-e5c6466217f6.png",
    "dominantColor": "#28a9f0"
+  },
+  "Cryotheum Dust": {
+   "kind": "item",
+   "id": "gregtech:gt.metaitem.01@2898",
+   "displayName": "Cryotheum Dust",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/cryotheum_dust-76f08ec11f67.png",
+   "dominantColor": "#25eaf7"
   },
   "Curium Plasma": {
    "kind": "fluid",
@@ -959,6 +973,13 @@
    "displayName": "Formic Acid",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/formic_acid-0441fe916cd5.png",
    "dominantColor": "#ca875e"
+  },
+  "Francium Hydroxide Dust": {
+   "kind": "item",
+   "id": "gregtech:gt.metaitem.01@2177",
+   "displayName": "Francium Hydroxide Dust",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/francium_hydroxide_dust-fb3cd7a47e4e.png",
+   "dominantColor": "#823621"
   },
   "Gadolinium Plasma": {
    "kind": "fluid",
@@ -2815,6 +2836,13 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/plutonium_241_plasma-e8dfacf75d7f.png",
    "dominantColor": "#e84444"
   },
+  "Potassium Hydroxide Dust": {
+   "kind": "item",
+   "id": "gregtech:gt.metaitem.01@2243",
+   "displayName": "Potassium Hydroxide Dust",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/potassium_hydroxide_dust-973c896c10f6.png",
+   "dominantColor": "#322754"
+  },
   "Potassium Plasma": {
    "kind": "fluid",
    "id": "plasma.potassium",
@@ -2863,6 +2891,13 @@
    "displayName": "Propionic Acid",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/propionic_acid-585d784d16da.png",
    "dominantColor": "#9ca575"
+  },
+  "Pyrotheum Dust": {
+   "kind": "item",
+   "id": "gregtech:gt.metaitem.01@2843",
+   "displayName": "Pyrotheum Dust",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/pyrotheum_dust-b55a688bab36.png",
+   "dominantColor": "#dabc33"
   },
   "Quicksilver": {
    "kind": "item",
@@ -3010,6 +3045,13 @@
    "displayName": "Sloth Shard",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/sloth_shard-3c38ad8772ba.png",
    "dominantColor": "#808080"
+  },
+  "Sodium Hydroxide Dust": {
+   "kind": "item",
+   "id": "gregtech:gt.metaitem.01@2685",
+   "displayName": "Sodium Hydroxide Dust",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/sodium_hydroxide_dust-944cd19a2d10.png",
+   "dominantColor": "#001b45"
   },
   "Sodium Plasma": {
    "kind": "fluid",

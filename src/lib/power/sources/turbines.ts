@@ -32,6 +32,8 @@ interface TurbineSpec {
   xl: boolean;
   /** Steam machines: the grade burned, or "select" for the XL's grade knob. */
   steamGrade?: string | "select";
+  /** For "select": which grades this XL machine accepts (plain + dense). */
+  steamGradeOptions?: string[];
 }
 
 const STEAM_EXHAUST: Record<string, string | undefined> = {
@@ -111,10 +113,31 @@ const SPECS: TurbineSpec[] = [
     id: "xl-turbo-steam-turbine",
     name: "XL Turbo Steam Turbine",
     unlock: "LuV",
-    blurb: "Sixteen turbines; takes dense steam.",
+    blurb: "Sixteen steam turbines; dense too.",
     turbineClass: "steam",
     xl: true,
     steamGrade: "select",
+    steamGradeOptions: ["Steam", "Dense Steam"],
+  },
+  {
+    id: "xl-turbo-hp-steam-turbine",
+    name: "XL Turbo HP Steam Turbine",
+    unlock: "LuV",
+    blurb: "Sixteen HP turbines; exhausts steam.",
+    turbineClass: "steam",
+    xl: true,
+    steamGrade: "select",
+    steamGradeOptions: ["SH Steam", "Dense SH Steam"],
+  },
+  {
+    id: "xl-turbo-sc-steam-turbine",
+    name: "XL Turbo SC Steam Turbine",
+    unlock: "UHV",
+    blurb: "Sixteen SC turbines; exhausts SH.",
+    turbineClass: "steam",
+    xl: true,
+    steamGrade: "select",
+    steamGradeOptions: ["SC Steam", "Dense SC Steam"],
   },
   {
     id: "large-gas-turbine",
@@ -181,12 +204,15 @@ function buildTurbine(spec: TurbineSpec): PowerSourceDefinition {
     },
   ];
   if (spec.steamGrade === "select") {
+    const grades = fuelOptions(powerPlannerData.steamGrades).filter(
+      (option) => spec.steamGradeOptions?.includes(option.key) ?? true,
+    );
     settings.push({
       type: "select",
       id: "grade",
       label: "Steam type",
-      options: fuelOptions(powerPlannerData.steamGrades),
-      defaultKey: "Steam",
+      options: grades,
+      defaultKey: grades[0]?.key ?? "Steam",
     });
   } else if (spec.turbineClass === "gas") {
     settings.push({

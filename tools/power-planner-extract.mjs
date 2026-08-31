@@ -217,6 +217,21 @@ const data = {
   eceFuels: fuelTable(fuelData, "BA63:BB65", ["euPerLiter"]),
   semifluidFuels: fuelTable(fuelData, "BE60:BF79", ["euPerLiter"]),
   chemFuels: fuelTable(fuelData, "BV18:BX37", [null, "euPerLiter"]),
+  // Geothermal Engine fuels (BA69:BB72): the lavas are fluids, the dusts items.
+  frostFuels: fuelTable(fuelData, "BA69:BB72", ["euPerLiter"]).map((entry) =>
+    entry.name.endsWith("Dust") ? { name: entry.name, euPerItem: entry.euPerLiter } : entry,
+  ),
+  // Large Neutralization Engine: base additives, structure tiers, robot arms.
+  lneBases: fuelTable(fuelData, "BV40:BY44", [null, "multiplier", "litersPerSecond"]),
+  lneStructureTiers: rangeRows(fuelData, "CA18:CC20").map((row) => ({
+    name: row[0],
+    residueCapacity: row[1],
+    baseDecay: row[2],
+  })),
+  lneRobotArms: rangeRows(fuelData, "CA23:CB34").map((row) => ({
+    name: row[0],
+    tier: row[1],
+  })),
   ucfeFuels: fuelTable(fuelData, "BE6:BG56", ["euPerLiter", "promoterCoefficient"]),
   magicSolids: fuelTable(fuelData, "BI6:BJ96", ["euPerItem"]),
   naquadahRods: fuelTable(fuelData, "BR18:BS27", ["euPerItem"]),
@@ -330,8 +345,11 @@ const data = {
       rocket: "AT",
       plasma: "AV",
       naquadah: "AX",
-      magicAbsorber: "AZ",
-      magicConverter: "BB",
+      // AZ is the CONVERTER's ladder, BB the absorber's (Singleblocks K46
+      // and S46 lookups) - these were once swapped and taxed the absorber
+      // with the converter's numbers.
+      magicConverter: "AZ",
+      magicAbsorber: "BB",
     }).map(([family, col]) => [
       family,
       rangeRows(singleblocks, `${col}6:${col}17`).map((row) => row[0]),

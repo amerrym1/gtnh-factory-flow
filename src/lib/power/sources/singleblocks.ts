@@ -58,6 +58,24 @@ const SPECS: SingleblockSpec[] = [
     defaultFuel: "Creosote Oil",
   },
   {
+    id: "acid-generator",
+    name: "Acid Generator",
+    family: "chem",
+    unlock: "LV",
+    blurb: "Burns the acid-line fluids.",
+    fuels: powerPlannerData.chemFuels,
+    defaultFuel: "Sulfuric Acid",
+  },
+  {
+    id: "geothermal-engine",
+    name: "Geothermal Engine",
+    family: "frost",
+    unlock: "EV",
+    blurb: "Burns lava, cryotheum and pyrotheum.",
+    fuels: powerPlannerData.frostFuels,
+    defaultFuel: "Lava",
+  },
+  {
     id: "rocket-fuel-generator",
     name: "Rocket Fuel Generator",
     family: "rocket",
@@ -82,6 +100,16 @@ const SPECS: SingleblockSpec[] = [
     blurb: "Depletes naquadah and tiberium rods.",
     fuels: powerPlannerData.naquadahRods,
     solid: true,
+  },
+  {
+    id: "magic-energy-converter",
+    name: "Magic Energy Converter",
+    family: "magicConverter",
+    unlock: "LV",
+    blurb: "Consumes magical items for power.",
+    fuels: powerPlannerData.magicSolids,
+    solid: true,
+    defaultFuel: "Quicksilver",
   },
   {
     id: "magic-energy-absorber",
@@ -147,7 +175,11 @@ function buildSingleblock(spec: SingleblockSpec): PowerSourceDefinition {
           ? { name: "Steam", euPerLiter: STEAM_EU_PER_LITER }
           : findFuel(spec.fuels, read.select("fuel"));
 
-      if (spec.solid) {
+      // The geothermal engine mixes forms: the lavas are fluids, the theum
+      // dusts items - decided per fuel, not per machine.
+      const solidFuel =
+        spec.solid || (fuel.euPerItem !== undefined && fuel.euPerLiter === undefined);
+      if (solidFuel) {
         const euPerItem = fuel.euPerItem ?? 0;
         // The workbook prices solids per hour: (V+loss)/EU/eff x 20 x 3600.
         const perHour = euPerItem > 0 ? ((voltage + ampLoss) / (euPerItem * efficiency)) * 20 * 3600 : 0;

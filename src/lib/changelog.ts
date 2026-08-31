@@ -84,10 +84,12 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "2.41.1",
     date: "2026-08-31",
-    headline: "A little polish on the room",
+    headline: "More generators, and a little polish",
     notes: [
-      "The board edges shade gently instead of fading in a circle.",
-      "The toolbars cast the same shadow the cards do.",
+      "New machines: Acid Generator, Geothermal Engine, Magic Energy Converter, Large Neutralization Engine.",
+      "The XL Turbo HP and SC Steam Turbines are their own machines now.",
+      "Large boiler tiers corrected to MV, HV, EV and IV.",
+      "The board edges shade gently, and the toolbars cast the cards' shadow.",
     ],
   },
   {

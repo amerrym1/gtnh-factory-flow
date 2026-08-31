@@ -67,6 +67,11 @@ export const powerPlannerData = rawData as unknown as {
   eceFuels: PowerFuelEntry[];
   semifluidFuels: PowerFuelEntry[];
   ucfeFuels: PowerFuelEntry[];
+  chemFuels: PowerFuelEntry[];
+  frostFuels: PowerFuelEntry[];
+  lneBases: Array<{ name: string; multiplier: number; litersPerSecond: number }>;
+  lneStructureTiers: Array<{ name: string; residueCapacity: number; baseDecay: number }>;
+  lneRobotArms: Array<{ name: string; tier: number }>;
   magicSolids: PowerFuelEntry[];
   naquadahRods: PowerFuelEntry[];
   rocketFuels: PowerFuelEntry[];

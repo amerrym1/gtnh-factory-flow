@@ -55,9 +55,11 @@ describe("singleblock generators", () => {
     expect(model.inputs[0].perSecond * 3600).toBeCloseTo(3.1488, 4);
   });
 
-  it("prices the LV magic absorber on quicksilver (L59 = 39.079 per hour)", () => {
+  it("prices the LV magic absorber on quicksilver (S59 = 41.25 per hour)", () => {
+    // The ABSORBER's own ladder (0.9 at LV) - the 39.079 this once pinned
+    // was the converter's cell, read through a swapped extraction.
     const model = compute("magic-energy-absorber", { tier: "LV", fuel: "Quicksilver" });
-    expect(model.inputs[0].perSecond * 3600).toBeCloseTo(39.07894737, 4);
+    expect(model.inputs[0].perSecond * 3600).toBeCloseTo(41.25, 4);
   });
 });
 
@@ -97,6 +99,63 @@ describe("engines", () => {
     expect(model.euPerTick).toBe(2048);
     expect(model.inputs[0].perSecond).toBe(113);
     expect(model.outputs[0]).toMatchObject({ name: "Steam", perSecond: 20000 });
+  });
+});
+
+describe("community-flagged additions (2.9 sheet)", () => {
+  it("runs the LV acid generator on molten redstone (E33 = 17.0103 L/s)", () => {
+    const model = compute("acid-generator", { tier: "LV", fuel: "Molten Redstone" });
+    expect(model.euPerTick).toBe(32);
+    expect(model.inputs[0].perSecond).toBeCloseTo(17.01030928, 6);
+  });
+
+  it("runs the EV geothermal engine on cryotheum dust as ITEMS (L40 = 0.9211/s)", () => {
+    const model = compute("geothermal-engine", { tier: "EV", fuel: "Cryotheum Dust" });
+    expect(model.euPerTick).toBe(2048);
+    expect(model.inputs[0].perSecond).toBeCloseTo(0.9211469534, 6);
+    expect(model.inputs[0].unit).not.toBe("L");
+  });
+
+  it("prices the LV magic energy converter on quicksilver (L52 = 39.0789 per hour)", () => {
+    const model = compute("magic-energy-converter", { tier: "LV", fuel: "Quicksilver" });
+    expect(model.euPerTick).toBe(32);
+    expect(model.inputs[0].perSecond * 3600).toBeCloseTo(39.07894737, 4);
+  });
+
+  it("computes the LNE at the sheet's defaults (Z29 = 2000 EU/t) and boosts on a base", () => {
+    const plain = compute("large-neutralization-engine", {
+      structure: "T1",
+      fuel: "Molten Redstone",
+      rate: "50",
+      base: "None",
+    });
+    expect(plain.euPerTick).toBe(2000);
+    expect(plain.inputs[0]).toMatchObject({ name: "Molten Redstone", perSecond: 50 });
+    const boosted = compute("large-neutralization-engine", {
+      structure: "T1",
+      fuel: "Molten Redstone",
+      rate: "50",
+      base: "Sodium Hydroxide",
+    });
+    // x1.5 power for one hydroxide dust per 20 ticks (60 per minute).
+    expect(boosted.euPerTick).toBe(3000);
+    expect(boosted.inputs[1]).toMatchObject({ name: "Sodium Hydroxide Dust", perSecond: 1 });
+  });
+
+  it("splits the XL steam turbines: HP exhausts steam, SC exhausts SH", () => {
+    const hp = compute("xl-turbo-hp-steam-turbine", { rotor: "HSS-E", size: "Huge" });
+    expect(hp.inputs[0].name).toBe("SH Steam");
+    expect(hp.outputs[0]).toMatchObject({ name: "Steam", perSecond: hp.inputs[0].perSecond });
+    const sc = compute("xl-turbo-sc-steam-turbine", { rotor: "HSS-E", size: "Huge" });
+    expect(sc.inputs[0].name).toBe("SC Steam");
+    expect(sc.outputs[0].name).toBe("SH Steam");
+    // The plain XL only offers plain and dense steam now.
+    const plain = getPowerSource("xl-turbo-steam-turbine")!;
+    const grade = plain.settings.find((setting) => setting.id === "grade");
+    expect(grade?.type === "select" && grade.options.map((option) => option.key)).toEqual([
+      "Steam",
+      "Dense Steam",
+    ]);
   });
 });
 

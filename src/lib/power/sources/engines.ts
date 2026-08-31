@@ -7,7 +7,7 @@
  */
 import { findFuel, fuelOptions, powerPlannerData } from "../planner-data";
 import type { PowerModel, PowerSourceDefinition } from "../types";
-import { formatAmount, liters, percent, stat } from "./helpers";
+import { formatAmount, items, liters, percent, stat } from "./helpers";
 
 interface EngineSpec {
   id: string;
@@ -227,8 +227,117 @@ const universalChemicalFuelEngine: PowerSourceDefinition = {
   },
 };
 
+/**
+ * Large Neutralization Engine (GT++): acids to EU at rate x density, a
+ * hydroxide base multiplying the power at its own drink rate, robot arms
+ * boosting toxic-residue decay at the cost of a loss chance. Residue is a
+ * rare accumulation, not a steady flow, so it stays in the stats.
+ */
+const largeNeutralizationEngine: PowerSourceDefinition = {
+  id: "large-neutralization-engine",
+  name: "Large Neutralization Engine",
+  group: "engines",
+  unlock: "EV",
+  blurb: "Neutralizes acids for power.",
+  settings: [
+    {
+      type: "select",
+      id: "structure",
+      label: "Structure",
+      options: powerPlannerData.lneStructureTiers.map((entry) => ({
+        key: entry.name,
+        label: entry.name,
+      })),
+      defaultKey: powerPlannerData.lneStructureTiers[0]?.name ?? "T1",
+    },
+    {
+      type: "select",
+      id: "fuel",
+      label: "Acid",
+      options: fuelOptions(powerPlannerData.chemFuels),
+      defaultKey: "Molten Redstone",
+    },
+    { type: "number", id: "rate", label: "Acid rate", min: 1, max: 100_000, step: 1, defaultValue: 50, unit: "L/s" },
+    {
+      type: "select",
+      id: "base",
+      label: "Base",
+      options: [
+        { key: "None", label: "None" },
+        ...powerPlannerData.lneBases.map((entry) => ({
+          key: entry.name,
+          label: `${entry.name} (x${entry.multiplier})`,
+        })),
+      ],
+      defaultKey: "None",
+    },
+    { type: "number", id: "arms", label: "Robot arms", min: 0, max: 16, step: 1, defaultValue: 0 },
+    {
+      type: "select",
+      id: "armTier",
+      label: "Arm tier",
+      options: powerPlannerData.lneRobotArms.map((entry) => ({
+        key: entry.name,
+        label: entry.name.replace(/^Amount \((.+)\)$/, "$1"),
+      })),
+      defaultKey: powerPlannerData.lneRobotArms[1]?.name ?? "Amount (HV)",
+      enabledWhen: undefined,
+    },
+  ],
+  compute(read): PowerModel {
+    const structure =
+      powerPlannerData.lneStructureTiers.find((entry) => entry.name === read.select("structure")) ??
+      powerPlannerData.lneStructureTiers[0];
+    const fuel = findFuel(powerPlannerData.chemFuels, read.select("fuel"));
+    const rate = read.number("rate");
+    const baseName = read.select("base");
+    const base = powerPlannerData.lneBases.find((entry) => entry.name === baseName);
+    const arms = Math.min(16, read.number("arms"));
+    const armTier =
+      powerPlannerData.lneRobotArms.find((entry) => entry.name === read.select("armTier"))?.tier ??
+      2;
+    const density = fuel.euPerLiter ?? 0;
+    const multiplier = base?.multiplier ?? 1;
+    const euPerTick = rate * density * multiplier;
+
+    // Workbook formulas: decay boost sqrt(arms) x 1.2^tier (1.4 past EV);
+    // loss chance arms / (45 x (tier + 1)); residue floor/ceil of the ^12.5.
+    const decayBoost =
+      arms === 0 ? 1 : Math.sqrt(arms) * (armTier <= 4 ? 1.2 ** armTier : 1.4 ** armTier);
+    const lossChance = arms / (45 * (armTier + 1));
+    const residueCore = (0.05 * Math.pow(density, 0.8) * rate) / (structure.baseDecay * decayBoost);
+    const residueMedian = Math.floor(Math.pow(residueCore, 12.5));
+    const residueMax = Math.ceil(Math.pow(residueCore * 1.3, 12.5));
+
+    const inputs = [liters(fuel.name, rate)];
+    if (base) {
+      // MTELargeNeutralizationEngine.useBooster: one hydroxide DUST per
+      // boost window (20/50/200/240 ticks) - the sheet's rates are per
+      // minute of those same windows.
+      inputs.push(items(`${base.name} Dust`, base.litersPerSecond / 60));
+    }
+    return {
+      euPerTick,
+      inputs,
+      outputs: [],
+      stats: [
+        stat("EU per L", formatAmount(density * multiplier)),
+        stat("Toxic residue", `${formatAmount(residueMedian)} median / ${formatAmount(residueMax)} max`),
+        stat("Residue capacity", formatAmount(structure.residueCapacity)),
+        ...(arms > 0
+          ? [
+              stat("Decay boost", `x${formatAmount(decayBoost)}`),
+              stat("Avg lifespan", `${formatAmount(Math.floor(1 / lossChance))} min`),
+            ]
+          : []),
+      ],
+    };
+  },
+};
+
 export const engineSources: PowerSourceDefinition[] = [
   ...ENGINE_SPECS.map(buildEngine),
   largeRocketEngine,
+  largeNeutralizationEngine,
   universalChemicalFuelEngine,
 ];

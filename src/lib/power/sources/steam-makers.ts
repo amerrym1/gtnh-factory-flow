@@ -24,7 +24,7 @@ const BOILER_SPECS: BoilerSpec[] = [
   {
     id: "large-bronze-boiler",
     name: "Large Bronze Boiler",
-    unlock: "LV",
+    unlock: "MV",
     steamPerTick: 1200,
     singleFuelSteamPerTick: 960,
     steamGrade: "Steam",
@@ -34,7 +34,7 @@ const BOILER_SPECS: BoilerSpec[] = [
   {
     id: "large-steel-boiler",
     name: "Large Steel Boiler",
-    unlock: "MV",
+    unlock: "HV",
     steamPerTick: 3000,
     singleFuelSteamPerTick: 2400,
     steamGrade: "Steam",
@@ -44,7 +44,7 @@ const BOILER_SPECS: BoilerSpec[] = [
   {
     id: "large-titanium-boiler",
     name: "Large Titanium Boiler",
-    unlock: "HV",
+    unlock: "EV",
     steamPerTick: 4000,
     singleFuelSteamPerTick: 3200,
     steamGrade: "SH Steam",
@@ -54,7 +54,7 @@ const BOILER_SPECS: BoilerSpec[] = [
   {
     id: "large-tungstensteel-boiler",
     name: "Large Tungstensteel Boiler",
-    unlock: "EV",
+    unlock: "IV",
     steamPerTick: 16000,
     singleFuelSteamPerTick: 12800,
     steamGrade: "SH Steam",
@@ -250,3 +250,4 @@ export const steamMakerSources: PowerSourceDefinition[] = [
   ...BOILER_SPECS.map(buildBoiler),
   ...powerPlannerData.heatExchangers.map(buildExchanger),
 ];
+

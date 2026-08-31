@@ -1,6 +1,6 @@
 {
  "source": "GTNH Power Planner 2.9 (community spreadsheet by Fox)",
- "extractedAt": "2026-08-30",
+ "extractedAt": "2026-08-31",
  "steamGrades": [
   {
    "name": "Steam",
@@ -1053,6 +1053,113 @@
   {
    "name": "Fluoroantimonic Acid",
    "euPerLiter": 5760
+  }
+ ],
+ "frostFuels": [
+  {
+   "name": "Pahoehoe Lava",
+   "euPerLiter": 24
+  },
+  {
+   "name": "Lava",
+   "euPerLiter": 32
+  },
+  {
+   "name": "Cryotheum Dust",
+   "euPerItem": 62000
+  },
+  {
+   "name": "Pyrotheum Dust",
+   "euPerItem": 62000
+  }
+ ],
+ "lneBases": [
+  {
+   "name": "Sodium Hydroxide",
+   "multiplier": 1.5,
+   "litersPerSecond": 60
+  },
+  {
+   "name": "Potassium Hydroxide",
+   "multiplier": 1.9,
+   "litersPerSecond": 24
+  },
+  {
+   "name": "Caesium Hydroxide",
+   "multiplier": 2.5,
+   "litersPerSecond": 6
+  },
+  {
+   "name": "Francium Hydroxide",
+   "multiplier": 5,
+   "litersPerSecond": 5
+  }
+ ],
+ "lneStructureTiers": [
+  {
+   "name": "T1",
+   "residueCapacity": 375000,
+   "baseDecay": 200
+  },
+  {
+   "name": "T2",
+   "residueCapacity": 1000000,
+   "baseDecay": 400
+  },
+  {
+   "name": "T3",
+   "residueCapacity": 2500000,
+   "baseDecay": 700
+  }
+ ],
+ "lneRobotArms": [
+  {
+   "name": "Amount (MV)",
+   "tier": 1
+  },
+  {
+   "name": "Amount (HV)",
+   "tier": 2
+  },
+  {
+   "name": "Amount (EV)",
+   "tier": 3
+  },
+  {
+   "name": "Amount (IV)",
+   "tier": 4
+  },
+  {
+   "name": "Amount (LuV)",
+   "tier": 5
+  },
+  {
+   "name": "Amount (ZPM)",
+   "tier": 6
+  },
+  {
+   "name": "Amount (UV)",
+   "tier": 7
+  },
+  {
+   "name": "Amount (UHV)",
+   "tier": 8
+  },
+  {
+   "name": "Amount (UEV)",
+   "tier": 9
+  },
+  {
+   "name": "Amount (UIV)",
+   "tier": 10
+  },
+  {
+   "name": "Amount (UMV)",
+   "tier": 11
+  },
+  {
+   "name": "Amount (UXV)",
+   "tier": 12
   }
  ],
  "ucfeFuels": [
@@ -20753,7 +20860,7 @@
    null,
    null
   ],
-  "magicAbsorber": [
+  "magicConverter": [
    0.95,
    0.9,
    0.85,
@@ -20767,7 +20874,7 @@
    null,
    null
   ],
-  "magicConverter": [
+  "magicAbsorber": [
    0.9,
    0.8,
    0.7,

@@ -140,6 +140,11 @@ const AUX_NAMES = [
   ["Naquadah Bolt", "item"],
   ["Naquadah Rod", "item"],
   ["Long Naquadah Rod", "item"],
+  // The LNE's hydroxide boosters are dusts, one per boost window.
+  ["Sodium Hydroxide Dust", "item"],
+  ["Potassium Hydroxide Dust", "item"],
+  ["Caesium Hydroxide Dust", "item"],
+  ["Francium Hydroxide Dust", "item"],
 ];
 
 /**
@@ -166,6 +171,7 @@ function collectNames() {
     ["eceFuels", "fluid"],
     ["semifluidFuels", "fluid"],
     ["chemFuels", "fluid"],
+    ["frostFuels", "fluid"],
     ["rocketFuels", "fluid"],
     ["lnrFuels", "fluid"],
     ["lnrCoolants", "fluid"],

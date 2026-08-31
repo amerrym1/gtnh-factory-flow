@@ -49,6 +49,30 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/novice_magic_energy_absorber-997bd76eb2b1.png",
    "dominantColor": "#9eabac"
   },
+  "acid-generator": {
+   "id": "gregtech:gt.blockmachines@12793",
+   "displayName": "Acid Generator LV",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/acid_generator_lv-4d2e999b5ca6.png",
+   "dominantColor": "#4c4800"
+  },
+  "geothermal-engine": {
+   "id": "gregtech:gt.blockmachines@830",
+   "displayName": "Basic Geothermal Engine",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/basic_geothermal_engine-373a7fc8b26e.png",
+   "dominantColor": "#605a5a"
+  },
+  "magic-energy-converter": {
+   "id": "gregtech:gt.blockmachines@1123",
+   "displayName": "Novice Magic Energy Converter",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/novice_magic_energy_converter-b3e092cc315f.png",
+   "dominantColor": "#adbbbb"
+  },
+  "large-neutralization-engine": {
+   "id": "gregtech:gt.blockmachines@31088",
+   "displayName": "Large Neutralization Engine",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/large_neutralization_engine-2822ceed9e78.png",
+   "dominantColor": "#2e1222"
+  },
   "large-combustion-engine": {
    "id": "gregtech:gt.blockmachines@15533",
    "displayName": "Large Combustion Engine",
@@ -162,6 +186,18 @@
    "displayName": "XL Turbo Steam Turbine",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/xl_turbo_steam_turbine-23f6e57ab297.png",
    "dominantColor": "#525252"
+  },
+  "xl-turbo-hp-steam-turbine": {
+   "id": "gregtech:gt.blockmachines@15520",
+   "displayName": "XL Turbo HP Steam Turbine",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/xl_turbo_hp_steam_turbine-3d3c09a6d9d2.png",
+   "dominantColor": "#714869"
+  },
+  "xl-turbo-sc-steam-turbine": {
+   "id": "gregtech:gt.blockmachines@15521",
+   "displayName": "XL Turbo SC Steam Turbine",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/xl_turbo_sc_steam_turbine-cbd942090443.png",
+   "dominantColor": "#242424"
   },
   "large-gas-turbine": {
    "id": "gregtech:gt.blockmachines@15527",
