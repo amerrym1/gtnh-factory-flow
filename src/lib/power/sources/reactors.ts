@@ -150,6 +150,7 @@ const ic2FluidReactor: PowerSourceDefinition = {
       step: 10,
       defaultValue: 1380,
       unit: "L/s",
+      enabledWhen: { settingId: "design", equals: "custom" },
     },
   ],
   compute(read): PowerModel {

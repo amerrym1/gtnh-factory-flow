@@ -2468,8 +2468,12 @@ function PowerTierChip({
   };
   if (!setting) {
     return (
+      // No text-size utility on purpose: the interactive chips are BUTTONS,
+      // and the unlayered `button { font: inherit }` in globals.css beats
+      // their text-[11px], so they render at the card's base size. A span
+      // must simply inherit to match them.
       <span
-        className="flex h-6 w-[50px] items-center justify-center border-2 px-1 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)]"
+        className="flex h-6 w-[50px] items-center justify-center border-2 px-1 pb-[3px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)]"
         style={chipStyle}
         title={`Unlocks at ${shownTier}`}
       >

@@ -3,8 +3,15 @@
 import { useState } from "react";
 import { MinecraftSelect } from "./MinecraftSelect";
 import { getPowerSource } from "@/lib/power/registry";
-import type { PowerNumberSetting } from "@/lib/power/types";
+import type {
+  PowerNumberSetting,
+  PowerSettingCondition,
+  PowerSourceDefinition,
+} from "@/lib/power/types";
 import { useFactoryStore } from "@/store/factory-store";
+
+/** How many options a select can carry before it grows a filter box. */
+const SEARCHABLE_FROM = 12;
 
 /**
  * The knobs on a power card: the source definition's settings rendered on
@@ -32,6 +39,9 @@ export function PowerConfigPanel({
     return null;
   }
 
+  const isEnabled = (condition: PowerSettingCondition | undefined) =>
+    condition === undefined || settingValue(source, values, condition.settingId) === condition.equals;
+
   return (
     <div className="min-w-0 border-t border-[var(--mc-56)] py-1.5">
       <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-x-2 gap-y-1.5">
@@ -40,6 +50,7 @@ export function PowerConfigPanel({
           if (setting.id === "tier") {
             return null;
           }
+          const enabled = isEnabled(setting.enabledWhen);
           if (setting.type === "select") {
             const value =
               values?.[setting.id] &&
@@ -47,7 +58,10 @@ export function PowerConfigPanel({
                 ? values[setting.id]
                 : setting.defaultKey;
             return (
-              <label key={setting.id} className="flex min-w-0 flex-col gap-0.5">
+              <label
+                key={setting.id}
+                className={["flex min-w-0 flex-col gap-0.5", enabled ? "" : "opacity-40"].join(" ")}
+              >
                 <span className="truncate text-[10px] uppercase tracking-wide text-[var(--mc-ink-muted)]">
                   {setting.label}
                 </span>
@@ -56,7 +70,9 @@ export function PowerConfigPanel({
                   options={setting.options}
                   onSelect={(key) => setPowerSetting(nodeId, setting.id, key)}
                   ariaLabel={setting.label}
-                  disabled={setting.options.length <= 1}
+                  disabled={!enabled || setting.options.length <= 1}
+                  searchable={setting.options.length >= SEARCHABLE_FROM}
+                  wideMenu={setting.options.length >= SEARCHABLE_FROM}
                 />
               </label>
             );
@@ -67,25 +83,30 @@ export function PowerConfigPanel({
                 key={setting.id}
                 setting={setting}
                 value={values?.[setting.id]}
+                enabled={enabled}
                 onCommit={(next) => setPowerSetting(nodeId, setting.id, next)}
               />
             );
           }
           const on = values?.[setting.id] === undefined ? setting.defaultOn : values[setting.id] === "1";
           return (
-            <label key={setting.id} className="flex min-w-0 flex-col gap-0.5">
+            <label
+              key={setting.id}
+              className={["flex min-w-0 flex-col gap-0.5", enabled ? "" : "opacity-40"].join(" ")}
+            >
               <span className="truncate text-[10px] uppercase tracking-wide text-[var(--mc-ink-muted)]">
                 {setting.label}
               </span>
               <button
                 type="button"
+                disabled={!enabled}
                 onClick={(event) => {
                   event.stopPropagation();
                   setPowerSetting(nodeId, setting.id, on ? "0" : "1");
                 }}
                 onPointerDown={(event) => event.stopPropagation()}
                 className={[
-                  "nodrag h-6 border px-1.5 text-left text-[12px]",
+                  "nodrag h-6 border px-1.5 text-left text-[12px] disabled:cursor-not-allowed",
                   on
                     ? "border-amber-300/70 bg-[var(--mc-85)] text-amber-200"
                     : "border-[var(--mc-33)] bg-[var(--mc-71)] text-[var(--mc-ink-muted)]",
@@ -116,14 +137,38 @@ export function PowerConfigPanel({
   );
 }
 
+/** A setting's live value with its default filled in, for enabledWhen checks. */
+function settingValue(
+  source: PowerSourceDefinition,
+  values: Record<string, string> | undefined,
+  settingId: string,
+): string | undefined {
+  const setting = source.settings.find((entry) => entry.id === settingId);
+  if (!setting) {
+    return undefined;
+  }
+  const raw = values?.[settingId];
+  if (setting.type === "select") {
+    return raw !== undefined && setting.options.some((option) => option.key === raw)
+      ? raw
+      : setting.defaultKey;
+  }
+  if (setting.type === "toggle") {
+    return raw === undefined ? (setting.defaultOn ? "1" : "0") : raw;
+  }
+  return raw ?? String(setting.defaultValue);
+}
+
 /** Commits on blur or Enter; the draft is local so typing never re-solves. */
 function PowerNumberField({
   setting,
   value,
+  enabled,
   onCommit,
 }: {
   setting: PowerNumberSetting;
   value: string | undefined;
+  enabled: boolean;
   onCommit: (next: string) => void;
 }) {
   const shown = value ?? String(setting.defaultValue);
@@ -143,13 +188,14 @@ function PowerNumberField({
   };
 
   return (
-    <label className="flex min-w-0 flex-col gap-0.5">
+    <label className={["flex min-w-0 flex-col gap-0.5", enabled ? "" : "opacity-40"].join(" ")}>
       <span className="truncate text-[10px] uppercase tracking-wide text-[var(--mc-ink-muted)]">
         {setting.label}
         {setting.unit ? ` (${setting.unit})` : ""}
       </span>
       <input
         value={draft.draft}
+        disabled={!enabled}
         onChange={(event) => setDraft({ shown, draft: event.target.value })}
         onBlur={commit}
         onKeyDown={(event) => {
@@ -161,7 +207,7 @@ function PowerNumberField({
         onClick={(event) => event.stopPropagation()}
         inputMode="decimal"
         aria-label={setting.label}
-        className="nodrag h-6 min-w-0 border border-[var(--mc-33)] bg-[var(--mc-93)] px-1 text-right text-[13px] text-[var(--mc-ink)]"
+        className="nodrag h-6 min-w-0 border border-[var(--mc-33)] bg-[var(--mc-93)] px-1 text-right text-[13px] text-[var(--mc-ink)] disabled:cursor-not-allowed"
       />
     </label>
   );

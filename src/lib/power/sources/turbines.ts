@@ -202,6 +202,7 @@ function buildTurbine(spec: TurbineSpec): PowerSourceDefinition {
       step: 1,
       defaultValue: 100,
       unit: spec.turbineClass === "plasma" ? "L/s" : "L/t",
+      enabledWhen: { settingId: "flowMode", equals: "custom" },
     },
   );
 

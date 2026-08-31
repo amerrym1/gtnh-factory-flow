@@ -21,12 +21,23 @@ export interface PowerSelectOption {
   label: string;
 }
 
+/**
+ * A knob that only means something while another knob holds a given value -
+ * a custom flow field with the flow mode on Optimal, say - renders grayed
+ * out until then.
+ */
+export interface PowerSettingCondition {
+  settingId: string;
+  equals: string;
+}
+
 export interface PowerSelectSetting {
   type: "select";
   id: string;
   label: string;
   options: PowerSelectOption[];
   defaultKey: string;
+  enabledWhen?: PowerSettingCondition;
 }
 
 export interface PowerNumberSetting {
@@ -38,6 +49,7 @@ export interface PowerNumberSetting {
   step: number;
   defaultValue: number;
   unit?: string;
+  enabledWhen?: PowerSettingCondition;
 }
 
 export interface PowerToggleSetting {
@@ -45,6 +57,7 @@ export interface PowerToggleSetting {
   id: string;
   label: string;
   defaultOn: boolean;
+  enabledWhen?: PowerSettingCondition;
 }
 
 export type PowerSetting = PowerSelectSetting | PowerNumberSetting | PowerToggleSetting;
