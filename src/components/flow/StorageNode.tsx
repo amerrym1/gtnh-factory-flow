@@ -858,7 +858,9 @@ function TargetLine({
           )}
           <Pencil
             aria-hidden
-            className="absolute left-full top-1/2 ml-[2px] h-[11px] w-[11px] -translate-y-1/2 fill-current text-[#a8afbb] group-hover/target:text-white"
+            // Centred on the ink-and-underline block, not the line's box:
+            // the glyphs sit low in it, so dead-centre floated the pencil.
+            className="absolute left-full top-[calc(50%+2px)] ml-[2px] h-[11px] w-[11px] -translate-y-1/2 fill-current text-[#a8afbb] group-hover/target:text-white"
           />
         </div>
       </div>

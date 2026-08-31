@@ -73,6 +73,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.42.1",
+    date: "2026-08-31",
+    headline: "Typing a product amount feels right",
+    notes: [
+      "The amount rests as a plain rate line on the drawer; the pencil marks it, click to edit.",
+      "Shorthand like 2.5k or 1m works and reads back the way you typed it.",
+      "The amount shows in the board's rate unit and converts when you switch it.",
+    ],
+  },
+  {
     version: "2.42.0",
     date: "2026-08-31",
     headline: "Solve mode: type what you want, get machine counts",
