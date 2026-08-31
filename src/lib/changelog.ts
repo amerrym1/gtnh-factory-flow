@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.42.0",
+    date: "2026-08-31",
+    headline: "Solve mode: type what you want, get machine counts",
+    notes: [
+      "A new switch by the setup rules turns the question around: type an amount on a product drawer and every card shows how many machines that takes.",
+      "Amounts are minimums, so recipes that make two things at once still solve.",
+      "An amount nothing on the board can make is marked in red on its drawer.",
+      "The mode travels with the plan, so a shared setup opens the way it was saved.",
+    ],
+  },
+  {
     version: "2.41.4",
     date: "2026-08-31",
     headline: "Neutralization Engine fixes",
