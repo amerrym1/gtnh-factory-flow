@@ -4536,8 +4536,9 @@ function getConnectionSlotState(
   return "idle";
 }
 
-/** Solve mode's machine figure: enough digits to build from, never a lie of
- * false precision past the hundredths. */
+/** Solve mode's machine figure: the smaller the count, the more decimals it
+ * earns - a x0.0417 sliver is a real answer and rounding it to x0.04 hides
+ * a fifth of it. Big counts stay whole. */
 function formatSolvedMachines(value: number): string {
   if (value <= 0.0000005) {
     return "0";
@@ -4545,7 +4546,8 @@ function formatSolvedMachines(value: number): string {
   if (value >= 100) {
     return String(Math.ceil(value - 0.000001));
   }
-  return value.toFixed(2).replace(/\.?0+$/, "");
+  const decimals = value < 1 ? 4 : value < 10 ? 3 : 2;
+  return value.toFixed(decimals).replace(/\.?0+$/, "");
 }
 
 /**
@@ -4593,8 +4595,10 @@ function SolvedMachinesStat({
       title={title}
       className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
     >
+      {/* The label stays MACHINES either way - it never stops being one.
+          The gold value is what says the count is pinned. */}
       <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">
-        {isPinned ? "Pinned" : label}
+        {label}
       </div>
       {editing ? (
         <input
@@ -4644,7 +4648,7 @@ function SolvedMachinesStat({
           </span>
           <Pencil
             aria-hidden
-            className="h-[9px] w-[9px] shrink-0 fill-current text-[var(--mc-ink-muted)] group-hover/pin:text-[var(--mc-ink)]"
+            className="h-[9px] w-[9px] shrink-0 translate-y-[1.5px] fill-current text-[var(--mc-ink-muted)] group-hover/pin:text-[var(--mc-ink)]"
           />
         </button>
       )}
