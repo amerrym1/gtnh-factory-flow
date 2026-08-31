@@ -545,6 +545,23 @@ function finalizeSolveModeResult(
       continue;
     }
     const act = solved.scaleByNode.get(nodeResult.nodeId) ?? 0;
+    nodeResult.theoreticalMachinesRequired = act * (countByNode.get(nodeResult.nodeId) ?? 1);
+    nodeResult.disposalUtilization = 1;
+    if (act <= EPSILON) {
+      // ZERO IS NOT SELF-DESTRUCTION. A machine no target needs keeps its
+      // NAMEPLATE rates - the same convention a power-stalled card follows
+      // in plan mode - because the port rows and their React Flow handles
+      // are built from these flows: zero them and the ports vanish, and
+      // with the handles gone every wire on the card silently stops
+      // drawing. Utilization 0 is what says nothing runs; the wires stay,
+      // carrying nothing.
+      nodeResult.utilization = 0;
+      nodeResult.capableUtilization = 0;
+      nodeResult.demandUtilization = 0;
+      nodeResult.requiredRatePerSecond = 0;
+      nodeResult.status = "underutilized";
+      continue;
+    }
     nodeResult.operationRatePerSecond *= act;
     for (const flow of Object.values(nodeResult.inputs)) {
       flow.amountPerSecond *= act;
@@ -554,15 +571,13 @@ function finalizeSolveModeResult(
     }
     nodeResult.euT *= act;
     totalEuT += nodeResult.euT;
-    nodeResult.utilization = act > EPSILON ? 1 : 0;
-    nodeResult.capableUtilization = nodeResult.utilization;
-    nodeResult.demandUtilization = nodeResult.utilization;
-    nodeResult.disposalUtilization = 1;
-    nodeResult.theoreticalMachinesRequired = act * (countByNode.get(nodeResult.nodeId) ?? 1);
+    nodeResult.utilization = 1;
+    nodeResult.capableUtilization = 1;
+    nodeResult.demandUtilization = 1;
     const primary = Object.values(nodeResult.outputs)[0];
     nodeResult.requiredRatePerSecond = primary?.amountPerSecond ?? 0;
     nodeResult.maxRatePerSecond = primary?.amountPerSecond ?? 0;
-    nodeResult.status = act > EPSILON ? "balanced" : "underutilized";
+    nodeResult.status = "balanced";
   }
 
   // EVERY edge gets a result. A wire the solve-mode model has no variable

@@ -134,6 +134,13 @@ describe("solve mode", () => {
     expect(result.nodes["b"]!.theoreticalMachinesRequired).toBeCloseTo(1, 5);
     // The idle chain's wires still carry results (at zero), never vanish.
     expect(Object.keys(result.edges).length).toBe(4);
+    // And the idle machine keeps its NAMEPLATE port rates: the card's port
+    // rows (and the React Flow handles its wires dock on) are built from
+    // these flows, so zeroing them made the card shed its ports and its
+    // wires stop drawing. Utilization 0 is the only zero.
+    const idleOutputs = Object.values(result.nodes["a"]!.outputs);
+    expect(idleOutputs.length).toBeGreaterThan(0);
+    expect(idleOutputs[0]!.amountPerSecond).toBeGreaterThan(0);
   });
 
   it("a byproduct drawer catches the ratio's forced overshoot", () => {
