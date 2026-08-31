@@ -583,9 +583,13 @@ export function findUnwiredNodeIds(
     }
     const incoming = incomingBy.get(node.id) ?? [];
     const outgoing = outgoingBy.get(node.id) ?? [];
+    // Same rule as the verdict: a machine whose recipe has no slots at all
+    // (a solar panel) has nothing to wire, so the checklist skips it.
+    const recipe = project.recipes.find((entry) => entry.id === node.recipeId);
+    const hasSlots = (recipe?.inputs.length ?? 0) > 0 || (recipe?.outputs.length ?? 0) > 0;
     if (
       findBareSlots(project, nodeResult, incoming, outgoing, rules) ||
-      (incoming.length === 0 && outgoing.length === 0)
+      (hasSlots && incoming.length === 0 && outgoing.length === 0)
     ) {
       ids.push(node.id);
     }
