@@ -13,7 +13,6 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { MachineShoppingList } from "./MachineShoppingList";
-import { PowerMadePanel } from "./PowerMadePanel";
 import { formatCompact } from "@/lib/model";
 import { makeResourceKey } from "@/lib/model/resources";
 import { getStorageRoles } from "@/lib/model/storage-role";
@@ -293,11 +292,9 @@ export function InspectorPanel() {
         <FlowIOPanel />
       </div>
       {/* The build list rides the panel's floor: what to build, at which
-          tier, and what one of each draws. */}
+          tier, what one of each draws - and, when generators stand on the
+          board, what they make and the plan's net power. */}
       <MachineShoppingList />
-      {/* Generation beside consumption, deliberately uncoupled: the player
-          compares the two totals, the planner does not (docs/power-sector.md). */}
-      <PowerMadePanel />
     </aside>
   );
 }

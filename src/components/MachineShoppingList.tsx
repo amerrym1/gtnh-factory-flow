@@ -28,6 +28,7 @@ import {
   type NodePowerState,
 } from "@/lib/solver/power-report";
 import { useWorkspaceView, writeWorkspaceView } from "@/lib/workspace-view";
+import { getPowerMachineIcon } from "@/lib/power/planner-data";
 import { useFactoryStore } from "@/store/factory-store";
 import { getEnergyHatchType } from "@/lib/machines/energy-hatches";
 import { getHatchAmps } from "@/lib/solver/power";
@@ -40,6 +41,27 @@ import {
 } from "@/components/flow/use-energy-hatch-catalog";
 
 type VoltageTier = Exclude<MachineTier, "DEMO">;
+
+/** A generator group's face in the list: the machine item the picker shows. */
+const powerIconCache = new Map<string, MachineHandlerIcon | undefined>();
+function powerMachineListIcon(sourceId: string): MachineHandlerIcon | undefined {
+  if (!powerIconCache.has(sourceId)) {
+    const icon = getPowerMachineIcon(sourceId);
+    powerIconCache.set(
+      sourceId,
+      icon
+        ? ({
+            kind: "item",
+            id: icon.id,
+            displayName: icon.displayName,
+            iconPath: icon.iconPath,
+            dominantColor: icon.dominantColor,
+          } as unknown as MachineHandlerIcon)
+        : undefined,
+    );
+  }
+  return powerIconCache.get(sourceId);
+}
 
 /**
  * One BUILD: a machine at one power configuration, summed across every card
@@ -62,9 +84,12 @@ interface BuildLine {
   tierIndex: number;
   euT?: number;
   steamLs?: number;
+  /** A generator build: the EU/t it MAKES, shown green where draw shows. */
+  madeEuT?: number;
   /** The same figures weighted by each card's solved usage, for AVG mode. */
   avgEuT?: number;
   avgSteamLs?: number;
+  avgMadeEuT?: number;
   /** Set on steam machines: bronze and high pressure are different builds. */
   pressure?: "bronze" | "high-pressure";
   state: NodePowerState;
@@ -77,8 +102,10 @@ interface MachineGroup {
   count: number;
   euT?: number;
   steamLs?: number;
+  madeEuT?: number;
   avgEuT?: number;
   avgSteamLs?: number;
+  avgMadeEuT?: number;
   builds: BuildLine[];
   nodeIds: string[];
   minTierIndex: number;
@@ -155,7 +182,18 @@ export function MachineShoppingList() {
         Math.max(0, lastResult.nodes[node.id]?.utilization ?? 1),
       );
       const runningCount = usage > 0 ? count : 0;
-      const euT = report ? report.drawEuT * runningCount : undefined;
+      // A generator's contribution: positive EU/t is GENERATION (the green
+      // column); the parasitic machines (DEHP, fusion, the pebble reactors)
+      // run a NEGATIVE figure, which is honestly just consumption and bills
+      // into the draw column like any machine's.
+      const powerEuT = recipe.power ? recipe.power.euPerTick : undefined;
+      const madeEuT =
+        powerEuT !== undefined && powerEuT >= 0 ? powerEuT * runningCount : undefined;
+      const euT = report
+        ? report.drawEuT * runningCount
+        : powerEuT !== undefined && powerEuT < 0
+          ? -powerEuT * runningCount
+          : undefined;
       const steamLs = steam ? steam.drawSteamPerTick * 20 * runningCount : undefined;
 
       const group =
@@ -167,8 +205,10 @@ export function MachineShoppingList() {
             count: 0,
             euT: undefined as number | undefined,
             steamLs: undefined as number | undefined,
+            madeEuT: undefined as number | undefined,
             avgEuT: undefined as number | undefined,
             avgSteamLs: undefined as number | undefined,
+            avgMadeEuT: undefined as number | undefined,
             builds: [],
             nodeIds: [],
             minTierIndex: Number.POSITIVE_INFINITY,
@@ -177,7 +217,9 @@ export function MachineShoppingList() {
           byMachine.set(handler.label, created);
           return created;
         })();
-      group.icon ??= machineIcons.get(handler.id);
+      group.icon ??= recipe.power
+        ? powerMachineListIcon(recipe.power.sourceId)
+        : machineIcons.get(handler.id);
       group.count += count;
       group.nodeIds.push(node.id);
       if (euT !== undefined) {
@@ -187,6 +229,10 @@ export function MachineShoppingList() {
       if (steamLs !== undefined) {
         group.steamLs = (group.steamLs ?? 0) + steamLs;
         group.avgSteamLs = (group.avgSteamLs ?? 0) + steamLs * usage;
+      }
+      if (madeEuT !== undefined) {
+        group.madeEuT = (group.madeEuT ?? 0) + madeEuT;
+        group.avgMadeEuT = (group.avgMadeEuT ?? 0) + madeEuT * usage;
       }
 
       // The stacking rule: singleblocks of one tier are one build; a
@@ -198,21 +244,31 @@ export function MachineShoppingList() {
       const cropTier = crop
         ? (cropsNhHarvesterTierName(crop.tierIndex) as VoltageTier)
         : undefined;
+      // A generator's build is its tier setting where it has one (an LV and
+      // an HV gas turbine are different things to construct); multiblock
+      // generators are one build each.
+      const powerTierSetting = recipe.power ? node.machineConfigTiers?.tier : undefined;
+      const powerTier =
+        powerTierSetting && getVoltageTierIndex(powerTierSetting as VoltageTier) >= 0
+          ? (powerTierSetting as VoltageTier)
+          : undefined;
       const buildKey = report
         ? `${report.tier}|${report.isMultiblock ? (report.hatchChip ?? report.hatches) : "single"}`
         : steam
           ? `steam|${steam.highPressure ? "high" : "bronze"}`
           : cropTier
             ? `crop|${cropTier}`
-            : "plain";
+            : recipe.power
+              ? `power|${powerTier ?? "block"}`
+              : "plain";
       // Steam machines sort with ULV: they are the start of the game, not the
       // end of the list a missing tier would banish them to.
       const tierIndex = report
         ? getVoltageTierIndex(report.tier)
         : steam
           ? 0
-          : cropTier
-            ? getVoltageTierIndex(cropTier)
+          : (cropTier ?? powerTier)
+            ? getVoltageTierIndex((cropTier ?? powerTier)!)
             : Number.POSITIVE_INFINITY;
       group.minTierIndex = Math.min(group.minTierIndex, tierIndex);
       const build =
@@ -231,12 +287,14 @@ export function MachineShoppingList() {
               report?.isMultiblock ??
               steam?.isMultiblock ??
               crop?.id === CROP_HARVESTER_INDUSTRIAL_FARM_ID,
-            tier: report?.tier ?? cropTier,
+            tier: report?.tier ?? cropTier ?? powerTier,
             tierIndex,
             euT: undefined,
             steamLs: undefined,
+            madeEuT: undefined,
             avgEuT: undefined,
             avgSteamLs: undefined,
+            avgMadeEuT: undefined,
             pressure: steam ? (steam.highPressure ? "high-pressure" : "bronze") : undefined,
             state: "ok",
             nodeIds: [],
@@ -254,6 +312,10 @@ export function MachineShoppingList() {
       if (steamLs !== undefined) {
         build.steamLs = (build.steamLs ?? 0) + steamLs;
         build.avgSteamLs = (build.avgSteamLs ?? 0) + steamLs * usage;
+      }
+      if (madeEuT !== undefined) {
+        build.madeEuT = (build.madeEuT ?? 0) + madeEuT;
+        build.avgMadeEuT = (build.avgMadeEuT ?? 0) + madeEuT * usage;
       }
       if (report && report.state !== "ok" && build.state === "ok") {
         build.state = report.state;
@@ -302,6 +364,12 @@ export function MachineShoppingList() {
     (sum, group) => sum + ((average ? group.avgSteamLs : group.steamLs) ?? 0),
     0,
   );
+  const hasMade = groups.some((group) => group.madeEuT !== undefined);
+  const totalMadeEuT = groups.reduce(
+    (sum, group) => sum + ((average ? group.avgMadeEuT : group.madeEuT) ?? 0),
+    0,
+  );
+  const netEuT = totalMadeEuT - totalEuT;
   if (totalMachines === 0) {
     return null;
   }
@@ -340,21 +408,63 @@ export function MachineShoppingList() {
       <div className="border-b border-[var(--mc-47)] bg-[var(--mc-71)] px-2 py-1">
         <div className="flex w-full items-center gap-2">
           <span className="text-sm font-bold uppercase tracking-wider">Machines</span>
-          {/* ONE energy rides the title line. Two do not fit the column
-              beside the title and the pill, so the pair moves to a line of
-              its own below — decided by what the board HAS, never by
+          {/* ONE energy rides the title line. Two or more move to a line of
+              their own below — decided by what the board HAS, never by
               measured width, so a figure animating near the edge cannot
               bounce the header between one line and two. */}
           <span className="ml-auto flex shrink-0 items-center gap-2">
-            {hasEu || hasSteam ? <DrawModePill average={average} /> : null}
-            {hasEu !== hasSteam ? (
+            {hasEu || hasSteam || hasMade ? <DrawModePill average={average} /> : null}
+            {!hasMade && hasEu !== hasSteam ? (
               <span className="shrink-0 text-[13px] font-bold tabular-nums">
                 {steamFigure ?? euFigure}
               </span>
             ) : null}
           </span>
         </div>
-        {hasEu && hasSteam ? (
+        {hasMade ? (
+          // Generators on the board turn the header into the ledger: what the
+          // machines drink, what the generators make, and the difference.
+          <span className="flex flex-wrap items-baseline justify-end gap-x-2.5 text-[13px] font-bold tabular-nums">
+            {steamFigure}
+            {hasEu ? (
+              <span className="whitespace-nowrap">
+                <span className="mr-1 text-[8px] font-normal text-[var(--mc-ink-muted)]">USED</span>
+                {euFigure}
+              </span>
+            ) : null}
+            <span className="whitespace-nowrap text-emerald-300">
+              <span className="mr-1 text-[8px] font-normal text-[var(--mc-ink-muted)]">MADE</span>
+              <EuMark />
+              <MotionNumberText
+                values={[totalMadeEuT]}
+                render={(shown) =>
+                  shown[0] === totalMadeEuT
+                    ? formatCompact(totalMadeEuT)
+                    : formatCompactStable(shown[0] ?? totalMadeEuT)
+                }
+              />
+              <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
+            </span>
+            <span
+              className={[
+                "whitespace-nowrap",
+                netEuT >= 0 ? "text-emerald-300" : "text-red-300",
+              ].join(" ")}
+            >
+              <span className="mr-1 text-[8px] font-normal text-[var(--mc-ink-muted)]">NET</span>
+              <MotionNumberText
+                values={[netEuT]}
+                render={(shown) => {
+                  const value = shown[0] === netEuT ? netEuT : (shown[0] ?? netEuT);
+                  const text =
+                    shown[0] === netEuT ? formatCompact(Math.abs(netEuT)) : formatCompactStable(Math.abs(value));
+                  return `${value >= 0 ? "+" : "-"}${text}`;
+                }}
+              />
+              <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
+            </span>
+          </span>
+        ) : hasEu && hasSteam ? (
           <span className="flex items-baseline justify-end gap-2 text-[13px] font-bold tabular-nums">
             {steamFigure}
             {euFigure}
@@ -382,6 +492,7 @@ export function MachineShoppingList() {
                 euT={uniform ? (average ? build?.avgEuT : build?.euT) : undefined}
                 peakEuT={uniform ? build?.euT : undefined}
                 averageEuT={uniform ? build?.avgEuT : undefined}
+                madeEuT={uniform ? (average ? build?.avgMadeEuT : build?.madeEuT) : undefined}
                 steamLs={uniform ? (average ? build?.avgSteamLs : build?.steamLs) : undefined}
                 state={uniform ? (build?.state ?? "ok") : "ok"}
                 wash={uniform ? build?.tier : undefined}
@@ -408,6 +519,7 @@ export function MachineShoppingList() {
                       euT={average ? buildLine.avgEuT : buildLine.euT}
                       peakEuT={buildLine.euT}
                       averageEuT={buildLine.avgEuT}
+                      madeEuT={average ? buildLine.avgMadeEuT : buildLine.madeEuT}
                       steamLs={average ? buildLine.avgSteamLs : buildLine.steamLs}
                       state={buildLine.state}
                       wash={buildLine.tier}
@@ -499,6 +611,7 @@ function ListLine({
   euT,
   peakEuT,
   averageEuT,
+  madeEuT,
   steamLs,
   state,
   wash,
@@ -518,6 +631,8 @@ function ListLine({
   /** Both modes' figures at once, for the chip's tooltip. */
   peakEuT?: number;
   averageEuT?: number;
+  /** A generator's figure: the EU/t it makes, green, instead of a draw. */
+  madeEuT?: number;
   /** A steam machine's figure: what it burns, in L/s, instead of EU/t. */
   steamLs?: number;
   state: NodePowerState;
@@ -723,6 +838,20 @@ function ListLine({
           ) : (
             "TIER!"
           )
+        ) : madeEuT !== undefined ? (
+          // A generator's line: what it MAKES, in the ledger's green.
+          <span className="text-emerald-300">
+            <EuMark />
+            <MotionNumberText
+              values={[madeEuT]}
+              render={(shown) =>
+                shown[0] === madeEuT
+                  ? `+${formatCompact(madeEuT)}`
+                  : `+${formatCompactStable(shown[0] ?? madeEuT)}`
+              }
+            />
+            <span className="ml-0.5 text-[8px] text-[var(--mc-ink-muted)]">EU/t</span>
+          </span>
         ) : euT !== undefined ? (
           <>
             <EuMark />
