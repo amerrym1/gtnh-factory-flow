@@ -69,6 +69,7 @@ import type {
   StorageDrainMode,
   MachineTier,
   Recipe,
+  RecipeInput,
   ResourceAmount,
   ResourceKind,
   TargetRate,
@@ -1267,8 +1268,79 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       if (!nextRecipe) {
         return state;
       }
+
+      // A wire whose slot the setting just swapped out: a MACHINE at the far
+      // end loses the wire (the prune below), but a drawer serving only this
+      // card FOLLOWS the change - swap benzene for nitrobenzene and your
+      // source drawer becomes a nitrobenzene drawer on the same wire. Only
+      // when exactly one same-kind slot replaced the old one, and only when
+      // the drawer has no other wires to honour.
+      const slotKey = (slot: { kind: string; id: string }) => `${slot.kind}:${slot.id}`;
+      const oldInputKeys = new Set(recipe.inputs.map(slotKey));
+      const oldOutputKeys = new Set(recipe.outputs.map(slotKey));
+      const addedInputs = nextRecipe.inputs.filter((slot) => !oldInputKeys.has(slotKey(slot)));
+      const addedOutputs = nextRecipe.outputs.filter((slot) => !oldOutputKeys.has(slotKey(slot)));
+      const storagesById = new Map(
+        (state.project.storages ?? []).map((storage) => [storage.id, storage]),
+      );
+      const storageLinkCounts = new Map<string, number>();
+      for (const edge of state.project.edges) {
+        for (const end of [edge.source, edge.target]) {
+          if (storagesById.has(end)) {
+            storageLinkCounts.set(end, (storageLinkCounts.get(end) ?? 0) + 1);
+          }
+        }
+      }
+      const storagePatches = new Map<string, RecipeInput>();
+      const edges = state.project.edges.map((edge) => {
+        const intoCard = edge.target === nodeId;
+        const outOfCard = edge.source === nodeId;
+        if (!intoCard && !outOfCard) {
+          return edge;
+        }
+        const slots = intoCard ? nextRecipe.inputs : nextRecipe.outputs;
+        if (slots.some((slot) => slot.kind === edge.resourceKind && slot.id === edge.resourceId)) {
+          return edge;
+        }
+        const farId = intoCard ? edge.source : edge.target;
+        const storage = storagesById.get(farId);
+        const added = intoCard ? addedInputs : addedOutputs;
+        const replacement =
+          added.length === 1 && added[0].kind === edge.resourceKind ? added[0] : undefined;
+        if (!storage || !replacement || (storageLinkCounts.get(farId) ?? 0) > 1) {
+          return edge;
+        }
+        storagePatches.set(storage.id, replacement);
+        return {
+          ...edge,
+          resourceKind: replacement.kind,
+          resourceId: replacement.id,
+          label: replacement.displayName ?? edge.label,
+          sourceHandle: edge.sourceHandle
+            ? makeResourceHandleId("output", replacement)
+            : edge.sourceHandle,
+          targetHandle: edge.targetHandle
+            ? makeResourceHandleId("input", replacement)
+            : edge.targetHandle,
+        };
+      });
+      const storages = (state.project.storages ?? []).map((storage) => {
+        const patch = storagePatches.get(storage.id);
+        return patch
+          ? {
+              ...storage,
+              kind: patch.kind,
+              resourceId: patch.id,
+              displayName: patch.displayName,
+              iconPath: patch.iconPath,
+              iconAtlas: patch.iconAtlas,
+              dominantColor: patch.dominantColor,
+            }
+          : storage;
+      });
+
       const project = touchProject(
-        // A fuel change swaps the card's slots, so wires to the old fuel drop.
+        // Whatever the retarget could not honestly follow drops here.
         pruneInvalidEdgesAndOrphanStorages({
           ...state.project,
           nodes: state.project.nodes.map((entry) =>
@@ -1277,6 +1349,8 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
           recipes: state.project.recipes.map((entry) =>
             entry.id === recipe.id ? nextRecipe : entry,
           ),
+          edges,
+          storages,
         }),
       );
       return withProjectHistory(state, { project, lastResult: solveBooks(project) });

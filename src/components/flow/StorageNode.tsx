@@ -20,6 +20,7 @@ import { useBoardView } from "./board-view";
 import { MotionNumberText } from "./board-motion";
 import { formatSlotRate } from "./flow-explainers";
 import { makeResourceHandleId } from "./resource-handles";
+import { useRenderedHandles } from "./use-rendered-handles";
 import { canonicalizeResourceHandleId } from "@/lib/model/edge-identity";
 import { GT_NODE_COLORS } from "./node-colors";
 import { getPaintBrushCursor } from "./paint-cursor";
@@ -318,6 +319,11 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
     kind: storage.kind,
     id: storage.resourceId,
   });
+  // A drawer's handles are named after its resource, and a power card's fuel
+  // switch can RETARGET the drawer (setPowerSetting): without a re-measure,
+  // React Flow keeps the old handle bounds and silently drops the rewired
+  // edge from the screen until the next reload.
+  useRenderedHandles(storage.id, [inputHandleId, outputHandleId]);
 
   return (
     <div
