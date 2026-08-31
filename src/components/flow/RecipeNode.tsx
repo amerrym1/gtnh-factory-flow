@@ -2814,7 +2814,7 @@ function PowerEuSocketRow({
           <span className="flex min-w-0 flex-1 flex-col justify-center pr-0.5">
             <span className="block truncate text-[11px] font-bold leading-[13px] text-[var(--mc-ink)]">
               EU{" "}
-              <span className="text-[8px] font-normal text-[var(--mc-ink-muted)] opacity-60">
+              <span className="text-[9px] font-normal text-[var(--mc-ink-muted)] opacity-75">
                 ({average ? "avg" : "peak"})
               </span>
             </span>
