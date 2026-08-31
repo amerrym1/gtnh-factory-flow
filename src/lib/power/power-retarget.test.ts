@@ -107,6 +107,51 @@ describe("fuel switches with wires attached", () => {
     expect(after.edges.map((edge) => edge.id).sort()).toEqual(["e2"]);
   });
 
+  it("survives the real wire gesture: connect, unwire, switch fuel", () => {
+    // The gesture path (addStorageForConnection -> applyEdgeInputOverride)
+    // used to stamp a benzene input override on the node. The override
+    // OUTLIVED the wire, so after unwiring, every fuel switch rebuilt the
+    // recipe correctly and the override painted benzene back over it.
+    const project = turbineProject({ storages: [], edges: [] });
+    useFactoryStore.getState().setProject(project);
+    useFactoryStore
+      .getState()
+      .addStorageForConnection(
+        { kind: "fluid", id: "benzene", displayName: "Benzene" },
+        "n-gt",
+        "input",
+        { x: 0, y: 200 },
+        "input:fluid:benzene",
+      );
+    const wired = useFactoryStore.getState().project;
+    expect(wired.edges).toHaveLength(1);
+    expect(wired.nodes[0].recipeInputOverrides).toBeUndefined();
+
+    useFactoryStore.getState().deleteEdge(wired.edges[0].id);
+    useFactoryStore.getState().setPowerSetting("n-gt", "fuel", "Nitrobenzene");
+    const after = useFactoryStore.getState().project;
+    expect(after.recipes.find((entry) => entry.id === "r-gt")?.inputs[0]?.id).toBe("nitrobenzene");
+  });
+
+  it("heals a node already stuck with a stamped override", () => {
+    const base = turbineProject({ storages: [], edges: [] });
+    useFactoryStore.getState().setProject({
+      ...base,
+      nodes: [
+        {
+          ...base.nodes[0],
+          recipeInputOverrides: {
+            "0": { kind: "fluid", id: "benzene", amount: 1, displayName: "Benzene" },
+          },
+        },
+      ],
+    } as FactoryProject);
+    useFactoryStore.getState().setPowerSetting("n-gt", "fuel", "Nitrobenzene");
+    const after = useFactoryStore.getState().project;
+    expect(after.nodes[0].recipeInputOverrides).toBeUndefined();
+    expect(after.recipes.find((entry) => entry.id === "r-gt")?.inputs[0]?.id).toBe("nitrobenzene");
+  });
+
   it("drops the wire when the far end is a machine", () => {
     const base = turbineProject({});
     const maker = {

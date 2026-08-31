@@ -353,10 +353,16 @@ describe("power recipes", () => {
       enabled: true,
       position: { x: 0, y: 0 },
       machineConfigTiers: { tier: "HV", fuel: "Nitrobenzene" },
+      // A stray override from an old build must not survive the load funnel:
+      // it would repaint the rebuilt slot with the stale resource forever.
+      recipeInputOverrides: {
+        "0": { kind: "fluid", id: "benzene", amount: 1, displayName: "Benzene" },
+      },
     } as FactoryNode;
     const project = resynthesizePowerRecipes({ nodes: [node], recipes: [recipe] });
     expect(project.recipes[0].power?.euPerTick).toBe(512);
     expect(project.recipes[0].inputs[0].id).toBe("nitrobenzene");
+    expect(project.nodes[0].recipeInputOverrides).toBeUndefined();
   });
 
   it("keeps every source id unique and computable at defaults", () => {

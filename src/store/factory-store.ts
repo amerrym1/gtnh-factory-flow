@@ -1344,7 +1344,16 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         pruneInvalidEdgesAndOrphanStorages({
           ...state.project,
           nodes: state.project.nodes.map((entry) =>
-            entry.id === nodeId ? { ...entry, machineConfigTiers: nextSettings } : entry,
+            entry.id === nodeId
+              ? {
+                  ...entry,
+                  machineConfigTiers: nextSettings,
+                  // Overrides stamped by old builds outlive their wire and
+                  // would repaint the rebuilt slots; a power card never
+                  // legitimately carries one.
+                  recipeInputOverrides: undefined,
+                }
+              : entry,
           ),
           recipes: state.project.recipes.map((entry) =>
             entry.id === recipe.id ? nextRecipe : entry,
@@ -4099,6 +4108,13 @@ function applyEdgeInputOverride(
   const targetNode = project.nodes.find((node) => node.id === edge.target);
   const targetRecipe = project.recipes.find((recipe) => recipe.id === targetNode?.recipeId);
   if (!targetNode || !targetRecipe) {
+    return project;
+  }
+  // Power cards: never stamp an input override. Their slots are exact (no
+  // oredict, no alternatives), and a stamped override OUTLIVES the wire -
+  // wiring benzene once left the slot benzene through every later fuel
+  // switch, because the override repainted whatever the rebuilt recipe said.
+  if (targetRecipe.power) {
     return project;
   }
 

@@ -128,6 +128,7 @@ export function resynthesizePowerRecipes<
 >(project: Project): Project {
   let changed = false;
   const settingsByRecipeId = new Map<string, Record<string, string> | undefined>();
+  const powerRecipeIds = new Set<string>();
   for (const node of project.nodes) {
     settingsByRecipeId.set(node.recipeId, node.machineConfigTiers);
   }
@@ -135,6 +136,7 @@ export function resynthesizePowerRecipes<
     if (!isPowerRecipe(recipe)) {
       return recipe;
     }
+    powerRecipeIds.add(recipe.id);
     const rebuilt = buildPowerRecipe(
       recipe.power.sourceId,
       settingsByRecipeId.get(recipe.id),
@@ -146,5 +148,16 @@ export function resynthesizePowerRecipes<
     changed = true;
     return rebuilt;
   });
-  return changed ? { ...project, recipes } : project;
+  // Input overrides stamped onto a power node (by the connect gesture, before
+  // it learned to skip power cards) repaint the rebuilt slots forever - a
+  // card wired to benzene once stayed benzene through every fuel switch.
+  // Power slots are exact, so a power node never legitimately carries one.
+  const nodes = project.nodes.map((node) => {
+    if (!powerRecipeIds.has(node.recipeId) || node.recipeInputOverrides === undefined) {
+      return node;
+    }
+    changed = true;
+    return { ...node, recipeInputOverrides: undefined };
+  });
+  return changed ? { ...project, recipes, nodes } : project;
 }
