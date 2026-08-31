@@ -804,16 +804,16 @@ function TargetLine({
         }
         aria-label="Required amount"
         className={[
-          "nodrag h-4 w-[52px] border px-1 text-center text-[10px] font-bold tabular-nums outline-none",
-          "bg-[var(--mc-85)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)]",
-          "placeholder:font-normal placeholder:text-[var(--mc-ink-muted)]",
-          "focus:bg-[var(--mc-100)] focus:ring-1",
+          "nodrag h-4 w-[52px] border px-1 text-center text-[8px] font-bold tabular-nums outline-none",
+          "bg-[#14171d] shadow-[inset_1px_1px_0_rgba(255,255,255,0.08),inset_-1px_-1px_0_rgba(0,0,0,0.5)]",
+          "placeholder:font-normal placeholder:text-[#6b7280]",
+          "focus:bg-[#1a1e26] focus:ring-1",
           unreachable
-            ? "border-[#c33] text-[#b91c1c] focus:border-[#c33] focus:ring-red-400"
-            : "border-[var(--mc-47)] text-[var(--mc-ink)] focus:border-cyan-700 focus:ring-cyan-400",
+            ? "border-[#c33] text-[#ff9191] focus:border-[#c33] focus:ring-red-400"
+            : "border-[#3a4150] text-[#e8e9ee] focus:border-cyan-700 focus:ring-cyan-400",
         ].join(" ")}
       />
-      <span className="absolute left-full top-1/2 ml-[3px] -translate-y-1/2 text-[8px] font-bold text-[#a8afbb]">
+      <span className="absolute left-full top-1/2 ml-[1px] -translate-y-1/2 text-[6px] font-bold text-[#a8afbb]">
         {suffix}
       </span>
       </div>
