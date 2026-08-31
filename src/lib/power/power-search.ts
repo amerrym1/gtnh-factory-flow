@@ -96,12 +96,10 @@ function recordFlows(
     if (!entry.flowsById.has("makes:power:eu")) {
       entry.flowsById.set("makes:power:eu", { direction: "makes", name: "EU", ...choice });
     }
-  } else if (model.euPerTick < 0) {
-    // Parasitic machines DRINK power: they answer "what takes EU".
-    if (!entry.flowsById.has("takes:power:eu")) {
-      entry.flowsById.set("takes:power:eu", { direction: "takes", name: "EU", ...choice });
-    }
   }
+  // Parasitic draw is deliberately NOT recorded as a takes flow: nearly
+  // every recipe on the board takes power too, so "what takes EU" is not a
+  // question this shelf can answer honestly. The search says so instead.
 }
 
 function buildIndex(): SourceIndex[] {

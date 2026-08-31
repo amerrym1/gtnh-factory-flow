@@ -503,6 +503,11 @@ export function RecipeSearchOverlay({
     () => searchPowerSourcesForStencil(clauses, takesOp, makesOp, query),
     [clauses, takesOp, makesOp, query],
   );
+  // "What takes power" is nearly everything in the pack, so nothing answers
+  // it; the empty state explains instead of listing a misleading few.
+  const asksWhatTakesPower = clauses.some(
+    (clause) => clause.id === POWER_EU_CLAUSE_ID && clause.role === "takes",
+  );
   const placePowerHit = useCallback(
     (hit: PowerStencilHit) => {
       addPowerSourceNode(hit.source.id, hit.settings);
@@ -806,8 +811,10 @@ export function RecipeSearchOverlay({
                 {/* An empty list with every chip dark is the selection's doing,
                     not the search's. Saying "no matching recipes" there sends
                     people to reword the query when the fix is one click up. */}
-                {recipeMapChips.length > 0 &&
-                recipeMapChips.every((chip) => !chip.selected) ? (
+                {asksWhatTakesPower ? (
+                  "Nearly every machine takes power, so that list would be the whole pack. Search for what makes power instead."
+                ) : recipeMapChips.length > 0 &&
+                  recipeMapChips.every((chip) => !chip.selected) ? (
                   <div className="flex flex-col items-center gap-3 text-center">
                     <span>No machines are selected at the top.</span>
                     <button

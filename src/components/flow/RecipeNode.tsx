@@ -1647,14 +1647,17 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                       {!isCustomRateNode ? (
                         <>
                           {powerInfo && powerInfo.euPerTick < 0 ? (
+                            // A parasitic generator's draw speaks the same
+                            // language as every machine's: the POWER cell,
+                            // plain ink. Red implied a problem where there
+                            // is only a bill.
                             <Stat
-                              label="Draws"
+                              label="Power"
                               value={`${formatCompact(
                                 Math.abs(powerInfo.euPerTick) *
                                   projectNode.machineCount *
                                   Math.max(1, projectNode.parallel),
                               )} EU/t`}
-                              valueClassName="text-red-300"
                             />
                           ) : null}
                           {powerReport ? (
