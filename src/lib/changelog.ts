@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.44.0",
+    date: "2026-08-31",
+    headline: "Solve mode settles in",
+    notes: [
+      "The mode switch has its own sound, and the board wears a cyan glow while solve mode is on.",
+      "With nothing asked, nothing runs: a notice counts the products missing numbers, with a Show me button.",
+      "Machines the amounts do not need read zero but keep their ports and wires.",
+      "No more dead loop or clog warnings in solve mode: a zero machine there is just not needed.",
+    ],
+  },
+  {
     version: "2.43.0",
     date: "2026-08-31",
     headline: "Pin a machine count in solve mode",
