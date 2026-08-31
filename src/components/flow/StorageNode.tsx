@@ -781,6 +781,9 @@ function TargetLine({
     // The suffix hangs off the box's right edge instead.
     <div className="storage-net-line relative z-40 flex h-4 items-center justify-center whitespace-nowrap text-center leading-none">
       <div className="relative">
+      {/* Longer numbers give up SIZE, never digits: the box is fixed, so the
+          font steps down as the text grows, the same rule the net line
+          follows. */}
       <input
         value={shown}
         onChange={(event) => setDraft(event.target.value)}
@@ -804,7 +807,12 @@ function TargetLine({
         }
         aria-label="Required amount"
         className={[
-          "nodrag h-4 w-[52px] border px-1 text-center text-[8px] font-bold tabular-nums outline-none",
+          "nodrag h-[13px] w-[44px] border px-[3px] text-center font-bold tabular-nums outline-none",
+          shown.length <= 5
+            ? "text-[8px]"
+            : shown.length <= 7
+              ? "text-[7px]"
+              : "text-[6px]",
           "bg-[#14171d] shadow-[inset_1px_1px_0_rgba(255,255,255,0.08),inset_-1px_-1px_0_rgba(0,0,0,0.5)]",
           "placeholder:font-normal placeholder:text-[#6b7280]",
           "focus:bg-[#1a1e26] focus:ring-1",
@@ -813,7 +821,9 @@ function TargetLine({
             : "border-[#3a4150] text-[#e8e9ee] focus:border-cyan-700 focus:ring-cyan-400",
         ].join(" ")}
       />
-      <span className="absolute left-full top-1/2 ml-[1px] -translate-y-1/2 text-[6px] font-bold text-[#a8afbb]">
+      {/* The unit sits on the box's BOTTOM edge, like a printed subscript,
+          not floated at its middle. */}
+      <span className="absolute bottom-0 left-full ml-[1px] text-[6px] font-bold leading-none text-[#a8afbb]">
         {suffix}
       </span>
       </div>
