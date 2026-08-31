@@ -43,7 +43,8 @@ const STEAM_EXHAUST: Record<string, string | undefined> = {
 /** Decay gas the plasma leaves behind, from the fusion table where known. */
 function plasmaExhaust(plasmaName: string): string | undefined {
   const recipe = powerPlannerData.fusionRecipes.find((entry) => entry.name === plasmaName);
-  return recipe?.decayOutput ?? undefined;
+  // The workbook spells "no decay product" as a literal None.
+  return recipe?.decayOutput && recipe.decayOutput !== "None" ? recipe.decayOutput : undefined;
 }
 
 function classData(rotor: RotorEntry, turbineClass: TurbineClass): RotorClassData {

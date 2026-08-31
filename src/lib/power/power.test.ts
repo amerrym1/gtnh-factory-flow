@@ -3,6 +3,7 @@ import { buildPowerRecipe, resynthesizePowerRecipes } from "./power-recipe";
 import { hitPlacementSettings, searchPowerSources } from "./power-search";
 import { getPowerSource, POWER_SOURCES } from "./registry";
 import { buildPowerSettingsReader } from "./types";
+import { resolvePowerResource } from "./planner-data";
 import type { FactoryNode, Recipe } from "@/lib/model/types";
 
 /**
@@ -174,7 +175,7 @@ describe("steam makers", () => {
     });
     expect(model.outputs[0]).toMatchObject({ name: "SH Steam" });
     expect(model.outputs[0].perSecond / 20).toBeCloseTo(13800, 4);
-    expect(model.outputs[1]).toMatchObject({ name: "IC2 Coolant", perSecond: 1380 });
+    expect(model.outputs[1]).toMatchObject({ name: "Coolant", perSecond: 1380 });
   });
 
   it("keeps the EHE below threshold on superheated steam", () => {
@@ -203,7 +204,7 @@ describe("reactors and endgame", () => {
   it("gives the LFTR 16 amps of its fuel's tier", () => {
     const model = compute("lftr", { fuel: "LFTR Fuel 1" });
     expect(model.euPerTick).toBe(2048 * 16);
-    expect(model.outputs.some((flow) => flow.name === "Molten Uranium 233")).toBe(true);
+    expect(model.outputs.some((flow) => flow.name === "Uranium-233")).toBe(true);
   });
 
   it("multiplies the LNR by coolant and booster (5.85M EU/t)", () => {
@@ -230,6 +231,65 @@ describe("reactors and endgame", () => {
     expect(model.euPerTick).toBeGreaterThan(1e12);
     const optimum = Number(model.stats.find((line) => line.label === "Best quantity")?.value);
     expect(Number.isNaN(optimum)).toBe(true); // formatted, not raw - presence is what matters
+  });
+});
+
+describe("resource resolution", () => {
+  it("wires every flow to a dataset resource, except the known strays", () => {
+    // A flow whose name misses the resource map silently degrades to a stat
+    // line instead of a wireable port - which is how the coolant loop once
+    // shipped unwireable. Every miss must be on this list on purpose.
+    const KNOWN_UNRESOLVED = new Set([
+      // Sheet-only rod variants and magic solids the dataset cannot name.
+      "Tiberium Rod (ZPM)",
+      "Long Tiberium Rod (UV)",
+      "Amber Gem",
+      "Vinteum Gem",
+      "Tainted Blood Shard",
+      "Life Essence Cell",
+      "Ench. Golden Apple",
+      // Manure-line boiler fuels absent from the dataset.
+      "Manure Slurry",
+      "Fertile Manure Slurry",
+      "Raw Animal Waste",
+      // LNR fuels the resolver could not place.
+      "Uranium Fuel",
+      "Plutonium Fuel",
+      // LFTR sparged salts (no dataset fluids).
+      "U-Salt",
+      "T-Salt",
+      "TB-Salt",
+      "UF6",
+      // UCFE promoter and the antimatter catalysts, not yet mapped.
+      "Combustion Promoter",
+      "Molten Tengam",
+      "Molten SpaceTime",
+      "Molten Shirabon",
+      "Depleted Naquadah Fuel Mk V",
+    ]);
+    const unresolved = new Set<string>();
+    const collect = (model: ReturnType<(typeof POWER_SOURCES)[number]["compute"]>) => {
+      for (const flow of [...model.inputs, ...model.outputs]) {
+        if (flow.perSecond > 0 && !resolvePowerResource(flow.name)) {
+          unresolved.add(flow.name);
+        }
+      }
+    };
+    for (const source of POWER_SOURCES) {
+      collect(source.compute(buildPowerSettingsReader(source, undefined)));
+      for (const setting of source.settings) {
+        if (setting.type !== "select") {
+          continue;
+        }
+        for (const option of setting.options) {
+          collect(
+            source.compute(buildPowerSettingsReader(source, { [setting.id]: option.key })),
+          );
+        }
+      }
+    }
+    const surprises = [...unresolved].filter((name) => !KNOWN_UNRESOLVED.has(name)).sort();
+    expect(surprises).toEqual([]);
   });
 });
 

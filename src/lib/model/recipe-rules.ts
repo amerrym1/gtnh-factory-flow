@@ -171,6 +171,13 @@ export function applyMachineHandlerToRecipe(
   recipe: Recipe,
   node: Pick<FactoryNode, "machineHandlerId">,
 ): Recipe {
+  // Power cards (src/lib/power) bake their whole model into the synthesized
+  // recipe; no handler math may touch them. Without this, a generator named
+  // "... Steam Turbine" matched the steam-singleblock pattern and ran at
+  // bronze-machine half speed.
+  if (recipe.power) {
+    return recipe;
+  }
   const handlers = getRecipeMachineHandlers(recipe);
   const handler = handlers.find((entry) => entry.id === node.machineHandlerId) ?? handlers[0];
   const machineConfigControls = handler.machineConfigControls ?? recipe.machineConfigControls;

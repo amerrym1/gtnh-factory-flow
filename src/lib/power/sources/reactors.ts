@@ -32,8 +32,8 @@ const thtr: PowerSourceDefinition = {
     const hotCoolantPerSecond = 4800 * efficiency * 20;
     return {
       euPerTick: -3840 / efficiency,
-      inputs: [liters("IC2 Coolant", hotCoolantPerSecond)],
-      outputs: [liters("IC2 Hot Coolant", hotCoolantPerSecond)],
+      inputs: [liters("Coolant", hotCoolantPerSecond)],
+      outputs: [liters("Hot Coolant", hotCoolantPerSecond)],
       stats: [
         stat("Efficiency", percent(efficiency)),
         stat("Pebbles per cycle", formatAmount(pebbleCost)),
@@ -72,8 +72,8 @@ const htgr: PowerSourceDefinition = {
     const steamPerTick = 0.1 * fill * multiplier * 160;
     return {
       euPerTick: -1536,
-      inputs: [liters("IC2 Coolant", hotCoolantPerSecond)],
-      outputs: [liters("IC2 Hot Coolant", hotCoolantPerSecond), liters("Steam", steamPerTick * 20)],
+      inputs: [liters("Coolant", hotCoolantPerSecond)],
+      outputs: [liters("Hot Coolant", hotCoolantPerSecond), liters("Steam", steamPerTick * 20)],
       stats: [
         stat("Efficiency", percent(efficiency)),
         stat("Output multiplier", formatAmount(multiplier)),
@@ -110,7 +110,7 @@ const lftr: PowerSourceDefinition = {
       liters("T-Salt", fuel.tSalt / 100),
       liters("TB-Salt", fuel.tbSalt / 100),
       liters("UF6", fuel.uf6 / 100),
-      liters("Molten Uranium 233", fuel.uranium233PerSecond),
+      liters("Uranium-233", fuel.uranium233PerSecond),
     ].filter((flow) => flow.perSecond > 0);
     return {
       euPerTick,
@@ -157,8 +157,8 @@ const ic2FluidReactor: PowerSourceDefinition = {
     const rate = design?.rate ?? read.number("customRate");
     return {
       euPerTick: 0,
-      inputs: [liters("IC2 Coolant", rate)],
-      outputs: [liters("IC2 Hot Coolant", rate)],
+      inputs: [liters("Coolant", rate)],
+      outputs: [liters("Hot Coolant", rate)],
       stats: [stat("Hot coolant", `${formatAmount(rate)} L/s`)],
       warnings: ["Uranium rod costs are not modeled; the community planner skips them too."],
     };
@@ -188,8 +188,8 @@ const dehp: PowerSourceDefinition = {
       const perSecond = 192 * 20;
       return {
         euPerTick: -480,
-        inputs: [liters("IC2 Coolant", perSecond)],
-        outputs: [liters("IC2 Hot Coolant", perSecond)],
+        inputs: [liters("Coolant", perSecond)],
+        outputs: [liters("Hot Coolant", perSecond)],
         stats: [stat("Hot coolant", "192 L/t")],
       };
     }
@@ -235,8 +235,8 @@ const solarTower: PowerSourceDefinition = {
     const heliostats = (28 + 8 * rings) * rings;
     return {
       euPerTick: 0,
-      inputs: [liters("Solar Salt (Cold)", entry.hotSalt)],
-      outputs: [liters("Solar Salt (Hot)", entry.hotSalt)],
+      inputs: [liters("Cold Solar Salt", entry.hotSalt)],
+      outputs: [liters("Hot Solar Salt", entry.hotSalt)],
       stats: [
         stat("Heliostats", String(heliostats)),
         stat("Hot salt", `${formatAmount(entry.hotSalt)} L/s`),

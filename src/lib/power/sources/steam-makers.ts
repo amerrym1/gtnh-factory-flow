@@ -135,14 +135,11 @@ function buildExchanger(entry: (typeof powerPlannerData.heatExchangers)[number])
   const capAtMax = isThermalBoiler || isExtreme || entry.name === "Whakawhiti Wera XL";
   const fluidNames = Object.keys(entry.fluids);
   const id = entry.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  // Names as the resource map keys them (the workbook's own spellings).
   const COLD_RETURN: Record<string, string | undefined> = {
     Lava: "Pahoehoe Lava",
-    "Hot Coolant": "IC2 Coolant",
-    "Hot Solar Salt": "Solar Salt (Cold)",
-  };
-  const RESOURCE_NAME: Record<string, string> = {
-    "Hot Coolant": "IC2 Hot Coolant",
-    "Hot Solar Salt": "Solar Salt (Hot)",
+    "Hot Coolant": "Coolant",
+    "Hot Solar Salt": "Cold Solar Salt",
   };
   const defaults = entry.fluids[fluidNames[0]];
 
@@ -200,7 +197,6 @@ function buildExchanger(entry: (typeof powerPlannerData.heatExchangers)[number])
             ? "SH Steam"
             : "Steam";
 
-      const inputResource = RESOURCE_NAME[fluidName] ?? fluidName;
       const outputs = [liters(grade, steamPerSecond)];
       const coldReturn = COLD_RETURN[fluidName];
       if (coldReturn) {
@@ -208,7 +204,7 @@ function buildExchanger(entry: (typeof powerPlannerData.heatExchangers)[number])
       }
       return {
         euPerTick: 0,
-        inputs: [liters(inputResource, used), liters("Distilled Water", steamPerSecond / 160)],
+        inputs: [liters(fluidName, used), liters("Distilled Water", steamPerSecond / 160)],
         outputs,
         stats: [
           stat("Steam", `${formatAmount(steamPerSecond / 20)} L/t ${grade}`),
