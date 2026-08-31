@@ -2,7 +2,7 @@
 
 import { Handle, Position, useStoreApi, type Node, type NodeProps } from "@xyflow/react";
 import { memo, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowDownToLine, ArrowLeftRight } from "lucide-react";
+import { ArrowDownToLine, ArrowLeftRight, Pencil } from "lucide-react";
 import type {
   FactoryStorage,
   StorageDrainMode,
@@ -785,12 +785,6 @@ function TargetLine({
   const [draft, setDraft] = useState("");
   const target = storage.targetPerSecond;
   const unreachable = result?.targetUnreachable === true;
-  // The RESTING face is exactly the net line every other tile wears: same
-  // formatter, same fit-to-silhouette font stepping, bare text on the tile.
-  // Clicking it swaps in the editor; committing swaps back.
-  const restingLabel =
-    target !== undefined && target > 0 ? formatCompactRate(target, storage.kind) : "rate?";
-
   const beginEdit = () => {
     setDraft(
       target !== undefined && target > 0
@@ -817,13 +811,23 @@ function TargetLine({
 
   if (!editing) {
     return (
-      // z-40, like the header's buttons: the invisible wire handles blanket
-      // the well at z-30, and anything below them cannot be clicked.
-      <button
-        type="button"
+      // The resting face IS the net line - the same component every other
+      // tile draws, wrapped only to be clickable (z-40, over the wire
+      // handles that blanket the well at z-30). Unreachable overrides the
+      // line's own green with red from outside.
+      <div
+        role="button"
+        tabIndex={0}
         onClick={(event) => {
           event.stopPropagation();
           beginEdit();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            event.stopPropagation();
+            beginEdit();
+          }
         }}
         onPointerDown={(event) => event.stopPropagation()}
         onMouseDown={(event) => event.stopPropagation()}
@@ -834,17 +838,25 @@ function TargetLine({
         }
         aria-label="Required amount"
         className={[
-          "storage-net-line nodrag relative z-40 block h-4 w-full whitespace-nowrap text-center font-bold leading-4 tabular-nums",
-          rateFitClass(restingLabel, "product"),
-          target !== undefined && target > 0
-            ? unreachable
-              ? "text-[#ff9191]"
-              : "text-[#e8e9ee]"
-            : "font-normal text-[#6b7280]",
+          "nodrag group/target relative z-40 cursor-pointer hover:brightness-125",
+          unreachable ? "[&>div]:!text-[#ff9191]" : "",
         ].join(" ")}
       >
-        {restingLabel}
-      </button>
+        {target !== undefined && target > 0 ? (
+          <NetLine net={target} kind={storage.kind} role="product" />
+        ) : (
+          <div className="storage-net-line relative h-4 whitespace-nowrap text-center text-[12px] font-bold leading-4 tabular-nums text-[#6b7280]">
+            rate?
+          </div>
+        )}
+        {/* The pencil is how the line says it can be typed on - the one
+            mark separating this from the read-only net every other tile
+            wears. It sits clear of the centred number and warms on hover. */}
+        <Pencil
+          aria-hidden
+          className="absolute right-[2px] top-1/2 h-[7px] w-[7px] -translate-y-1/2 text-[#8a92a0] group-hover/target:text-[#e8e9ee]"
+        />
+      </div>
     );
   }
 
