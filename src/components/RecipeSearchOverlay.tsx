@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
+  ReactNode,
   UIEvent,
 } from "react";
 import type { DatasetResourceIndexEntry, RecipeSummary } from "@/lib/datasets/types";
@@ -43,7 +44,7 @@ import {
   searchPowerSourcesForStencil,
   type PowerStencilHit,
 } from "@/lib/power/power-search";
-import { getPowerMachineIcon } from "@/lib/power/planner-data";
+import { getPowerMachineIcon, resolvePowerResource } from "@/lib/power/planner-data";
 import { formatAmount } from "@/lib/power/sources/helpers";
 import { buildPowerSettingsReader, type PowerSourceDefinition } from "@/lib/power/types";
 import { useFactoryStore } from "@/store/factory-store";
@@ -98,6 +99,28 @@ function greatestCommonDivisor(left: number, right: number): number {
 
 /** Survives close and reopen: the reading you chose is a preference, not a query. */
 let storedRateView: RateView = "recipe";
+
+/** The Generators chip's state: a browser preference, on unless turned off. */
+const GENERATORS_CHIP_KEY = "gtnh-factory-flow.recipe-search-generators.v1";
+
+function readGeneratorsChip(): boolean {
+  if (typeof window === "undefined") {
+    return true;
+  }
+  try {
+    return window.localStorage.getItem(GENERATORS_CHIP_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+function writeGeneratorsChip(on: boolean) {
+  try {
+    window.localStorage.setItem(GENERATORS_CHIP_KEY, on ? "on" : "off");
+  } catch {
+    // Storage unavailable: the toggle holds for this session.
+  }
+}
 
 /** Offered by a chip whose slot accepts several forms: the menu lists them. */
 interface ChipMenuPicker {
@@ -487,6 +510,15 @@ export function RecipeSearchOverlay({
     },
     [addPowerSourceNode, onClose],
   );
+  // The Generators chip rides the machine row: same multi-select gesture,
+  // its own browser-remembered state, and the All key sweeps it along.
+  const [generatorsSelected, setGeneratorsSelected] = useState(readGeneratorsChip);
+  const toggleGenerators = useCallback(() => {
+    setGeneratorsSelected((on) => {
+      writeGeneratorsChip(!on);
+      return !on;
+    });
+  }, []);
 
   // Loading more when the bottom of the list scrolls near, so the grid reads
   // as one endless list rather than ending on a button.
@@ -510,12 +542,29 @@ export function RecipeSearchOverlay({
       <MachineChip
         label="All"
         count={totalAcrossMaps}
-        active={allRecipeMapsSelected}
+        active={allRecipeMapsSelected && (powerHits.length === 0 || generatorsSelected)}
         title={
           allRecipeMapsSelected ? "Unselect every machine" : "Select every machine"
         }
-        onClick={onToggleAllRecipeMaps}
+        onClick={() => {
+          if (powerHits.length > 0) {
+            const next = !allRecipeMapsSelected;
+            setGeneratorsSelected(next);
+            writeGeneratorsChip(next);
+          }
+          onToggleAllRecipeMaps();
+        }}
       />
+      {powerHits.length > 0 ? (
+        <MachineChip
+          label="Generators"
+          count={powerHits.length}
+          active={generatorsSelected}
+          title={generatorsSelected ? "Hide the generators" : "Show the generators"}
+          onClick={toggleGenerators}
+          iconNode={<Zap className="h-4 w-4 fill-current text-amber-400" aria-hidden />}
+        />
+      ) : null}
       {recipeMapChips.map((chip) => (
         <MachineChip
           key={chip.id}
@@ -703,11 +752,14 @@ export function RecipeSearchOverlay({
               </div>
             ) : (
               <>
-                {powerHits.length > 0 ? (
-                  <div className="mb-2">
-                    {/* Generators are not recipes, so they answer on their own
-                        shelf: same conditions, dialed settings, one click. */}
-                    <div className="mb-1.5 mt-0.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-300/90">
+                {powerHits.length > 0 && generatorsSelected ? (
+                  // Generators are not recipes, so they answer inside their
+                  // own ground: the power amber under recipe-shaped cards.
+                  <div
+                    className="mb-2 border-2 border-amber-300/25 p-2"
+                    style={{ backgroundColor: "color-mix(in srgb, var(--mc-56) 88%, #d99a2b 12%)" }}
+                  >
+                    <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-300/90">
                       <Zap className="h-3.5 w-3.5 fill-current" aria-hidden />
                       Generators
                     </div>
@@ -716,14 +768,19 @@ export function RecipeSearchOverlay({
                       style={{
                         gridTemplateColumns: sheet
                           ? "minmax(0, 1fr)"
-                          : "repeat(auto-fill, minmax(360px, 1fr))",
+                          : "repeat(auto-fill, minmax(480px, 1fr))",
                       }}
                     >
                       {powerHits.map((hit) => (
                         <PowerHitCard
                           key={hit.source.id}
                           hit={hit}
+                          rateView={rateView}
+                          takesClauses={takesClauses}
+                          makesClauses={makesClauses}
                           onPlace={() => placePowerHit(hit)}
+                          onBrowseResource={onBrowseResource}
+                          onChipMenu={openChipMenu}
                         />
                       ))}
                     </div>
@@ -744,7 +801,7 @@ export function RecipeSearchOverlay({
                   <SkeletonResultCard key={index} delay={index * 110} />
                 ))}
               </div>
-            ) : recipes.length === 0 && powerHits.length > 0 ? null : recipes.length === 0 ? (
+            ) : recipes.length === 0 && powerHits.length > 0 && generatorsSelected ? null : recipes.length === 0 ? (
               <div className="grid min-h-[260px] place-items-center border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-3 text-sm shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
                 {/* An empty list with every chip dark is the selection's doing,
                     not the search's. Saying "no matching recipes" there sends
@@ -1301,6 +1358,7 @@ function MachineChip({
   label,
   count,
   icon,
+  iconNode,
   active,
   onClick,
   onHover,
@@ -1309,6 +1367,8 @@ function MachineChip({
   label: string;
   count?: number;
   icon?: RecipeMapChip["icon"];
+  /** A hand-drawn tile face (the Generators chip's bolt) instead of an item. */
+  iconNode?: ReactNode;
   active: boolean;
   onClick: () => void;
   onHover?: () => void;
@@ -1329,7 +1389,9 @@ function MachineChip({
       ].join(" ")}
     >
       <span className="flex h-7 w-7 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]">
-        {icon ? (
+        {iconNode ? (
+          iconNode
+        ) : icon ? (
           <ResourceIcon
             resource={{ ...icon, amount: 1 }}
             size="sm"
@@ -1652,83 +1714,188 @@ function powerDialNote(
   return option ? `${setting.label}: ${option.label}` : undefined;
 }
 
+/** Per-second power flows in the card's chosen reading; no craft, no ratio. */
+function formatPowerChipAmount(kind: string, perSecond: number, rateView: RateView): ChipAmount {
+  const unit =
+    rateView === "recipe" || rateView === "ratio"
+      ? RATE_VIEW_UNITS.second
+      : RATE_VIEW_UNITS[rateView];
+  const per = rateView === "recipe" || rateView === "ratio" ? "s" : unit.per;
+  const value = perSecond * unit.multiplier;
+  const text = trimTrailingZeros(formatRate(value, value >= 100 ? 0 : value >= 10 ? 1 : 2));
+  return kind === "fluid" ? { text, unit: `L/${per}` } : { text, unit: `/${per}` };
+}
+
 /**
- * A generator answering the stencil: not a recipe - a machine whose settings
- * make the searched flow true. The caption names what matched and the knob
- * the placement will dial; the figure is the EU/t under those settings.
- * Clicking places the card, dialed.
+ * A generator answering the stencil, wearing the RECIPE CARD's own anatomy:
+ * machine tile, tier chip, name, the plus - then takes on the left and makes
+ * on the right as the same chips, with the EU it generates leading the
+ * output column exactly as it leads the card's rail on the board. Not a
+ * recipe underneath: the plus places the machine with the matched settings
+ * dialed in, and the stats line names those dials.
  */
-function PowerHitCard({ hit, onPlace }: { hit: PowerStencilHit; onPlace: () => void }) {
+function PowerHitCard({
+  hit,
+  rateView,
+  takesClauses,
+  makesClauses,
+  onPlace,
+  onBrowseResource,
+  onChipMenu,
+}: {
+  hit: PowerStencilHit;
+  rateView: RateView;
+  takesClauses: StencilClause[];
+  makesClauses: StencilClause[];
+  onPlace: () => void;
+  onBrowseResource: (resource: ResourceAmount, mode: "recipes" | "uses") => void;
+  onChipMenu: (event: ReactMouseEvent, resource: ResourceAmount) => void;
+}) {
   const icon = getPowerMachineIcon(hit.source.id);
   const tierColor = hit.source.unlock
-    ? (GT_TIER_COLORS as Record<string, { background: string } | undefined>)[hit.source.unlock]
+    ? (GT_TIER_COLORS as Record<string, (typeof GT_TIER_COLORS)["LV"] | undefined>)[
+        hit.source.unlock
+      ]
     : undefined;
-  const euPerTick = useMemo(() => {
+  const model = useMemo(() => {
     try {
-      return hit.source.compute(buildPowerSettingsReader(hit.source, hit.settings)).euPerTick;
+      return hit.source.compute(buildPowerSettingsReader(hit.source, hit.settings));
     } catch {
-      return 0;
+      return undefined;
     }
   }, [hit]);
-  const caption = hit.matches
-    .map((match) => {
-      const arrow = match.direction === "takes" ? "→" : "←";
-      const dial = powerDialNote(hit.source, match.settingId, match.optionKey);
-      return `${arrow} ${match.name}${dial ? ` · ${dial}` : ""}`;
-    })
-    .join("   ");
+  const dials = hit.matches
+    .map((match) => powerDialNote(hit.source, match.settingId, match.optionKey))
+    .filter((note): note is string => note !== undefined);
+  const stats = dials.length > 0 ? dials.join(" · ") : hit.source.blurb;
+  const flowChip = (direction: "takes" | "makes", flow: { name: string; perSecond: number }) => {
+    const resolved = resolvePowerResource(flow.name);
+    const clauses = direction === "takes" ? takesClauses : makesClauses;
+    const chipHit =
+      resolved !== undefined &&
+      clauses.some((clause) => clause.kind === resolved.kind && clause.id === resolved.id);
+    if (!resolved) {
+      // A flow with no dataset resource still shows, inert.
+      return (
+        <span
+          key={`${direction}:${flow.name}`}
+          className="flex w-full items-center gap-1.5 border border-[var(--mc-47)] bg-[var(--mc-61)] py-0.5 pl-0.5 pr-1.5"
+        >
+          <span className="h-9 w-9 shrink-0 bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-100)]" />
+          <span className="min-w-0 flex-1 truncate text-[13px] font-bold">{flow.name}</span>
+        </span>
+      );
+    }
+    const resource: ResourceAmount = { ...resolved, amount: flow.perSecond } as ResourceAmount;
+    return (
+      <ResourceChip
+        key={`${direction}:${flow.name}`}
+        resource={resource}
+        hit={chipHit}
+        amountText={formatPowerChipAmount(resolved.kind, flow.perSecond, rateView)}
+        onBrowseResource={onBrowseResource}
+        onMenu={(event) => onChipMenu(event, { ...resource, amount: 1 })}
+      />
+    );
+  };
+  const wantsPower = makesClauses.some((clause) => clause.id === POWER_EU_CLAUSE_ID);
   return (
-    <button
-      type="button"
-      onClick={onPlace}
-      title={`Place ${hit.source.name}`}
-      className="flex w-full items-center gap-2 border-2 border-[var(--mc-33)] bg-[var(--mc-71)] px-2 py-1.5 text-left shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)] hover:border-amber-300/70 hover:bg-[var(--mc-85)]"
+    <article
+      onDoubleClick={onPlace}
+      className="cursor-pointer border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-2 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
+      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 196px" }}
     >
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden bg-[#0f1113] shadow-[inset_2px_2px_0_rgba(0,0,0,0.4)]">
-        {icon?.iconPath ? (
-          <ResourceIcon
-            resource={{
-              kind: "item",
-              id: icon.id,
-              amount: 1,
-              displayName: icon.displayName,
-              iconPath: icon.iconPath,
-              dominantColor: icon.dominantColor,
+      <div className="flex items-center gap-2">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]">
+          {icon?.iconPath ? (
+            <ResourceIcon
+              resource={{
+                kind: "item",
+                id: icon.id,
+                amount: 1,
+                displayName: icon.displayName,
+                iconPath: icon.iconPath,
+                dominantColor: icon.dominantColor,
+              }}
+              size="sm"
+              bare
+              tooltip={false}
+              showAmount={false}
+              className="!h-full !w-full"
+              iconPixelSize={machineArtPixels(36)}
+            />
+          ) : (
+            <Zap className="h-4 w-4 fill-current text-amber-300" aria-hidden />
+          )}
+        </span>
+        {tierColor ? (
+          <span
+            className="flex h-9 min-w-9 shrink-0 items-center justify-center border-2 px-1 text-[13px] font-bold shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)]"
+            style={{
+              backgroundColor: tierColor.background,
+              borderColor: tierColor.border,
+              color: tierColor.text,
+              textShadow: `1px 1px 0 ${tierColor.shadow}`,
             }}
-            bare
-            tooltip={false}
-            showAmount={false}
-            className="!h-full !w-full"
-            iconPixelSize={machineArtPixels(40)}
-          />
-        ) : (
-          <Zap className="h-5 w-5 text-amber-300" aria-hidden />
-        )}
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex items-baseline gap-1.5">
-          <span className="min-w-0 truncate text-[14px] font-bold text-[var(--mc-ink)]">
+          >
+            {hit.source.unlock}
+          </span>
+        ) : null}
+        <span className="min-w-0 flex-1 leading-[1.15]">
+          <span className="block truncate text-[15px] font-bold text-[var(--mc-ink)]">
             {hit.source.name}
           </span>
-          {hit.source.unlock ? (
+          <span className="mt-0.5 block truncate text-[11px] text-[var(--mc-ink-muted)]">
+            {stats}
+          </span>
+        </span>
+        <button
+          type="button"
+          title="Add generator"
+          aria-label={`Add ${hit.source.name}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onPlace();
+          }}
+          className="flex h-8 w-8 shrink-0 items-center justify-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] text-neutral-100 shadow-[inset_1px_1px_0_var(--mc-85)] hover:border-cyan-400 hover:text-cyan-200"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] items-start gap-x-1">
+        <span className="flex min-w-0 flex-col gap-1">
+          {model?.inputs
+            .filter((flow) => flow.perSecond > 0)
+            .map((flow) => flowChip("takes", flow))}
+        </span>
+        <span className="flex items-start justify-center pt-2 text-[20px] font-black leading-6 text-[var(--mc-ink-muted)]">
+          →
+        </span>
+        <span className="flex min-w-0 flex-col gap-1">
+          {model && model.euPerTick > 0 ? (
             <span
-              className="shrink-0 text-[10px] font-black"
-              style={{ color: tierColor?.background }}
+              className={[
+                "flex w-full items-center gap-1.5 border py-0.5 pl-0.5 pr-1.5",
+                wantsPower
+                  ? "border-cyan-400 bg-[var(--mc-61)] ring-1 ring-cyan-400"
+                  : "border-[var(--mc-47)] bg-[var(--mc-61)]",
+              ].join(" ")}
             >
-              {hit.source.unlock}
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-100)]">
+                <Zap className="h-4 w-4 fill-current text-amber-400" aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-bold">EU</span>
+              <span className="shrink-0 whitespace-nowrap text-[12px] font-bold tabular-nums text-amber-300">
+                ~{formatAmount(model.euPerTick)} EU/t
+              </span>
             </span>
           ) : null}
+          {model?.outputs
+            .filter((flow) => flow.perSecond > 0)
+            .map((flow) => flowChip("makes", flow))}
         </span>
-        {caption ? (
-          <span className="truncate text-[11px] text-cyan-300/80">{caption}</span>
-        ) : null}
-      </span>
-      {euPerTick > 0 ? (
-        <span className="shrink-0 whitespace-nowrap text-[13px] font-bold tabular-nums text-amber-300">
-          ~{formatAmount(euPerTick)} EU/t
-        </span>
-      ) : null}
-    </button>
+      </div>
+    </article>
   );
 }
 
