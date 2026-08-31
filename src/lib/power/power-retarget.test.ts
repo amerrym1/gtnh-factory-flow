@@ -152,6 +152,22 @@ describe("fuel switches with wires attached", () => {
     expect(after.recipes.find((entry) => entry.id === "r-gt")?.inputs[0]?.id).toBe("nitrobenzene");
   });
 
+  it("refactors a power card onto another generator in place, wire intact", () => {
+    useFactoryStore.getState().setProject(turbineProject({}));
+    useFactoryStore.getState().refactorNodeToPowerSource("n-gt", "large-gas-turbine", undefined);
+    const after = useFactoryStore.getState().project;
+    // Same node, new owned recipe; the benzene wire re-docks; the old owned
+    // power recipe does not linger.
+    const node = after.nodes.find((entry) => entry.id === "n-gt")!;
+    const recipe = after.recipes.find((entry) => entry.id === node.recipeId)!;
+    expect(recipe.power?.sourceId).toBe("large-gas-turbine");
+    expect(after.nodes).toHaveLength(1);
+    expect(after.edges).toHaveLength(1);
+    expect(after.edges[0].target).toBe("n-gt");
+    expect(after.edges[0].resourceId).toBe("benzene");
+    expect(after.recipes.some((entry) => entry.id === "r-gt")).toBe(false);
+  });
+
   it("drops the wire when the far end is a machine", () => {
     const base = turbineProject({});
     const maker = {

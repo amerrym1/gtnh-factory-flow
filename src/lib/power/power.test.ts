@@ -398,6 +398,30 @@ describe("stencil search (the recipe book's view of the generators)", () => {
     expect(ids).not.toContain("gas-turbine");
   });
 
+  it("expands an unpinned fuel knob into one card per fuel, NEI-style", () => {
+    const shSteam = resolvePowerResource("SH Steam")!;
+    const hits = searchPowerSourcesForStencil(
+      [{ role: "makes", kind: shSteam.kind, id: shSteam.id }],
+      "all",
+      "all",
+      "",
+    );
+    // The titanium boiler makes SH steam on ANY of its fuels: one card each.
+    const titanium = hits.filter((hit) => hit.source.id === "large-titanium-boiler");
+    expect(titanium.length).toBeGreaterThan(3);
+    const fuels = new Set(titanium.map((hit) => hit.settings?.liquidFuel));
+    expect(fuels.size).toBe(titanium.length);
+    // A clause that PINS the fuel keeps exactly one card for it.
+    const benzene = resolvePowerResource("Benzene")!;
+    const pinned = searchPowerSourcesForStencil(
+      [{ role: "takes", kind: benzene.kind, id: benzene.id }],
+      "all",
+      "all",
+      "",
+    );
+    expect(pinned.filter((hit) => hit.source.id === "gas-turbine")).toHaveLength(1);
+  });
+
   it("drops a source when two clauses need the same knob at different positions", () => {
     const nitro = resolvePowerResource("Nitrobenzene")!;
     const naphtha = resolvePowerResource("Naphtha")!;

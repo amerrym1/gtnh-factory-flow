@@ -499,6 +499,7 @@ export function RecipeSearchOverlay({
   // takes/makes condition matches a source's flows under ANY setting, and
   // placing the hit dials those settings in. Purely client-side.
   const addPowerSourceNode = useFactoryStore((state) => state.addPowerSourceNode);
+  const refactorNodeToPowerSource = useFactoryStore((state) => state.refactorNodeToPowerSource);
   const powerHits = useMemo(
     () => searchPowerSourcesForStencil(clauses, takesOp, makesOp, query),
     [clauses, takesOp, makesOp, query],
@@ -510,10 +511,17 @@ export function RecipeSearchOverlay({
   );
   const placePowerHit = useCallback(
     (hit: PowerStencilHit) => {
-      addPowerSourceNode(hit.source.id, hit.settings);
+      // Refactor mode: the pick REPLACES the card the search came from,
+      // exactly as a recipe pick does - not a second card beside it.
+      const refactorNodeId = useFactoryStore.getState().recipeBrowserRefactorNodeId;
+      if (refactorNodeId) {
+        refactorNodeToPowerSource(refactorNodeId, hit.source.id, hit.settings);
+      } else {
+        addPowerSourceNode(hit.source.id, hit.settings);
+      }
       onClose();
     },
-    [addPowerSourceNode, onClose],
+    [addPowerSourceNode, refactorNodeToPowerSource, onClose],
   );
   // The Generators chip rides the machine row: same multi-select gesture,
   // its own browser-remembered state, and the All key sweeps it along.
@@ -778,7 +786,7 @@ export function RecipeSearchOverlay({
                     >
                       {powerHits.map((hit) => (
                         <PowerHitCard
-                          key={hit.source.id}
+                          key={`${hit.source.id}|${JSON.stringify(hit.settings ?? {})}`}
                           hit={hit}
                           rateView={rateView}
                           takesClauses={takesClauses}
@@ -1771,8 +1779,10 @@ function PowerHitCard({
       return undefined;
     }
   }, [hit]);
-  const dials = hit.matches
-    .map((match) => powerDialNote(hit.source, match.settingId, match.optionKey))
+  // Every dialed setting, not only the matched ones: a permuted card's fuel
+  // is exactly what tells it apart from its siblings.
+  const dials = Object.entries(hit.settings ?? {})
+    .map(([settingId, optionKey]) => powerDialNote(hit.source, settingId, optionKey))
     .filter((note): note is string => note !== undefined);
   const stats = dials.length > 0 ? dials.join(" · ") : hit.source.blurb;
   const flowChip = (direction: "takes" | "makes", flow: { name: string; perSecond: number }) => {

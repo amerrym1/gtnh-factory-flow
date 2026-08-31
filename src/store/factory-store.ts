@@ -280,6 +280,16 @@ interface FactoryStore {
    */
   addPowerSourceNode: (sourceId: string, settings?: Record<string, string>) => void;
   /**
+   * The refactor's power landing: swaps the card onto a generator in place,
+   * settings dialed, wires re-docking where the resources still match -
+   * exactly what refactoring to a recipe does.
+   */
+  refactorNodeToPowerSource: (
+    nodeId: string,
+    sourceId: string,
+    settings?: Record<string, string>,
+  ) => void;
+  /**
    * Writes one power card setting and rebuilds its owned recipe in the same
    * step, so the knobs, the slots and the books never disagree. Wires whose
    * resource left the card (a fuel change) are pruned like any edit.
@@ -1252,6 +1262,15 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         }),
         powerMenuOpen: false,
       };
+    });
+  },
+  refactorNodeToPowerSource: (nodeId, sourceId, settings) => {
+    set((state) => {
+      const recipe = buildPowerRecipe(sourceId, settings, createId("recipe"));
+      if (!recipe) {
+        return state;
+      }
+      return refactorNodeToState(state, nodeId, recipe, { machineConfigTiers: settings });
     });
   },
   setPowerSetting: (nodeId, settingId, value) => {
@@ -3830,7 +3849,7 @@ function refactorNodeToState(
   state: FactoryStore,
   nodeId: string,
   recipe: Recipe,
-  options?: { machineHandlerId?: string },
+  options?: { machineHandlerId?: string; machineConfigTiers?: Record<string, string> },
 ): Partial<FactoryStore> {
   const node = state.project.nodes.find((entry) => entry.id === nodeId);
   if (!node) {
@@ -3898,7 +3917,9 @@ function refactorNodeToState(
             recipeId: recipe.id,
             machineHandlerId: spawnHandler?.id,
             overclockTier: spawnHandler?.minimumTier ?? recipe.minimumTier,
-            machineConfigTiers: undefined,
+            // A power pick carries its dialed settings into the swap; every
+            // other refactor resets the knobs as before.
+            machineConfigTiers: options?.machineConfigTiers,
             coilTier: undefined,
             recipeInputOverrides: undefined,
           }
@@ -3909,6 +3930,15 @@ function refactorNodeToState(
       ...carried,
     ],
   };
+  // A power card OWNS its recipe; swapping away from one would strand it.
+  const oldRecipe = state.project.recipes.find((entry) => entry.id === node.recipeId);
+  if (
+    oldRecipe &&
+    isPowerRecipe(oldRecipe) &&
+    !projectBase.nodes.some((entry) => entry.recipeId === oldRecipe.id)
+  ) {
+    projectBase.recipes = projectBase.recipes.filter((entry) => entry.id !== oldRecipe.id);
+  }
   const project = touchProject(
     pruneOrphanStorages(applyEdgeInputOverrides(projectBase, carried)),
   );
