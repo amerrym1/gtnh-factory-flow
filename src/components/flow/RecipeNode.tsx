@@ -182,6 +182,21 @@ const CUSTOM_RATE_UNIVERSAL_HANDLE_IDS: readonly string[] = [
   makeResourceHandleId("output", { kind: "item", id: CUSTOM_RATE_ANY_RESOURCE_ID }),
 ];
 
+/**
+ * The power sector's card face: the window ground warmed toward amber just
+ * enough to read as a different material, with every element on it keeping
+ * its ordinary colours.
+ */
+const POWER_CARD_FACE = "color-mix(in srgb, var(--mc-78) 91%, #d99a2b 9%)";
+/**
+ * A slight hexagon: 8px corner cuts. The polygon runs 12px OUTSIDE the box
+ * along the edges so selection rings and verdict glows still paint; at the
+ * corners the cut lines extend outward at 45°, so a ring follows the chamfer
+ * instead of being squared back off.
+ */
+const POWER_CARD_CLIP =
+  "polygon(20px -12px, calc(100% - 20px) -12px, calc(100% + 12px) 20px, calc(100% + 12px) calc(100% - 20px), calc(100% - 20px) calc(100% + 12px), 20px calc(100% + 12px), -12px calc(100% - 20px), -12px 20px)";
+
 export interface RecipeNodeData extends Record<string, unknown> {
   projectNode: FactoryNode;
   recipe: Recipe;
@@ -240,12 +255,21 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   const isInspectorHighlighted =
     isFlowResourceHighlighted || isNodeBottleneckHighlighted || isUsageHighlighted;
   const { calmMode, glanceMode } = useBoardView();
-  // A custom rate card nobody has painted wears the app's own blue. Painting
-  // one still works and still wins.
-  // Up close a card ALWAYS wears its own paint: the glance views (speed heat,
-  // reason colour, tier colour) exist only at the LOD step, delivered further
-  // down as inert --glance-* variables the stylesheet switches on.
-  const paintTag = projectNode.colorTag ?? (isCustomRateRecipe(recipe) ? "blue" : undefined);
+  // Card colour is IDENTITY, not decoration (2026-08-30): player paint no
+  // longer applies to recipe cards - a stored colorTag is ignored, not
+  // stripped, so plans stay untouched. The tints that remain say what a card
+  // IS: custom rate blue, crop green, and the power sector's subtle amber
+  // face below. Drawers and boards still take paint.
+  const paintTag = isCustomRateRecipe(recipe)
+    ? "blue"
+    : isCropFarmRecipe(recipe)
+      ? "green"
+      : undefined;
+  // A generator wears the power sector's face: the card BACKGROUND warms
+  // very slightly toward amber and the corners take a slight hexagon cut.
+  // Everything ON the card keeps its exact ordinary colours - this is not
+  // the paint ramp, just the window's own ground.
+  const isPowerCard = Boolean(recipe.power);
   const paintColor = paintTag ? GT_NODE_COLORS[paintTag] : undefined;
   const nodeColor = paintColor;
   // The card's own --mc-* ramp, which is the WHOLE of how a card takes a
@@ -256,12 +280,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // The ink is never touched: a ramp keeps an unpainted card's lightnesses,
   // so the same light text sits at the same contrast on every colour.
   const nodeRamp = rampFor(paintTag);
-  const paintCursor =
-    nodeColorPaintMode !== undefined
-      ? getPaintBrushCursor(
-          nodeColorPaintMode ? GT_NODE_COLORS[nodeColorPaintMode].swatch : undefined,
-        )
-      : undefined;
+  // Cards no longer take paint, so the brush must not offer itself here -
+  // the armed paint mode still shows its cursor over drawers and boards.
+  const paintCursor = undefined;
   // Recipe derivation is pure in (recipe, projectNode, dataset) but ran on every
   // render, including renders caused by unrelated store writes such as hover or
   // search. It also rebuilt `overclockedRecipe` each time, whose fresh identity
@@ -864,13 +885,19 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         // a painted card needs nothing here but the RING: the dye at full
         // strength around the outside, which is what makes a tag legible from
         // across the board and at any zoom, however quiet the body is.
-        style={
-          nodeColor
+        style={{
+          ...(nodeColor
             ? {
                 boxShadow: `inset 0 0 0 2px ${nodeColor.border}, inset 4px 4px 0 var(--mc-100), inset -4px -4px 0 var(--mc-33), 0 0 0 2px ${nodeColor.shadow}`,
               }
-            : undefined
-        }
+            : undefined),
+          ...(isPowerCard
+            ? {
+                backgroundColor: POWER_CARD_FACE,
+                clipPath: POWER_CARD_CLIP,
+              }
+            : undefined),
+        }}
       >
       {/* The ring's mark, and the reason it is an ELEMENT rather than the
           window's ::after: a pseudo-element's box is only as trustworthy as
@@ -1137,6 +1164,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   ) : (
                     "Wire any port to this and it adopts that resource."
                   )
+                ) : isPowerCard ? (
+                  // A generator's stats live on the card (settings, stat
+                  // lines); the machine tooltip's overclock story does not
+                  // apply to it and would just be wrong here.
+                  (recipe.notes ?? recipe.name)
                 ) : (
                   <MachineStatsContent
                     recipe={recipe}
