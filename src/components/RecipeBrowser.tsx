@@ -10,6 +10,7 @@ import {
   List,
   Search,
   X,
+  Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { PointerEvent, RefObject, WheelEvent } from "react";
@@ -39,6 +40,7 @@ import {
   type SearchPhase,
 } from "@/lib/search";
 import { useFactoryStore } from "@/store/factory-store";
+import { POWER_EU_CLAUSE_ID } from "@/lib/power/power-search";
 import { useDesignStore } from "@/store/design-store";
 import { leaveWelcomeTab, readWelcomeTabState } from "@/lib/tour/welcome-tab";
 import type { RecipeInputPicks, TierFilter } from "@/store/factory-store";
@@ -163,11 +165,37 @@ function resourceTooltipLines(resource: IndexedResource): string[] {
 
 /** Mod is the id prefix ("gregtech:..."); bare fluid ids group as "fluids". */
 function getResourceModLabel(resource: { id: string; kind: string }): string {
+  if (resource.id === POWER_EU_CLAUSE_ID) {
+    return "generators";
+  }
   const colon = resource.id.indexOf(":");
   if (colon > 0) {
     return resource.id.slice(0, colon);
   }
   return resource.kind === "fluid" ? "fluids" : "other";
+}
+
+/**
+ * The item search's power row: typing "power", "energy" or "eu" puts
+ * Power (EU) first in the list. Left click asks who makes it (every
+ * generator), right click who takes it (the parasitic machines) - the same
+ * two questions every item row answers.
+ */
+function powerSearchRow(query: string): IndexedResource | undefined {
+  const trimmed = query.trim().toLowerCase();
+  if (trimmed.length < 2) {
+    return undefined;
+  }
+  if (!("power".startsWith(trimmed) || "energy".startsWith(trimmed) || trimmed === "eu")) {
+    return undefined;
+  }
+  return {
+    kind: "fluid",
+    id: POWER_EU_CLAUSE_ID,
+    displayName: "Power (EU)",
+    recipeCount: 0,
+    dominantColor: "#d99a2b",
+  } as IndexedResource;
 }
 const RECIPE_QUERY_CACHE_TTL_MS = 90_000;
 const RESOURCE_QUERY_CACHE_TTL_MS = 90_000;
@@ -277,7 +305,15 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     offset: resourcePage * resourcePageSize,
     limit: resourcePageSize,
   });
-  const displayedResources = onBoard ? boardResults.resources : resourceResults;
+  const powerRow =
+    !onBoard && resourceFilter === "all" && resourcePage === 0
+      ? powerSearchRow(debouncedRecipeSearch)
+      : undefined;
+  const displayedResources = onBoard
+    ? boardResults.resources
+    : powerRow
+      ? [powerRow, ...resourceResults]
+      : resourceResults;
   const displayedTotal = onBoard ? boardResults.total : resourceTotal;
   const displayedMods = onBoard ? boardResults.mods : resourceMods;
   const displayedOutcome = onBoard ? boardResults.outcome : resourceSearchOutcome;
@@ -2057,14 +2093,18 @@ function ResourceResultPage({
                 role="option"
                 aria-selected={active}
               >
-                <ResourceIcon
-                  resource={{ ...resource, amount: 1 }}
-                  size="md"
-                  bare
-                  showAmount={false}
-                  tooltip={false}
-                  className={RESOURCE_GRID_ART}
-                />
+                {resource.id === POWER_EU_CLAUSE_ID ? (
+                  <Zap className="h-5 w-5 fill-current text-amber-400" aria-hidden />
+                ) : (
+                  <ResourceIcon
+                    resource={{ ...resource, amount: 1 }}
+                    size="md"
+                    bare
+                    showAmount={false}
+                    tooltip={false}
+                    className={RESOURCE_GRID_ART}
+                  />
+                )}
               </button>
             </MinecraftTooltip>
           );
@@ -2115,16 +2155,20 @@ function ResourceResultPage({
             aria-selected={active}
           >
             <span className="minecraft-pixel-art flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden">
-              <ResourceIcon
-                resource={{ ...resource, amount: 1 }}
-                size="sm"
-                bare
-                showAmount={false}
-                tooltip={false}
-                // Zoom the art without growing the cell (see crop picker);
-                // the wrapper crops the overflow at the 32px cell.
-                className="!h-8 !w-8 scale-[1.5]"
-              />
+              {resource.id === POWER_EU_CLAUSE_ID ? (
+                <Zap className="h-5 w-5 fill-current text-amber-400" aria-hidden />
+              ) : (
+                <ResourceIcon
+                  resource={{ ...resource, amount: 1 }}
+                  size="sm"
+                  bare
+                  showAmount={false}
+                  tooltip={false}
+                  // Zoom the art without growing the cell (see crop picker);
+                  // the wrapper crops the overflow at the 32px cell.
+                  className="!h-8 !w-8 scale-[1.5]"
+                />
+              )}
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate leading-tight [text-shadow:1px_1px_0_#000]">

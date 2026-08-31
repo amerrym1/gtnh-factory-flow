@@ -96,6 +96,11 @@ function recordFlows(
     if (!entry.flowsById.has("makes:power:eu")) {
       entry.flowsById.set("makes:power:eu", { direction: "makes", name: "EU", ...choice });
     }
+  } else if (model.euPerTick < 0) {
+    // Parasitic machines DRINK power: they answer "what takes EU".
+    if (!entry.flowsById.has("takes:power:eu")) {
+      entry.flowsById.set("takes:power:eu", { direction: "takes", name: "EU", ...choice });
+    }
   }
 }
 
@@ -194,9 +199,9 @@ export function queryAsksForPower(query: string): boolean {
   return "power".startsWith(trimmed) || "energy".startsWith(trimmed) || trimmed === "eu";
 }
 
-function clauseKey(clause: PowerStencilClause): string | undefined {
+function clauseKey(clause: PowerStencilClause): string {
   if (clause.id === POWER_EU_CLAUSE_ID) {
-    return clause.role === "makes" ? "makes:power:eu" : undefined;
+    return `${clause.role}:power:eu`;
   }
   return `${clause.role}:${clause.kind}:${clause.id}`;
 }
