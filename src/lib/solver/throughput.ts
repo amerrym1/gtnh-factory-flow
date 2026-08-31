@@ -470,6 +470,19 @@ export function hasSolveModeTargets(project: FactoryProject): boolean {
 }
 
 /**
+ * The cheap UI-side version of the question check: any typed amount on any
+ * drawer, any pin on any enabled card, no role walk. The notice and the
+ * blinking rate line use this on every store write, so it must stay O(n)
+ * over ids alone.
+ */
+export function hasAnySolveNumbers(project: FactoryProject): boolean {
+  return (
+    (project.storages ?? []).some((storage) => (storage.targetPerSecond ?? 0) > 0) ||
+    project.nodes.some((node) => node.enabled && (node.solvePin ?? 0) > 0)
+  );
+}
+
+/**
  * Solve mode has been asked SOMETHING: a typed product amount, or a pinned
  * machine count ("run exactly 20 of these"). Either one flips the books
  * from plan to solve; with neither, the plan books stand so the mode click

@@ -124,6 +124,8 @@ import {
   type BoardClipboardPayload,
   type BoardFraming,
 } from "@/store/factory-store";
+import { hasAnySolveNumbers } from "@/lib/solver/throughput";
+import { getStorageRoles } from "@/lib/model/storage-role";
 import { useBlueprintStore } from "@/store/blueprint-store";
 import {
   areBoardSoundsEnabled,
@@ -6271,6 +6273,8 @@ export function FactoryFlow() {
         aria-hidden
         className="pointer-events-none absolute inset-0 z-10 shadow-[inset_0_0_60px_10px_rgba(0,0,0,0.35)]"
       />
+      <SolveModeAura />
+      <SolveModeNotice />
       <SolvingBooksOverlay />
       <PaintToolbar
         paintMode={nodeColorPaintMode}
@@ -7199,6 +7203,77 @@ const RATE_UNIT_CHOICES: Array<{ unit: RateUnit; label: string; title: string }>
  * question around: product drawers take a typed amount and every card reads
  * the machine count those amounts require. One pressed-face button, no sheet.
  */
+/**
+ * The other dimension's light: while solve mode is on, the room's edges
+ * carry a quiet cyan glow over the black vignette, breathing in and out
+ * with the toggle. Screen-space and landmark-free like the vignette above
+ * it, always rendered so the fade runs both ways, never a pointer target.
+ */
+const SolveModeAura = memo(function SolveModeAura() {
+  const on = useFactoryStore((state) => state.project.solveMode === true);
+  return (
+    <div
+      aria-hidden
+      className={[
+        "pointer-events-none absolute inset-0 z-10 transition-opacity duration-700",
+        on ? "opacity-100" : "opacity-0",
+      ].join(" ")}
+      style={{
+        boxShadow:
+          "inset 0 0 90px 6px rgba(34,211,238,0.16), inset 0 0 14px 1px rgba(34,211,238,0.22)",
+      }}
+    />
+  );
+});
+
+/**
+ * The solver's one open question, asked out loud: solve mode with no number
+ * typed anywhere has nothing to solve FOR, so the board keeps showing plan
+ * figures and this card says why - while every empty rate line on a product
+ * drawer blinks the same ask. Both quiet down the moment any amount or pin
+ * lands.
+ */
+const missingProductIds = (project: FactoryProject): string[] => {
+  const roles = getStorageRoles(project);
+  return (project.storages ?? [])
+    .filter(
+      (storage) =>
+        roles.get(storage.id) === "product" && !((storage.targetPerSecond ?? 0) > 0),
+    )
+    .map((storage) => storage.id);
+};
+
+const SolveModeNotice = memo(function SolveModeNotice() {
+  // A primitive out of the selector, so the role walk (per store write, one
+  // subscriber) never re-renders on an unchanged answer.
+  const missingCount = useFactoryStore((state) =>
+    state.project.solveMode === true && !hasAnySolveNumbers(state.project)
+      ? missingProductIds(state.project).length
+      : 0,
+  );
+  const frameBoardNodes = useFactoryStore((state) => state.frameBoardNodes);
+  if (missingCount === 0) {
+    return null;
+  }
+  return (
+    <div className="pointer-events-none absolute bottom-5 left-1/2 z-20 w-max max-w-[calc(100%-24px)] -translate-x-1/2">
+      <div className="flex items-center gap-3 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] py-2 pl-4 pr-2 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+        <span className="font-mono text-[12px] font-black uppercase tracking-[0.5px] text-[var(--mc-ink)]">
+          {missingCount} {missingCount === 1 ? "product needs a number" : "products need numbers"}{" "}
+          to solve for
+        </span>
+        <button
+          type="button"
+          onClick={() => frameBoardNodes(missingProductIds(useFactoryStore.getState().project))}
+          className="pointer-events-auto border-2 border-[var(--mc-15)] bg-[var(--mc-49)] px-2 py-1 font-mono text-[11px] font-black uppercase text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+        >
+          Show me
+        </button>
+      </div>
+    </div>
+  );
+});
+
 const SolveModeButton = memo(function SolveModeButton() {
   const solveMode = useFactoryStore((state) => state.project.solveMode === true);
   const setSolveMode = useFactoryStore((state) => state.setSolveMode);

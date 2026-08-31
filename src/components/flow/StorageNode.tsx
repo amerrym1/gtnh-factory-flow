@@ -24,6 +24,7 @@ import { useRenderedHandles } from "./use-rendered-handles";
 import { canonicalizeResourceHandleId } from "@/lib/model/edge-identity";
 import { GT_NODE_COLORS } from "./node-colors";
 import { getPaintBrushCursor } from "./paint-cursor";
+import { hasAnySolveNumbers } from "@/lib/solver/throughput";
 
 /**
  * The flow neighbourhood a drawer hover lights up: every wire ON this drawer,
@@ -785,6 +786,9 @@ function TargetLine({
   const [draft, setDraft] = useState("");
   const target = storage.targetPerSecond;
   const unreachable = result?.targetUnreachable === true;
+  // While the solver has NOTHING to solve for - no amount, no pin, anywhere -
+  // every empty rate line blinks the ask, in step with the board's notice.
+  const askBlink = useFactoryStore((state) => !hasAnySolveNumbers(state.project));
   const beginEdit = () => {
     setDraft(
       target !== undefined && target > 0
@@ -852,7 +856,12 @@ function TargetLine({
           {target !== undefined && target > 0 ? (
             <NetLine net={target} kind={storage.kind} role="product" />
           ) : (
-            <div className="storage-net-line relative h-4 whitespace-nowrap text-center text-[12px] font-bold leading-4 tabular-nums text-[#6b7280]">
+            <div
+              className={[
+                "storage-net-line relative h-4 whitespace-nowrap text-center text-[12px] font-bold leading-4 tabular-nums",
+                askBlink ? "animate-pulse text-[#a8afbb]" : "text-[#6b7280]",
+              ].join(" ")}
+            >
               rate?
             </div>
           )}
