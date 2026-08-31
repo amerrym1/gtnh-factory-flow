@@ -16,6 +16,7 @@ import { applyRecipeInputOverrides, inputOverrideAmount } from "@/lib/model/reci
 import type { AlternativeCycleFace } from "@/lib/nei/alternative-cycle";
 import { createCropFarmPlaceholderRecipe, isCropFarmRecipe } from "@/lib/model/passive-production";
 import { buildPowerRecipe, isPowerRecipe } from "@/lib/power/power-recipe";
+import { POWER_EU_CLAUSE_ID } from "@/lib/power/power-search";
 import {
   createCustomRatePlaceholderRecipe,
   getCustomRateDial,
@@ -160,6 +161,12 @@ interface FactoryStore {
   recipeBrowserSeed?: RecipeSeedClause[];
   /** Set while the search is a REFACTOR: the add replaces this node in place. */
   recipeBrowserRefactorNodeId?: string;
+  /**
+   * Bumped by every refactor press, so each one is a FRESH browse: the
+   * card's settings may have changed since last time, and stencil edits
+   * keyed to the previous press must not resurrect over the new seed.
+   */
+  recipeBrowserSeedNonce: number;
   recipeResourceHistory: RecipeBrowserResource[];
   /**
    * Recipes the plus button promised to the board whose full bodies are still
@@ -728,6 +735,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   recipeBrowserMode: "recipes",
   recipeBrowserSeed: undefined,
   recipeBrowserRefactorNodeId: undefined,
+  recipeBrowserSeedNonce: 0,
   recipeResourceHistory: [],
   powerMenuOpen: false,
   pendingRecipeAdds: [],
@@ -996,11 +1004,27 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       for (const output of effectiveRecipe.outputs) {
         push("makes", output);
       }
+      // A generator's product IS power: refactoring one asks for other
+      // things that make power, through the stencil's own EU condition.
+      if (isPowerRecipe(effectiveRecipe) && effectiveRecipe.power.euPerTick > 0) {
+        seed.push({
+          role: "makes",
+          kind: "fluid",
+          id: POWER_EU_CLAUSE_ID,
+          displayName: "Power (EU)",
+          dominantColor: "#d99a2b",
+        });
+      }
       if (seed.length === 0) {
         return state;
       }
 
-      const primary = seed.find((clause) => clause.role === "makes") ?? seed[0];
+      // The EU pseudo condition never leads: it is not a dataset resource,
+      // and the legacy resource slot it would fill drives real queries.
+      const primary =
+        seed.find((clause) => clause.role === "makes" && clause.id !== POWER_EU_CLAUSE_ID) ??
+        seed.find((clause) => clause.id !== POWER_EU_CLAUSE_ID) ??
+        seed[0];
       return {
         recipeBrowserResource: {
           kind: primary.kind,
@@ -1014,6 +1038,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         recipeBrowserMode: "recipes" as const,
         recipeBrowserSeed: seed,
         recipeBrowserRefactorNodeId: nodeId,
+        recipeBrowserSeedNonce: state.recipeBrowserSeedNonce + 1,
         selectedNodeId: nodeId,
       };
     });

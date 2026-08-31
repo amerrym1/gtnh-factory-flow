@@ -219,6 +219,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const browserMode = useFactoryStore((state) => state.recipeBrowserMode);
   const browserSeed = useFactoryStore((state) => state.recipeBrowserSeed);
   const refactorNodeId = useFactoryStore((state) => state.recipeBrowserRefactorNodeId);
+  const seedNonce = useFactoryStore((state) => state.recipeBrowserSeedNonce);
   const selectedRecipeId = useFactoryStore((state) => state.selectedRecipeId);
   const setRecipeSearch = useFactoryStore((state) => state.setRecipeSearch);
   const setHighlightSearch = useFactoryStore((state) => state.setHighlightSearch);
@@ -424,7 +425,10 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   // made after that carry the browse's key and win while it stays open.
   const browseKey = browserResource
     ? [
-        refactorNodeId ? `refactor:${refactorNodeId}` : "",
+        // The nonce makes every refactor press a fresh browse: the card's
+        // settings may have changed, and old stencil edits must not
+        // resurrect over the new seed.
+        refactorNodeId ? `refactor:${refactorNodeId}:${seedNonce}` : "",
         browserResource.kind,
         browserResource.id,
         browserMode,
