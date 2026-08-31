@@ -12,13 +12,9 @@ import {
   type PowerSearchHit,
 } from "@/lib/power/power-search";
 import { getPowerStructureArt } from "@/lib/power/structure-art";
-import { formatAmount } from "@/lib/power/sources/helpers";
-import { POWER_GROUPS } from "@/lib/power/registry";
-import {
-  buildPowerSettingsReader,
-  type PowerGroupId,
-  type PowerSourceDefinition,
-} from "@/lib/power/types";
+import { POWER_GROUPS, POWER_SOURCES } from "@/lib/power/registry";
+import type { PowerGroupId } from "@/lib/power/types";
+import { GT_VOLTAGE_TIERS } from "@/lib/model";
 import { GT_TIER_COLORS } from "@/components/flow/tier-colors";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
 import { useFactoryStore } from "@/store/factory-store";
@@ -33,6 +29,11 @@ import type { MachineTier } from "@/lib/model/types";
  * burns it, and picking one places the card with that fuel already dialed
  * in. Multiblocks wear the workbook's full structure renders.
  */
+/** Every unlock tier the catalog actually holds, in the game's own order. */
+const TIER_FILTER_OPTIONS = GT_VOLTAGE_TIERS.map((entry) => entry.tier).filter((tier) =>
+  POWER_SOURCES.some((source) => source.unlock === tier),
+);
+
 export function PowerSourceOverlay() {
   const open = useFactoryStore((state) => state.powerMenuOpen);
   const closePowerMenu = useFactoryStore((state) => state.closePowerMenu);
@@ -40,6 +41,7 @@ export function PowerSourceOverlay() {
   const compact = useIsCompactViewport();
   const [query, setQuery] = useState("");
   const [groupFilter, setGroupFilter] = useState<PowerGroupId | "all">("all");
+  const [tierFilter, setTierFilter] = useState<string>("all");
   const layout = usePowerPickerViewport(open);
 
   useEffect(() => {
@@ -60,6 +62,7 @@ export function PowerSourceOverlay() {
     if (!open) {
       setQuery("");
       setGroupFilter("all");
+      setTierFilter("all");
     }
   }, [open]);
 
@@ -67,9 +70,15 @@ export function PowerSourceOverlay() {
     if (!open) {
       return [];
     }
-    const all = searchPowerSources(query);
-    return groupFilter === "all" ? all : all.filter((hit) => hit.source.group === groupFilter);
-  }, [open, query, groupFilter]);
+    let all = searchPowerSources(query);
+    if (groupFilter !== "all") {
+      all = all.filter((hit) => hit.source.group === groupFilter);
+    }
+    if (tierFilter !== "all") {
+      all = all.filter((hit) => hit.source.unlock === tierFilter);
+    }
+    return all;
+  }, [open, query, groupFilter, tierFilter]);
 
   if (!open) {
     return null;
@@ -136,6 +145,20 @@ export function PowerSourceOverlay() {
                 </option>
               ))}
             </select>
+            <select
+              value={tierFilter}
+              onChange={(event) => setTierFilter(event.target.value)}
+              title="Unlock tier"
+              aria-label="Unlock tier"
+              className="h-9 w-24 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1.5 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607] outline-none"
+            >
+              <option value="all">All tiers</option>
+              {TIER_FILTER_OPTIONS.map((tier) => (
+                <option key={tier} value={tier}>
+                  {tier}
+                </option>
+              ))}
+            </select>
             <button
               type="button"
               title="Close (Esc)"
@@ -184,14 +207,9 @@ export function PowerSourceOverlay() {
                           // leaving a bare right half.
                           className="flex min-w-[220px] max-w-[300px] flex-1 basis-[220px] flex-col gap-2"
                         >
-                          <div className="flex flex-col">
-                            <span className="text-xs uppercase tracking-wider text-amber-200/90">
-                              {group.name}
-                            </span>
-                            <span className="truncate text-[11px] text-[var(--mc-ink)]/50">
-                              {group.blurb}
-                            </span>
-                          </div>
+                          <span className="text-xs uppercase tracking-wider text-amber-200/90">
+                            {group.name}
+                          </span>
                           {groupHits.map((hit) => (
                             <PowerSourceCard key={hit.source.id} hit={hit} onPlace={place} />
                           ))}
@@ -252,11 +270,6 @@ function PowerSourceCard({
   const { source, via } = hit;
   const structureArt = getPowerStructureArt(source.id);
   const icon = getPowerMachineIcon(source.id);
-  const preview = useMemo(
-    () => describeOutput(source, hitPlacementSettings(hit)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [source.id, via?.settingId, via?.optionKey],
-  );
   return (
     <button
       type="button"
@@ -306,12 +319,6 @@ function PowerSourceCard({
           </span>
           {source.unlock ? <TierBadge tier={source.unlock} /> : null}
         </span>
-        {/* One line, never wrapping: the cards across a shelf must stay the
-            same height so the rows line up column to column. */}
-        <span className="truncate text-[11px] leading-tight text-[var(--mc-ink)]/55">
-          {source.blurb}
-        </span>
-        <span className="truncate text-[11px] text-emerald-300/90">{preview}</span>
         {via ? (
           // The search matched through a flow: say which one, in the stencil
           // family's cyan, with the direction as an arrow.
@@ -327,33 +334,6 @@ function PowerSourceCard({
       </span>
     </button>
   );
-}
-
-/**
- * What the card would make at these settings - a rough figure by nature (the
- * knobs move it), so it wears a squiggle.
- */
-function describeOutput(
-  source: PowerSourceDefinition,
-  settings: Record<string, string> | undefined,
-): string {
-  try {
-    const model = source.compute(buildPowerSettingsReader(source, settings));
-    if (model.euPerTick > 0) {
-      return `Makes ~${formatAmount(model.euPerTick)} EU/t`;
-    }
-    const output = model.outputs[0];
-    if (output) {
-      const draw = model.euPerTick < 0 ? `, draws ~${formatAmount(-model.euPerTick)} EU/t` : "";
-      return `Makes ~${formatAmount(output.perSecond)} ${output.unit === "L" ? "L" : ""}/s ${output.name}${draw}`;
-    }
-    if (model.euPerTick < 0) {
-      return `Draws ~${formatAmount(-model.euPerTick)} EU/t`;
-    }
-    return "Pick a fuel on the card";
-  } catch {
-    return "";
-  }
 }
 
 // ---- viewport: mirrors the recipe search's sizing so the two feel like one
