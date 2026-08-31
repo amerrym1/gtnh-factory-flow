@@ -547,6 +547,16 @@ describe("power recipes", () => {
     expect(recipe?.inputs[0]).toMatchObject({ kind: "fluid", id: "benzene" });
   });
 
+  it("puts the EU output first on the rail, per second, byproduct-marked", () => {
+    const recipe = buildPowerRecipe("gas-turbine", { fuel: "Benzene" }, "recipe-eu");
+    expect(recipe?.outputs[0]).toMatchObject({
+      kind: "power",
+      id: "eu",
+      amount: 32 * 20,
+      byproduct: true,
+    });
+  });
+
   it("resynthesizes recipes from node settings on load", () => {
     const recipe = buildPowerRecipe("gas-turbine", undefined, "recipe-1") as Recipe;
     const node = {

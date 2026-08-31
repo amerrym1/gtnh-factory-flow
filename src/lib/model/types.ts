@@ -5,7 +5,12 @@ export type ItemId = string;
 export type FluidId = string;
 export type AspectId = string;
 export type ResourceId = ItemId | FluidId | AspectId;
-export type ResourceKind = "item" | "fluid" | "aspect";
+/**
+ * `power` is EU as a resource: one canonical id (`eu`), produced by
+ * generator cards' synthesized recipes and consumed by nothing - drawers
+ * only. Its flows are per-second like every flow; display is always EU/t.
+ */
+export type ResourceKind = "item" | "fluid" | "aspect" | "power";
 export type ResourceKey = `${ResourceKind}:${string}`;
 
 export interface ResourceIconAtlasRef {

@@ -260,7 +260,7 @@ import {
   isCustomRateRecipe,
 } from "@/lib/model/custom-rate";
 import { isTrashRecipe, TRASH_ANY_RESOURCE_ID } from "@/lib/model/trash";
-import { rateUnitSuffix, type RateUnit } from "@/lib/model/rate-unit";
+import { rateSuffixForKind, rateUnitSuffix, type RateUnit } from "@/lib/model/rate-unit";
 import { useIsCompactViewport } from "@/lib/compact-view";
 import { browseHoveredPort } from "./port-browse";
 import { useBoardTouchGestures } from "./board-touch-gestures";
@@ -3081,7 +3081,7 @@ export function FactoryFlow() {
       }
       const channelTotal = channelTotals.get(edge.id);
       const edgeResult = result.edges[edge.id];
-      const unit = rateUnitSuffix(edge.resourceKind === "fluid").trim();
+      const unit = rateSuffixForKind(edge.resourceKind).trim();
       const demand =
         channelTotal?.demand ?? edgeResult?.demandPerSecond ?? edge.ratePerSecond ?? 0;
       const sourceStorage = storagesById.get(edge.source);
@@ -9252,6 +9252,16 @@ function ResourceEdgeComponent({
     routedEdge.path,
     moveMotion && publishedGridRouteEdges.length <= 300,
   );
+  // LIGHTNING. A power wire draws JAGGED: the router's route, zigzagged
+  // after the fact so the router, the lanes and the hit-testing all still
+  // see the straight line. Power edges are few by construction (only
+  // generators make EU), so the extra path build costs nothing board-wide.
+  const isPowerEdge = data?.resource?.kind === "power";
+  const lightningPath = useMemo(
+    () => (isPowerEdge && liveRoute.points.length >= 2 ? zigzagSvgPath(liveRoute.points) : undefined),
+    [isPowerEdge, liveRoute.points],
+  );
+  const drawnPath = lightningPath ?? liveRoute.path;
   // The dots the user has pinned — the draft while one is mid-drag. Only
   // the DOT follows the pointer; the wire holds its route and takes the
   // real one on release. Live previews always guessed wrong.
@@ -9344,8 +9354,11 @@ function ResourceEdgeComponent({
   // edge cannot leave a ghost marching across the board.
   // Zoomed far enough out the dashes are a shimmer rather than a reading, and
   // six hundred of them are the most expensive shimmer on the board.
+  // Power wires march no dashes: the white ants ride the straight route and
+  // would cut across the zigzag. The bolt look carries the direction story.
   const pulseActive =
     flowRate?.pulse === true &&
+    !isPowerEdge &&
     Boolean(liveRoute.path) &&
     hasEdgeDetail(detailLevel, EDGE_DETAIL_PULSE);
   // A LAYOUT effect, not a passive one: the pulse canvas draws from this
@@ -9451,7 +9464,7 @@ function ResourceEdgeComponent({
             pointerEvents="none"
           />
           <BaseEdge
-            path={liveRoute.path}
+            path={drawnPath}
             interactionWidth={0}
             // Normalized during a timelapse so the draw-in covers any route
             // exactly; see ResourceEdgeData.timelapseDraw.
@@ -9479,7 +9492,7 @@ function ResourceEdgeComponent({
             }}
           />
           <BaseEdge
-            path={liveRoute.path}
+            path={drawnPath}
             interactionWidth={0}
             pathLength={data?.timelapseDraw ? 1 : undefined}
             style={{
@@ -9498,7 +9511,13 @@ function ResourceEdgeComponent({
               // washing out for no reason the user did anything to cause.
               strokeOpacity: isHighlighted ? 1 : style?.strokeOpacity,
               strokeWidth: coreStrokeWidth,
-              filter: isHighlighted ? "drop-shadow(0 0 6px var(--glow-halo))" : undefined,
+              // A power wire hums: a static gold glow (no animation, no
+              // repaint bill), stronger when highlighted like any wire.
+              filter: isHighlighted
+                ? "drop-shadow(0 0 6px var(--glow-halo))"
+                : isPowerEdge
+                  ? "drop-shadow(0 0 4px rgba(255,210,87,0.5))"
+                  : undefined,
               // Edges select/hover through their label, never the stroke:
               // edges render above nodes (zIndex 20) so their slot-anchored
               // stubs stay visible, and an interactive stroke there swallows
@@ -10551,6 +10570,51 @@ function compactPolylinePoints(points: Array<{ x: number; y: number } | undefine
   }
 
   return compacted;
+}
+
+/**
+ * The lightning transform: the router's polyline redrawn as a bolt. Every
+ * segment is subdivided into short steps and each interior step is thrown
+ * a couple of pixels off the line, alternating sides, so the wire reads as
+ * jagged energy while ENDING exactly where the route ends - ports, docks
+ * and the router's lanes never know. The first and last few pixels stay
+ * straight so the stub still meets its port square.
+ */
+function zigzagSvgPath(points: Array<{ x: number; y: number }>): string {
+  const STEP = 11;
+  const AMP = 2.6;
+  const CALM = 8;
+  const out: Array<{ x: number; y: number }> = [];
+  let flip = 1;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const a = points[i]!;
+    const b = points[i + 1]!;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = Math.hypot(dx, dy);
+    out.push(a);
+    if (length < STEP * 1.5) {
+      continue;
+    }
+    const ux = dx / length;
+    const uy = dy / length;
+    // Perpendicular, for the throw.
+    const px = -uy;
+    const py = ux;
+    const first = i === 0;
+    const last = i === points.length - 2;
+    const from = first ? CALM : STEP * 0.5;
+    const to = length - (last ? CALM : STEP * 0.5);
+    for (let d = from; d < to; d += STEP) {
+      out.push({ x: a.x + ux * d + px * AMP * flip, y: a.y + uy * d + py * AMP * flip });
+      flip = -flip;
+    }
+  }
+  const end = points[points.length - 1];
+  if (end) {
+    out.push(end);
+  }
+  return pointsToSvgPath(out);
 }
 
 function pointsToSvgPath(points: Array<{ x: number; y: number }>) {

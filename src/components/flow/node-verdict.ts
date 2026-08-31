@@ -642,6 +642,11 @@ function findBareSlots(
   const outputs: NonNullable<NodeVerdict["bare"]>["outputs"] = [];
   if (!rules.freeOutputs) {
     for (const [key, flow] of Object.entries(nodeResult.outputs)) {
+      // An unwired EU port is not a bare slot: unbanked power dissipates in
+      // game, so the closed-plan rule waives it (as the solver cores do).
+      if (flow.kind === "power") {
+        continue;
+      }
       if (flow.amountPerSecond > RATE_EPSILON && !wiredOn(outgoing, key)) {
         outputs.push(describe(flow, key));
       }

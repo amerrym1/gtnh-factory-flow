@@ -37,6 +37,25 @@ export function rateUnitSuffix(fluid: boolean): string {
 }
 
 /**
+ * The kind-aware pair. POWER ignores the board's rate unit on purpose: EU
+ * is thought, quoted and tuned in per-tick everywhere - the game, the wiki,
+ * every power surface in this app - and "EU/min" is a unit nobody has ever
+ * planned in. Its flows are still stored per-second like every flow; only
+ * the display converts.
+ */
+export function rateSuffixForKind(kind: string): string {
+  if (kind === "power") {
+    return " EU/t";
+  }
+  return rateUnitSuffix(kind === "fluid");
+}
+
+/** Multiply a per-second figure by this before display, for this kind. */
+export function rateMultiplierForKind(kind: string): number {
+  return kind === "power" ? 1 / 20 : rateUnitMultiplier();
+}
+
+/**
  * Scale a noise floor or a rounding step that was written in per-second terms.
  *
  * A formatter that rounds the DISPLAYED number keeps less of the truth the

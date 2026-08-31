@@ -202,7 +202,12 @@ export function solveSolveMode(
       }
     }
     for (const rows of [inputRows, outputRows]) {
-      for (const [, port] of rows) {
+      for (const [key, port] of rows) {
+        // The closed-plan rule waives POWER, here as in equations-core: an
+        // unwired EU port dissipates rather than pinning its generator.
+        if (rows === outputRows && port.vars.length === 0 && key.startsWith("power:")) {
+          continue;
+        }
         const scale = 1 / Math.max(1, port.rate);
         const coefficients = new Map<number, number>();
         for (const v of port.vars) {

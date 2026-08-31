@@ -329,6 +329,12 @@ function IconImage({
     return <AtlasIconImage resource={resource} atlas={atlas} iconPixelSize={iconPixelSize} />;
   }
 
+  // POWER has no sprite anywhere: EU is app-synthesized, and its face is a
+  // drawn bolt in the app's power gold.
+  if (resource.kind === "power") {
+    return <PowerIconGlyph iconPixelSize={iconPixelSize} />;
+  }
+
   const iconPath = resource.iconPath ?? getFallbackIconPath(resource);
   if (!iconPath) {
     // The dataset ships no art for fluids at all — not one of the thousands of
@@ -348,6 +354,33 @@ function IconImage({
   }
 
   return <SpriteImage resource={resource} iconPath={iconPath} iconPixelSize={iconPixelSize} />;
+}
+
+/**
+ * EU's face: a chunky pixel-family lightning bolt in the power gold, drawn
+ * rather than fetched - power is synthesized by the app and has no sprite in
+ * any dataset. Crisp edges (no anti-aliased curves) so it sits beside the
+ * item pixel art without looking imported from another game.
+ */
+function PowerIconGlyph({ iconPixelSize }: { iconPixelSize?: number }) {
+  const size = iconPixelSize ?? 32;
+  return (
+    <svg
+      aria-hidden
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      style={{ imageRendering: "pixelated" }}
+      shapeRendering="crispEdges"
+    >
+      <path
+        d="M9 1 L4 9 L7 9 L6 15 L12 6 L8.6 6 Z"
+        fill="#ffd257"
+        stroke="#8a6a13"
+        strokeWidth="0.75"
+      />
+    </svg>
+  );
 }
 
 /**

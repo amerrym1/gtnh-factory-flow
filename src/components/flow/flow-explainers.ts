@@ -1,6 +1,12 @@
 import type { EdgeThroughput, FactoryProject, ThroughputResult } from "@/lib/model/types";
 import { formatCompact, formatNumberWithThousands, formatRate, makeResourceKey } from "@/lib/model";
-import { rateUnitMultiplier, rateUnitPrecisionScale, rateUnitSuffix } from "@/lib/model/rate-unit";
+import {
+  rateMultiplierForKind,
+  rateSuffixForKind,
+  rateUnitMultiplier,
+  rateUnitPrecisionScale,
+  rateUnitSuffix,
+} from "@/lib/model/rate-unit";
 import { describeStorage, getStorageRoles } from "@/lib/model/storage-role";
 import { parseResourceHandleId } from "./resource-handles";
 import {
@@ -67,11 +73,11 @@ const TOL = 0.005;
  * to stay visible instead of rounding to a flat 0.00.
  */
 export function formatSlotRate(value: number, kind: string): string {
-  return `${formatSlotRateBare(value)}${rateUnitSuffix(kind === "fluid")}`;
+  return `${formatCompact(value * rateMultiplierForKind(kind))}${rateSuffixForKind(kind)}`;
 }
 
-export function formatSlotRateBare(value: number): string {
-  return formatCompact(value * rateUnitMultiplier());
+export function formatSlotRateBare(value: number, kind = "item"): string {
+  return formatCompact(value * rateMultiplierForKind(kind));
 }
 
 /**

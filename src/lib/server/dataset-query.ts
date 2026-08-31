@@ -2787,7 +2787,7 @@ function hydrateRecipeMapIconResource(
   resource: RecipeMapIconEntry["resource"],
   resourcesByKey: Map<string, DatasetResource | DatasetResourceIndexEntry>,
 ): DatasetResourceIndexEntry | undefined {
-  if (!resource?.kind || !resource.id) {
+  if (!resource?.kind || !resource.id || resource.kind === "power") {
     return undefined;
   }
   const indexed = resourcesByKey.get(`${resource.kind}:${resource.id}`);

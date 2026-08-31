@@ -10,7 +10,12 @@ import type {
 } from "@/lib/model/types";
 import { formatCompact, makeResourceKey, trimTrailingDecimalZeros } from "@/lib/model";
 import { isDrainRole, type StorageRole } from "@/lib/model/storage-role";
-import { rateUnitMultiplier, rateUnitPrecisionScale, rateUnitSuffix } from "@/lib/model/rate-unit";
+import {
+  rateMultiplierForKind,
+  rateSuffixForKind,
+  rateUnitMultiplier,
+  rateUnitPrecisionScale,
+} from "@/lib/model/rate-unit";
 import { FLUID_ICON_SCALE, fluidArtPixels, ResourceIcon } from "@/components/nei/ResourceIcon";
 import { NodeGlanceIcon } from "./NodeGlance";
 import { isWiringConnection } from "./connection-drag";
@@ -792,7 +797,7 @@ function TargetLine({
   const beginEdit = () => {
     setDraft(
       target !== undefined && target > 0
-        ? formatAmountWithSuffix(target * rateUnitMultiplier())
+        ? formatAmountWithSuffix(target * rateMultiplierForKind(storage.kind))
         : "",
     );
     setEditing(true);
@@ -810,7 +815,7 @@ function TargetLine({
       // Not a number: the field falls back to what it held.
       return;
     }
-    setStorageTarget(storage.id, value / rateUnitMultiplier());
+    setStorageTarget(storage.id, value / rateMultiplierForKind(storage.kind));
   };
 
   if (!editing) {
@@ -1124,14 +1129,15 @@ function storageMatchesSearch(storage: FactoryStorage, query: string) {
 }
 
 function formatCompactRate(value: number, kind: string): string {
-  const scaled = value * rateUnitMultiplier();
-  const unit = rateUnitSuffix(kind === "fluid").trimStart();
+  const scaled = value * rateMultiplierForKind(kind);
+  const unit = rateSuffixForKind(kind).trimStart();
   const abs = Math.abs(scaled);
 
   // The floor is written per second and scaled with the unit, so "balanced"
   // still reads as a flat 0 while a real trickle keeps its digits per tick.
+  const spaced = unit.startsWith("L") || unit.startsWith("EU");
   if (!Number.isFinite(scaled) || abs < 0.005 * rateUnitPrecisionScale()) {
-    return `0${unit.startsWith("L") ? ` ${unit}` : unit}`;
+    return `0${spaced ? ` ${unit}` : unit}`;
   }
   const body =
     abs >= 1_000_000
@@ -1144,7 +1150,7 @@ function formatCompactRate(value: number, kind: string): string {
           abs >= 1
           ? trimFlow(scaled)
           : formatCompact(scaled);
-  return unit.startsWith("L") ? `${body} ${unit}` : `${body}${unit}`;
+  return spaced ? `${body} ${unit}` : `${body}${unit}`;
 }
 
 function trimFlow(value: number) {

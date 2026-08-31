@@ -16,7 +16,7 @@ import { MachineShoppingList } from "./MachineShoppingList";
 import { formatCompact } from "@/lib/model";
 import { makeResourceKey } from "@/lib/model/resources";
 import { getStorageRoles } from "@/lib/model/storage-role";
-import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
+import { rateMultiplierForKind, rateSuffixForKind } from "@/lib/model/rate-unit";
 import type {
   FactoryProject,
   ResourceAmount,
@@ -72,12 +72,12 @@ const EMPTY_KEYS: ReadonlySet<string> = new Set();
  * The unit is a module singleton and the store re-solves when it changes, so
  * these read the live setting at render with nothing to thread through.
  */
-function formatRateValue(perSecond: number): string {
-  return formatCompact(perSecond * rateUnitMultiplier());
+function formatRateValue(perSecond: number, kind: string = "item"): string {
+  return formatCompact(perSecond * rateMultiplierForKind(kind));
 }
 
 function rateUnitFor(kind: ResourceBalance["kind"]): string {
-  return rateUnitSuffix(kind === "fluid").trim();
+  return rateSuffixForKind(kind).trim();
 }
 
 /** How long a row takes to grow into the list or fold out of it. */
@@ -1331,7 +1331,7 @@ const FlowChartRow = memo(function FlowChartRow({
           series={series}
           height={ROW_HEIGHTS.chart - 10}
           unit={rateUnitFor(balance.kind)}
-          multiplier={rateUnitMultiplier()}
+          multiplier={rateMultiplierForKind(balance.kind)}
         />
       </div>
     </div>
@@ -1527,7 +1527,7 @@ const FlowResourceRow = memo(function FlowResourceRow({
                 sign and tone flip immediately, only the digits travel. */}
             <MotionNumberText
               values={[Math.abs(value)]}
-              render={(shown) => formatRateValue(shown[0] ?? Math.abs(value))}
+              render={(shown) => formatRateValue(shown[0] ?? Math.abs(value), balance.kind)}
             />
             <span className="ml-0.5 text-[11px] font-semibold opacity-70">{unit}</span>
           </span>

@@ -213,7 +213,8 @@ export function formatEdgeValue(value: number): string {
 /** "10/s" reads as one token; "12 L/s" needs the space to stay a unit. */
 function withUnit(value: number, unit: string): string {
   // Values arrive per-second; the board-wide unit scales them for display.
-  const scaled = value * rateUnitMultiplier();
+  // EU carries its own fixed unit (always per tick, see rate-unit.ts).
+  const scaled = value * (unit.startsWith("EU") ? 1 / 20 : rateUnitMultiplier());
   return unit.startsWith("/")
     ? `${formatEdgeValue(scaled)}${unit}`
     : `${formatEdgeValue(scaled)} ${unit}`;

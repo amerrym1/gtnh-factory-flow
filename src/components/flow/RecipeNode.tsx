@@ -94,7 +94,13 @@ import {
   isCustomRateRecipe,
   type CustomRateMode,
 } from "@/lib/model/custom-rate";
-import { rateUnitMultiplier, rateUnitPrecisionScale, rateUnitSuffix } from "@/lib/model/rate-unit";
+import {
+  rateMultiplierForKind,
+  rateSuffixForKind,
+  rateUnitMultiplier,
+  rateUnitPrecisionScale,
+  rateUnitSuffix,
+} from "@/lib/model/rate-unit";
 import {
   getRecipeProgrammedCircuit,
   type RecipeProgrammedCircuit,
@@ -552,10 +558,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   const powerArt = powerInfo ? getPowerStructureArt(powerInfo.sourceId) : undefined;
   const powerMachineIcon = powerInfo ? getPowerMachineIcon(powerInfo.sourceId) : undefined;
   const hasPowerPicture = Boolean(powerArt || powerMachineIcon?.iconPath);
-  // A generator's EU rides the output rail as its first row; machines that
-  // only DRAW (parasitic reactors, fusion) keep the figure in the footer.
-  const showEuSocket = powerInfo !== undefined && powerInfo.euPerTick > 0;
-  const hasOutputSide = rails.outputs.length > 0 || showEuSocket;
+  // A generator's EU rides the output rail as its first row (a real port,
+  // kind "power"); machines that only DRAW keep the figure in the footer.
+  const hasOutputSide = rails.outputs.length > 0;
   // A power card with a bare side says so instead of standing lopsided: a
   // solar panel's left half reads "No input", not a hole. Inert rows -
   // nothing to wire is the point.
@@ -1575,24 +1580,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 →
               </div>
             ) : null}
-            {/* A generator's product IS power, so its EU row leads the output
-                rail; the material byproducts (steam, exhaust) queue under it. */}
-            {showEuSocket ? (
-              <div className="flex w-[176px] shrink-0 flex-col">
-                <PowerEuSocketRow
-                  euPerTick={powerInfo?.euPerTick ?? 0}
-                  machines={projectNode.machineCount * Math.max(1, projectNode.parallel)}
-                  drawScale={drawScale}
-                  average={averageDraw}
-                />
-                <PortRail
-                  nodeId={projectNode.id}
-                  side="output"
-                  ports={rails.outputs}
-                  pending={pendingResourceConnection}
-                />
-              </div>
-            ) : showNoOutputRow ? (
+            {/* A generator's EU is an ordinary output row now (kind "power",
+                first on the rail): it wires, it solves, it reads EU/t. */}
+            {showNoOutputRow ? (
               <NoFlowRow label="No output" side="output" />
             ) : (
               <PortRail
@@ -3169,7 +3159,13 @@ export function PortChip({
     port.resource?.alternatives,
     port.handleId,
   );
-  const browse = (mode: PortBrowseMode) =>
+  const browse = (mode: PortBrowseMode) => {
+    // POWER has no recipe book: EU is made by generator cards (the power
+    // picker's job) and consumed by nothing, so browsing it would query the
+    // dataset for a resource that is not in any dataset.
+    if (port.kind === "power") {
+      return;
+    }
     browseResource(
       {
         kind: port.kind,
@@ -3182,6 +3178,7 @@ export function PortChip({
       },
       mode,
     );
+  };
   // Everything the row answers with, in one place: the pointer, the keyboard and
   // the long-press menu all end up here.
   const rowBrowse = usePortRowBrowse({ nodeId, port, browse });
@@ -3576,7 +3573,7 @@ function CustomRatePanel({
         className="nodrag h-6 shrink-0 border border-[var(--mc-33)] bg-[var(--mc-93)] px-1 text-right text-[13px] text-[var(--mc-ink)]"
       />
       <span className="shrink-0 pr-1 text-[11px] font-bold text-[var(--mc-ink-muted)]">
-        {rateUnitSuffix(kind === "fluid").trim() || "/s"}
+        {rateSuffixForKind(kind).trim() || "/s"}
       </span>
     </div>
     </GridBlock>

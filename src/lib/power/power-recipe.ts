@@ -15,6 +15,22 @@ import { formatAmount } from "./sources/helpers";
 
 export const POWER_RECIPE_CATEGORY = "power-source";
 
+/**
+ * EU as a RESOURCE: the one canonical power resource every generator's
+ * recipe outputs. It rides ports, wires, drawers and the solve like any
+ * resource; nothing consumes it (kind matching is strict), so its wires
+ * only ever land on drawers. Flows are per-second like every flow - the
+ * display layer alone converts to EU/t.
+ */
+export const POWER_EU_RESOURCE = {
+  kind: "power",
+  id: "eu",
+  displayName: "EU",
+  // The power gold: wires and drawer tints read their color from the
+  // resource, and EU's is the same gold every power surface already wears.
+  dominantColor: "#ffd257",
+} as const;
+
 export interface RecipePowerInfo {
   sourceId: string;
   /** Net EU/t of one machine at the baked settings; negative = parasitic. */
@@ -94,6 +110,16 @@ export function buildPowerRecipe(
   const model = source.compute(buildPowerSettingsReader(source, settings));
   const inputs = model.inputs.map(flowToSlot).filter(Boolean) as RecipeInput[];
   const outputs = model.outputs.map(flowToSlot).filter(Boolean) as RecipeOutput[];
+  // The EU output port, FIRST on the rail (a generator's product is power).
+  // Marked byproduct so primaryOutput never crowns it over a material
+  // output, and per second (x20) like every flow.
+  if (model.euPerTick > 0) {
+    outputs.unshift({
+      ...POWER_EU_RESOURCE,
+      amount: model.euPerTick * 20,
+      byproduct: true,
+    });
+  }
 
   return {
     id: recipeId,
