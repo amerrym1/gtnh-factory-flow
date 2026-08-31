@@ -1557,7 +1557,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             ].join(" ")}
           >
             {showNoInputRow ? (
-              <NoFlowRow label="No input" />
+              <NoFlowRow label="No input" side="input" />
             ) : (
               <PortRail
                 nodeId={projectNode.id}
@@ -1587,7 +1587,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 />
               </div>
             ) : showNoOutputRow ? (
-              <NoFlowRow label="No output" />
+              <NoFlowRow label="No output" side="output" />
             ) : (
               <PortRail
                 nodeId={projectNode.id}
@@ -2589,11 +2589,16 @@ function PortRail({
  * muted, saying plainly that there is nothing to wire here. Inert on
  * purpose - it is the absence of a port, not a port.
  */
-function NoFlowRow({ label }: { label: string }) {
+function NoFlowRow({ label, side }: { label: string; side: "input" | "output" }) {
+  // Input chips are 140px and output rows 176 (chip + coupling): the stand-in
+  // must match its side's width or it shoves the other rail off the card.
   return (
     <div
       aria-hidden
-      className="flex h-[40px] w-[176px] shrink-0 items-center justify-center border-2 border-dashed border-[var(--mc-47)] text-[12px] font-bold text-[var(--mc-ink-muted)]/70"
+      className={[
+        "flex h-[40px] shrink-0 items-center justify-center border-2 border-dashed border-[var(--mc-47)] text-[12px] font-bold text-[var(--mc-ink-muted)]/70",
+        side === "input" ? PORT_CHIP_WIDTH_CLASS : "w-[176px]",
+      ].join(" ")}
     >
       {label}
     </div>

@@ -609,13 +609,28 @@ describe("deriveNodeVerdict", () => {
   it("reads balanced, unwired, and off", () => {
     const proj = project({
       recipes: [
-        { id: "r", name: "M", machineType: "M", minimumTier: "ULV", durationTicks: 20, eut: 1, inputs: [], outputs: [] },
+        // A slot on the recipe: a card with wireable ports and no wires is
+        // what "unwired" means. Slotless machines get their own case below.
+        {
+          id: "r",
+          name: "M",
+          machineType: "M",
+          minimumTier: "ULV",
+          durationTicks: 20,
+          eut: 1,
+          inputs: [],
+          outputs: [{ kind: "item", id: "pe", amount: 1 }],
+        },
+        // A solar panel's shape: nothing in, nothing out, only power. There
+        // is no wire it could take, so it must never read unwired.
+        { id: "rSolar", name: "Panel", machineType: "Panel", minimumTier: "ULV", durationTicks: 20, eut: 0, inputs: [], outputs: [] },
       ] as unknown as FactoryProject["recipes"],
       nodes: [
         machineNode("N"),
         machineNode("Lonely"),
         machineNode("Dead", "r", { enabled: false }),
         machineNode("C"),
+        machineNode("Panel", "rSolar"),
       ],
       edges: [edge("eOut", "N", "C", "pe")],
     });
@@ -624,6 +639,7 @@ describe("deriveNodeVerdict", () => {
         N: nodeResult({ utilization: 1 }),
         Lonely: nodeResult({ nodeId: "Lonely", utilization: 1 }),
         Dead: nodeResult({ nodeId: "Dead", utilization: 0 }),
+        Panel: nodeResult({ nodeId: "Panel", utilization: 1 }),
       },
       { eOut: edgeResult({ transferredPerSecond: 10, demandPerSecond: 10 }) },
     );
@@ -631,6 +647,7 @@ describe("deriveNodeVerdict", () => {
     expect(deriveNodeVerdict(proj, result, "N").kind).toBe("balanced");
     expect(deriveNodeVerdict(proj, result, "Lonely").kind).toBe("unwired");
     expect(deriveNodeVerdict(proj, result, "Dead").kind).toBe("off");
+    expect(deriveNodeVerdict(proj, result, "Panel").kind).toBe("balanced");
   });
 });
 
