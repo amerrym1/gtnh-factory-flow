@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, ArrowRight, Search, X, Zap } from "lucide-react";
 import { useIsCompactViewport } from "@/lib/compact-view";
+import { useWorkspaceView } from "@/lib/workspace-view";
 import { getPowerMachineIcon } from "@/lib/power/planner-data";
 import {
   hitPlacementSettings,
@@ -95,7 +96,12 @@ export function PowerSourceOverlay() {
         className="pointer-events-auto relative flex flex-col font-mono"
         aria-label="Power sources"
         style={{
-          width: layout.sheet ? "100%" : `min(${layout.width}px, 100%)`,
+          // Browsing is five columns at most, so past their reach the panel
+          // stops and centers instead of trailing a bare right half; a
+          // search fans results across everything the screen has.
+          width: layout.sheet
+            ? "100%"
+            : `min(${searching ? layout.width : Math.min(layout.width, BROWSE_MAX_WIDTH)}px, 100%)`,
           height: layout.sheet ? "100%" : `min(${layout.height}px, 100%)`,
         }}
       >
@@ -149,7 +155,7 @@ export function PowerSourceOverlay() {
                   product they can run on.
                 </p>
               ) : (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(310px,1fr))] items-start gap-3">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] items-start gap-3">
                   {hits.map((hit) => (
                     <PowerSourceCard key={hit.source.id} hit={hit} onPlace={place} />
                   ))}
@@ -171,7 +177,13 @@ export function PowerSourceOverlay() {
                         return null;
                       }
                       return (
-                        <div key={group.id} className="flex w-[310px] shrink-0 flex-col gap-2">
+                        <div
+                          key={group.id}
+                          // Columns fill the row: never under 220px, and a
+                          // wide screen fattens them a little instead of
+                          // leaving a bare right half.
+                          className="flex min-w-[220px] max-w-[300px] flex-1 basis-[220px] flex-col gap-2"
+                        >
                           <div className="flex flex-col">
                             <span className="text-xs uppercase tracking-wider text-amber-200/90">
                               {group.name}
@@ -200,7 +212,7 @@ export function PowerSourceOverlay() {
 
 /** The machine catalog up top; solar and endgame on the shelf below. */
 const GROUP_SHELVES: PowerGroupId[][] = [
-  ["burners", "engines", "steam", "turbines", "reactors"],
+  ["burners", "turbines", "steam", "engines", "reactors"],
   ["passive", "endgame"],
 ];
 
@@ -347,9 +359,11 @@ function describeOutput(
 // ---- viewport: mirrors the recipe search's sizing so the two feel like one
 // tool (RecipeSearchOverlay.tsx keeps the originals).
 
-const PICKER_SIDEBAR_LEFT = 306;
+/** A CLOSED item panel leaves a 26px rail (FactoryPlannerApp's RAIL_WIDTH). */
+const PICKER_RAIL_LEFT = 26;
+/** Five 300px browse columns, their gaps and the frame: the browse view's reach. */
+const BROWSE_MAX_WIDTH = 1620;
 const PICKER_MIN_WIDTH = 640;
-const PICKER_MAX_WIDTH = 2200;
 const PICKER_MAX_HEIGHT = 1200;
 const PICKER_SHEET_BELOW = 700;
 
@@ -362,27 +376,34 @@ interface PickerViewport {
 
 function readPickerViewport(): PickerViewport {
   if (typeof window === "undefined") {
-    return { sheet: false, leftInset: PICKER_SIDEBAR_LEFT, width: 960, height: 760 };
+    return { sheet: false, leftInset: PICKER_RAIL_LEFT, width: 960, height: 760 };
   }
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
   if (viewportWidth < PICKER_SHEET_BELOW) {
     return { sheet: true, leftInset: 0, width: viewportWidth, height: viewportHeight };
   }
+  // A closed item panel UNMOUNTS the aside and leaves the rail, so absence
+  // means the rail's width, not the panel's.
   const browser = document.querySelector('aside[data-help-anchor="browser"]');
   const leftInset = browser
     ? Math.round(browser.getBoundingClientRect().width)
-    : PICKER_SIDEBAR_LEFT;
+    : PICKER_RAIL_LEFT;
   return {
     sheet: false,
     leftInset,
-    width: Math.min(PICKER_MAX_WIDTH, Math.max(PICKER_MIN_WIDTH, viewportWidth - leftInset - 24)),
+    // No width cap: a wide screen gets more columns, not a wrapped shelf.
+    width: Math.max(PICKER_MIN_WIDTH, viewportWidth - leftInset - 24),
     height: Math.min(PICKER_MAX_HEIGHT, Math.max(360, viewportHeight - 20)),
   };
 }
 
 function usePowerPickerViewport(open: boolean): PickerViewport {
   const [viewport, setViewport] = useState(readPickerViewport);
+  // Closing the item panel is not a window resize: the aside unmounts and
+  // the rail takes its place, so the picker re-measures on the workspace
+  // flag itself and takes the room the panel gives back.
+  const { leftPanelOpen } = useWorkspaceView();
   useEffect(() => {
     if (!open) {
       return;
@@ -390,7 +411,15 @@ function usePowerPickerViewport(open: boolean): PickerViewport {
     const update = () => setViewport(readPickerViewport());
     update();
     window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, [open]);
+    const observer = new ResizeObserver(update);
+    const element = document.querySelector('aside[data-help-anchor="browser"]');
+    if (element) {
+      observer.observe(element);
+    }
+    return () => {
+      window.removeEventListener("resize", update);
+      observer.disconnect();
+    };
+  }, [open, leftPanelOpen]);
   return viewport;
 }
