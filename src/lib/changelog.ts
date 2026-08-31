@@ -73,6 +73,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.41.3",
+    date: "2026-08-31",
+    headline: "Copied generators keep their own settings",
+    notes: [
+      "Changing a setting on a copied generator no longer changes the original too.",
+    ],
+  },
+  {
     version: "2.41.2",
     date: "2026-08-31",
     headline: "A solver fix",
