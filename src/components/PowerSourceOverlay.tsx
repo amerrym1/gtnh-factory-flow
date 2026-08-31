@@ -10,18 +10,23 @@ import {
   searchPowerSources,
   type PowerSearchHit,
 } from "@/lib/power/power-search";
+import { getPowerStructureArt } from "@/lib/power/structure-art";
 import { formatAmount } from "@/lib/power/sources/helpers";
 import { POWER_GROUPS } from "@/lib/power/registry";
 import { buildPowerSettingsReader, type PowerSourceDefinition } from "@/lib/power/types";
+import { GT_TIER_COLORS } from "@/components/flow/tier-colors";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
 import { useFactoryStore } from "@/store/factory-store";
+import type { MachineTier } from "@/lib/model/types";
 
 /**
  * The power source picker: the recipe search's sibling, at the recipe
- * search's size. Browsing shows the whole catalog in groups; typing searches
- * the machines AND everything they take or make under any setting - so
- * "benzene" finds every machine that burns it, and picking one places the
- * card with that fuel already dialed in.
+ * search's size. Browsing lays the catalog out one GROUP PER COLUMN -
+ * generators, engines, boilers, turbines side by side, wrapping when the
+ * panel runs out of width. Typing searches the machines AND everything they
+ * take or make under any setting - so "benzene" finds every machine that
+ * burns it, and picking one places the card with that fuel already dialed
+ * in. Multiblocks wear the workbook's full structure renders.
  */
 export function PowerSourceOverlay() {
   const open = useFactoryStore((state) => state.powerMenuOpen);
@@ -118,28 +123,39 @@ export function PowerSourceOverlay() {
                   product they can run on.
                 </p>
               ) : (
-                <PowerHitGrid hits={hits} onPlace={place} />
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(310px,1fr))] items-start gap-3">
+                  {hits.map((hit) => (
+                    <PowerSourceCard key={hit.source.id} hit={hit} onPlace={place} />
+                  ))}
+                </div>
               )
             ) : (
-              POWER_GROUPS.map((group) => {
-                const groupHits = hits.filter((hit) => hit.source.group === group.id);
-                if (groupHits.length === 0) {
-                  return null;
-                }
-                return (
-                  <div key={group.id} className="mb-5 last:mb-0">
-                    <div className="mb-2 flex items-baseline gap-2">
-                      <span className="text-xs uppercase tracking-wider text-amber-200/90">
-                        {group.name}
-                      </span>
-                      <span className="truncate text-[11px] text-[var(--mc-ink)]/50">
-                        {group.blurb}
-                      </span>
+              // One column per group, wrapping when the panel runs out of
+              // width: generators beside engines beside boilers, the way a
+              // player thinks about the catalog.
+              <div className="flex flex-wrap items-start gap-4">
+                {POWER_GROUPS.map((group) => {
+                  const groupHits = hits.filter((hit) => hit.source.group === group.id);
+                  if (groupHits.length === 0) {
+                    return null;
+                  }
+                  return (
+                    <div key={group.id} className="flex w-[310px] shrink-0 flex-col gap-2">
+                      <div className="flex flex-col">
+                        <span className="text-xs uppercase tracking-wider text-amber-200/90">
+                          {group.name}
+                        </span>
+                        <span className="truncate text-[11px] text-[var(--mc-ink)]/50">
+                          {group.blurb}
+                        </span>
+                      </div>
+                      {groupHits.map((hit) => (
+                        <PowerSourceCard key={hit.source.id} hit={hit} onPlace={place} />
+                      ))}
                     </div>
-                    <PowerHitGrid hits={groupHits} onPlace={place} />
-                  </div>
-                );
-              })
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
@@ -149,19 +165,29 @@ export function PowerSourceOverlay() {
   );
 }
 
-function PowerHitGrid({
-  hits,
-  onPlace,
-}: {
-  hits: PowerSearchHit[];
-  onPlace: (hit: PowerSearchHit) => void;
-}) {
+/** The same tier badge the machine list and card headers wear. */
+function TierBadge({ tier }: { tier: string }) {
+  const color = GT_TIER_COLORS[tier as Exclude<MachineTier, "DEMO">];
+  if (!color) {
+    return (
+      <span className="shrink-0 border border-[var(--mc-33)] px-1 text-[10px] uppercase text-[var(--mc-ink)]/70">
+        {tier}
+      </span>
+    );
+  }
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-2">
-      {hits.map((hit) => (
-        <PowerSourceCard key={hit.source.id} hit={hit} onPlace={onPlace} />
-      ))}
-    </div>
+    <span
+      className="shrink-0 border px-1 text-[10px] font-bold leading-[15px]"
+      style={{
+        backgroundColor: color.background,
+        borderColor: color.border,
+        color: color.text,
+        textShadow: `1px 1px 0 ${color.shadow}`,
+        textDecoration: color.underline ? "underline" : undefined,
+      }}
+    >
+      {tier}
+    </span>
   );
 }
 
@@ -173,6 +199,7 @@ function PowerSourceCard({
   onPlace: (hit: PowerSearchHit) => void;
 }) {
   const { source, via } = hit;
+  const structureArt = getPowerStructureArt(source.id);
   const icon = getPowerMachineIcon(source.id);
   const preview = useMemo(
     () => describeOutput(source, hitPlacementSettings(hit)),
@@ -183,49 +210,52 @@ function PowerSourceCard({
     <button
       type="button"
       onClick={() => onPlace(hit)}
-      className="group flex cursor-pointer items-stretch gap-2 border-2 border-[var(--mc-33)] bg-[var(--mc-71)] p-2 text-left hover:border-amber-300/70 hover:bg-[var(--mc-85)]"
+      className="group flex w-full cursor-pointer flex-col border-2 border-[var(--mc-33)] bg-[var(--mc-71)] text-left hover:border-amber-300/70 hover:bg-[var(--mc-85)]"
     >
-      <span className="flex h-14 w-14 shrink-0 items-center justify-center self-center overflow-hidden border border-[var(--mc-47)] bg-[var(--mc-55)]">
-        {icon?.iconPath ? (
-          // The machine's own item art, through ResourceIcon so the sprite's
-          // baked-in transparent padding is zoomed away like everywhere else.
-          <ResourceIcon
-            resource={{
-              kind: "item",
-              id: icon.id,
-              amount: 1,
-              displayName: icon.displayName,
-              iconPath: icon.iconPath,
-              dominantColor: icon.dominantColor,
-            }}
-            bare
-            tooltip={false}
-            showAmount={false}
-            showConsumedState={false}
-            // These are 3D block renders whose art fills the middle ~60% of
-            // the sprite: 96px through a 56px window crops the padding away
-            // without diving into the block's face.
-            iconPixelSize={96}
-            className="!h-14 !w-14"
+      {/* The structure banner: the workbook's own multiblock render, big.
+          Singleblocks show their machine item instead. */}
+      <span className="relative flex h-36 w-full items-center justify-center overflow-hidden border-b border-[var(--mc-33)] bg-[#0b0d10] p-2">
+        {structureArt ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={structureArt}
+            alt=""
+            draggable={false}
+            className="max-h-full max-w-full object-contain [image-rendering:pixelated]"
           />
+        ) : icon?.iconPath ? (
+          <span className="relative flex h-28 w-28 items-center justify-center overflow-hidden">
+            <ResourceIcon
+              resource={{
+                kind: "item",
+                id: icon.id,
+                amount: 1,
+                displayName: icon.displayName,
+                iconPath: icon.iconPath,
+                dominantColor: icon.dominantColor,
+              }}
+              bare
+              tooltip={false}
+              showAmount={false}
+              showConsumedState={false}
+              // 3D block renders: crop the sprite's padding without diving
+              // into the block's face (same ratio as the small tiles used).
+              iconPixelSize={190}
+              className="!h-28 !w-28"
+            />
+          </span>
         ) : (
-          <Zap className="h-6 w-6 text-amber-300" aria-hidden />
+          <Zap className="h-10 w-10 text-amber-300" aria-hidden />
         )}
       </span>
-      <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+      <span className="flex min-w-0 flex-col gap-0.5 p-2">
         <span className="flex items-center gap-1.5">
           <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-[var(--mc-ink)]">
             {source.name}
           </span>
-          {source.unlock ? (
-            <span className="shrink-0 border border-[var(--mc-33)] px-1 text-[9px] uppercase text-[var(--mc-ink)]/70">
-              {source.unlock}
-            </span>
-          ) : null}
+          {source.unlock ? <TierBadge tier={source.unlock} /> : null}
         </span>
-        <span className="truncate text-[11px] leading-tight text-[var(--mc-ink)]/55">
-          {source.blurb}
-        </span>
+        <span className="text-[11px] leading-tight text-[var(--mc-ink)]/55">{source.blurb}</span>
         <span className="truncate text-[11px] text-emerald-300/90">{preview}</span>
         {via ? (
           // The search matched through a flow: say which one, in the stencil
@@ -244,6 +274,10 @@ function PowerSourceCard({
   );
 }
 
+/**
+ * What the card would make at these settings - a rough figure by nature (the
+ * knobs move it), so it wears a squiggle.
+ */
 function describeOutput(
   source: PowerSourceDefinition,
   settings: Record<string, string> | undefined,
@@ -251,15 +285,15 @@ function describeOutput(
   try {
     const model = source.compute(buildPowerSettingsReader(source, settings));
     if (model.euPerTick > 0) {
-      return `Makes ${formatAmount(model.euPerTick)} EU/t`;
+      return `Makes ~${formatAmount(model.euPerTick)} EU/t`;
     }
     const output = model.outputs[0];
     if (output) {
-      const draw = model.euPerTick < 0 ? `, draws ${formatAmount(-model.euPerTick)} EU/t` : "";
-      return `Makes ${formatAmount(output.perSecond)} ${output.unit === "L" ? "L" : ""}/s ${output.name}${draw}`;
+      const draw = model.euPerTick < 0 ? `, draws ~${formatAmount(-model.euPerTick)} EU/t` : "";
+      return `Makes ~${formatAmount(output.perSecond)} ${output.unit === "L" ? "L" : ""}/s ${output.name}${draw}`;
     }
     if (model.euPerTick < 0) {
-      return `Draws ${formatAmount(-model.euPerTick)} EU/t`;
+      return `Draws ~${formatAmount(-model.euPerTick)} EU/t`;
     }
     return "Pick a fuel on the card";
   } catch {
