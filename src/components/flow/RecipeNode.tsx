@@ -1579,6 +1579,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   euPerTick={powerInfo?.euPerTick ?? 0}
                   machines={projectNode.machineCount * Math.max(1, projectNode.parallel)}
                   drawScale={drawScale}
+                  average={averageDraw}
                 />
                 <PortRail
                   nodeId={projectNode.id}
@@ -2787,12 +2788,16 @@ function PowerEuSocketRow({
   euPerTick,
   machines,
   drawScale,
+  average,
 }: {
   euPerTick: number;
   machines: number;
   /** The PEAK/AVG switch, applied like every other EU figure's; a stalled
    * generator makes 0 EU/t under both readings. */
   drawScale: number;
+  /** Which reading the switch has picked, named beside the EU title so the
+   * figure says what it is. */
+  average: boolean;
 }) {
   const totalEuT = euPerTick * machines * drawScale;
   return (
@@ -2808,7 +2813,10 @@ function PowerEuSocketRow({
           </span>
           <span className="flex min-w-0 flex-1 flex-col justify-center pr-0.5">
             <span className="block truncate text-[11px] font-bold leading-[13px] text-[var(--mc-ink)]">
-              EU
+              EU{" "}
+              <span className="text-[8px] font-normal text-[var(--mc-ink-muted)] opacity-60">
+                ({average ? "avg" : "peak"})
+              </span>
             </span>
             <span className="block truncate text-[10px] leading-[12px] tabular-nums text-amber-200/90">
               <MotionNumberText
