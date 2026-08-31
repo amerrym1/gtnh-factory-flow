@@ -183,19 +183,51 @@ const CUSTOM_RATE_UNIVERSAL_HANDLE_IDS: readonly string[] = [
 ];
 
 /**
- * The power sector's card face: the window ground warmed toward amber just
- * enough to read as a different material, with every element on it keeping
- * its ordinary colours.
+ * The power sector's card face: the window ground warmed toward amber - a
+ * different material, with every element on it keeping its ordinary colours.
  */
-const POWER_CARD_FACE = "color-mix(in srgb, var(--mc-78) 91%, #d99a2b 9%)";
+const POWER_CARD_FACE = "color-mix(in srgb, var(--mc-78) 85%, #d99a2b 15%)";
+/** The corner cut, in px. The card is an octagon, not a clipped rectangle. */
+const POWER_CHAMFER = 14;
+
+/** An octagon inset `t` px from the box, corners cut `c` px along each edge. */
+function octagon(t: number, c: number): string {
+  const lo = `${t + c}px`;
+  const hi = `calc(100% - ${t + c}px)`;
+  const edge = `${t}px`;
+  const farEdge = `calc(100% - ${t}px)`;
+  return `polygon(${lo} ${edge}, ${hi} ${edge}, ${farEdge} ${lo}, ${farEdge} ${hi}, ${hi} ${farEdge}, ${lo} ${farEdge}, ${edge} ${hi}, ${edge} ${lo})`;
+}
+
 /**
- * A slight hexagon: 8px corner cuts. The polygon runs 12px OUTSIDE the box
- * along the edges so selection rings and verdict glows still paint; at the
- * corners the cut lines extend outward at 45°, so a ring follows the chamfer
- * instead of being squared back off.
+ * The window clip that lets rings and glows survive: it runs 12px OUTSIDE
+ * the box along the edges, and the corner cut lines extend outward at 45°,
+ * so a selection ring follows the chamfer instead of being squared off.
  */
-const POWER_CARD_CLIP =
-  "polygon(20px -12px, calc(100% - 20px) -12px, calc(100% + 12px) 20px, calc(100% + 12px) calc(100% - 20px), calc(100% - 20px) calc(100% + 12px), 20px calc(100% + 12px), -12px calc(100% - 20px), -12px 20px)";
+const POWER_CARD_CLIP = (() => {
+  const m = 12;
+  const k = `${POWER_CHAMFER + m}px`;
+  const kFar = `calc(100% - ${POWER_CHAMFER + m}px)`;
+  const out = `${-m}px`;
+  const outFar = `calc(100% + ${m}px)`;
+  return `polygon(${k} ${out}, ${kFar} ${out}, ${outFar} ${k}, ${outFar} ${kFar}, ${kFar} ${outFar}, ${k} ${outFar}, ${out} ${kFar}, ${out} ${k})`;
+})();
+
+/**
+ * The octagonal frame, drawn as stacked background layers because the
+ * rectangular inset box-shadows cannot turn a corner: outermost the 2px
+ * frame line, then the 4px bevel (lit toward the top-left like every card),
+ * then the amber face. The chamfer shrinks per layer so the frame and bevel
+ * keep their width along the diagonals too.
+ */
+const POWER_CARD_LAYERS: Array<{ clipPath: string; background: string }> = [
+  { clipPath: octagon(0, POWER_CHAMFER), background: "var(--mc-96)" },
+  {
+    clipPath: octagon(2, POWER_CHAMFER - 1),
+    background: "linear-gradient(135deg, var(--mc-100), var(--mc-33))",
+  },
+  { clipPath: octagon(6, POWER_CHAMFER - 4), background: POWER_CARD_FACE },
+];
 
 export interface RecipeNodeData extends Record<string, unknown> {
   projectNode: FactoryNode;
@@ -893,12 +925,28 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             : undefined),
           ...(isPowerCard
             ? {
-                backgroundColor: POWER_CARD_FACE,
+                // The rectangle's own paint goes; the octagon layers below
+                // carry the frame, bevel and face along the real shape.
+                backgroundColor: "transparent",
+                boxShadow: "none",
                 clipPath: POWER_CARD_CLIP,
+                // Lets the layers sit at negative z INSIDE this card only,
+                // under even the statically-positioned content.
+                isolation: "isolate",
               }
             : undefined),
         }}
       >
+      {isPowerCard
+        ? POWER_CARD_LAYERS.map((layer, index) => (
+            <div
+              key={index}
+              aria-hidden
+              className="pointer-events-none absolute inset-0 z-[-1]"
+              style={layer}
+            />
+          ))
+        : null}
       {/* The ring's mark, and the reason it is an ELEMENT rather than the
           window's ::after: a pseudo-element's box is only as trustworthy as
           the selector that made it, and this one kept coming out around the
