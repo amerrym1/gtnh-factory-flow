@@ -176,10 +176,10 @@ export function PowerSourceOverlay() {
   );
 }
 
-/** The fuel-to-power path up top; reactors, solar and endgame on shelf two. */
+/** The machine catalog up top; solar and endgame on the shelf below. */
 const GROUP_SHELVES: PowerGroupId[][] = [
-  ["burners", "engines", "steam", "turbines"],
-  ["reactors", "passive", "endgame"],
+  ["burners", "engines", "steam", "turbines", "reactors"],
+  ["passive", "endgame"],
 ];
 
 /** The same tier badge the machine list and card headers wear. */
