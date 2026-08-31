@@ -381,6 +381,13 @@ export interface FactoryStorage {
   resourceId: ResourceId;
   /** Drains only; absent means `product`. See StorageDrainMode. */
   drainMode?: StorageDrainMode;
+  /**
+   * Solve mode's question, typed on a PRODUCT drawer: make at least this much
+   * per second. Ignored in plan mode and on other drawer roles; a product with
+   * no number is unconstrained (byproduct-shaped) so flipping the mode never
+   * errors a board.
+   */
+  targetPerSecond?: number;
   /** Buffers only; absent means `overflow`. See StorageBufferMode. */
   bufferMode?: StorageBufferMode;
   colorTag?: FactoryNodeColorTag;
@@ -671,6 +678,15 @@ export interface FactoryProject {
   /** How the board treats what it cannot feed or shift. See SetupRules. */
   setupRules?: SetupRules;
   /**
+   * SOLVE MODE: machine counts become the answer instead of the question.
+   * Product drawers' typed amounts (`FactoryStorage.targetPerSecond`) are the
+   * constraints, and every card reports the fractional machine count the
+   * targets require (`theoreticalMachinesRequired`) in place of usage and
+   * verdicts. Part of the plan JSON so a shared setup opens in the mode it
+   * was authored in.
+   */
+  solveMode?: boolean;
+  /**
    * LEGACY sketch mode, read on load and rewritten as both board rules.
    * Plans saved before the rules existed still carry it; nothing writes it.
    */
@@ -814,6 +830,10 @@ export interface StorageThroughputResult {
   consumedPerSecond: number;
   netPerSecond: number;
   status: "filling" | "draining" | "balanced" | "empty";
+  /** Solve mode: the typed requirement this drawer carried into the solve. */
+  targetPerSecond?: number;
+  /** Solve mode: no chain can reach the typed amount at any machine scale. */
+  targetUnreachable?: boolean;
 }
 
 export interface ResourceBalance {

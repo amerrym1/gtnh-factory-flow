@@ -51,6 +51,7 @@ import {
 import { closeBoundaries } from "./close-boundaries";
 import { getSetupRules } from "../model/setup-rules";
 import { solveEquationsCore } from "./equations-core";
+import { solveSolveMode } from "./solve-mode";
 
 const EPSILON = 0.000001;
 
@@ -215,6 +216,24 @@ export function calculateThroughput(
         runtimeCalculationWarning(effectiveRecipe, node),
       ].filter((warning): warning is string => Boolean(warning)),
     };
+  }
+
+  // SOLVE MODE: the product drawers' typed amounts are the question and the
+  // machine counts are the answer. The nameplate reports above (built at the
+  // player's counts) supply the per-card rates; solve-mode.ts scales them.
+  // None of the plan-mode storytelling below runs - usage, verdicts, clogs
+  // and fairness all describe a FIXED build, and the build is what is being
+  // solved for here.
+  if (project.solveMode) {
+    return finalizeSolveModeResult(
+      project,
+      nodes,
+      storages,
+      projectStorages,
+      bottlenecks,
+      crossForm,
+      options,
+    );
   }
 
   // The equilibrium engine owns the iteration: every node starts at full
@@ -433,6 +452,123 @@ function expandCrossFormEdges(project: FactoryProject): {
   }
 
   return { project: { ...project, recipes, nodes, edges }, hiddenNodeIds, hiddenEdgeIds };
+}
+
+/**
+ * The solve-mode result: run the count solve, then rewrite every machine
+ * report AT THE SOLVED SCALE - rates, flows and EU all multiplied by the
+ * solved act - so every downstream book (balances, storages, power, fuel)
+ * reads true figures without knowing the mode exists. The machine-count
+ * answer itself rides `theoreticalMachinesRequired` (act x built count);
+ * utilization is 1 for anything running (the solved build has no slack by
+ * construction) and 0 for a chain no target needs.
+ */
+function finalizeSolveModeResult(
+  project: FactoryProject,
+  nodes: Record<string, NodeThroughputResult>,
+  storages: Record<string, StorageThroughputResult>,
+  projectStorages: FactoryStorage[],
+  bottlenecks: BottleneckReport[],
+  crossForm: { hiddenNodeIds: string[]; hiddenEdgeIds: string[] },
+  options: SolverOptions,
+): ThroughputResult {
+  const roles = getStorageRoles(project);
+  const targets = projectStorages
+    .filter(
+      (storage) =>
+        roles.get(storage.id) === "product" && (storage.targetPerSecond ?? 0) > 0,
+    )
+    .map((storage) => ({
+      storageId: storage.id,
+      amountPerSecond: storage.targetPerSecond!,
+    }));
+
+  const solved = solveSolveMode(project, nodes, targets, new Set(crossForm.hiddenNodeIds));
+
+  const countByNode = new Map(project.nodes.map((node) => [node.id, node.machineCount]));
+  let totalEuT = 0;
+  for (const nodeResult of Object.values(nodes)) {
+    if (!nodeResult.enabled || nodeResult.status === "missing-recipe") {
+      continue;
+    }
+    const act = solved.scaleByNode.get(nodeResult.nodeId) ?? 0;
+    nodeResult.operationRatePerSecond *= act;
+    for (const flow of Object.values(nodeResult.inputs)) {
+      flow.amountPerSecond *= act;
+    }
+    for (const flow of Object.values(nodeResult.outputs)) {
+      flow.amountPerSecond *= act;
+    }
+    nodeResult.euT *= act;
+    totalEuT += nodeResult.euT;
+    nodeResult.utilization = act > EPSILON ? 1 : 0;
+    nodeResult.capableUtilization = nodeResult.utilization;
+    nodeResult.demandUtilization = nodeResult.utilization;
+    nodeResult.disposalUtilization = 1;
+    nodeResult.theoreticalMachinesRequired = act * (countByNode.get(nodeResult.nodeId) ?? 1);
+    const primary = Object.values(nodeResult.outputs)[0];
+    nodeResult.requiredRatePerSecond = primary?.amountPerSecond ?? 0;
+    nodeResult.maxRatePerSecond = primary?.amountPerSecond ?? 0;
+    nodeResult.status = act > EPSILON ? "balanced" : "underutilized";
+  }
+
+  const edgeResults: Record<string, EdgeThroughput> = {};
+  for (const edge of project.edges) {
+    const flow = solved.edgeFlowPerSecond.get(edge.id);
+    if (flow === undefined) {
+      continue;
+    }
+    edgeResults[edge.id] = buildEdgeResult(
+      edge,
+      makeResourceKey(edge.resourceKind, edge.resourceId),
+      flow,
+      flow,
+    );
+  }
+  refreshStorageResultsFromEdges(projectStorages, storages, project.edges, edgeResults);
+
+  for (const storage of projectStorages) {
+    const result = storages[storage.id];
+    if (!result || roles.get(storage.id) !== "product") {
+      continue;
+    }
+    result.targetPerSecond = storage.targetPerSecond;
+    if (solved.unreachableStorageIds.has(storage.id)) {
+      result.targetUnreachable = true;
+      bottlenecks.push({
+        id: `solve-target:${storage.id}`,
+        kind: "resource-deficit",
+        severity: "critical",
+        message: `${storage.displayName ?? storage.resourceId}: no chain can make ${storage.targetPerSecond?.toFixed(2)}/s.`,
+      });
+    }
+  }
+
+  const resourceResults = Object.fromEntries(
+    calculateEffectiveBalances(project, nodes, edgeResults),
+  ) as Record<ResourceKey, ResourceBalance>;
+  const { externalInputs, unconsumedOutputs } = splitBalances(Object.values(resourceResults));
+
+  for (const hiddenId of crossForm.hiddenNodeIds) {
+    delete nodes[hiddenId];
+  }
+  for (const hiddenEdgeId of crossForm.hiddenEdgeIds) {
+    delete edgeResults[hiddenEdgeId];
+  }
+
+  return {
+    nodes,
+    storages,
+    resources: resourceResults,
+    edges: edgeResults,
+    totalEuT,
+    totalEuPerSecond: totalEuT * TICKS_PER_SECOND,
+    fuelEstimate: calculateFuelEstimate(project, totalEuT),
+    bottlenecks,
+    externalInputs,
+    unconsumedOutputs,
+    generatedAt: options.generatedAt ?? project.metadata?.updatedAt ?? "unspecified",
+  };
 }
 
 function buildDisabledNodeResult(nodeId: string, recipe: Recipe): NodeThroughputResult {

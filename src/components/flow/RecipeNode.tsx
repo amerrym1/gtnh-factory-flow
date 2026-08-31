@@ -535,6 +535,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // numbers can change.
   const { project: liveProject, lastResult } = useFactoryStore.getState();
   const verdict = deriveNodeVerdict(liveProject, lastResult, projectNode.id);
+  // Solve mode: the card answers "how many machines" instead of "how hard is
+  // this build running", so the usage cell and the count stepper both yield.
+  const solveMode = useFactoryStore((state) => state.project.solveMode === true);
   const rails = buildRailPorts(
     liveProject,
     lastResult,
@@ -1654,12 +1657,15 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                      build. The pair centres together. */
                   <div className="flex min-w-0 items-stretch justify-center gap-1.5">
                     <span className="truncate border border-[var(--mc-47)] bg-[var(--mc-71)] px-3 py-0.5 text-[20px] font-bold leading-6 tabular-nums text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-                      {projectNode.machineCount}×{" "}
+                      {solveMode
+                        ? formatSolvedMachines(result?.theoreticalMachinesRequired ?? 0)
+                        : projectNode.machineCount}
+                      ×{" "}
                       {isCropProductionNode
-                        ? projectNode.machineCount === 1
+                        ? projectNode.machineCount === 1 && !solveMode
                           ? "Seed"
                           : "Seeds"
-                        : projectNode.machineCount === 1
+                        : projectNode.machineCount === 1 && !solveMode
                           ? "Machine"
                           : "Machines"}
                     </span>
@@ -1694,7 +1700,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                         gridTemplateColumns: isCustomRateNode
                           ? "auto"
                           : [
-                              "auto",
+                              // Solve mode retires the usage cell: the solved
+                              // machine count is the whole reading.
+                              ...(solveMode ? [] : ["auto"]),
                               ...(powerInfo && powerInfo.euPerTick < 0 ? ["auto"] : []),
                               ...(powerReport ? ["auto"] : []),
                               ...(steamReport ? ["auto"] : []),
@@ -1708,12 +1716,14 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                             ].join(" "),
                       }}
                     >
-                      <UsageStat
-                        nodeId={projectNode.id}
-                        verdict={verdict}
-                        isCustomRate={isCustomRateNode}
-                        powerStall={powerReport}
-                      />
+                      {!solveMode ? (
+                        <UsageStat
+                          nodeId={projectNode.id}
+                          verdict={verdict}
+                          isCustomRate={isCustomRateNode}
+                          powerStall={powerReport}
+                        />
+                      ) : null}
                       {!isCustomRateNode ? (
                         <>
                           {powerInfo && powerInfo.euPerTick < 0 ? (
@@ -1755,11 +1765,18 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                               value={`×${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
                             />
                           ) : null}
-                          <MachineCountStat
-                            label={isCropProductionNode ? "Seeds" : "Machines"}
-                            machineCount={projectNode.machineCount}
-                            onChange={(machineCount) => updateNode(projectNode.id, { machineCount })}
-                          />
+                          {solveMode ? (
+                            <SolvedMachinesStat
+                              label={isCropProductionNode ? "Seeds" : "Machines"}
+                              needed={result?.theoreticalMachinesRequired ?? 0}
+                            />
+                          ) : (
+                            <MachineCountStat
+                              label={isCropProductionNode ? "Seeds" : "Machines"}
+                              machineCount={projectNode.machineCount}
+                              onChange={(machineCount) => updateNode(projectNode.id, { machineCount })}
+                            />
+                          )}
                           {programmedCircuit ? (
                             <CircuitChip circuit={programmedCircuit} />
                           ) : null}
@@ -4514,6 +4531,51 @@ function getConnectionSlotState(
   }
 
   return "idle";
+}
+
+/** Solve mode's machine figure: enough digits to build from, never a lie of
+ * false precision past the hundredths. */
+function formatSolvedMachines(value: number): string {
+  if (value <= 0.0000005) {
+    return "0";
+  }
+  if (value >= 100) {
+    return String(Math.ceil(value - 0.000001));
+  }
+  return value.toFixed(2).replace(/\.?0+$/, "");
+}
+
+/**
+ * The solve-mode replacement for the count stepper: how many of this machine
+ * the typed product amounts require. Read-only by design - in solve mode the
+ * count is the ANSWER. The hover carries the build advice (round up, run at
+ * the leftover percentage).
+ */
+function SolvedMachinesStat({ label, needed }: { label: string; needed: number }) {
+  const whole = Math.ceil(needed - 0.000001);
+  const pct = whole > 0 ? Math.round((needed / whole) * 100) : 0;
+  const title =
+    needed <= 0.0000005
+      ? "No product amount needs this machine."
+      : `Build ${whole} and run at ${pct}%.`;
+  return (
+    <div
+      title={title}
+      className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
+    >
+      <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">
+        {label}
+      </div>
+      <div
+        className={[
+          "truncate font-medium tabular-nums",
+          needed <= 0.0000005 ? "text-[var(--mc-ink-muted)]" : "",
+        ].join(" ")}
+      >
+        ×{formatSolvedMachines(needed)}
+      </div>
+    </div>
+  );
 }
 
 function Stat({

@@ -349,6 +349,8 @@ export const factoryStorageSchema = z.object({
   // Absent means `overflow`: every buffer catches surplus unless the player
   // deliberately sets it strict.
   bufferMode: z.enum(["overflow", "strict"]).optional(),
+  // Solve mode's requirement on a product drawer; absent = unconstrained.
+  targetPerSecond: z.number().nonnegative().optional(),
   pocketId: z.string().min(1).optional(),
   position: z.object({
     x: z.number(),
@@ -502,6 +504,8 @@ export const factoryProjectSchema = z.object({
     .optional(),
   // Legacy sketch mode, rewritten as both rules on load.
   assumeBoundaries: z.boolean().optional(),
+  // Solve mode: product amounts are the question, machine counts the answer.
+  solveMode: z.boolean().optional(),
   recipes: z.array(recipeSchema),
   nodes: z.array(factoryNodeSchema),
   storages: z.array(factoryStorageSchema).optional().default([]),

@@ -1,7 +1,7 @@
 "use client";
 
 import { Handle, Position, useStoreApi, type Node, type NodeProps } from "@xyflow/react";
-import { memo, type CSSProperties, type ReactNode } from "react";
+import { memo, useState, type CSSProperties, type ReactNode } from "react";
 import { ArrowDownToLine, ArrowLeftRight } from "lucide-react";
 import type {
   FactoryStorage,
@@ -263,6 +263,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         ? "source"
         : "idle";
   });
+  const solveMode = useFactoryStore((state) => state.project.solveMode === true);
   const resourceKey = makeResourceKey(storage.kind, storage.resourceId);
   // Lit when a hovered port/label/drawer pulls this buffer into its flow scope.
   const isFlowScopeLit = useFactoryStore((state) =>
@@ -575,7 +576,11 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
                 className="!h-[36px] !w-[36px]"
               />
             </div>
-            <NetLine net={net} kind={storage.kind} role={role} />
+            {solveMode && role === "product" ? (
+              <TargetLine storage={storage} result={result} />
+            ) : (
+              <NetLine net={net} kind={storage.kind} role={role} />
+            )}
           </div>
         </div>
         </MinecraftTooltip>
@@ -724,6 +729,64 @@ function NetLine({ net, kind, role }: { net: number; kind: string; role: Storage
           return `${value >= 0 ? "+" : ""}${formatCompactRate(value, kind)}`;
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * Solve mode's question, asked on the tile itself: how much should this
+ * product make per second. The number typed here is the constraint the whole
+ * solve answers; empty means "whatever falls out" (the drawer behaves like a
+ * byproduct until a number lands). Red when no chain can reach the number at
+ * any machine scale.
+ */
+function TargetLine({
+  storage,
+  result,
+}: {
+  storage: FactoryStorage;
+  result: StorageThroughputResult | undefined;
+}) {
+  const setStorageTarget = useFactoryStore((state) => state.setStorageTarget);
+  const [draft, setDraft] = useState<string | undefined>(undefined);
+  const target = storage.targetPerSecond;
+  const shown = draft ?? (target !== undefined && target > 0 ? trimTrailingDecimalZeros(String(target)) : "");
+  const unreachable = result?.targetUnreachable === true;
+  const commit = () => {
+    if (draft === undefined) {
+      return;
+    }
+    const value = Number.parseFloat(draft);
+    setStorageTarget(storage.id, Number.isFinite(value) && value > 0 ? value : undefined);
+    setDraft(undefined);
+  };
+  return (
+    <div className="storage-net-line relative z-10 flex h-4 items-center justify-center gap-[2px] whitespace-nowrap text-center leading-4">
+      <input
+        value={shown}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.currentTarget.blur();
+          }
+          event.stopPropagation();
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+        inputMode="decimal"
+        placeholder="amount"
+        title={
+          unreachable
+            ? "No chain on the board can make this much at any machine count."
+            : "Make at least this much per second. Empty catches whatever is left."
+        }
+        aria-label="Required amount per second"
+        className={[
+          "nodrag h-4 w-[56px] border border-[var(--mc-15)] bg-[#0a0c10] px-1 text-center text-[10px] font-bold tabular-nums outline-none placeholder:text-[#6b7280] focus:border-[var(--mc-good)]",
+          unreachable ? "text-[#ff9191]" : "text-[#7ede96]",
+        ].join(" ")}
+      />
+      <span className="text-[8px] font-bold text-[#a8afbb]">/s</span>
     </div>
   );
 }

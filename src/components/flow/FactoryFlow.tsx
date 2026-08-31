@@ -62,6 +62,7 @@ import {
   Type,
   Undo2,
   Check,
+  Sigma,
   SlidersHorizontal,
   X,
   Zap,
@@ -7192,6 +7193,32 @@ const RATE_UNIT_CHOICES: Array<{ unit: RateUnit; label: string; title: string }>
  * the word itself, in green when the rule is on. Any one of the three answers
  * the question; you do not have to know the house style to read it.
  */
+/**
+ * The Plan / Solve switch. Plan mode is the planner as it has always been:
+ * counts are yours, usage and verdicts are the reading. Solve mode turns the
+ * question around: product drawers take a typed amount and every card reads
+ * the machine count those amounts require. One pressed-face button, no sheet.
+ */
+const SolveModeButton = memo(function SolveModeButton() {
+  const solveMode = useFactoryStore((state) => state.project.solveMode === true);
+  const setSolveMode = useFactoryStore((state) => state.setSolveMode);
+  return (
+    <button
+      type="button"
+      onClick={() => setSolveMode(!solveMode)}
+      aria-pressed={solveMode}
+      className={[
+        "pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)]",
+        solveMode ? TOOL_FACE_ON : TOOL_FACE_OFF,
+      ].join(" ")}
+      title={solveMode ? "Solve mode: type amounts on product drawers, machines are solved. Click for plan mode." : "Plan mode: machine counts are yours. Click for solve mode."}
+      aria-label={solveMode ? "Switch to plan mode" : "Switch to solve mode"}
+    >
+      <Sigma className={solveMode ? "h-4 w-4 text-[var(--mc-good)]" : "h-4 w-4"} />
+    </button>
+  );
+});
+
 const SetupRulesButton = memo(function SetupRulesButton({
   open,
   onOpenChange,
@@ -8812,6 +8839,7 @@ const PaintToolbar = memo(function PaintToolbar({
           the tidy-up act on everything at once, so they live by the corner
           with the view button rather than among the card tools. */}
       <ToolTray>
+        <SolveModeButton />
         <SetupRulesButton open={isRulesOpen} onOpenChange={setRulesOpen} />
         {/* Auto-arrange opens a small sheet, like the rules beside it: one
             setting saying whether boards you drew are opened up, and the

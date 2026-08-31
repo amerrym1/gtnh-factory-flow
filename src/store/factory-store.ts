@@ -364,8 +364,13 @@ interface FactoryStore {
   ) => void;
   /** Drains only: flip between pulling the feeder flat out and catching the extra. */
   setStorageDrainMode: (storageId: string, drainMode: StorageDrainMode) => void;
+  /** Solve mode's requirement on a product drawer; undefined clears it. */
+  setStorageTarget: (storageId: string, targetPerSecond: number | undefined) => void;
   /** Free inputs and free outputs: what the board does off its own edges. */
   setSetupRules: (rules: Partial<SetupRules>) => void;
+  /** Plan mode counts machines and reports flows; solve mode takes the
+   * product drawers' typed amounts and reports machine counts. */
+  setSolveMode: (solveMode: boolean) => void;
   deleteStorage: (storageId: string) => void;
   /** Clone a node (same recipe/config, no wires) beside the original. */
   duplicateNode: (nodeId: string) => void;
@@ -1796,6 +1801,34 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         storages: (state.project.storages ?? []).map((storage) =>
           storage.id === storageId ? { ...storage, drainMode } : storage,
         ),
+      });
+
+      return withProjectHistory(state, {
+        project,
+        lastResult: solveBooks(project),
+      });
+    });
+  },
+  setStorageTarget: (storageId, targetPerSecond) => {
+    set((state) => {
+      const project = touchProject({
+        ...state.project,
+        storages: (state.project.storages ?? []).map((storage) =>
+          storage.id === storageId ? { ...storage, targetPerSecond } : storage,
+        ),
+      });
+
+      return withProjectHistory(state, {
+        project,
+        lastResult: solveBooks(project),
+      });
+    });
+  },
+  setSolveMode: (solveMode) => {
+    set((state) => {
+      const project = touchProject({
+        ...state.project,
+        solveMode: solveMode ? true : undefined,
       });
 
       return withProjectHistory(state, {
