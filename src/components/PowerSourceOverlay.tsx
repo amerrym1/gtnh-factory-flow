@@ -207,9 +207,20 @@ export function PowerSourceOverlay() {
                           // leaving a bare right half.
                           className="flex min-w-[220px] max-w-[300px] flex-1 basis-[220px] flex-col gap-2"
                         >
-                          <span className="text-xs uppercase tracking-wider text-amber-200/90">
-                            {group.name}
-                          </span>
+                          {/* The column's title BAR, the way a board window
+                              or the MACHINES panel caps what it owns: a
+                              plate exactly as wide as the stack under it,
+                              with the count where the machine chips put
+                              theirs. */}
+                          <div className="flex items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[var(--mc-49)] px-2 py-1 shadow-[inset_2px_2px_0_rgba(255,255,255,0.08),inset_-2px_-2px_0_rgba(0,0,0,0.4)]">
+                            <Zap className="h-3 w-3 shrink-0 fill-current text-amber-300" aria-hidden />
+                            <span className="truncate text-[12px] font-bold uppercase tracking-wider text-amber-200/90">
+                              {group.name}
+                            </span>
+                            <span className="ml-auto text-[11px] font-bold tabular-nums text-[var(--mc-ink)]/50">
+                              {groupHits.length}
+                            </span>
+                          </div>
                           {groupHits.map((hit) => (
                             <PowerSourceCard key={hit.source.id} hit={hit} onPlace={place} />
                           ))}
