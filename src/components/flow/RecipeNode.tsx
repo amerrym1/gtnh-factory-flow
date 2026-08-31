@@ -562,6 +562,17 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   const glanceSteamLs = steamReport
     ? steamDrawLitresPerSecond(steamReport, projectNode) * drawScale
     : 0;
+  // A generator's power view answers with what it MAKES, signed and green
+  // like its row in the MACHINES ledger; a parasitic one shows its draw the
+  // way any machine does. Both ride the PEAK/AVG switch through drawScale.
+  const powerCardMachines = projectNode.machineCount * Math.max(1, projectNode.parallel);
+  const glancePowerCardEuT = powerInfo
+    ? Math.abs(powerInfo.euPerTick) * powerCardMachines * drawScale
+    : 0;
+  const powerCardMakes = (powerInfo?.euPerTick ?? 0) > 0;
+  const powerCardGlanceWord = powerInfo
+    ? (projectNode.machineConfigTiers?.tier ?? getPowerSource(powerInfo.sourceId)?.unlock)
+    : undefined;
   // What the LOD step paints this card, per smart view. Every non-identity
   // view returns a surface for EVERY card — a card with nothing to say gets
   // the neutral one rather than keeping its paint, because a red paint tag
@@ -990,6 +1001,38 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           }
           inputs={rails.inputs}
           outputs={rails.outputs}
+        />
+      ) : glanceMode === "power" && powerInfo ? (
+        <NodeGlanceText
+          icon={
+            <GlanceMachineArt
+              machineIcon={machineGlanceIcon}
+              artSrc={powerArt}
+              fallbackResource={rails.outputs[0]?.resource ?? rails.inputs[0]?.resource}
+              small
+            />
+          }
+          className={powerCardMakes ? "text-emerald-300" : undefined}
+          valueSize={powerGlanceValueSize(
+            `${powerCardMakes ? "+" : ""}${formatCompact(glancePowerCardEuT)}`,
+          )}
+          text={
+            <>
+              <MotionNumberText
+                values={[glancePowerCardEuT]}
+                render={(shown) => {
+                  const value = shown[0] ?? glancePowerCardEuT;
+                  const figure =
+                    value === glancePowerCardEuT
+                      ? formatCompact(glancePowerCardEuT)
+                      : formatCompactStable(value);
+                  return powerCardMakes ? `+${figure}` : figure;
+                }}
+              />
+              <span className="ml-1.5 text-[18px] font-semibold opacity-70">EU/t</span>
+            </>
+          }
+          word={powerCardGlanceWord}
         />
       ) : glanceMode === "power" ? (
         <NodeGlanceText
