@@ -552,6 +552,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // only DRAW (parasitic reactors, fusion) keep the figure in the footer.
   const showEuSocket = powerInfo !== undefined && powerInfo.euPerTick > 0;
   const hasOutputSide = rails.outputs.length > 0 || showEuSocket;
+  // A power card with a bare side says so instead of standing lopsided: a
+  // solar panel's left half reads "No input", not a hole. Inert rows -
+  // nothing to wire is the point.
+  const showNoInputRow = powerInfo !== undefined && rails.inputs.length === 0 && hasOutputSide;
+  const showNoOutputRow = powerInfo !== undefined && !hasOutputSide && rails.inputs.length > 0;
+  const hasInputSideView = rails.inputs.length > 0 || showNoInputRow;
+  const hasOutputSideView = hasOutputSide || showNoOutputRow;
   // The card's draw figures follow the PEAK/AVG switch. PEAK is the full
   // draw the machine spikes to when it runs, 0 only at exactly 0% (a machine
   // that never starts draws nothing); AVG weights it by the solve's usage.
@@ -1542,20 +1549,24 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           <div
             className={[
               "flex items-start gap-1",
-              rails.inputs.length > 0 && hasOutputSide
+              hasInputSideView && hasOutputSideView
                 ? "justify-between"
-                : hasOutputSide
+                : hasOutputSideView
                   ? "justify-end"
                   : "justify-start",
             ].join(" ")}
           >
-            <PortRail
-              nodeId={projectNode.id}
-              side="input"
-              ports={rails.inputs}
-              pending={pendingResourceConnection}
-            />
-            {rails.inputs.length > 0 && hasOutputSide ? (
+            {showNoInputRow ? (
+              <NoFlowRow label="No input" />
+            ) : (
+              <PortRail
+                nodeId={projectNode.id}
+                side="input"
+                ports={rails.inputs}
+                pending={pendingResourceConnection}
+              />
+            )}
+            {hasInputSideView && hasOutputSideView ? (
               <div className="flex w-4 shrink-0 items-center justify-center self-stretch text-[15px] font-black text-[var(--mc-ink-muted)]">
                 →
               </div>
@@ -1575,6 +1586,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   pending={pendingResourceConnection}
                 />
               </div>
+            ) : showNoOutputRow ? (
+              <NoFlowRow label="No output" />
             ) : (
               <PortRail
                 nodeId={projectNode.id}
@@ -2567,6 +2580,22 @@ function PortRail({
           <OutputSocketRow key={port.key} nodeId={nodeId} port={port} pending={pending} />
         ),
       )}
+    </div>
+  );
+}
+
+/**
+ * A power card's bare side: the same footprint as a port row, dashed and
+ * muted, saying plainly that there is nothing to wire here. Inert on
+ * purpose - it is the absence of a port, not a port.
+ */
+function NoFlowRow({ label }: { label: string }) {
+  return (
+    <div
+      aria-hidden
+      className="flex h-[40px] w-[176px] shrink-0 items-center justify-center border-2 border-dashed border-[var(--mc-47)] text-[12px] font-bold text-[var(--mc-ink-muted)]/70"
+    >
+      {label}
     </div>
   );
 }

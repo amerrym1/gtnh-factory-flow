@@ -444,10 +444,15 @@ export function deriveNodeVerdict(
   const rules = getSetupRules(project);
   if (!rules.freeInputs || !rules.freeOutputs) {
     const bare = findBareSlots(project, nodeResult, incoming, outgoing, rules);
-    if (bare || (incoming.length === 0 && outgoing.length === 0)) {
-      // The second clause catches a card with no wires AND nothing to wire -
-      // a recipe the solver has no flows for. There are no bare slots to mark,
-      // but "unwired" is still the only true thing to say about it.
+    // A machine whose recipe has NO slots at all (a solar panel: nothing in,
+    // EU out through no port) has nothing to wire, so "unwired" would nag
+    // about a wire that cannot exist. It runs; the ordinary readings apply.
+    const recipe = project.recipes.find((entry) => entry.id === node.recipeId);
+    const hasSlots = (recipe?.inputs.length ?? 0) > 0 || (recipe?.outputs.length ?? 0) > 0;
+    if (bare || (hasSlots && incoming.length === 0 && outgoing.length === 0)) {
+      // The second clause catches a SLOTTED card with no wires whose slots
+      // the solver has no flows for. There are no bare slots to mark, but
+      // "unwired" is still the only true thing to say about it.
       return { kind: "unwired", pct, bare };
     }
   }
