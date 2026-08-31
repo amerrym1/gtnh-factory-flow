@@ -761,7 +761,9 @@ function TargetLine({
     setDraft(undefined);
   };
   return (
-    <div className="storage-net-line relative z-10 flex h-4 items-center justify-center gap-[2px] whitespace-nowrap text-center leading-4">
+    // z-40, like the header's buttons: the invisible wire handles blanket
+    // the well at z-30, and anything below them cannot be clicked.
+    <div className="storage-net-line relative z-40 flex h-4 items-center justify-center gap-[2px] whitespace-nowrap text-center leading-4">
       <input
         value={shown}
         onChange={(event) => setDraft(event.target.value)}
@@ -773,6 +775,9 @@ function TargetLine({
           event.stopPropagation();
         }}
         onPointerDown={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
+        onTouchStart={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
         inputMode="decimal"
         placeholder="rate"
         title={
