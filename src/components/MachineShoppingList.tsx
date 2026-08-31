@@ -427,7 +427,7 @@ export function MachineShoppingList() {
           // three proper cells with room to breathe, not a cramped line.
           <div
             className={[
-              "mt-2 grid gap-2 pb-1",
+              "mt-2 grid pb-1",
               hasSteam ? "grid-cols-4" : "grid-cols-3",
             ].join(" ")}
           >
@@ -447,7 +447,7 @@ export function MachineShoppingList() {
                 </span>
               </LedgerCell>
             ) : null}
-            <LedgerCell label="USED">
+            <LedgerCell label="USED" flushLeft={hasSteam}>
               <EuMark />
               <MotionNumberText
                 values={[totalEuT]}
@@ -459,7 +459,7 @@ export function MachineShoppingList() {
               />
               <span className="ml-0.5 text-[9px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
             </LedgerCell>
-            <LedgerCell label="MADE" align="center" className="text-emerald-300">
+            <LedgerCell label="MADE" flushLeft className="text-emerald-300">
               <EuMark />
               <MotionNumberText
                 values={[totalMadeEuT]}
@@ -473,7 +473,7 @@ export function MachineShoppingList() {
             </LedgerCell>
             <LedgerCell
               label="NET"
-              align="end"
+              flushLeft
               className={netEuT >= 0 ? "text-emerald-300" : "text-red-300"}
             >
               <MotionNumberText
@@ -580,7 +580,7 @@ function DrawModePill({ average }: { average: boolean }) {
         aria-label="Show peak draw"
         aria-pressed={!average}
         className={[
-          "px-1.5 text-[9px] font-black leading-none tracking-tight",
+          "flex items-center justify-center px-1.5 text-[9px] font-black leading-none tracking-tight",
           average
             ? "text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]"
             : "bg-[var(--mc-56)] text-[var(--mc-ink)]",
@@ -594,7 +594,7 @@ function DrawModePill({ average }: { average: boolean }) {
         aria-label="Show average draw"
         aria-pressed={average}
         className={[
-          "border-l border-[var(--mc-47)] px-1.5 text-[9px] font-black leading-none tracking-tight",
+          "flex items-center justify-center border-l border-[var(--mc-47)] px-1.5 text-[9px] font-black leading-none tracking-tight",
           average
             ? "bg-[var(--mc-56)] text-[var(--mc-ink)]"
             : "text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]",
@@ -629,29 +629,27 @@ function SteamMark() {
 
 /**
  * One column of the power ledger: a muted label over a full-size figure, on
- * its own quiet tile. The tiles sit left, centre and right across the row
- * (justify-self), while each one's content reads left-aligned inside.
+ * its own quiet tile. The tiles split the row into equal touching segments
+ * (border-l dropped past the first so the seams stay one pixel); content
+ * reads left-aligned inside each.
  */
 function LedgerCell({
   label,
   className,
-  align = "start",
+  flushLeft = false,
   children,
 }: {
   label: string;
   className?: string;
-  align?: "start" | "center" | "end";
+  /** Every tile after the first: its left border is the neighbour's right. */
+  flushLeft?: boolean;
   children: ReactNode;
 }) {
   return (
     <span
       className={[
         "flex min-w-0 flex-col gap-0.5 border border-[var(--mc-47)] bg-[var(--mc-56)]/60 px-1.5 py-1 shadow-[inset_1px_1px_0_rgba(255,255,255,0.05)]",
-        align === "center"
-          ? "justify-self-center"
-          : align === "end"
-            ? "justify-self-end"
-            : "justify-self-start",
+        flushLeft ? "border-l-0" : "",
       ].join(" ")}
     >
       <span className="text-[11px] font-normal uppercase tracking-wider text-[var(--mc-ink-muted)]">
