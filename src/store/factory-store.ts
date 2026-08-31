@@ -1308,7 +1308,14 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         return state;
       }
       const nextSettings = { ...(node.machineConfigTiers ?? {}), [settingId]: value };
-      const nextRecipe = buildPowerRecipe(recipe.power.sourceId, nextSettings, recipe.id);
+      // A recipe another node still shares (a clone made before clones
+      // reminted) must not be rewritten under that other card: this node
+      // takes its own copy and the knob turns only here.
+      const sharedWithAnotherNode = state.project.nodes.some(
+        (entry) => entry.id !== nodeId && entry.recipeId === recipe.id,
+      );
+      const nextRecipeId = sharedWithAnotherNode ? createId("recipe") : recipe.id;
+      const nextRecipe = buildPowerRecipe(recipe.power.sourceId, nextSettings, nextRecipeId);
       if (!nextRecipe) {
         return state;
       }
@@ -1391,6 +1398,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
             entry.id === nodeId
               ? {
                   ...entry,
+                  recipeId: nextRecipeId,
                   machineConfigTiers: nextSettings,
                   // Overrides stamped by old builds outlive their wire and
                   // would repaint the rebuilt slots; a power card never
@@ -1399,9 +1407,9 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
                 }
               : entry,
           ),
-          recipes: state.project.recipes.map((entry) =>
-            entry.id === recipe.id ? nextRecipe : entry,
-          ),
+          recipes: sharedWithAnotherNode
+            ? [...state.project.recipes, nextRecipe]
+            : state.project.recipes.map((entry) => (entry.id === recipe.id ? nextRecipe : entry)),
           edges,
           storages,
         }),
@@ -1829,11 +1837,13 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         x: node.position.x + CLONE_OFFSET,
         y: node.position.y + CLONE_OFFSET,
       });
-      // Custom rate nodes own their recipe (the dialed rate lives on it), so
-      // the clone gets its own copy — otherwise both nodes share one dial.
+      // Custom rate AND power nodes own their recipe (the dialed rate or
+      // the baked settings live on it), so the clone gets its own copy -
+      // otherwise both nodes share one dial, and a rotor change on one
+      // turbine rewrote the other's output too.
       const recipe = state.project.recipes.find((entry) => entry.id === node.recipeId);
       let clonedRecipe: Recipe | undefined;
-      if (recipe && isCustomRateRecipe(recipe)) {
+      if (recipe && (isCustomRateRecipe(recipe) || isPowerRecipe(recipe))) {
         clonedRecipe = { ...structuredClone(recipe), id: createId("recipe") };
         clone.recipeId = clonedRecipe.id;
       }

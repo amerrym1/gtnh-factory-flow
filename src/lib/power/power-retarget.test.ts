@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { useFactoryStore } from "@/store/factory-store";
-import { buildPowerRecipe } from "./power-recipe";
+import { buildPowerRecipe, resynthesizePowerRecipes } from "./power-recipe";
 import { PROJECT_SCHEMA_VERSION, type FactoryProject } from "@/lib/model/types";
 
 /**
@@ -166,6 +166,69 @@ describe("fuel switches with wires attached", () => {
     expect(after.edges[0].target).toBe("n-gt");
     expect(after.edges[0].resourceId).toBe("benzene");
     expect(after.recipes.some((entry) => entry.id === "r-gt")).toBe(false);
+  });
+
+  it("gives a cloned power card its own recipe, and knobs stay per card", () => {
+    useFactoryStore.getState().setProject(turbineProject({ storages: [], edges: [] }));
+    useFactoryStore.getState().duplicateNode("n-gt");
+    const cloned = useFactoryStore.getState().project;
+    expect(cloned.nodes).toHaveLength(2);
+    const [original, clone] = cloned.nodes;
+    expect(clone.recipeId).not.toBe(original.recipeId);
+    // Turning the clone's fuel knob leaves the original's recipe alone.
+    useFactoryStore.getState().setPowerSetting(clone.id, "fuel", "Nitrobenzene");
+    const after = useFactoryStore.getState().project;
+    const originalRecipe = after.recipes.find(
+      (entry) => entry.id === after.nodes[0].recipeId,
+    )!;
+    const cloneRecipe = after.recipes.find((entry) => entry.id === after.nodes[1].recipeId)!;
+    expect(originalRecipe.inputs[0]?.id).toBe("benzene");
+    expect(cloneRecipe.inputs[0]?.id).toBe("nitrobenzene");
+  });
+
+  it("heals two nodes sharing one power recipe: on write and on load", () => {
+    // The conjoined state older clones left behind: two nodes, one recipe.
+    const base = turbineProject({ storages: [], edges: [] });
+    const conjoined = {
+      ...base,
+      nodes: [
+        ...base.nodes,
+        { ...base.nodes[0], id: "n-gt2", machineConfigTiers: { ...TURBINE_SETTINGS } },
+      ],
+    } as FactoryProject;
+
+    // On write: the edited node takes its own copy; the other keeps its recipe.
+    useFactoryStore.getState().setProject(conjoined);
+    useFactoryStore.getState().setPowerSetting("n-gt2", "fuel", "Nitrobenzene");
+    const after = useFactoryStore.getState().project;
+    const first = after.nodes.find((entry) => entry.id === "n-gt")!;
+    const second = after.nodes.find((entry) => entry.id === "n-gt2")!;
+    expect(second.recipeId).not.toBe(first.recipeId);
+    expect(after.recipes.find((entry) => entry.id === first.recipeId)?.inputs[0]?.id).toBe(
+      "benzene",
+    );
+    expect(after.recipes.find((entry) => entry.id === second.recipeId)?.inputs[0]?.id).toBe(
+      "nitrobenzene",
+    );
+
+    // On load: the funnel splits them and rebuilds each from its own settings.
+    const healed = resynthesizePowerRecipes({
+      ...conjoined,
+      nodes: conjoined.nodes.map((node) =>
+        node.id === "n-gt2"
+          ? { ...node, machineConfigTiers: { ...TURBINE_SETTINGS, fuel: "Nitrobenzene" } }
+          : node,
+      ),
+    });
+    const healedFirst = healed.nodes.find((entry) => entry.id === "n-gt")!;
+    const healedSecond = healed.nodes.find((entry) => entry.id === "n-gt2")!;
+    expect(healedSecond.recipeId).not.toBe(healedFirst.recipeId);
+    expect(
+      healed.recipes.find((entry) => entry.id === healedSecond.recipeId)?.inputs[0]?.id,
+    ).toBe("nitrobenzene");
+    expect(
+      healed.recipes.find((entry) => entry.id === healedFirst.recipeId)?.inputs[0]?.id,
+    ).toBe("benzene");
   });
 
   it("drops the wire when the far end is a machine", () => {

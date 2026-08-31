@@ -127,12 +127,41 @@ export function resynthesizePowerRecipes<
   Project extends { nodes: FactoryNode[]; recipes: Recipe[] },
 >(project: Project): Project {
   let changed = false;
+  // A power card OWNS its recipe, but a clone made before the clone learned
+  // to remint left two nodes on one recipe - so a rotor change on one
+  // turbine rewrote the other's output. Every node past the first gets its
+  // own recipe id here, rebuilt below from its OWN settings.
+  let nodes = project.nodes;
+  const powerIds = new Set(
+    project.recipes.filter((recipe) => isPowerRecipe(recipe)).map((recipe) => recipe.id),
+  );
+  const seenPowerRecipe = new Set<string>();
+  const splitRecipes: Recipe[] = [];
+  nodes = nodes.map((node) => {
+    if (!powerIds.has(node.recipeId)) {
+      return node;
+    }
+    if (!seenPowerRecipe.has(node.recipeId)) {
+      seenPowerRecipe.add(node.recipeId);
+      return node;
+    }
+    const shared = project.recipes.find((recipe) => recipe.id === node.recipeId);
+    if (!shared || !isPowerRecipe(shared)) {
+      return node;
+    }
+    const copyId = `${shared.id}:split:${node.id}`;
+    splitRecipes.push({ ...shared, id: copyId });
+    changed = true;
+    return { ...node, recipeId: copyId };
+  });
+  const allRecipes = splitRecipes.length > 0 ? [...project.recipes, ...splitRecipes] : project.recipes;
+
   const settingsByRecipeId = new Map<string, Record<string, string> | undefined>();
   const powerRecipeIds = new Set<string>();
-  for (const node of project.nodes) {
+  for (const node of nodes) {
     settingsByRecipeId.set(node.recipeId, node.machineConfigTiers);
   }
-  const recipes = project.recipes.map((recipe) => {
+  const recipes = allRecipes.map((recipe) => {
     if (!isPowerRecipe(recipe)) {
       return recipe;
     }
@@ -152,7 +181,7 @@ export function resynthesizePowerRecipes<
   // it learned to skip power cards) repaint the rebuilt slots forever - a
   // card wired to benzene once stayed benzene through every fuel switch.
   // Power slots are exact, so a power node never legitimately carries one.
-  const nodes = project.nodes.map((node) => {
+  nodes = nodes.map((node) => {
     if (!powerRecipeIds.has(node.recipeId) || node.recipeInputOverrides === undefined) {
       return node;
     }
