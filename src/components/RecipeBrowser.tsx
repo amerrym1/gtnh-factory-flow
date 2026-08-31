@@ -2094,7 +2094,17 @@ function ResourceResultPage({
                 aria-selected={active}
               >
                 {resource.id === POWER_EU_CLAUSE_ID ? (
-                  <Zap className="h-5 w-5 fill-current text-amber-400" aria-hidden />
+                  // Its own faint amber ground and the word under the bolt:
+                  // a grid cell has no name line to say what this is.
+                  <span className="flex h-full w-full flex-col items-center justify-center gap-1 bg-amber-400/10">
+                    <Zap
+                      className="h-5 w-5 -translate-y-0.5 fill-current text-amber-400"
+                      aria-hidden
+                    />
+                    <span className="text-[12px] font-black leading-none text-white [text-shadow:1px_1px_0_#000]">
+                      EU/t
+                    </span>
+                  </span>
                 ) : (
                   <ResourceIcon
                     resource={{ ...resource, amount: 1 }}
@@ -2147,6 +2157,8 @@ function ResourceResultPage({
             title={resourceLabel(resource)}
             className={[
               "flex h-10 w-full shrink-0 items-center gap-2.5 overflow-hidden rounded-[4px] border px-1.5 text-left text-sm text-neutral-50",
+              // The power row's own whisper of amber; selection still wins.
+              !active && resource.id === POWER_EU_CLAUSE_ID ? "bg-amber-400/[0.07]" : "",
               active
                 ? "border-cyan-400 bg-cyan-500/10"
                 : "border-transparent hover:bg-white/5",
@@ -2156,7 +2168,12 @@ function ResourceResultPage({
           >
             <span className="minecraft-pixel-art flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden">
               {resource.id === POWER_EU_CLAUSE_ID ? (
-                <Zap className="h-5 w-5 fill-current text-amber-400" aria-hidden />
+                <span className="flex h-full w-full flex-col items-center justify-center gap-0.5 bg-amber-400/10">
+                  <Zap className="h-4 w-4 -translate-y-px fill-current text-amber-400" aria-hidden />
+                  <span className="text-[9px] font-black leading-none text-white [text-shadow:1px_1px_0_#000]">
+                    EU/t
+                  </span>
+                </span>
               ) : (
                 <ResourceIcon
                   resource={{ ...resource, amount: 1 }}
