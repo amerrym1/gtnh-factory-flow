@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.41.0",
+    date: "2026-08-30",
+    headline: "Power generation",
+    notes: [
+      "The POWER button places generators: turbines, boilers, engines, reactors, fusion.",
+      "Generators use fuel from your wires and follow their in-game settings.",
+      "The machine list totals power used, made and net.",
+      "Searching an item shows the generators that use it.",
+    ],
+  },
+  {
     version: "2.40.0",
     date: "2026-08-29",
     headline: "Auto-arrange leaves your boards alone",
