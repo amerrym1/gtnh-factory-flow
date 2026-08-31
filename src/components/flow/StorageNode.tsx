@@ -838,24 +838,29 @@ function TargetLine({
         }
         aria-label="Required amount"
         className={[
-          "nodrag group/target relative z-40 cursor-pointer hover:brightness-125",
-          unreachable ? "[&>div]:!text-[#ff9191]" : "",
+          "nodrag group/target relative z-40 flex cursor-pointer justify-center hover:brightness-125",
+          unreachable ? "[&_div]:!text-[#ff9191]" : "",
         ].join(" ")}
       >
-        {target !== undefined && target > 0 ? (
-          <NetLine net={target} kind={storage.kind} role="product" />
-        ) : (
-          <div className="storage-net-line relative h-4 whitespace-nowrap text-center text-[12px] font-bold leading-4 tabular-nums text-[#6b7280]">
-            rate?
-          </div>
-        )}
-        {/* The pencil is how the line says it can be typed on - the one
-            mark separating this from the read-only net every other tile
-            wears. It sits clear of the centred number and warms on hover. */}
-        <Pencil
-          aria-hidden
-          className="absolute right-[2px] top-1/2 h-[7px] w-[7px] -translate-y-1/2 text-[#8a92a0] group-hover/target:text-[#e8e9ee]"
-        />
+        {/* Two marks say "this line takes typing", both attached to the
+            NUMBER rather than parked at the tile's edge: a dotted
+            underline in the value's own colour - the editable-value
+            idiom - and a pencil riding the text's right shoulder. */}
+        {/* Nudged up a couple of pixels so the dotted underline clears the
+            tile's bottom edge instead of merging with it. */}
+        <div className="relative -translate-y-[2px] underline decoration-dotted decoration-[1.5px] underline-offset-[3px]">
+          {target !== undefined && target > 0 ? (
+            <NetLine net={target} kind={storage.kind} role="product" />
+          ) : (
+            <div className="storage-net-line relative h-4 whitespace-nowrap text-center text-[12px] font-bold leading-4 tabular-nums text-[#6b7280]">
+              rate?
+            </div>
+          )}
+          <Pencil
+            aria-hidden
+            className="absolute left-full top-1/2 ml-[2px] h-[11px] w-[11px] -translate-y-1/2 fill-current text-[#a8afbb] group-hover/target:text-white"
+          />
+        </div>
       </div>
     );
   }
