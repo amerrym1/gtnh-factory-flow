@@ -310,6 +310,15 @@ const largeNeutralizationEngine: PowerSourceDefinition = {
     const residueCore = (0.05 * Math.pow(density, 0.8) * rate) / (structure.baseDecay * decayBoost);
     const residueMedian = Math.floor(Math.pow(residueCore, 12.5));
     const residueMax = Math.ceil(Math.pow(residueCore * 1.3, 12.5));
+    // The random walk targets 0.7-1.3 uniformly, so residue arrives at an
+    // average of exactly 0.05 x density^0.8 x rate per tick. Decay scales
+    // with the stored amount (^0.08), so its ceiling is at a full tank:
+    // baseDecay x armBoost x capacity^0.08. A positive net there means no
+    // equilibrium fits inside the tank and the engine eventually explodes.
+    const residuePerTick = 0.05 * Math.pow(density, 0.8) * rate;
+    const decayAtFull =
+      structure.baseDecay * decayBoost * Math.pow(structure.residueCapacity, 0.08);
+    const netAtFull = residuePerTick - decayAtFull;
 
     const inputs = [liters(fuel.name, rate * 20)];
     if (base) {
@@ -325,6 +334,8 @@ const largeNeutralizationEngine: PowerSourceDefinition = {
       stats: [
         stat("EU per L", formatAmount(density * multiplier)),
         stat("Toxic residue", `${formatAmount(residueMedian)} median / ${formatAmount(residueMax)} max`),
+        stat("Avg residue", `${formatAmount(residuePerTick)}/t`),
+        stat("At full tank", `${netAtFull > 0 ? "+" : ""}${formatAmount(netAtFull)}/t`),
         stat("Residue capacity", formatAmount(structure.residueCapacity)),
         ...(arms > 0
           ? [
@@ -333,6 +344,10 @@ const largeNeutralizationEngine: PowerSourceDefinition = {
             ]
           : []),
       ],
+      warnings:
+        netAtFull > 0
+          ? ["Residue builds faster than it decays even at a full tank. The engine will explode."]
+          : undefined,
     };
   },
 };

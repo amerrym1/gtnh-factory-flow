@@ -152,6 +152,24 @@ describe("community-flagged additions (2.9 sheet)", () => {
     });
     expect(model.euPerTick).toBe(5760);
     expect(model.inputs[0]).toMatchObject({ name: "Fluoroantimonic Acid", perSecond: 20 });
+    // Average residue is deterministic (random walk averages 1.0):
+    // 0.05 x 5760^0.8 per tick, against T1 full-tank decay 200 x 375000^0.08.
+    const avg = 0.05 * Math.pow(5760, 0.8);
+    const decayAtFull = 200 * Math.pow(375000, 0.08);
+    expect(model.stats.find((s) => s.label === "Avg residue")).toBeTruthy();
+    expect(avg).toBeCloseTo(50.94, 1);
+    expect(avg - decayAtFull).toBeLessThan(0);
+    expect(model.warnings).toBeUndefined();
+  });
+
+  it("warns when LNE residue outruns decay even at a full tank", () => {
+    const model = compute("large-neutralization-engine", {
+      structure: "T1",
+      fuel: "Fluoroantimonic Acid",
+      rate: "1000",
+      base: "None",
+    });
+    expect(model.warnings?.[0]).toMatch(/explode/);
   });
 
   it("splits the XL steam turbines: HP exhausts steam, SC exhausts SH", () => {
