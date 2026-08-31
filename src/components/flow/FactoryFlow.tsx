@@ -6262,6 +6262,14 @@ export function FactoryFlow() {
           />
         ) : null}
       </ReactFlow>
+      {/* The room's vignette: a rectangular inset shadow hugging the window
+          edge, over the wires and cards, under the chrome. Screen-space and
+          landmark-free, so nothing about it can be seen to stick on a pan;
+          the LOD glance washes are untouched by it. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-10 shadow-[inset_0_0_60px_10px_rgba(0,0,0,0.35)]"
+      />
       <SolvingBooksOverlay />
       <PaintToolbar
         paintMode={nodeColorPaintMode}
@@ -6889,11 +6897,13 @@ interface ToolGroupProps {
  * plate vanished against the canvas): visibly lighter than the board, so the
  * darker button faces read as recessed keys in one housing. Within a plated
  * row even a lone button (the bin, the fit-view) gets a plate, both so
- * baselines line up and because standing apart IS the point.
+ * baselines line up and because standing apart IS the point. The plate casts
+ * the same drop-shadow the cards do (.react-flow__node in globals.css), so
+ * the chrome sits at the same height over the paper as everything on it.
  */
 function ToolTray({ children }: { children: React.ReactNode }) {
   return (
-    <div className="pointer-events-auto flex items-start gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]">
+    <div className="pointer-events-auto flex items-start gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] [filter:drop-shadow(6px_8px_7px_rgba(0,0,0,0.45))]">
       {children}
     </div>
   );
