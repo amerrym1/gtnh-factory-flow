@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeftRight, Plus, Search, Star, X } from "lucide-react";
+import { ArrowLeftRight, Plus, Search, Star, X, Zap } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
@@ -37,6 +37,16 @@ import {
   summaryToPreviewRecipe,
   type PreviewContextResource,
 } from "./recipe-preview";
+import {
+  POWER_EU_CLAUSE_ID,
+  queryAsksForPower,
+  searchPowerSourcesForStencil,
+  type PowerStencilHit,
+} from "@/lib/power/power-search";
+import { getPowerMachineIcon } from "@/lib/power/planner-data";
+import { formatAmount } from "@/lib/power/sources/helpers";
+import { buildPowerSettingsReader, type PowerSourceDefinition } from "@/lib/power/types";
+import { useFactoryStore } from "@/store/factory-store";
 
 /**
  * One condition on the stencil: a resource and the side of the recipe it must
@@ -462,6 +472,22 @@ export function RecipeSearchOverlay({
   const takesClauses = clauses.filter((clause) => clause.role === "takes");
   const makesClauses = clauses.filter((clause) => clause.role === "makes");
 
+  // Generators are not recipes, but they answer the same questions: a
+  // takes/makes condition matches a source's flows under ANY setting, and
+  // placing the hit dials those settings in. Purely client-side.
+  const addPowerSourceNode = useFactoryStore((state) => state.addPowerSourceNode);
+  const powerHits = useMemo(
+    () => searchPowerSourcesForStencil(clauses, takesOp, makesOp, query),
+    [clauses, takesOp, makesOp, query],
+  );
+  const placePowerHit = useCallback(
+    (hit: PowerStencilHit) => {
+      addPowerSourceNode(hit.source.id, hit.settings);
+      onClose();
+    },
+    [addPowerSourceNode, onClose],
+  );
+
   // Loading more when the bottom of the list scrolls near, so the grid reads
   // as one endless list rather than ending on a button.
   const handleResultsScroll = (event: UIEvent<HTMLDivElement>) => {
@@ -675,7 +701,35 @@ export function RecipeSearchOverlay({
               <div className="grid min-h-[260px] place-items-center border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-3 text-sm shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
                 Add an item to either side of the card below.
               </div>
-            ) : isLoading && recipes.length === 0 ? (
+            ) : (
+              <>
+                {powerHits.length > 0 ? (
+                  <div className="mb-2">
+                    {/* Generators are not recipes, so they answer on their own
+                        shelf: same conditions, dialed settings, one click. */}
+                    <div className="mb-1.5 mt-0.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-300/90">
+                      <Zap className="h-3.5 w-3.5 fill-current" aria-hidden />
+                      Generators
+                    </div>
+                    <div
+                      className="grid items-start gap-2"
+                      style={{
+                        gridTemplateColumns: sheet
+                          ? "minmax(0, 1fr)"
+                          : "repeat(auto-fill, minmax(360px, 1fr))",
+                      }}
+                    >
+                      {powerHits.map((hit) => (
+                        <PowerHitCard
+                          key={hit.source.id}
+                          hit={hit}
+                          onPlace={() => placePowerHit(hit)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {isLoading && recipes.length === 0 ? (
               <div
                 className="grid items-start gap-2"
                 style={{
@@ -690,7 +744,7 @@ export function RecipeSearchOverlay({
                   <SkeletonResultCard key={index} delay={index * 110} />
                 ))}
               </div>
-            ) : recipes.length === 0 ? (
+            ) : recipes.length === 0 && powerHits.length > 0 ? null : recipes.length === 0 ? (
               <div className="grid min-h-[260px] place-items-center border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-3 text-sm shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
                 {/* An empty list with every chip dark is the selection's doing,
                     not the search's. Saying "no matching recipes" there sends
@@ -754,6 +808,8 @@ export function RecipeSearchOverlay({
                     ))}
                   </div>
                 ) : null}
+              </>
+            )}
               </>
             )}
           </div>
@@ -836,15 +892,19 @@ export function RecipeSearchOverlay({
             >
               <span className="flex w-full items-center gap-2 border-2 border-[var(--mc-15)] bg-[var(--mc-61)] py-0.5 pl-0.5 pr-1 shadow-[6px_6px_0_rgba(0,0,0,0.5)]">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]">
-                  <ResourceIcon
-                    resource={{ ...clauses[stencilDrag.index], amount: 1 }}
-                    size="sm"
-                    bare
-                    showAmount={false}
-                    tooltip={false}
-                    className="!h-full !w-full"
-                    iconPixelSize={machineArtPixels(32)}
-                  />
+                  {clauses[stencilDrag.index].id === POWER_EU_CLAUSE_ID ? (
+                    <Zap className="h-4 w-4 fill-current text-amber-300" aria-hidden />
+                  ) : (
+                    <ResourceIcon
+                      resource={{ ...clauses[stencilDrag.index], amount: 1 }}
+                      size="sm"
+                      bare
+                      showAmount={false}
+                      tooltip={false}
+                      className="!h-full !w-full"
+                      iconPixelSize={machineArtPixels(32)}
+                    />
+                  )}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[14px] font-bold text-[var(--mc-ink)]">
                   {clauses[stencilDrag.index].displayName ?? clauses[stencilDrag.index].id}
@@ -1027,15 +1087,19 @@ function StencilSide({
               className="flex w-full shrink-0 cursor-grab touch-none select-none items-center gap-2 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] py-0.5 pl-0.5 pr-1 shadow-[inset_1px_1px_0_var(--mc-85)] transition-transform duration-150"
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]">
-                <ResourceIcon
-                  resource={{ ...clause, amount: 1 }}
-                  size="sm"
-                  bare
-                  showAmount={false}
-                  tooltip={false}
-                  className="!h-full !w-full"
-                  iconPixelSize={machineArtPixels(32)}
-                />
+                {clause.id === POWER_EU_CLAUSE_ID ? (
+                  <Zap className="h-4 w-4 fill-current text-amber-300" aria-hidden />
+                ) : (
+                  <ResourceIcon
+                    resource={{ ...clause, amount: 1 }}
+                    size="sm"
+                    bare
+                    showAmount={false}
+                    tooltip={false}
+                    className="!h-full !w-full"
+                    iconPixelSize={machineArtPixels(32)}
+                  />
+                )}
               </span>
               <span className="min-w-0 flex-1 truncate text-[14px] font-bold">
                 {clause.displayName ?? clause.id}
@@ -1155,6 +1219,21 @@ function ItemPickerPopover({
     return () => controller.abort();
   }, [debouncedQuery, searchPickerResources]);
 
+  // Power is not a dataset resource, but it IS something machines make: the
+  // makes side offers it as a condition, and generators answer it.
+  const displayResults: DatasetResourceIndexEntry[] =
+    role === "makes" && queryAsksForPower(pickerQuery)
+      ? [
+          {
+            kind: "fluid",
+            id: POWER_EU_CLAUSE_ID,
+            displayName: "Power (EU)",
+            dominantColor: "#d99a2b",
+          } as DatasetResourceIndexEntry,
+          ...results,
+        ]
+      : results;
+
   return (
     <div
       ref={rootRef}
@@ -1173,19 +1252,19 @@ function ItemPickerPopover({
               event.stopPropagation();
               onClose();
             }
-            if (event.key === "Enter" && results[0]) {
-              onPick(results[0], role);
+            if (event.key === "Enter" && displayResults[0]) {
+              onPick(displayResults[0], role);
             }
           }}
         />
       </label>
       <div className="recipe-search-scroll mt-2 grid max-h-[460px] grid-cols-1 gap-1 overflow-y-auto compact:max-h-[max(140px,calc(100vh-320px))] sm:grid-cols-2">
-        {loading && results.length === 0 ? (
+        {loading && displayResults.length === 0 ? (
           <div className="p-2 text-sm text-[var(--mc-ink-muted)]">Searching...</div>
-        ) : results.length === 0 ? (
+        ) : displayResults.length === 0 ? (
           <div className="p-2 text-sm text-[var(--mc-ink-muted)]">No matching items.</div>
         ) : (
-          results.map((entry) => (
+          displayResults.map((entry) => (
             <button
               key={`${entry.kind}:${entry.id}`}
               type="button"
@@ -1193,15 +1272,19 @@ function ItemPickerPopover({
               className="flex w-full items-center gap-2 border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1.5 py-1 text-left shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)] hover:bg-[var(--mc-85)]"
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]">
-                <ResourceIcon
-                  resource={{ ...entry, amount: 1 }}
-                  size="sm"
-                  bare
-                  showAmount={false}
-                  tooltip={false}
-                  className="!h-full !w-full"
-                  iconPixelSize={machineArtPixels(32)}
-                />
+                {entry.id === POWER_EU_CLAUSE_ID ? (
+                  <Zap className="h-4 w-4 fill-current text-amber-300" aria-hidden />
+                ) : (
+                  <ResourceIcon
+                    resource={{ ...entry, amount: 1 }}
+                    size="sm"
+                    bare
+                    showAmount={false}
+                    tooltip={false}
+                    className="!h-full !w-full"
+                    iconPixelSize={machineArtPixels(32)}
+                  />
+                )}
               </span>
               <span className="min-w-0 flex-1 truncate text-[14px] font-bold text-[var(--mc-ink)]">
                 {entry.displayName ?? entry.id}
@@ -1553,6 +1636,102 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
  * over like a furnace's progress bar - the one loading animation this app
  * could ever have.
  */
+function powerDialNote(
+  source: PowerSourceDefinition,
+  settingId?: string,
+  optionKey?: string,
+): string | undefined {
+  if (!settingId || !optionKey) {
+    return undefined;
+  }
+  const setting = source.settings.find((entry) => entry.id === settingId);
+  if (!setting || setting.type !== "select") {
+    return undefined;
+  }
+  const option = setting.options.find((entry) => entry.key === optionKey);
+  return option ? `${setting.label}: ${option.label}` : undefined;
+}
+
+/**
+ * A generator answering the stencil: not a recipe - a machine whose settings
+ * make the searched flow true. The caption names what matched and the knob
+ * the placement will dial; the figure is the EU/t under those settings.
+ * Clicking places the card, dialed.
+ */
+function PowerHitCard({ hit, onPlace }: { hit: PowerStencilHit; onPlace: () => void }) {
+  const icon = getPowerMachineIcon(hit.source.id);
+  const tierColor = hit.source.unlock
+    ? (GT_TIER_COLORS as Record<string, { background: string } | undefined>)[hit.source.unlock]
+    : undefined;
+  const euPerTick = useMemo(() => {
+    try {
+      return hit.source.compute(buildPowerSettingsReader(hit.source, hit.settings)).euPerTick;
+    } catch {
+      return 0;
+    }
+  }, [hit]);
+  const caption = hit.matches
+    .map((match) => {
+      const arrow = match.direction === "takes" ? "→" : "←";
+      const dial = powerDialNote(hit.source, match.settingId, match.optionKey);
+      return `${arrow} ${match.name}${dial ? ` · ${dial}` : ""}`;
+    })
+    .join("   ");
+  return (
+    <button
+      type="button"
+      onClick={onPlace}
+      title={`Place ${hit.source.name}`}
+      className="flex w-full items-center gap-2 border-2 border-[var(--mc-33)] bg-[var(--mc-71)] px-2 py-1.5 text-left shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)] hover:border-amber-300/70 hover:bg-[var(--mc-85)]"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden bg-[#0f1113] shadow-[inset_2px_2px_0_rgba(0,0,0,0.4)]">
+        {icon?.iconPath ? (
+          <ResourceIcon
+            resource={{
+              kind: "item",
+              id: icon.id,
+              amount: 1,
+              displayName: icon.displayName,
+              iconPath: icon.iconPath,
+              dominantColor: icon.dominantColor,
+            }}
+            bare
+            tooltip={false}
+            showAmount={false}
+            className="!h-full !w-full"
+            iconPixelSize={machineArtPixels(40)}
+          />
+        ) : (
+          <Zap className="h-5 w-5 text-amber-300" aria-hidden />
+        )}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="flex items-baseline gap-1.5">
+          <span className="min-w-0 truncate text-[14px] font-bold text-[var(--mc-ink)]">
+            {hit.source.name}
+          </span>
+          {hit.source.unlock ? (
+            <span
+              className="shrink-0 text-[10px] font-black"
+              style={{ color: tierColor?.background }}
+            >
+              {hit.source.unlock}
+            </span>
+          ) : null}
+        </span>
+        {caption ? (
+          <span className="truncate text-[11px] text-cyan-300/80">{caption}</span>
+        ) : null}
+      </span>
+      {euPerTick > 0 ? (
+        <span className="shrink-0 whitespace-nowrap text-[13px] font-bold tabular-nums text-amber-300">
+          ~{formatAmount(euPerTick)} EU/t
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
 function SkeletonResultCard({ delay }: { delay: number }) {
   // NEGATIVE delay: a positive one leaves the card at full base opacity
   // until its turn, then snaps it into the cycle - which marched a visible

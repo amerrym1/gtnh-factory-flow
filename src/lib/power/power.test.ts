@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { buildPowerRecipe, resynthesizePowerRecipes } from "./power-recipe";
-import { hitPlacementSettings, searchPowerSources } from "./power-search";
+import {
+  hitPlacementSettings,
+  POWER_EU_CLAUSE_ID,
+  searchPowerSources,
+  searchPowerSourcesForStencil,
+} from "./power-search";
 import { getPowerSource, POWER_SOURCES } from "./registry";
 import { buildPowerSettingsReader } from "./types";
 import { resolvePowerResource } from "./planner-data";
@@ -328,6 +333,95 @@ describe("power search", () => {
     const hits = searchPowerSources("turbine");
     expect(hits[0]?.via).toBeUndefined();
     expect(hits.some((hit) => hit.source.id === "steam-turbine")).toBe(true);
+  });
+});
+
+describe("stencil search (the recipe book's view of the generators)", () => {
+  it("answers a takes clause by resource id, dialing the fuel when needed", () => {
+    const nitro = resolvePowerResource("Nitrobenzene")!;
+    const hits = searchPowerSourcesForStencil(
+      [{ role: "takes", kind: nitro.kind, id: nitro.id }],
+      "all",
+      "all",
+      "",
+    );
+    const turbine = hits.find((hit) => hit.source.id === "gas-turbine");
+    expect(turbine).toBeDefined();
+    expect(turbine?.settings).toEqual({ fuel: "Nitrobenzene" });
+    // Benzene is the default: same machine, no dial.
+    const benzene = resolvePowerResource("Benzene")!;
+    const defaults = searchPowerSourcesForStencil(
+      [{ role: "takes", kind: benzene.kind, id: benzene.id }],
+      "all",
+      "all",
+      "",
+    );
+    expect(defaults.find((hit) => hit.source.id === "gas-turbine")?.settings).toBeUndefined();
+  });
+
+  it("answers the makes-power pseudo clause with every generator", () => {
+    const hits = searchPowerSourcesForStencil(
+      [{ role: "makes", kind: "fluid", id: POWER_EU_CLAUSE_ID }],
+      "all",
+      "all",
+      "",
+    );
+    expect(hits.length).toBeGreaterThan(20);
+    expect(hits.some((hit) => hit.source.id === "large-combustion-engine")).toBe(true);
+    // A name query narrows the shelf like it narrows the recipes.
+    const narrowed = searchPowerSourcesForStencil(
+      [{ role: "makes", kind: "fluid", id: POWER_EU_CLAUSE_ID }],
+      "all",
+      "all",
+      "combustion",
+    );
+    expect(narrowed.every((hit) => hit.source.name.toLowerCase().includes("combustion"))).toBe(
+      true,
+    );
+    expect(narrowed.length).toBeGreaterThan(0);
+  });
+
+  it("intersects both sides: takes steam AND makes power is the steam turbines", () => {
+    const steam = resolvePowerResource("Steam")!;
+    const hits = searchPowerSourcesForStencil(
+      [
+        { role: "takes", kind: steam.kind, id: steam.id },
+        { role: "makes", kind: "fluid", id: POWER_EU_CLAUSE_ID },
+      ],
+      "all",
+      "all",
+      "",
+    );
+    const ids = hits.map((hit) => hit.source.id);
+    expect(ids).toContain("steam-turbine");
+    expect(ids).toContain("large-steam-turbine");
+    expect(ids).not.toContain("gas-turbine");
+  });
+
+  it("drops a source when two clauses need the same knob at different positions", () => {
+    const nitro = resolvePowerResource("Nitrobenzene")!;
+    const naphtha = resolvePowerResource("Naphtha")!;
+    const hits = searchPowerSourcesForStencil(
+      [
+        { role: "takes", kind: nitro.kind, id: nitro.id },
+        { role: "takes", kind: naphtha.kind, id: naphtha.id },
+      ],
+      "all",
+      "all",
+      "",
+    );
+    expect(hits.find((hit) => hit.source.id === "gas-turbine")).toBeUndefined();
+    // ANY keeps it: one of the fuels is enough.
+    const anyHits = searchPowerSourcesForStencil(
+      [
+        { role: "takes", kind: nitro.kind, id: nitro.id },
+        { role: "takes", kind: naphtha.kind, id: naphtha.id },
+      ],
+      "any",
+      "all",
+      "",
+    );
+    expect(anyHits.find((hit) => hit.source.id === "gas-turbine")).toBeDefined();
   });
 });
 

@@ -27,11 +27,34 @@ export interface PowerSearchHit {
   via?: PowerFlowMatch;
 }
 
+/**
+ * The id the recipe search's stencil uses for its "makes power" condition.
+ * Not a dataset resource: no recipe map answers it, so the recipe side of
+ * the search naturally comes back empty and only generators respond.
+ */
+export const POWER_EU_CLAUSE_ID = "gtnh-power:eu";
+
+export interface PowerStencilClause {
+  role: "takes" | "makes";
+  kind: string;
+  id: string;
+}
+
+export interface PowerStencilHit {
+  source: PowerSourceDefinition;
+  /** Every dialed choice the matched clauses need, merged. */
+  settings?: Record<string, string>;
+  /** One entry per matched clause, for captions. */
+  matches: PowerFlowMatch[];
+}
+
 interface SourceIndex {
   source: PowerSourceDefinition;
   nameText: string;
   /** lowercased flow name -> the first (most default) way to get it. */
   flows: Map<string, PowerFlowMatch>;
+  /** "direction:kind:id" (resolved resource) -> same, for exact clause hits. */
+  flowsById: Map<string, PowerFlowMatch>;
 }
 
 let indexCache: SourceIndex[] | undefined;
@@ -51,6 +74,13 @@ function recordFlows(
     if (!entry.flows.has(key)) {
       entry.flows.set(key, { direction, name, ...choice });
     }
+    const resource = resolvePowerResource(rawName);
+    if (resource) {
+      const idKey = `${direction}:${resource.kind}:${resource.id}`;
+      if (!entry.flowsById.has(idKey)) {
+        entry.flowsById.set(idKey, { direction, name, ...choice });
+      }
+    }
   };
   for (const flow of model.inputs) {
     record("takes", flow.name);
@@ -59,7 +89,13 @@ function recordFlows(
     record("makes", flow.name);
   }
   if (model.euPerTick > 0) {
-    record("makes", "EU");
+    const key = "makes:eu";
+    if (!entry.flows.has(key)) {
+      entry.flows.set(key, { direction: "makes", name: "EU", ...choice });
+    }
+    if (!entry.flowsById.has("makes:power:eu")) {
+      entry.flowsById.set("makes:power:eu", { direction: "makes", name: "EU", ...choice });
+    }
   }
 }
 
@@ -72,6 +108,7 @@ function buildIndex(): SourceIndex[] {
       // setting to dial in.
       nameText: `${source.name} ${source.unlock ?? ""}`.toLowerCase(),
       flows: new Map(),
+      flowsById: new Map(),
     };
     // Defaults first, so a fuel the card already burns wins over a dialed one.
     try {
@@ -146,4 +183,130 @@ export function hitPlacementSettings(hit: PowerSearchHit): Record<string, string
     return { [hit.via.settingId]: hit.via.optionKey };
   }
   return undefined;
+}
+
+/** Does this picker query deserve the synthetic "Power (EU)" entry? */
+export function queryAsksForPower(query: string): boolean {
+  const trimmed = query.trim().toLowerCase();
+  if (trimmed === "") {
+    return true;
+  }
+  return "power".startsWith(trimmed) || "energy".startsWith(trimmed) || trimmed === "eu";
+}
+
+function clauseKey(clause: PowerStencilClause): string | undefined {
+  if (clause.id === POWER_EU_CLAUSE_ID) {
+    return clause.role === "makes" ? "makes:power:eu" : undefined;
+  }
+  return `${clause.role}:${clause.kind}:${clause.id}`;
+}
+
+/**
+ * The recipe search's view of the generators: a source answers the stencil
+ * when its flows - under ANY single setting choice - satisfy each side's
+ * conditions under that side's op (only reads as all; a generator's
+ * housekeeping flows are not what "nothing else" is policing). The dialed
+ * choices merge into the settings the card should be placed with; two
+ * conditions that need the same knob at different positions cannot both be
+ * true, so that source drops out. A name query narrows by machine name,
+ * exactly as it narrows the recipes.
+ */
+export function searchPowerSourcesForStencil(
+  clauses: PowerStencilClause[],
+  takesOp: "any" | "all" | "only",
+  makesOp: "any" | "all" | "only",
+  query: string,
+): PowerStencilHit[] {
+  const index = (indexCache ??= buildIndex());
+  const trimmed = query.trim().toLowerCase();
+
+  if (clauses.length === 0) {
+    // No conditions: only a typed name (or the power keyword) brings
+    // generators into the recipe search.
+    if (trimmed === "") {
+      return [];
+    }
+    const wantsPower =
+      trimmed.length >= 2 && ("power".startsWith(trimmed) || "energy".startsWith(trimmed));
+    const hits: PowerStencilHit[] = [];
+    for (const entry of index) {
+      if (entry.nameText.includes(trimmed)) {
+        hits.push({ source: entry.source, matches: [] });
+      } else if ((wantsPower || trimmed === "eu") && entry.flowsById.has("makes:power:eu")) {
+        hits.push({ source: entry.source, matches: [entry.flowsById.get("makes:power:eu")!] });
+      }
+    }
+    return hits;
+  }
+
+  const sideOp = (role: "takes" | "makes") => (role === "takes" ? takesOp : makesOp);
+  const hits: PowerStencilHit[] = [];
+  for (const entry of index) {
+    if (trimmed !== "" && !entry.nameText.includes(trimmed)) {
+      continue;
+    }
+    const matches: PowerFlowMatch[] = [];
+    const settings: Record<string, string> = {};
+    let rejected = false;
+    let matchedAny = false;
+    for (const role of ["takes", "makes"] as const) {
+      const side = clauses.filter((clause) => clause.role === role);
+      if (side.length === 0) {
+        continue;
+      }
+      const sideMatches = side.map((clause) => {
+        const key = clauseKey(clause);
+        return key ? entry.flowsById.get(key) : undefined;
+      });
+      const apply = (match: PowerFlowMatch): boolean => {
+        if (match.settingId && match.optionKey) {
+          const standing = settings[match.settingId];
+          if (standing !== undefined && standing !== match.optionKey) {
+            return false;
+          }
+          settings[match.settingId] = match.optionKey;
+        }
+        matches.push(match);
+        return true;
+      };
+      if (sideOp(role) === "any") {
+        // One condition is enough: take the best non-conflicting match,
+        // an undialed flow before a dialed one.
+        const candidates = sideMatches
+          .filter((match): match is PowerFlowMatch => match !== undefined)
+          .sort((a, b) => (a.settingId ? 1 : 0) - (b.settingId ? 1 : 0));
+        const picked = candidates.find((match) => apply(match));
+        if (!picked) {
+          rejected = true;
+          break;
+        }
+      } else {
+        // all (and only, read as all): every condition must hold at once.
+        if (sideMatches.some((match) => match === undefined)) {
+          rejected = true;
+          break;
+        }
+        for (const match of sideMatches) {
+          if (!apply(match!)) {
+            rejected = true;
+            break;
+          }
+        }
+        if (rejected) {
+          break;
+        }
+      }
+      matchedAny = true;
+    }
+    if (rejected || !matchedAny) {
+      continue;
+    }
+    hits.push({
+      source: entry.source,
+      settings: Object.keys(settings).length > 0 ? settings : undefined,
+      matches,
+    });
+  }
+  // Ready-as-is machines first: a card that needs no dialing is the closer fit.
+  return hits.sort((a, b) => (a.settings ? 1 : 0) - (b.settings ? 1 : 0));
 }
