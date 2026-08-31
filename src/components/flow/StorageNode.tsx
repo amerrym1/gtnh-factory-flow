@@ -776,7 +776,11 @@ function TargetLine({
     // the well at z-30, and anything below them cannot be clicked. The input
     // wears the same raised paper the machine-count field wears, so it reads
     // as a place to type instead of a bare black slot.
-    <div className="storage-net-line relative z-40 flex h-4 items-center justify-center gap-[3px] whitespace-nowrap text-center leading-none">
+    // The BOX is what centres, not the box-plus-suffix pair: with the unit
+    // in the centring math the field sat visibly left of the tile's axis.
+    // The suffix hangs off the box's right edge instead.
+    <div className="storage-net-line relative z-40 flex h-4 items-center justify-center whitespace-nowrap text-center leading-none">
+      <div className="relative">
       <input
         value={shown}
         onChange={(event) => setDraft(event.target.value)}
@@ -809,7 +813,10 @@ function TargetLine({
             : "border-[var(--mc-47)] text-[var(--mc-ink)] focus:border-cyan-700 focus:ring-cyan-400",
         ].join(" ")}
       />
-      <span className="text-[8px] font-bold text-[#a8afbb]">{suffix}</span>
+      <span className="absolute left-full top-1/2 ml-[3px] -translate-y-1/2 text-[8px] font-bold text-[#a8afbb]">
+        {suffix}
+      </span>
+      </div>
     </div>
   );
 }
