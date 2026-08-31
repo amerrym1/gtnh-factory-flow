@@ -734,6 +734,24 @@ function NetLine({ net, kind, role }: { net: number; kind: string; role: Storage
 }
 
 /**
+ * "2.5k" is a number: metric shorthand for the rate field, k / m / g for
+ * thousand, million, billion, either case, spaces and commas forgiven.
+ * Anything else is not a number and the caller falls back rather than guess.
+ */
+function parseAmountWithSuffix(text: string): number | undefined {
+  const match = text
+    .trim()
+    .toLowerCase()
+    .replace(/,/g, "")
+    .match(/^([0-9]*\.?[0-9]+)\s*([kmg]?)$/);
+  if (!match) {
+    return undefined;
+  }
+  const multiplier = match[2] === "k" ? 1e3 : match[2] === "m" ? 1e6 : match[2] === "g" ? 1e9 : 1;
+  return Number.parseFloat(match[1]!) * multiplier;
+}
+
+/**
  * Solve mode's question, asked on the tile itself: how much should this
  * product make per second. The number typed here is the constraint the whole
  * solve answers; empty means "whatever falls out" (the drawer behaves like a
@@ -764,11 +782,18 @@ function TargetLine({
     if (draft === undefined) {
       return;
     }
-    const value = Number.parseFloat(draft);
-    setStorageTarget(
-      storage.id,
-      Number.isFinite(value) && value > 0 ? value / rateUnitMultiplier() : undefined,
-    );
+    if (draft.trim() === "") {
+      setStorageTarget(storage.id, undefined);
+      setDraft(undefined);
+      return;
+    }
+    const value = parseAmountWithSuffix(draft);
+    if (value === undefined || !Number.isFinite(value) || value <= 0) {
+      // Not a number: the field falls back to what it held.
+      setDraft(undefined);
+      return;
+    }
+    setStorageTarget(storage.id, value / rateUnitMultiplier());
     setDraft(undefined);
   };
   return (
@@ -803,16 +828,16 @@ function TargetLine({
         title={
           unreachable
             ? "No chain on the board can make this much at any machine count."
-            : "Make at least this much. Empty catches whatever is left."
+            : "Make at least this much. Shorthand works: 2.5k, 1m, 1g. Empty catches whatever is left."
         }
         aria-label="Required amount"
         className={[
-          "nodrag h-[13px] w-[44px] border px-[3px] text-center font-bold tabular-nums outline-none",
-          shown.length <= 5
-            ? "text-[8px]"
-            : shown.length <= 7
-              ? "text-[7px]"
-              : "text-[6px]",
+          "nodrag h-4 w-[54px] border px-[3px] text-center font-bold tabular-nums outline-none",
+          shown.length <= 6
+            ? "text-[7px]"
+            : shown.length <= 9
+              ? "text-[6px]"
+              : "text-[5px]",
           "bg-[#14171d] shadow-[inset_1px_1px_0_rgba(255,255,255,0.08),inset_-1px_-1px_0_rgba(0,0,0,0.5)]",
           "placeholder:font-normal placeholder:text-[#6b7280]",
           "focus:bg-[#1a1e26] focus:ring-1",
