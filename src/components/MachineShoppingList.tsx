@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, type ReactNode } from "react";
 import { Cloud, Zap } from "lucide-react";
 import { MotionNumberText } from "./flow/board-motion";
 import { GT_TIER_COLORS } from "./flow/tier-colors";
@@ -423,17 +423,43 @@ export function MachineShoppingList() {
         </div>
         {hasMade ? (
           // Generators on the board turn the header into the ledger: what the
-          // machines drink, what the generators make, and the difference.
-          <span className="flex flex-wrap items-baseline justify-end gap-x-2.5 text-[13px] font-bold tabular-nums">
-            {steamFigure}
-            {hasEu ? (
-              <span className="whitespace-nowrap">
-                <span className="mr-1 text-[8px] font-normal text-[var(--mc-ink-muted)]">USED</span>
-                {euFigure}
-              </span>
+          // machines drink, what the generators make, and the difference -
+          // three proper cells with room to breathe, not a cramped line.
+          <div
+            className={[
+              "mt-2 grid gap-2 pb-1",
+              hasSteam ? "grid-cols-4" : "grid-cols-3",
+            ].join(" ")}
+          >
+            {hasSteam ? (
+              <LedgerCell label="STEAM">
+                <SteamMark />
+                <MotionNumberText
+                  values={[totalSteamLs]}
+                  render={(shown) =>
+                    shown[0] === totalSteamLs
+                      ? formatCompact(totalSteamLs)
+                      : formatCompactStable(shown[0] ?? totalSteamLs)
+                  }
+                />
+                <span className="ml-0.5 text-[9px] font-normal text-[var(--mc-ink-muted)]">
+                  L/s
+                </span>
+              </LedgerCell>
             ) : null}
-            <span className="whitespace-nowrap text-emerald-300">
-              <span className="mr-1 text-[8px] font-normal text-[var(--mc-ink-muted)]">MADE</span>
+            <LedgerCell label="USED">
+              <EuMark />
+              <MotionNumberText
+                values={[totalEuT]}
+                render={(shown) =>
+                  shown[0] === totalEuT
+                    ? formatCompact(totalEuT)
+                    : formatCompactStable(shown[0] ?? totalEuT)
+                }
+              />
+              <span className="ml-0.5 text-[9px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
+            </LedgerCell>
+            <LedgerCell label="MADE" className="text-emerald-300">
               <EuMark />
               <MotionNumberText
                 values={[totalMadeEuT]}
@@ -443,27 +469,23 @@ export function MachineShoppingList() {
                     : formatCompactStable(shown[0] ?? totalMadeEuT)
                 }
               />
-              <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
-            </span>
-            <span
-              className={[
-                "whitespace-nowrap",
-                netEuT >= 0 ? "text-emerald-300" : "text-red-300",
-              ].join(" ")}
-            >
-              <span className="mr-1 text-[8px] font-normal text-[var(--mc-ink-muted)]">NET</span>
+              <span className="ml-0.5 text-[9px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
+            </LedgerCell>
+            <LedgerCell label="NET" className={netEuT >= 0 ? "text-emerald-300" : "text-red-300"}>
               <MotionNumberText
                 values={[netEuT]}
                 render={(shown) => {
                   const value = shown[0] === netEuT ? netEuT : (shown[0] ?? netEuT);
                   const text =
-                    shown[0] === netEuT ? formatCompact(Math.abs(netEuT)) : formatCompactStable(Math.abs(value));
+                    shown[0] === netEuT
+                      ? formatCompact(Math.abs(netEuT))
+                      : formatCompactStable(Math.abs(value));
                   return `${value >= 0 ? "+" : "-"}${text}`;
                 }}
               />
-              <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
-            </span>
-          </span>
+              <span className="ml-0.5 text-[9px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
+            </LedgerCell>
+          </div>
         ) : hasEu && hasSteam ? (
           <span className="flex items-baseline justify-end gap-2 text-[13px] font-bold tabular-nums">
             {steamFigure}
@@ -598,6 +620,36 @@ function SteamMark() {
       aria-hidden
       className="mr-0.5 inline h-2.5 w-2.5 -translate-y-px fill-current text-slate-300"
     />
+  );
+}
+
+/**
+ * One column of the power ledger: a muted label over a full-size figure.
+ * The figures are the point of the header once generators exist, so they
+ * get list-line size and a row of their own instead of a cramped corner.
+ */
+function LedgerCell({
+  label,
+  className,
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span className="flex min-w-0 flex-col gap-0.5">
+      <span className="text-[9px] font-normal uppercase tracking-wider text-[var(--mc-ink-muted)]">
+        {label}
+      </span>
+      <span
+        className={["whitespace-nowrap text-[15px] font-bold tabular-nums", className ?? ""].join(
+          " ",
+        )}
+      >
+        {children}
+      </span>
+    </span>
   );
 }
 
