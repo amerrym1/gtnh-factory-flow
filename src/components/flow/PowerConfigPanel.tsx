@@ -36,6 +36,10 @@ export function PowerConfigPanel({
     <div className="min-w-0 border-t border-[var(--mc-56)] py-1.5">
       <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-x-2 gap-y-1.5">
         {source.settings.map((setting) => {
+          // The tier ladder lives on the header chip, like every machine's.
+          if (setting.id === "tier") {
+            return null;
+          }
           if (setting.type === "select") {
             const value =
               values?.[setting.id] &&

@@ -110,6 +110,8 @@ import { publishDockTopInset } from "./dock-insets";
 import { useRenderedHandles } from "./use-rendered-handles";
 import { MinecraftSelect } from "./MinecraftSelect";
 import { PowerConfigPanel } from "./PowerConfigPanel";
+import { getPowerSource } from "@/lib/power/registry";
+import type { PowerSelectSetting } from "@/lib/power/types";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { useWorkspaceView } from "@/lib/workspace-view";
 import { MachineStatsContent } from "./MachineStatsContent";
@@ -1075,6 +1077,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               // pair sizes to content: a laser hatch's amp rating is wider
               // than a plain hatch count.
               ...(tierControl ? [showHatchControl ? "max-content" : "50px"] : []),
+              // A power card's tier chip (or its multiblock unlock chip).
+              ...(powerInfo && !tierControl ? ["50px"] : []),
             ].join(" "),
           }}
         >
@@ -1205,6 +1209,17 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               />
             ) : null}
           </div>
+          {/* A power card's tier lives where every machine's does: the header
+              chip, click up, right click down, wheel to scroll. Multiblock
+              generators have no tier knob (the workbook fixes their output),
+              so they wear their unlock tier as a static chip instead. */}
+          {powerInfo ? (
+            <PowerTierChip
+              nodeId={projectNode.id}
+              sourceId={powerInfo.sourceId}
+              values={projectNode.machineConfigTiers}
+            />
+          ) : null}
           {tierControl && tierColor ? (
             // The fused chip trio is ONE hover surface telling the whole
             // power story - the same panel the footer's POWER cell shows -
@@ -2406,6 +2421,93 @@ function PortRail({
         ),
       )}
     </div>
+  );
+}
+
+/**
+ * A power card's header tier chip, with the classic gestures: click steps
+ * up, right click steps down, wheel scrolls, wrapping at the ends of the
+ * family's own ladder (an LV-HV steam turbine cycles those three). Writes
+ * through setPowerSetting so the card's recipe follows. Sources without a
+ * tier knob wear their unlock tier as a static chip.
+ */
+function PowerTierChip({
+  nodeId,
+  sourceId,
+  values,
+}: {
+  nodeId: string;
+  sourceId: string;
+  values: Record<string, string> | undefined;
+}) {
+  const setPowerSetting = useFactoryStore((state) => state.setPowerSetting);
+  const source = getPowerSource(sourceId);
+  if (!source) {
+    return null;
+  }
+  const setting = source.settings.find(
+    (entry): entry is PowerSelectSetting => entry.type === "select" && entry.id === "tier",
+  );
+  const shownTier = setting
+    ? values?.tier && setting.options.some((option) => option.key === values.tier)
+      ? values.tier
+      : setting.defaultKey
+    : source.unlock;
+  const color = shownTier && shownTier in GT_TIER_COLORS
+    ? GT_TIER_COLORS[shownTier as keyof typeof GT_TIER_COLORS]
+    : undefined;
+  if (!shownTier || !color) {
+    return null;
+  }
+  const chipStyle = {
+    backgroundColor: color.background,
+    borderColor: color.border,
+    color: color.text,
+    textShadow: `1px 1px 0 ${color.shadow}`,
+    textDecoration: color.underline ? "underline" : undefined,
+  };
+  if (!setting) {
+    return (
+      <span
+        className="flex h-6 w-[50px] items-center justify-center border-2 px-1 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)]"
+        style={chipStyle}
+        title={`Unlocks at ${shownTier}`}
+      >
+        {shownTier}
+      </span>
+    );
+  }
+  const index = Math.max(0, setting.options.findIndex((option) => option.key === shownTier));
+  const step = (delta: number) => {
+    const count = setting.options.length;
+    const next = setting.options[(index + delta + count) % count];
+    if (next) {
+      setPowerSetting(nodeId, "tier", next.key);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        step(1);
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        step(-1);
+      }}
+      onWheel={(event) => {
+        event.stopPropagation();
+        step(event.deltaY < 0 ? 1 : -1);
+      }}
+      className="nodrag nowheel flex h-6 w-[50px] items-center justify-center border-2 px-1 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+      style={chipStyle}
+      title={`Tier ${shownTier}`}
+      aria-label={`Tier ${shownTier}`}
+    >
+      {shownTier}
+    </button>
   );
 }
 
