@@ -459,7 +459,7 @@ export function MachineShoppingList() {
               />
               <span className="ml-0.5 text-[9px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
             </LedgerCell>
-            <LedgerCell label="MADE" className="text-emerald-300">
+            <LedgerCell label="MADE" align="center" className="text-emerald-300">
               <EuMark />
               <MotionNumberText
                 values={[totalMadeEuT]}
@@ -471,7 +471,11 @@ export function MachineShoppingList() {
               />
               <span className="ml-0.5 text-[9px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
             </LedgerCell>
-            <LedgerCell label="NET" className={netEuT >= 0 ? "text-emerald-300" : "text-red-300"}>
+            <LedgerCell
+              label="NET"
+              align="end"
+              className={netEuT >= 0 ? "text-emerald-300" : "text-red-300"}
+            >
               <MotionNumberText
                 values={[netEuT]}
                 render={(shown) => {
@@ -624,22 +628,33 @@ function SteamMark() {
 }
 
 /**
- * One column of the power ledger: a muted label over a full-size figure.
- * The figures are the point of the header once generators exist, so they
- * get list-line size and a row of their own instead of a cramped corner.
+ * One column of the power ledger: a muted label over a full-size figure, on
+ * its own quiet tile. The tiles sit left, centre and right across the row
+ * (justify-self), while each one's content reads left-aligned inside.
  */
 function LedgerCell({
   label,
   className,
+  align = "start",
   children,
 }: {
   label: string;
   className?: string;
+  align?: "start" | "center" | "end";
   children: ReactNode;
 }) {
   return (
-    <span className="flex min-w-0 flex-col gap-0.5">
-      <span className="text-[9px] font-normal uppercase tracking-wider text-[var(--mc-ink-muted)]">
+    <span
+      className={[
+        "flex min-w-0 flex-col gap-0.5 border border-[var(--mc-47)] bg-[var(--mc-56)]/60 px-1.5 py-1 shadow-[inset_1px_1px_0_rgba(255,255,255,0.05)]",
+        align === "center"
+          ? "justify-self-center"
+          : align === "end"
+            ? "justify-self-end"
+            : "justify-self-start",
+      ].join(" ")}
+    >
+      <span className="text-[11px] font-normal uppercase tracking-wider text-[var(--mc-ink-muted)]">
         {label}
       </span>
       <span
