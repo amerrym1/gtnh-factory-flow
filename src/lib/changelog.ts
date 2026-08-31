@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.41.1",
+    date: "2026-08-31",
+    headline: "A little polish on the room",
+    notes: [
+      "The board edges shade gently instead of fading in a circle.",
+      "The toolbars cast the same shadow the cards do.",
+    ],
+  },
+  {
     version: "2.41.0",
     date: "2026-08-30",
     headline: "Power generation",
