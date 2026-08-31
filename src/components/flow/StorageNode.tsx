@@ -738,6 +738,21 @@ function NetLine({ net, kind, role }: { net: number; kind: string; role: Storage
  * thousand, million, billion, either case, spaces and commas forgiven.
  * Anything else is not a number and the caller falls back rather than guess.
  */
+/** The mirror: a committed value is SHOWN in the same shorthand it was
+ * typed in - 10000 reads back as 10k, never expanded under your cursor. */
+function formatAmountWithSuffix(value: number): string {
+  if (value >= 1e9) {
+    return `${trimTrailingDecimalZeros((value / 1e9).toFixed(2))}g`;
+  }
+  if (value >= 1e6) {
+    return `${trimTrailingDecimalZeros((value / 1e6).toFixed(2))}m`;
+  }
+  if (value >= 1e3) {
+    return `${trimTrailingDecimalZeros((value / 1e3).toFixed(2))}k`;
+  }
+  return trimTrailingDecimalZeros(value.toFixed(4));
+}
+
 function parseAmountWithSuffix(text: string): number | undefined {
   const match = text
     .trim()
@@ -766,56 +781,87 @@ function TargetLine({
   result: StorageThroughputResult | undefined;
 }) {
   const setStorageTarget = useFactoryStore((state) => state.setStorageTarget);
-  const [draft, setDraft] = useState<string | undefined>(undefined);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
   const target = storage.targetPerSecond;
-  // The field speaks the BOARD'S rate unit, like every number around it: the
-  // stored figure is canonical per-second, the display and the typing are in
-  // whatever /t /s /min /hr the board is set to, converted at the edges.
-  const shown =
-    draft ??
-    (target !== undefined && target > 0
-      ? trimTrailingDecimalZeros((target * rateUnitMultiplier()).toFixed(4))
-      : "");
-  const suffix = rateUnitSuffix(storage.kind === "fluid").trimStart();
   const unreachable = result?.targetUnreachable === true;
+  // The RESTING face is exactly the net line every other tile wears: same
+  // formatter, same fit-to-silhouette font stepping, bare text on the tile.
+  // Clicking it swaps in the editor; committing swaps back.
+  const restingLabel =
+    target !== undefined && target > 0 ? formatCompactRate(target, storage.kind) : "rate?";
+
+  const beginEdit = () => {
+    setDraft(
+      target !== undefined && target > 0
+        ? formatAmountWithSuffix(target * rateUnitMultiplier())
+        : "",
+    );
+    setEditing(true);
+  };
+  // Typed figures are read in the BOARD'S rate unit and stored per second,
+  // converted at the edges, so the number always matches the board around it.
   const commit = () => {
-    if (draft === undefined) {
-      return;
-    }
+    setEditing(false);
     if (draft.trim() === "") {
       setStorageTarget(storage.id, undefined);
-      setDraft(undefined);
       return;
     }
     const value = parseAmountWithSuffix(draft);
     if (value === undefined || !Number.isFinite(value) || value <= 0) {
       // Not a number: the field falls back to what it held.
-      setDraft(undefined);
       return;
     }
     setStorageTarget(storage.id, value / rateUnitMultiplier());
-    setDraft(undefined);
   };
+
+  if (!editing) {
+    return (
+      // z-40, like the header's buttons: the invisible wire handles blanket
+      // the well at z-30, and anything below them cannot be clicked.
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          beginEdit();
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
+        title={
+          unreachable
+            ? "No chain on the board can make this much at any machine count. Click to change it."
+            : "Make at least this much. Click to type an amount; shorthand like 2.5k works."
+        }
+        aria-label="Required amount"
+        className={[
+          "storage-net-line nodrag relative z-40 block h-4 w-full whitespace-nowrap text-center font-bold leading-4 tabular-nums",
+          rateFitClass(restingLabel, "product"),
+          target !== undefined && target > 0
+            ? unreachable
+              ? "text-[#ff9191]"
+              : "text-[#e8e9ee]"
+            : "font-normal text-[#6b7280]",
+        ].join(" ")}
+      >
+        {restingLabel}
+      </button>
+    );
+  }
+
   return (
-    // z-40, like the header's buttons: the invisible wire handles blanket
-    // the well at z-30, and anything below them cannot be clicked. The input
-    // wears the same raised paper the machine-count field wears, so it reads
-    // as a place to type instead of a bare black slot.
-    // The BOX is what centres, not the box-plus-suffix pair: with the unit
-    // in the centring math the field sat visibly left of the tile's axis.
-    // The suffix hangs off the box's right edge instead.
     <div className="storage-net-line relative z-40 flex h-4 items-center justify-center whitespace-nowrap text-center leading-none">
-      <div className="relative">
-      {/* Longer numbers give up SIZE, never digits: the box is fixed, so the
-          font steps down as the text grows, the same rule the net line
-          follows. */}
       <input
-        value={shown}
+        autoFocus
+        value={draft}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commit}
+        onFocus={(event) => event.currentTarget.select()}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
             event.currentTarget.blur();
+          }
+          if (event.key === "Escape") {
+            setEditing(false);
           }
           event.stopPropagation();
         }}
@@ -825,33 +871,15 @@ function TargetLine({
         onClick={(event) => event.stopPropagation()}
         inputMode="decimal"
         placeholder="rate"
-        title={
-          unreachable
-            ? "No chain on the board can make this much at any machine count."
-            : "Make at least this much. Shorthand works: 2.5k, 1m, 1g. Empty catches whatever is left."
-        }
         aria-label="Required amount"
         className={[
-          "nodrag h-4 w-[54px] border px-[3px] text-center font-bold tabular-nums outline-none",
-          shown.length <= 6
-            ? "text-[7px]"
-            : shown.length <= 9
-              ? "text-[6px]"
-              : "text-[5px]",
+          "nodrag h-4 w-[60px] border px-[3px] text-center text-[9px] font-bold tabular-nums outline-none",
           "bg-[#14171d] shadow-[inset_1px_1px_0_rgba(255,255,255,0.08),inset_-1px_-1px_0_rgba(0,0,0,0.5)]",
           "placeholder:font-normal placeholder:text-[#6b7280]",
-          "focus:bg-[#1a1e26] focus:ring-1",
-          unreachable
-            ? "border-[#c33] text-[#ff9191] focus:border-[#c33] focus:ring-red-400"
-            : "border-[#3a4150] text-[#e8e9ee] focus:border-cyan-700 focus:ring-cyan-400",
+          "focus:bg-[#1a1e26] focus:ring-1 focus:ring-cyan-400",
+          "border-[#3a4150] text-[#e8e9ee] focus:border-cyan-700",
         ].join(" ")}
       />
-      {/* The unit sits on the box's BOTTOM edge, like a printed subscript,
-          not floated at its middle. */}
-      <span className="absolute bottom-0 left-full ml-[1px] text-[6px] font-bold leading-none text-[#a8afbb]">
-        {suffix}
-      </span>
-      </div>
     </div>
   );
 }
