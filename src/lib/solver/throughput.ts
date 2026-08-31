@@ -224,7 +224,14 @@ export function calculateThroughput(
   // None of the plan-mode storytelling below runs - usage, verdicts, clogs
   // and fairness all describe a FIXED build, and the build is what is being
   // solved for here.
-  if (project.solveMode) {
+  //
+  // Only once a number is TYPED, though. With no targets anywhere the honest
+  // solve is zero machines everywhere, which turns a working board into a
+  // wall of dead cards the moment the mode is clicked. So an all-empty board
+  // keeps the plan books - the same picture as plan mode, with the drawers'
+  // amount fields waiting - and the first typed number is what flips the
+  // question.
+  if (project.solveMode && hasSolveModeTargets(project)) {
     return finalizeSolveModeResult(
       project,
       nodes,
@@ -454,6 +461,14 @@ function expandCrossFormEdges(project: FactoryProject): {
   return { project: { ...project, recipes, nodes, edges }, hiddenNodeIds, hiddenEdgeIds };
 }
 
+/** At least one product drawer carries a typed amount. */
+export function hasSolveModeTargets(project: FactoryProject): boolean {
+  const roles = getStorageRoles(project);
+  return (project.storages ?? []).some(
+    (storage) => roles.get(storage.id) === "product" && (storage.targetPerSecond ?? 0) > 0,
+  );
+}
+
 /**
  * The solve-mode result: run the count solve, then rewrite every machine
  * report AT THE SOLVED SCALE - rates, flows and EU all multiplied by the
@@ -512,12 +527,13 @@ function finalizeSolveModeResult(
     nodeResult.status = act > EPSILON ? "balanced" : "underutilized";
   }
 
+  // EVERY edge gets a result. A wire the solve-mode model has no variable
+  // for (a disabled machine's, a trash line's) still exists on the board,
+  // and a missing entry is how wires vanish from the screen: it reads as
+  // zero at 0/s demand, never as absent.
   const edgeResults: Record<string, EdgeThroughput> = {};
   for (const edge of project.edges) {
-    const flow = solved.edgeFlowPerSecond.get(edge.id);
-    if (flow === undefined) {
-      continue;
-    }
+    const flow = solved.edgeFlowPerSecond.get(edge.id) ?? 0;
     edgeResults[edge.id] = buildEdgeResult(
       edge,
       makeResourceKey(edge.resourceKind, edge.resourceId),

@@ -15,6 +15,7 @@ import { collectTrashNodeIds } from "@/lib/model/trash";
 import { describeStorage, getStorageRole, getStorageRoles } from "@/lib/model/storage-role";
 import { makeResourceHandleId } from "./resource-handles";
 import { getSetupRules, type ResolvedSetupRules } from "@/lib/model/setup-rules";
+import { hasSolveModeTargets } from "@/lib/solver/throughput";
 
 type ProjectEdge = FactoryProject["edges"][number];
 
@@ -455,6 +456,17 @@ export function deriveNodeVerdict(
       // "unwired" is still the only true thing to say about it.
       return { kind: "unwired", pct, bare };
     }
+  }
+
+  // SOLVE MODE with a typed target: the books are the solved build, not the
+  // player's, and every diagnosis below (spirals, clog locks, deficits,
+  // starvation ladders) describes a FIXED build that is not what is on
+  // screen. A solved machine runs by construction; one at zero is simply
+  // not needed by any typed amount - a quiet reading, never an alarm.
+  // With no targets typed the plan books are still in force (see
+  // throughput.ts) and the ordinary diagnosis stands.
+  if (project.solveMode && hasSolveModeTargets(project)) {
+    return utilization > VERDICT_EPSILON ? { kind: "balanced", pct } : { kind: "demand-set", pct };
   }
 
   // A dead ring outranks every other reading. Its members ARE starved and

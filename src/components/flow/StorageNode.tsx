@@ -774,7 +774,7 @@ function TargetLine({
         }}
         onPointerDown={(event) => event.stopPropagation()}
         inputMode="decimal"
-        placeholder="amount"
+        placeholder="rate"
         title={
           unreachable
             ? "No chain on the board can make this much at any machine count."

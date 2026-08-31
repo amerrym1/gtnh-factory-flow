@@ -106,18 +106,34 @@ describe("solve mode", () => {
     expect(result.nodes["a"]!.theoreticalMachinesRequired).toBeCloseTo(2, 5);
   });
 
-  it("a chain no target needs solves to zero machines", () => {
+  it("a chain no target needs solves to zero machines, and its wires stay", () => {
     const result = calculateThroughput(
       project({
-        recipes: [recipe("make", [["ore", 1]], [["gear", 1]])],
-        nodes: [node("a", "make")],
-        storages: [drawer("src", "ore"), drawer("out", "gear")],
-        edges: [wire("src", "a", "ore"), wire("a", "out", "gear")],
+        recipes: [
+          recipe("make", [["ore", 1]], [["gear", 1]]),
+          recipe("brew", [["water", 1]], [["kit", 1]]),
+        ],
+        nodes: [node("a", "make"), node("b", "brew")],
+        storages: [
+          drawer("src", "ore"),
+          drawer("out", "gear"),
+          drawer("w", "water"),
+          drawer("k", "kit", { targetPerSecond: 1 }),
+        ],
+        edges: [
+          wire("src", "a", "ore"),
+          wire("a", "out", "gear"),
+          wire("w", "b", "water"),
+          wire("b", "k", "kit"),
+        ],
       }),
       { generatedAt: "fixed" },
     );
     expect(result.nodes["a"]!.theoreticalMachinesRequired).toBeCloseTo(0, 5);
     expect(result.nodes["a"]!.utilization).toBe(0);
+    expect(result.nodes["b"]!.theoreticalMachinesRequired).toBeCloseTo(1, 5);
+    // The idle chain's wires still carry results (at zero), never vanish.
+    expect(Object.keys(result.edges).length).toBe(4);
   });
 
   it("a byproduct drawer catches the ratio's forced overshoot", () => {
@@ -189,7 +205,9 @@ describe("solve mode", () => {
     expect(result.bottlenecks.some((b) => b.id === "solve-target:g")).toBe(true);
   });
 
-  it("a product with no number typed is unconstrained, not an error", () => {
+  it("no targets typed anywhere keeps the plan books: the board stays alive", () => {
+    // Clicking the mode must not zero a working board. Until the first
+    // number lands the picture is plan mode's, drawers waiting.
     const result = calculateThroughput(
       project({
         recipes: [recipe("make", [["ore", 1]], [["gear", 1]])],
@@ -199,7 +217,8 @@ describe("solve mode", () => {
       }),
       { generatedAt: "fixed" },
     );
+    expect(result.nodes["a"]!.utilization).toBeCloseTo(1, 5);
     expect(result.storages["out"]!.targetUnreachable).toBeUndefined();
-    expect(result.bottlenecks).toHaveLength(0);
+    expect(result.bottlenecks.some((b) => b.id.startsWith("solve-target:"))).toBe(false);
   });
 });
