@@ -257,7 +257,9 @@ const largeNeutralizationEngine: PowerSourceDefinition = {
       options: fuelOptions(powerPlannerData.chemFuels),
       defaultKey: "Molten Redstone",
     },
-    { type: "number", id: "rate", label: "Acid rate", min: 1, max: 100_000, step: 1, defaultValue: 50, unit: "L/s" },
+    // Per TICK, like the game's own fluid-use dial (maxFluidUse) and the
+    // workbook's rate cell: mEUt = fuel value x litres per tick.
+    { type: "number", id: "rate", label: "Acid rate", min: 1, max: 100_000, step: 1, defaultValue: 50, unit: "L/t" },
     {
       type: "select",
       id: "base",
@@ -309,7 +311,7 @@ const largeNeutralizationEngine: PowerSourceDefinition = {
     const residueMedian = Math.floor(Math.pow(residueCore, 12.5));
     const residueMax = Math.ceil(Math.pow(residueCore * 1.3, 12.5));
 
-    const inputs = [liters(fuel.name, rate)];
+    const inputs = [liters(fuel.name, rate * 20)];
     if (base) {
       // MTELargeNeutralizationEngine.useBooster: one hydroxide DUST per
       // boost window (20/50/200/240 ticks) - the sheet's rates are per

@@ -130,7 +130,8 @@ describe("community-flagged additions (2.9 sheet)", () => {
       base: "None",
     });
     expect(plain.euPerTick).toBe(2000);
-    expect(plain.inputs[0]).toMatchObject({ name: "Molten Redstone", perSecond: 50 });
+    // Rate is per tick (the game's maxFluidUse dial); the slot is per second.
+    expect(plain.inputs[0]).toMatchObject({ name: "Molten Redstone", perSecond: 1000 });
     const boosted = compute("large-neutralization-engine", {
       structure: "T1",
       fuel: "Molten Redstone",
@@ -140,6 +141,17 @@ describe("community-flagged additions (2.9 sheet)", () => {
     // x1.5 power for one hydroxide dust per 20 ticks (60 per minute).
     expect(boosted.euPerTick).toBe(3000);
     expect(boosted.inputs[1]).toMatchObject({ name: "Sodium Hydroxide Dust", perSecond: 1 });
+  });
+
+  it("matches the sheet on the reported case: fluoroantimonic at 1 L/t is 5760 EU/t", () => {
+    const model = compute("large-neutralization-engine", {
+      structure: "T1",
+      fuel: "Fluoroantimonic Acid",
+      rate: "1",
+      base: "None",
+    });
+    expect(model.euPerTick).toBe(5760);
+    expect(model.inputs[0]).toMatchObject({ name: "Fluoroantimonic Acid", perSecond: 20 });
   });
 
   it("splits the XL steam turbines: HP exhausts steam, SC exhausts SH", () => {
