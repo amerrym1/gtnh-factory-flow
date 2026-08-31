@@ -44,6 +44,12 @@ export interface SolveModeTarget {
   amountPerSecond: number;
 }
 
+/** Run EXACTLY this many machines of this node; the line solves around it. */
+export interface SolveModePin {
+  nodeId: string;
+  machines: number;
+}
+
 export interface SolveModeResult {
   status: "optimal" | "failed";
   /** Solved run level per machine node, in multiples of the BUILT count -
@@ -53,12 +59,16 @@ export interface SolveModeResult {
   edgeFlowPerSecond: Map<string, number>;
   /** Product drawers whose typed amount no chain can reach at any scale. */
   unreachableStorageIds: Set<string>;
+  /** The pinned counts cannot all run together (an output with nowhere to
+   * go, or two pins fighting through a shared port). */
+  pinsInfeasible?: boolean;
 }
 
 export function solveSolveMode(
   project: FactoryProject,
   nodes: Record<string, NodeThroughputResult>,
   targets: readonly SolveModeTarget[],
+  pins: readonly SolveModePin[] = [],
   /** Synthesized helper nodes (loose-cell-wire tanks) whose machine count is
    * headroom, not machinery: near-zero objective weight. */
   weightlessNodeIds?: ReadonlySet<string>,
@@ -239,6 +249,18 @@ export function solveSolveMode(
     equalities.push({ coefficients, rhs: 0 });
   }
 
+  // PINS: run exactly this many machines - one equality per pinned node,
+  // act = pinned / built. Conservation then scales the rest of the line
+  // around it, feeders and eaters both.
+  for (const pin of pins) {
+    const act = actVar.get(pin.nodeId);
+    if (act === undefined || !(pin.machines > 0)) {
+      continue;
+    }
+    const built = Math.max(1, countByNode.get(pin.nodeId) ?? 1);
+    equalities.push({ coefficients: new Map([[act, 1]]), rhs: pin.machines / built });
+  }
+
   // Defense: a flow variable in no row would be free to grow without bound.
   {
     const seen = new Set<number>();
@@ -354,6 +376,18 @@ export function solveSolveMode(
   let solution = solveStages(rowsByTarget.values());
 
   if (!solution) {
+    // Pins first: they live in the equalities, so if they cannot run
+    // together no amount of target-dropping rescues the solve.
+    if (pins.length > 0) {
+      const probe = new Array<number>(totalVars).fill(0);
+      for (const [v, weight] of machineWeights) {
+        probe[v] = weight;
+      }
+      const pinsAlone = solve({ maximize: probe, equalities, upperBounds });
+      if (pinsAlone.status !== "optimal") {
+        return { ...emptyResult("failed"), pinsInfeasible: true };
+      }
+    }
     // Some target cannot be reached at any scale. Feasibility is per-target
     // separable here (see the header note), so probe each alone to name the
     // strays, then answer for the reachable rest.

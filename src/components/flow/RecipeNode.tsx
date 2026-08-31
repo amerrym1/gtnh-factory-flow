@@ -16,6 +16,7 @@ import {
   Cpu,
   Image as ImageIcon,
   Minus,
+  Pencil,
   Plus,
   RefreshCw,
   Sprout,
@@ -1769,6 +1770,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                             <SolvedMachinesStat
                               label={isCropProductionNode ? "Seeds" : "Machines"}
                               needed={result?.theoreticalMachinesRequired ?? 0}
+                              pinned={projectNode.solvePin}
+                              onPin={(solvePin) => updateNode(projectNode.id, { solvePin })}
                             />
                           ) : (
                             <MachineCountStat
@@ -4547,33 +4550,104 @@ function formatSolvedMachines(value: number): string {
 
 /**
  * The solve-mode replacement for the count stepper: how many of this machine
- * the typed product amounts require. Read-only by design - in solve mode the
- * count is the ANSWER. The hover carries the build advice (round up, run at
- * the leftover percentage).
+ * the typed product amounts require. The count is normally the ANSWER - but
+ * clicking it PINS it ("run exactly 20 of these; solve the rest of the
+ * line"), the same dotted-underline-and-pencil invitation the product
+ * drawer's amount wears. A pinned count shows gold; emptying the field
+ * unpins and hands the count back to the solver.
  */
-function SolvedMachinesStat({ label, needed }: { label: string; needed: number }) {
+function SolvedMachinesStat({
+  label,
+  needed,
+  pinned,
+  onPin,
+}: {
+  label: string;
+  needed: number;
+  pinned: number | undefined;
+  onPin: (machines: number | undefined) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const isPinned = pinned !== undefined && pinned > 0;
   const whole = Math.ceil(needed - 0.000001);
   const pct = whole > 0 ? Math.round((needed / whole) * 100) : 0;
-  const title =
-    needed <= 0.0000005
-      ? "No product amount needs this machine."
-      : `Build ${whole} and run at ${pct}%.`;
+  const title = isPinned
+    ? `Pinned: exactly ${formatSolvedMachines(pinned)} run and the line solves around them. Click to change; empty unpins.`
+    : needed <= 0.0000005
+      ? "No product amount needs this machine. Click to pin a count and solve the line around it."
+      : `Build ${whole} and run at ${pct}%. Click to pin a count instead.`;
+  const commit = () => {
+    setEditing(false);
+    if (draft.trim() === "") {
+      onPin(undefined);
+      return;
+    }
+    const value = Number.parseFloat(draft.trim());
+    if (Number.isFinite(value) && value > 0) {
+      onPin(value);
+    }
+  };
   return (
     <div
       title={title}
       className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
     >
       <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">
-        {label}
+        {isPinned ? "Pinned" : label}
       </div>
-      <div
-        className={[
-          "truncate font-medium tabular-nums",
-          needed <= 0.0000005 ? "text-[var(--mc-ink-muted)]" : "",
-        ].join(" ")}
-      >
-        ×{formatSolvedMachines(needed)}
-      </div>
+      {editing ? (
+        <input
+          autoFocus
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          onFocus={(event) => event.currentTarget.select()}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.currentTarget.blur();
+            }
+            if (event.key === "Escape") {
+              setEditing(false);
+            }
+            event.stopPropagation();
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          inputMode="decimal"
+          aria-label="Pinned machine count"
+          className="nodrag h-5 w-full min-w-0 border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-center text-[13px] font-medium leading-4 text-[var(--mc-ink)] outline-none focus:border-cyan-700 focus:ring-1 focus:ring-cyan-400"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setDraft(isPinned ? formatSolvedMachines(pinned) : "");
+            setEditing(true);
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          aria-label={isPinned ? "Change the pinned machine count" : "Pin a machine count"}
+          className="nodrag group/pin flex w-full min-w-0 items-center gap-[3px] text-left"
+        >
+          <span
+            className={[
+              "truncate font-medium tabular-nums underline decoration-dotted decoration-[1.5px] underline-offset-[3px]",
+              isPinned
+                ? "text-[#ffd257]"
+                : needed <= 0.0000005
+                  ? "text-[var(--mc-ink-muted)]"
+                  : "",
+            ].join(" ")}
+          >
+            ×{formatSolvedMachines(isPinned ? pinned : needed)}
+          </span>
+          <Pencil
+            aria-hidden
+            className="h-[9px] w-[9px] shrink-0 fill-current text-[var(--mc-ink-muted)] group-hover/pin:text-[var(--mc-ink)]"
+          />
+        </button>
+      )}
     </div>
   );
 }

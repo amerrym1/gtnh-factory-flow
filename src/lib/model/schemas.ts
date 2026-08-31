@@ -324,6 +324,8 @@ export const factoryNodeSchema = z.object({
   machineConfigTiers: z.record(z.string().min(1), z.string().min(1)).optional(),
   settingsCollapsed: z.boolean().optional(),
   recipeInputOverrides: z.record(z.string().min(1), recipeInputSchema).optional(),
+  // Solve mode's pin: run exactly this many machines; absent = solver's choice.
+  solvePin: z.number().nonnegative().optional(),
   targetOutput: targetRateSchema.optional(),
   enabled: z.boolean(),
   pocketId: z.string().min(1).optional(),

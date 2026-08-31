@@ -205,6 +205,68 @@ describe("solve mode", () => {
     expect(result.bottlenecks.some((b) => b.id === "solve-target:g")).toBe(true);
   });
 
+  it("a pinned count with no targets drives the whole line", () => {
+    // "I want 3 assemblers running; solve the rest": the lathe scales to
+    // feed them and the product drawer reads what falls out.
+    const result = calculateThroughput(
+      project({
+        recipes: [recipe("make", [["ore", 1]], [["gear", 2]]), recipe("use", [["gear", 1]], [["kit", 1]])],
+        nodes: [node("a", "make"), { ...node("b", "use"), solvePin: 3 }],
+        storages: [drawer("src", "ore"), drawer("out", "kit")],
+        edges: [wire("src", "a", "ore"), wire("a", "b", "gear"), wire("b", "out", "kit")],
+      }),
+      { generatedAt: "fixed" },
+    );
+    // b pinned at 3 machines eats 3 gear/s; a makes 2 gear/s per machine.
+    expect(result.nodes["b"]!.theoreticalMachinesRequired).toBeCloseTo(3, 5);
+    expect(result.nodes["a"]!.theoreticalMachinesRequired).toBeCloseTo(1.5, 5);
+    expect(result.storages["out"]!.producedPerSecond).toBeCloseTo(3, 5);
+  });
+
+  it("a pin and a target solve together, the bigger ask winning the shared chain", () => {
+    const result = calculateThroughput(
+      project({
+        recipes: [recipe("make", [["ore", 1]], [["gear", 2]]), recipe("use", [["gear", 1]], [["kit", 1]])],
+        nodes: [{ ...node("a", "make"), solvePin: 4 }, node("b", "use")],
+        storages: [
+          drawer("src", "ore"),
+          drawer("out", "kit", { targetPerSecond: 2 }),
+          drawer("spare", "gear", { drainMode: "byproduct" }),
+        ],
+        edges: [
+          wire("src", "a", "ore"),
+          wire("a", "b", "gear"),
+          wire("a", "spare", "gear"),
+          wire("b", "out", "kit"),
+        ],
+      }),
+      { generatedAt: "fixed" },
+    );
+    // a pinned at 4 makes 8 gear/s; the kit target needs 2 machines of b
+    // eating 2 gear/s; the byproduct drawer catches the other 6.
+    expect(result.nodes["a"]!.theoreticalMachinesRequired).toBeCloseTo(4, 5);
+    expect(result.nodes["b"]!.theoreticalMachinesRequired).toBeCloseTo(2, 5);
+    expect(result.storages["spare"]!.producedPerSecond).toBeCloseTo(6, 5);
+  });
+
+  it("pins that cannot run together say so instead of zeroing silently", () => {
+    // The pinned machine's only outlet is a machine pinned too low to eat
+    // its output: the equality cannot hold at any flow.
+    const result = calculateThroughput(
+      project({
+        recipes: [recipe("make", [["ore", 1]], [["gear", 2]]), recipe("use", [["gear", 1]], [["kit", 1]])],
+        nodes: [
+          { ...node("a", "make"), solvePin: 4 },
+          { ...node("b", "use"), solvePin: 1 },
+        ],
+        storages: [drawer("src", "ore"), drawer("out", "kit")],
+        edges: [wire("src", "a", "ore"), wire("a", "b", "gear"), wire("b", "out", "kit")],
+      }),
+      { generatedAt: "fixed" },
+    );
+    expect(result.bottlenecks.some((b) => b.id === "solve-pins")).toBe(true);
+  });
+
   it("no targets typed anywhere keeps the plan books: the board stays alive", () => {
     // Clicking the mode must not zero a working board. Until the first
     // number lands the picture is plan mode's, drawers waiting.

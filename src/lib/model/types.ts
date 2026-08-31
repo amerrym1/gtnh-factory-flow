@@ -337,6 +337,12 @@ export interface FactoryNode {
   /** Settings panel folded shut. A view choice, kept so it survives a reload. */
   settingsCollapsed?: boolean;
   recipeInputOverrides?: Record<string, RecipeInput>;
+  /**
+   * Solve mode's pin: run EXACTLY this many machines, and solve the rest of
+   * the line around it ("I want 20 LGTs; what feeds them"). Absent means the
+   * count is the solver's to choose. Ignored in plan mode.
+   */
+  solvePin?: number;
   targetOutput?: TargetRate;
   enabled: boolean;
   /** The pocket dimension this card lives in; absent = the root board. */

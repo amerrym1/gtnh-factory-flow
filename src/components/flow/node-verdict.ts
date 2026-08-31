@@ -15,7 +15,7 @@ import { collectTrashNodeIds } from "@/lib/model/trash";
 import { describeStorage, getStorageRole, getStorageRoles } from "@/lib/model/storage-role";
 import { makeResourceHandleId } from "./resource-handles";
 import { getSetupRules, type ResolvedSetupRules } from "@/lib/model/setup-rules";
-import { hasSolveModeTargets } from "@/lib/solver/throughput";
+import { hasSolveModeQuestion } from "@/lib/solver/throughput";
 
 type ProjectEdge = FactoryProject["edges"][number];
 
@@ -465,7 +465,7 @@ export function deriveNodeVerdict(
   // not needed by any typed amount - a quiet reading, never an alarm.
   // With no targets typed the plan books are still in force (see
   // throughput.ts) and the ordinary diagnosis stands.
-  if (project.solveMode && hasSolveModeTargets(project)) {
+  if (project.solveMode && hasSolveModeQuestion(project)) {
     return utilization > VERDICT_EPSILON ? { kind: "balanced", pct } : { kind: "demand-set", pct };
   }
 

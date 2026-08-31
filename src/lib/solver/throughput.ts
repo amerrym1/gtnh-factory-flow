@@ -231,7 +231,7 @@ export function calculateThroughput(
   // keeps the plan books - the same picture as plan mode, with the drawers'
   // amount fields waiting - and the first typed number is what flips the
   // question.
-  if (project.solveMode && hasSolveModeTargets(project)) {
+  if (project.solveMode && hasSolveModeQuestion(project)) {
     return finalizeSolveModeResult(
       project,
       nodes,
@@ -470,6 +470,19 @@ export function hasSolveModeTargets(project: FactoryProject): boolean {
 }
 
 /**
+ * Solve mode has been asked SOMETHING: a typed product amount, or a pinned
+ * machine count ("run exactly 20 of these"). Either one flips the books
+ * from plan to solve; with neither, the plan books stand so the mode click
+ * never zeroes a board.
+ */
+export function hasSolveModeQuestion(project: FactoryProject): boolean {
+  return (
+    hasSolveModeTargets(project) ||
+    project.nodes.some((node) => node.enabled && (node.solvePin ?? 0) > 0)
+  );
+}
+
+/**
  * The solve-mode result: run the count solve, then rewrite every machine
  * report AT THE SOLVED SCALE - rates, flows and EU all multiplied by the
  * solved act - so every downstream book (balances, storages, power, fuel)
@@ -498,7 +511,19 @@ function finalizeSolveModeResult(
       amountPerSecond: storage.targetPerSecond!,
     }));
 
-  const solved = solveSolveMode(project, nodes, targets, new Set(crossForm.hiddenNodeIds));
+  const pins = project.nodes
+    .filter((node) => node.enabled && (node.solvePin ?? 0) > 0)
+    .map((node) => ({ nodeId: node.id, machines: node.solvePin! }));
+
+  const solved = solveSolveMode(project, nodes, targets, pins, new Set(crossForm.hiddenNodeIds));
+  if (solved.pinsInfeasible) {
+    bottlenecks.push({
+      id: "solve-pins",
+      kind: "resource-deficit",
+      severity: "critical",
+      message: "The pinned machine counts cannot run together. Check their outputs have somewhere to go.",
+    });
+  }
 
   const countByNode = new Map(project.nodes.map((node) => [node.id, node.machineCount]));
   let totalEuT = 0;
