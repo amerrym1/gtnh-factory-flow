@@ -4649,7 +4649,16 @@ function SolvedMachinesStat({
                   : "",
             ].join(" ")}
           >
-            ×{formatSolvedMachines(isPinned ? pinned : needed)}
+            {!isPinned && needed > 0.0000005 && needed < 0.0005 ? (
+              // A sliver below the finest printable step: a quiet small
+              // grey < in place of the × so it reads "less than 0.001".
+              <>
+                <span className="text-[9px] font-normal text-[var(--mc-ink-muted)]">{"<"}</span>
+                0.001
+              </>
+            ) : (
+              <>×{formatSolvedMachines(isPinned ? pinned : needed)}</>
+            )}
           </span>
           <Pencil
             aria-hidden

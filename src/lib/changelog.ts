@@ -73,6 +73,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.43.0",
+    date: "2026-08-31",
+    headline: "Pin a machine count in solve mode",
+    notes: [
+      "Click the Machines figure on a card to pin it: exactly that many run, and the rest of the line solves around them.",
+      "A pin works with no product amounts at all, and the pinned count shows in gold.",
+      "Pins that cannot run together raise a notice, and an amount a pin cannot cover marks itself in red.",
+    ],
+  },
+  {
     version: "2.42.1",
     date: "2026-08-31",
     headline: "Typing a product amount feels right",
