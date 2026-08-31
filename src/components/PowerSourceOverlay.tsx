@@ -208,16 +208,24 @@ export function PowerSourceOverlay() {
                           className="flex min-w-[220px] max-w-[300px] flex-1 basis-[220px] flex-col gap-2"
                         >
                           {/* The column's title BAR, the way a board window
-                              or the MACHINES panel caps what it owns: a
-                              plate exactly as wide as the stack under it,
-                              with the count where the machine chips put
-                              theirs. */}
-                          <div className="flex items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[var(--mc-49)] px-2 py-1 shadow-[inset_2px_2px_0_rgba(255,255,255,0.08),inset_-2px_-2px_0_rgba(0,0,0,0.4)]">
-                            <Zap className="h-3 w-3 shrink-0 fill-current text-amber-300" aria-hidden />
-                            <span className="truncate text-[12px] font-bold uppercase tracking-wider text-amber-200/90">
+                              caps what it owns - but in the power AMBER
+                              with dark ink, because a grey plate over grey
+                              card strips read as one more card. No letter
+                              tracking: BOILERS AND EXCHANGERS must hold one
+                              line at the narrowest column. */}
+                          <div
+                            className="flex items-center gap-1.5 border-2 border-[var(--mc-15)] px-2 py-2.5 shadow-[inset_2px_2px_0_rgba(255,255,255,0.3),inset_-2px_-2px_0_rgba(0,0,0,0.3)]"
+                            // Muted bronze rather than full amber: warm
+                            // enough to never read as a card strip, quiet
+                            // enough to not shout five times per screen.
+                            style={{ backgroundColor: "color-mix(in srgb, #d99a2b 60%, var(--mc-56) 40%)" }}
+                          >
+                            {/* The pixel face has one weight, so the half
+                                pixel of shadow is what bold means here. */}
+                            <span className="truncate text-[16px] font-black uppercase leading-none text-[#1c1503] [text-shadow:0.5px_0_0_currentColor]">
                               {group.name}
                             </span>
-                            <span className="ml-auto text-[11px] font-bold tabular-nums text-[var(--mc-ink)]/50">
+                            <span className="ml-auto text-[13px] font-black leading-none tabular-nums text-[#1c1503]/60">
                               {groupHits.length}
                             </span>
                           </div>
@@ -323,7 +331,8 @@ function PowerSourceCard({
           <Zap className="h-10 w-10 text-amber-300" aria-hidden />
         )}
       </span>
-      <span className="flex min-w-0 flex-col gap-0.5 p-2">
+      {/* Tighter than the old p-2: one name line does not need a landing. */}
+      <span className="flex min-w-0 flex-col gap-0.5 px-2 py-1">
         <span className="flex items-center gap-1.5">
           <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-[var(--mc-ink)]">
             {source.name}
