@@ -73,6 +73,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.41.4",
+    date: "2026-08-31",
+    headline: "Neutralization Engine fixes",
+    notes: [
+      "The acid rate is set in L per tick, as in the game, and the EU output is corrected.",
+      "The card shows average residue per tick and the margin at a full tank.",
+      "The Neutralization Engine has its structure picture.",
+    ],
+  },
+  {
     version: "2.41.3",
     date: "2026-08-31",
     headline: "Copied generators keep their own settings",
