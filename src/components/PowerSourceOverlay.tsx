@@ -38,6 +38,7 @@ export function PowerSourceOverlay() {
   const addPowerSourceNode = useFactoryStore((state) => state.addPowerSourceNode);
   const compact = useIsCompactViewport();
   const [query, setQuery] = useState("");
+  const [groupFilter, setGroupFilter] = useState<PowerGroupId | "all">("all");
   const layout = usePowerPickerViewport(open);
 
   useEffect(() => {
@@ -57,10 +58,17 @@ export function PowerSourceOverlay() {
   useEffect(() => {
     if (!open) {
       setQuery("");
+      setGroupFilter("all");
     }
   }, [open]);
 
-  const hits = useMemo(() => (open ? searchPowerSources(query) : []), [open, query]);
+  const hits = useMemo(() => {
+    if (!open) {
+      return [];
+    }
+    const all = searchPowerSources(query);
+    return groupFilter === "all" ? all : all.filter((hit) => hit.source.group === groupFilter);
+  }, [open, query, groupFilter]);
 
   if (!open) {
     return null;
@@ -108,6 +116,20 @@ export function PowerSourceOverlay() {
                 className="h-9 w-full border-2 border-[var(--mc-33)] bg-[var(--mc-61)] pl-7 pr-2 text-sm text-[var(--mc-ink)] placeholder:text-[var(--mc-ink)]/50 focus:outline-none"
               />
             </label>
+            <select
+              value={groupFilter}
+              onChange={(event) => setGroupFilter(event.target.value as PowerGroupId | "all")}
+              title="Power type"
+              aria-label="Power type"
+              className="h-9 w-36 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1.5 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607] outline-none"
+            >
+              <option value="all">All types</option>
+              {POWER_GROUPS.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
             <button
               type="button"
               title="Close (Esc)"
