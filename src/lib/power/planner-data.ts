@@ -5,6 +5,7 @@
  */
 import rawData from "./data/power-planner-data.json";
 import rawResourceMap from "./data/resource-map.json";
+import rawMachineIcons from "./data/machine-icons.json";
 
 export interface PowerFuelEntry {
   name: string;
@@ -115,6 +116,20 @@ const resourceMap = (rawResourceMap as { resources: Record<string, PowerResource
 /** Dataset resource for a spreadsheet fuel name; undefined = show as a stat. */
 export function resolvePowerResource(name: string): PowerResourceRef | undefined {
   return resourceMap[name];
+}
+
+export interface PowerMachineIcon {
+  id: string;
+  displayName: string;
+  iconPath?: string;
+  dominantColor?: string;
+}
+
+const machineIcons = (rawMachineIcons as { machines: Record<string, PowerMachineIcon> }).machines;
+
+/** The in-game machine item this source is drawn as (tools/power-machine-icons.mjs). */
+export function getPowerMachineIcon(sourceId: string): PowerMachineIcon | undefined {
+  return machineIcons[sourceId];
 }
 
 export function findFuel(table: PowerFuelEntry[], name: string): PowerFuelEntry {

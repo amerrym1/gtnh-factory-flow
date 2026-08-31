@@ -272,8 +272,12 @@ interface FactoryStore {
   powerMenuOpen: boolean;
   openPowerMenu: () => void;
   closePowerMenu: () => void;
-  /** Places a power card: a node owning a synthesized generator recipe. */
-  addPowerSourceNode: (sourceId: string) => void;
+  /**
+   * Places a power card: a node owning a synthesized generator recipe. The
+   * picker passes `settings` when the search matched through a fuel or
+   * product, so the card lands already dialed to what was searched for.
+   */
+  addPowerSourceNode: (sourceId: string, settings?: Record<string, string>) => void;
   /**
    * Writes one power card setting and rebuilds its owned recipe in the same
    * step, so the knobs, the slots and the books never disagree. Wires whose
@@ -1232,16 +1236,19 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   },
   openPowerMenu: () => set({ powerMenuOpen: true }),
   closePowerMenu: () => set({ powerMenuOpen: false }),
-  addPowerSourceNode: (sourceId) => {
+  addPowerSourceNode: (sourceId, settings) => {
     set((state) => {
       // Each power card owns its recipe, custom-rate style; settings are
       // defaults until the card's knobs write machineConfigTiers.
-      const recipe = buildPowerRecipe(sourceId, undefined, createId("recipe"));
+      const recipe = buildPowerRecipe(sourceId, settings, createId("recipe"));
       if (!recipe) {
         return state;
       }
       return {
-        ...addRecipeNodeToState(state, recipe, undefined, { focusCamera: true }),
+        ...addRecipeNodeToState(state, recipe, undefined, {
+          focusCamera: true,
+          machineConfigTiers: settings,
+        }),
         powerMenuOpen: false,
       };
     });
@@ -3429,6 +3436,8 @@ function addRecipeNodeToState(
     machineHandlerId?: string;
     inputPicks?: RecipeInputPicks;
     focusCamera?: boolean;
+    /** Power cards: the settings the picker dialed in before placing. */
+    machineConfigTiers?: Record<string, string>;
   },
 ): Partial<FactoryStore> {
   const index = state.project.nodes.length;
@@ -3463,6 +3472,7 @@ function addRecipeNodeToState(
     machineCount: 1,
     parallel: 1,
     machineHandlerId: spawnHandler?.id,
+    machineConfigTiers: options?.machineConfigTiers,
     overclockTier: spawnHandler?.minimumTier ?? recipe.minimumTier,
     recipeInputOverrides: mergeRecipeInputOverrides(
       resource ? buildRecipeInputOverrides(recipe, resource) : undefined,

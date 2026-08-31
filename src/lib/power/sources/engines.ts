@@ -54,7 +54,7 @@ const ENGINE_SPECS: EngineSpec[] = [
   },
   {
     id: "large-semifluid-generator",
-    name: "Large Semifluid Generator",
+    name: "Large Semifluid Burner",
     unlock: "EV",
     blurb: "The engine for heavy oils and other semifluids.",
     fuels: powerPlannerData.semifluidFuels,

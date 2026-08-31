@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildPowerRecipe, resynthesizePowerRecipes } from "./power-recipe";
+import { hitPlacementSettings, searchPowerSources } from "./power-search";
 import { getPowerSource, POWER_SOURCES } from "./registry";
 import { buildPowerSettingsReader } from "./types";
 import type { FactoryNode, Recipe } from "@/lib/model/types";
@@ -229,6 +230,46 @@ describe("reactors and endgame", () => {
     expect(model.euPerTick).toBeGreaterThan(1e12);
     const optimum = Number(model.stats.find((line) => line.label === "Best quantity")?.value);
     expect(Number.isNaN(optimum)).toBe(true); // formatted, not raw - presence is what matters
+  });
+});
+
+describe("power search", () => {
+  it("finds every machine that burns benzene, with the fuel dialed in", () => {
+    const hits = searchPowerSources("benzene");
+    const ids = hits.map((hit) => hit.source.id);
+    expect(ids).toContain("gas-turbine");
+    expect(ids).toContain("solid-oxide-fuel-cell-1");
+    expect(ids).toContain("large-gas-turbine");
+    const gasTurbine = hits.find((hit) => hit.source.id === "gas-turbine");
+    expect(gasTurbine?.via?.direction).toBe("takes");
+    // Benzene is the gas turbine's default fuel, so no dial is needed.
+    expect(hitPlacementSettings(gasTurbine!)).toBeUndefined();
+    const boiler = hits.find((hit) => hit.source.id === "large-titanium-boiler");
+    expect(boiler?.via).toBeDefined();
+  });
+
+  it("dials a non-default fuel into the placement settings", () => {
+    const hits = searchPowerSources("nitrobenzene");
+    const turbine = hits.find((hit) => hit.source.id === "gas-turbine");
+    expect(turbine?.via?.direction).toBe("takes");
+    expect(hitPlacementSettings(turbine!)).toEqual({ fuel: "Nitrobenzene" });
+  });
+
+  it("finds makers of superheated steam and prefers makes over takes", () => {
+    const hits = searchPowerSources("superheated steam");
+    const boiler = hits.find((hit) => hit.source.id === "large-titanium-boiler");
+    expect(boiler?.via?.direction).toBe("makes");
+    const sofc2 = hits.find((hit) => hit.source.id === "solid-oxide-fuel-cell-2");
+    expect(sofc2?.via?.direction).toBe("makes");
+    const hpTurbine = hits.find((hit) => hit.source.id === "large-hp-steam-turbine");
+    expect(hpTurbine?.via?.direction).toBe("takes");
+  });
+
+  it("matches machine names first and returns the whole catalog when empty", () => {
+    expect(searchPowerSources("")).toHaveLength(POWER_SOURCES.length);
+    const hits = searchPowerSources("turbine");
+    expect(hits[0]?.via).toBeUndefined();
+    expect(hits.some((hit) => hit.source.id === "steam-turbine")).toBe(true);
   });
 });
 
