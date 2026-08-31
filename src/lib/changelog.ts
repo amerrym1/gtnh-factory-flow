@@ -78,6 +78,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     headline: "A solver fix",
     notes: [
       "A rare bug could leave a machine idle beside a full buffer. Fixed.",
+      "A generator card's EU figure now follows the peak and average switch.",
     ],
   },
   {

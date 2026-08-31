@@ -1578,6 +1578,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 <PowerEuSocketRow
                   euPerTick={powerInfo?.euPerTick ?? 0}
                   machines={projectNode.machineCount * Math.max(1, projectNode.parallel)}
+                  drawScale={drawScale}
                 />
                 <PortRail
                   nodeId={projectNode.id}
@@ -1724,7 +1725,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                               value={`${formatCompact(
                                 Math.abs(powerInfo.euPerTick) *
                                   projectNode.machineCount *
-                                  Math.max(1, projectNode.parallel),
+                                  Math.max(1, projectNode.parallel) *
+                                  drawScale,
                               )} EU/t`}
                             />
                           ) : null}
@@ -2781,8 +2783,18 @@ function PowerTierChip({
  * a face. The coupling slot is deliberately inert - nothing wires to power
  * yet - but the row already holds the place wires will land.
  */
-function PowerEuSocketRow({ euPerTick, machines }: { euPerTick: number; machines: number }) {
-  const totalEuT = euPerTick * machines;
+function PowerEuSocketRow({
+  euPerTick,
+  machines,
+  drawScale,
+}: {
+  euPerTick: number;
+  machines: number;
+  /** The PEAK/AVG switch, applied like every other EU figure's; a stalled
+   * generator makes 0 EU/t under both readings. */
+  drawScale: number;
+}) {
+  const totalEuT = euPerTick * machines * drawScale;
   return (
     <div className="relative flex items-stretch">
       <MinecraftTooltip label="Power this card makes. Power does not wire to machines yet; it counts in POWER MADE, bottom right.">
