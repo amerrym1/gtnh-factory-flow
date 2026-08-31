@@ -73,6 +73,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.41.2",
+    date: "2026-08-31",
+    headline: "A solver fix",
+    notes: [
+      "A rare bug could leave a machine idle beside a full buffer. Fixed.",
+    ],
+  },
+  {
     version: "2.41.1",
     date: "2026-08-31",
     headline: "A little polish on the room",
