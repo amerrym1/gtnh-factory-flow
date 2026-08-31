@@ -745,8 +745,17 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   const machineIcons = useMachineHandlerIcons();
   // The machine's own art, when the dataset ships it. Crop farms and custom
   // rate nodes have no machine to show.
-  const machineGlanceIcon =
-    !isCropFarmNode && !isCustomRateNode
+  const machineGlanceIcon = powerInfo
+    ? powerMachineIcon?.iconPath
+      ? ({
+          kind: "item",
+          id: powerMachineIcon.id,
+          displayName: powerMachineIcon.displayName,
+          iconPath: powerMachineIcon.iconPath,
+          dominantColor: powerMachineIcon.dominantColor,
+        } as unknown as MachineHandlerIcon)
+      : undefined
+    : !isCropFarmNode && !isCustomRateNode
       ? machineIcons.get(selectedMachineHandler.id)
       : undefined;
   // Presentation mode's tab zone: the selected machine's icon, big, and
@@ -971,6 +980,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       {glanceMode === "identity" ? (
         <GlanceIdentityLayer
           machineIcon={machineGlanceIcon}
+          artSrc={powerArt}
           fallbackResource={rails.outputs[0]?.resource ?? rails.inputs[0]?.resource}
           paintTint={nodeColor?.swatch}
           label={
@@ -986,6 +996,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           icon={
             <GlanceMachineArt
               machineIcon={machineGlanceIcon}
+              artSrc={powerArt}
               fallbackResource={rails.outputs[0]?.resource ?? rails.inputs[0]?.resource}
               small
             />
@@ -1055,6 +1066,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           icon={
             <GlanceMachineArt
               machineIcon={machineGlanceIcon}
+              artSrc={powerArt}
               fallbackResource={rails.outputs[0]?.resource ?? rails.inputs[0]?.resource}
               small
             />
@@ -1795,6 +1807,7 @@ function CircuitChip({ circuit }: { circuit: RecipeProgrammedCircuit }) {
  */
 function GlanceIdentityLayer({
   machineIcon,
+  artSrc,
   fallbackResource,
   paintTint,
   label,
@@ -1802,6 +1815,8 @@ function GlanceIdentityLayer({
   outputs,
 }: {
   machineIcon?: MachineHandlerIcon;
+  /** A full structure render (a power card's picture) beats the item. */
+  artSrc?: string;
   fallbackResource?: ResourceAmount;
   /** The card's paint, when painted — it beats the icon's own colour. */
   paintTint?: string;
@@ -1835,7 +1850,7 @@ function GlanceIdentityLayer({
         border: `2px solid color-mix(in srgb, ${tileTint} 55%, #262b34)`,
       }}
     >
-      <GlanceMachineArt machineIcon={machineIcon} fallbackResource={fallbackResource} />
+      <GlanceMachineArt machineIcon={machineIcon} artSrc={artSrc} fallbackResource={fallbackResource} />
       {/* The reveal. Fixed 560px wide and scaled to screen size by the CSS;
           left-1/2 + origin-top keep its top edge pinned to the card's centre
           at every zoom. Inputs left, arrow, outputs right — the same reading
@@ -1880,10 +1895,13 @@ function GlanceIdentityLayer({
 function GlanceMachineArt({
   machineIcon,
   fallbackResource,
+  artSrc,
   small = false,
 }: {
   machineIcon?: MachineHandlerIcon;
   fallbackResource?: ResourceAmount;
+  /** A full structure render (the power picker's banners) beats the item. */
+  artSrc?: string;
   small?: boolean;
 }) {
   // A quiet drop shadow lifts the art off the card. In board pixels, so it
@@ -1892,6 +1910,17 @@ function GlanceMachineArt({
   const shadow = "drop-shadow-[4px_6px_5px_rgba(0,0,0,0.45)]";
   const box = small ? "!h-[112px] !w-[112px]" : "!h-[192px] !w-[192px]";
   const pixels = small ? 112 : 192;
+  if (artSrc) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={artSrc}
+        alt=""
+        draggable={false}
+        className={["object-contain [image-rendering:pixelated]", box, shadow].join(" ")}
+      />
+    );
+  }
   if (machineIcon) {
     return (
       <ResourceIcon
