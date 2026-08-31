@@ -225,13 +225,14 @@ export function calculateThroughput(
   // and fairness all describe a FIXED build, and the build is what is being
   // solved for here.
   //
-  // Only once a number is TYPED, though. With no targets anywhere the honest
-  // solve is zero machines everywhere, which turns a working board into a
-  // wall of dead cards the moment the mode is clicked. So an all-empty board
-  // keeps the plan books - the same picture as plan mode, with the drawers'
-  // amount fields waiting - and the first typed number is what flips the
-  // question.
-  if (project.solveMode && hasSolveModeQuestion(project)) {
+  // With no number typed anywhere the honest answer IS zero machines
+  // everywhere: nothing asks, nothing runs. This used to fall back to the
+  // plan books instead - but that showed the other mode's figures inside
+  // this one, and machines "running for no reason" read as a lie. The
+  // board can afford the honesty now: a zero card keeps its ports and its
+  // wires, the verdicts stay quiet, and the needs-a-number notice says
+  // what is missing.
+  if (project.solveMode) {
     return finalizeSolveModeResult(
       project,
       nodes,
@@ -461,37 +462,22 @@ function expandCrossFormEdges(project: FactoryProject): {
   return { project: { ...project, recipes, nodes, edges }, hiddenNodeIds, hiddenEdgeIds };
 }
 
-/** At least one product drawer carries a typed amount. */
-export function hasSolveModeTargets(project: FactoryProject): boolean {
-  const roles = getStorageRoles(project);
-  return (project.storages ?? []).some(
-    (storage) => roles.get(storage.id) === "product" && (storage.targetPerSecond ?? 0) > 0,
-  );
-}
-
 /**
- * The cheap UI-side version of the question check: any typed amount on any
- * drawer, any pin on any enabled card, no role walk. The notice and the
- * blinking rate line use this on every store write, so it must stay O(n)
- * over ids alone.
+ * The cheap UI-side question check: any typed amount on any drawer, any pin
+ * on any enabled card, no role walk. The notice and the blinking rate line
+ * use this on every store write, so it must stay O(n) over ids alone.
  */
 export function hasAnySolveNumbers(project: FactoryProject): boolean {
   return (
-    (project.storages ?? []).some((storage) => (storage.targetPerSecond ?? 0) > 0) ||
-    project.nodes.some((node) => node.enabled && (node.solvePin ?? 0) > 0)
-  );
-}
-
-/**
- * Solve mode has been asked SOMETHING: a typed product amount, or a pinned
- * machine count ("run exactly 20 of these"). Either one flips the books
- * from plan to solve; with neither, the plan books stand so the mode click
- * never zeroes a board.
- */
-export function hasSolveModeQuestion(project: FactoryProject): boolean {
-  return (
-    hasSolveModeTargets(project) ||
-    project.nodes.some((node) => node.enabled && (node.solvePin ?? 0) > 0)
+    (project.storages ?? []).some(
+      (storage) =>
+        (storage.targetPerSecond ?? 0) > 0 &&
+        // A byproduct or trash drawer's number is DORMANT (typed while it
+        // was a product, kept for the flip back): it asks nothing, so it
+        // must not silence the needs-a-number notice.
+        storage.drainMode !== "byproduct" &&
+        storage.drainMode !== "trash",
+    ) || project.nodes.some((node) => node.enabled && (node.solvePin ?? 0) > 0)
   );
 }
 

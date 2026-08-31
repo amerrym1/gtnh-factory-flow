@@ -90,6 +90,13 @@ function build(project: FactoryProject, result: ThroughputResult | undefined): C
   if (!result) {
     return EMPTY_INDEX;
   }
+  // SOLVE MODE has no clog locks: machines at zero there are "not needed by
+  // any typed amount", never "frozen by their own surplus" - and the vent
+  // solve would burn a real LP diagnosing a build that is not on screen.
+  // Silenced at the detector so notices, wire tints and verdicts all agree.
+  if (project.solveMode) {
+    return EMPTY_INDEX;
+  }
 
   // The vent solve costs a real LP, so it only runs when the board shows the
   // symptom: an enabled machine at a dead stop. Healthy boards skip it.

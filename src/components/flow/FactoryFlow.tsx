@@ -6274,7 +6274,6 @@ export function FactoryFlow() {
         className="pointer-events-none absolute inset-0 z-10 shadow-[inset_0_0_60px_10px_rgba(0,0,0,0.35)]"
       />
       <SolveModeAura />
-      <SolveModeNotice />
       <SolvingBooksOverlay />
       <PaintToolbar
         paintMode={nodeColorPaintMode}
@@ -6369,6 +6368,7 @@ export function FactoryFlow() {
         <LooseWiresOffNotice onShow={handleShowNodes} />
         <DeathSpiralNotice onShow={handleShowNodes} />
         <ClogLockNotice onShow={handleShowNodes} />
+        <SolveModeNotice onShow={handleShowNodes} />
         <RecipeAddChips />
       </div>
       {isProjectImporting ? <FlowLoadingOverlay /> : null}
@@ -7243,33 +7243,48 @@ const missingProductIds = (project: FactoryProject): string[] => {
     .map((storage) => storage.id);
 };
 
-const SolveModeNotice = memo(function SolveModeNotice() {
-  // A primitive out of the selector, so the role walk (per store write, one
-  // subscriber) never re-renders on an unchanged answer.
+/**
+ * The solve family's banner, in the notice stack with the dead loop's and
+ * the clog lock's, wearing their exact anatomy (label, one line, Show me) in
+ * the mode's own cyan. No dismiss: unlike those two this one is not an
+ * opinion to wave away - it clears itself the moment any amount or pin
+ * lands, and until then it is the only explanation for a board of zeros.
+ */
+const SolveModeNotice = memo(function SolveModeNotice({
+  onShow,
+}: {
+  onShow: (nodeIds: string[]) => void;
+}) {
+  // A primitive out of each selector, so the role walk (per store write,
+  // one subscriber) never re-renders on an unchanged answer.
+  const asking = useFactoryStore(
+    (state) => state.project.solveMode === true && !hasAnySolveNumbers(state.project),
+  );
   const missingCount = useFactoryStore((state) =>
     state.project.solveMode === true && !hasAnySolveNumbers(state.project)
       ? missingProductIds(state.project).length
       : 0,
   );
-  const frameBoardNodes = useFactoryStore((state) => state.frameBoardNodes);
-  if (missingCount === 0) {
+  if (!asking) {
     return null;
   }
   return (
-    <div className="pointer-events-none absolute bottom-5 left-1/2 z-20 w-max max-w-[calc(100%-24px)] -translate-x-1/2">
-      <div className="flex items-center gap-3 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] py-2 pl-4 pr-2 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
-        <span className="font-mono text-[12px] font-black uppercase tracking-[0.5px] text-[var(--mc-ink)]">
-          {missingCount} {missingCount === 1 ? "product needs a number" : "products need numbers"}{" "}
-          to solve for
-        </span>
+    <div className="nodrag pointer-events-auto flex max-w-[min(92vw,560px)] flex-wrap items-center justify-center gap-x-2 gap-y-1.5 border-2 border-[#3fbdd3] bg-[#14262b] px-2 py-1.5 font-mono text-[12px] text-[#e4f0f2] shadow-[inset_2px_2px_0_#2b6d7a,inset_-2px_-2px_0_#0d181a,4px_4px_0_rgba(0,0,0,0.35)]">
+      <span className="shrink-0 font-bold tracking-[0.5px] text-[#8fe3f2]">SOLVE MODE</span>
+      <span className="text-[#d2e4e6]">
+        {missingCount > 0
+          ? `${missingCount} ${missingCount === 1 ? "product needs a number" : "products need numbers"} to solve for`
+          : "Nothing asks, so nothing runs: type a product amount or pin a machine count"}
+      </span>
+      {missingCount > 0 ? (
         <button
           type="button"
-          onClick={() => frameBoardNodes(missingProductIds(useFactoryStore.getState().project))}
-          className="pointer-events-auto border-2 border-[var(--mc-15)] bg-[var(--mc-49)] px-2 py-1 font-mono text-[11px] font-black uppercase text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+          onClick={() => onShow(missingProductIds(useFactoryStore.getState().project))}
+          className="shrink-0 border border-[#3fbdd3] bg-[#1e3d45] px-2 py-0.5 font-bold text-[#c9f2fb] hover:bg-[#2a525c]"
         >
           Show me
         </button>
-      </div>
+      ) : null}
     </div>
   );
 });

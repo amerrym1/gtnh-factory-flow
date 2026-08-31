@@ -274,9 +274,11 @@ describe("solve mode", () => {
     expect(result.bottlenecks.some((b) => b.id === "solve-pins")).toBe(true);
   });
 
-  it("no targets typed anywhere keeps the plan books: the board stays alive", () => {
-    // Clicking the mode must not zero a working board. Until the first
-    // number lands the picture is plan mode's, drawers waiting.
+  it("no numbers typed anywhere: nothing asks, so nothing runs", () => {
+    // The honest zero, not the plan books - showing plan figures inside
+    // solve mode read as machines running for no reason. The cards keep
+    // their shape (nameplate ports, wires drawn at zero) and the UI's
+    // needs-a-number notice explains; here the books just say zero.
     const result = calculateThroughput(
       project({
         recipes: [recipe("make", [["ore", 1]], [["gear", 1]])],
@@ -286,8 +288,29 @@ describe("solve mode", () => {
       }),
       { generatedAt: "fixed" },
     );
-    expect(result.nodes["a"]!.utilization).toBeCloseTo(1, 5);
-    expect(result.storages["out"]!.targetUnreachable).toBeUndefined();
+    expect(result.nodes["a"]!.utilization).toBe(0);
+    expect(result.nodes["a"]!.theoreticalMachinesRequired).toBeCloseTo(0, 5);
+    expect(Object.values(result.nodes["a"]!.outputs)[0]!.amountPerSecond).toBeGreaterThan(0);
+    expect(Object.keys(result.edges).length).toBe(2);
     expect(result.bottlenecks.some((b) => b.id.startsWith("solve-target:"))).toBe(false);
+  });
+
+  it("a byproduct drawer's dormant number asks nothing", () => {
+    // Typed while the drawer was a product, kept for the flip back: it
+    // must not run the chain (Jack's chlorine board, 2026-08-31).
+    const result = calculateThroughput(
+      project({
+        recipes: [recipe("make", [["ore", 1]], [["gear", 1]])],
+        nodes: [node("a", "make")],
+        storages: [
+          drawer("src", "ore"),
+          drawer("out", "gear", { drainMode: "byproduct", targetPerSecond: 5 }),
+        ],
+        edges: [wire("src", "a", "ore"), wire("a", "out", "gear")],
+      }),
+      { generatedAt: "fixed" },
+    );
+    expect(result.nodes["a"]!.utilization).toBe(0);
+    expect(result.nodes["a"]!.theoreticalMachinesRequired).toBeCloseTo(0, 5);
   });
 });
