@@ -15,7 +15,7 @@ const lnr: PowerSourceDefinition = {
   name: "Large Naquadah Reactor",
   group: "endgame",
   unlock: "UHV",
-  blurb: "Naquadah fuels times coolant times booster, on liquid air.",
+  blurb: "Naquadah fuel times coolant and booster.",
   settings: [
     {
       type: "select",
@@ -85,8 +85,8 @@ function buildFusion(compact: boolean): PowerSourceDefinition {
     group: "endgame",
     unlock: compact ? "UEV" : "LuV",
     blurb: compact
-      ? "The fusion recipes at roughly 64x the throughput and drain."
-      : "Makes plasma for turbines; the card charges the reactor's own drain.",
+      ? "The fusion recipes at 64x the scale."
+      : "Makes plasma; charges its own drain.",
     settings: [
       {
         type: "select",
@@ -150,7 +150,7 @@ const eoh: PowerSourceDefinition = {
   name: "Eye of Harmony",
   group: "endgame",
   unlock: "UV",
-  blurb: "A materials machine with an enormous power bill, priced honestly.",
+  blurb: "A materials machine with a power bill.",
   settings: [
     {
       type: "select",
@@ -224,7 +224,7 @@ const antimatter: PowerSourceDefinition = {
   name: "Antimatter Forge",
   group: "endgame",
   unlock: "UMV",
-  blurb: "Grows and burns antimatter; there is one best quantity to hold.",
+  blurb: "Grows and burns antimatter.",
   settings: [
     {
       type: "number",

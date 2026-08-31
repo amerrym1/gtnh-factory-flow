@@ -13,7 +13,7 @@ const thtr: PowerSourceDefinition = {
   name: "Thorium High Temperature Reactor",
   group: "reactors",
   unlock: "EV",
-  blurb: "Thorium pebbles to hot coolant; partial fills are brutal.",
+  blurb: "Thorium pebbles to hot coolant.",
   settings: [
     {
       type: "number",
@@ -48,7 +48,7 @@ const htgr: PowerSourceDefinition = {
   name: "High Temperature Gas-cooled Reactor",
   group: "reactors",
   unlock: "IV",
-  blurb: "TRISO pebbles to hot coolant and steam at once.",
+  blurb: "TRISO pebbles to coolant and steam.",
   settings: [
     {
       type: "select",
@@ -88,7 +88,7 @@ const lftr: PowerSourceDefinition = {
   name: "Liquid Fluoride Thorium Reactor",
   group: "reactors",
   unlock: "EV",
-  blurb: "Burns bred fuel salts for direct EU and sparged byproducts.",
+  blurb: "Burns fuel salts for direct EU.",
   settings: [
     {
       type: "select",
@@ -132,7 +132,7 @@ const ic2FluidReactor: PowerSourceDefinition = {
   name: "Nuclear Reactor (fluid mode)",
   group: "reactors",
   unlock: "EV",
-  blurb: "A preset rod layout heating coolant; rod costs are not modeled.",
+  blurb: "A preset rod layout heating coolant.",
   settings: [
     {
       type: "select",
@@ -170,7 +170,7 @@ const dehp: PowerSourceDefinition = {
   name: "Deep Earth Heating Pump",
   group: "reactors",
   unlock: "EV",
-  blurb: "Geothermal: water in, superheated steam or hot coolant out.",
+  blurb: "Geothermal steam or hot coolant.",
   settings: [
     {
       type: "select",
@@ -216,7 +216,7 @@ const solarTower: PowerSourceDefinition = {
   name: "Solar Tower",
   group: "passive",
   unlock: "EV",
-  blurb: "Heliostats heat solar salt for the exchangers. No fuel at all.",
+  blurb: "Heliostats heat solar salt. No fuel.",
   settings: [
     {
       type: "select",
@@ -263,7 +263,7 @@ const solarPanel: PowerSourceDefinition = {
   name: "Solar Panel",
   group: "passive",
   unlock: "MV",
-  blurb: "Flat daytime EU from sunlight. The duty knob prices the night.",
+  blurb: "Flat daytime EU from sunlight.",
   settings: [
     {
       type: "select",

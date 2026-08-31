@@ -46,7 +46,7 @@ export const sofcSources: PowerSourceDefinition[] = SPECS.map((spec) => ({
   name: spec.name,
   group: "engines",
   unlock: spec.unlock,
-  blurb: `${formatAmount(spec.output)} EU/t plus ${formatAmount(spec.steamPerSecond)} L/s of ${spec.steamGrade.toLowerCase()}.`,
+  blurb: `${formatAmount(spec.output)} EU/t plus ${formatAmount(spec.steamPerSecond)} L/s steam.`,
   settings: [
     {
       type: "select",

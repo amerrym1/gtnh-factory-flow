@@ -13,7 +13,11 @@ import {
 import { getPowerStructureArt } from "@/lib/power/structure-art";
 import { formatAmount } from "@/lib/power/sources/helpers";
 import { POWER_GROUPS } from "@/lib/power/registry";
-import { buildPowerSettingsReader, type PowerSourceDefinition } from "@/lib/power/types";
+import {
+  buildPowerSettingsReader,
+  type PowerGroupId,
+  type PowerSourceDefinition,
+} from "@/lib/power/types";
 import { GT_TIER_COLORS } from "@/components/flow/tier-colors";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
 import { useFactoryStore } from "@/store/factory-store";
@@ -130,32 +134,39 @@ export function PowerSourceOverlay() {
                 </div>
               )
             ) : (
-              // One column per group, wrapping when the panel runs out of
-              // width: generators beside engines beside boilers, the way a
-              // player thinks about the catalog.
-              <div className="flex flex-wrap items-start gap-4">
-                {POWER_GROUPS.map((group) => {
-                  const groupHits = hits.filter((hit) => hit.source.group === group.id);
-                  if (groupHits.length === 0) {
-                    return null;
-                  }
-                  return (
-                    <div key={group.id} className="flex w-[310px] shrink-0 flex-col gap-2">
-                      <div className="flex flex-col">
-                        <span className="text-xs uppercase tracking-wider text-amber-200/90">
-                          {group.name}
-                        </span>
-                        <span className="truncate text-[11px] text-[var(--mc-ink)]/50">
-                          {group.blurb}
-                        </span>
-                      </div>
-                      {groupHits.map((hit) => (
-                        <PowerSourceCard key={hit.source.id} hit={hit} onPlace={place} />
-                      ))}
-                    </div>
-                  );
-                })}
-              </div>
+              // One column per group, in two shelves: the fuel-to-power path
+              // up top, reactors and the exotic stuff below a quiet rule.
+              GROUP_SHELVES.map((shelf, shelfIndex) => (
+                <div key={shelfIndex}>
+                  {shelfIndex > 0 ? (
+                    <div className="mb-5 mt-7 border-t border-white/10" aria-hidden />
+                  ) : null}
+                  <div className="flex flex-wrap items-start gap-4">
+                    {shelf.map((groupId) => {
+                      const group = POWER_GROUPS.find((entry) => entry.id === groupId);
+                      const groupHits = hits.filter((hit) => hit.source.group === groupId);
+                      if (!group || groupHits.length === 0) {
+                        return null;
+                      }
+                      return (
+                        <div key={group.id} className="flex w-[310px] shrink-0 flex-col gap-2">
+                          <div className="flex flex-col">
+                            <span className="text-xs uppercase tracking-wider text-amber-200/90">
+                              {group.name}
+                            </span>
+                            <span className="truncate text-[11px] text-[var(--mc-ink)]/50">
+                              {group.blurb}
+                            </span>
+                          </div>
+                          {groupHits.map((hit) => (
+                            <PowerSourceCard key={hit.source.id} hit={hit} onPlace={place} />
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
             )}
           </div>
         </div>
@@ -164,6 +175,12 @@ export function PowerSourceOverlay() {
     document.body,
   );
 }
+
+/** The fuel-to-power path up top; reactors, solar and endgame on shelf two. */
+const GROUP_SHELVES: PowerGroupId[][] = [
+  ["burners", "engines", "steam", "turbines"],
+  ["reactors", "passive", "endgame"],
+];
 
 /** The same tier badge the machine list and card headers wear. */
 function TierBadge({ tier }: { tier: string }) {
@@ -255,7 +272,11 @@ function PowerSourceCard({
           </span>
           {source.unlock ? <TierBadge tier={source.unlock} /> : null}
         </span>
-        <span className="text-[11px] leading-tight text-[var(--mc-ink)]/55">{source.blurb}</span>
+        {/* One line, never wrapping: the cards across a shelf must stay the
+            same height so the rows line up column to column. */}
+        <span className="truncate text-[11px] leading-tight text-[var(--mc-ink)]/55">
+          {source.blurb}
+        </span>
         <span className="truncate text-[11px] text-emerald-300/90">{preview}</span>
         {via ? (
           // The search matched through a flow: say which one, in the stencil

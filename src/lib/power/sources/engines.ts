@@ -30,7 +30,7 @@ const ENGINE_SPECS: EngineSpec[] = [
     id: "large-combustion-engine",
     name: "Large Combustion Engine",
     unlock: "EV",
-    blurb: "1 amp of EV on diesel fuels; oxygen boost triples it.",
+    blurb: "Diesel fuels; oxygen boost triples it.",
     fuels: powerPlannerData.combustionFuels,
     baseOutput: 2048,
     boostedOutput: 6144,
@@ -44,7 +44,7 @@ const ENGINE_SPECS: EngineSpec[] = [
     id: "extreme-combustion-engine",
     name: "Extreme Combustion Engine",
     unlock: "IV",
-    blurb: "Burns jet fuels and high octane gasoline; liquid oxygen boost.",
+    blurb: "Jet fuels and HOG; liquid oxygen boost.",
     fuels: powerPlannerData.eceFuels,
     baseOutput: 10900,
     boostedOutput: 32700,
@@ -56,7 +56,7 @@ const ENGINE_SPECS: EngineSpec[] = [
     id: "large-semifluid-generator",
     name: "Large Semifluid Burner",
     unlock: "EV",
-    blurb: "The engine for heavy oils and other semifluids.",
+    blurb: "The engine for heavy oils.",
     fuels: powerPlannerData.semifluidFuels,
     baseOutput: 2048,
     boostedOutput: 6144,
@@ -122,7 +122,7 @@ const largeRocketEngine: PowerSourceDefinition = {
   name: "Large Rocket Engine",
   group: "engines",
   unlock: "IV",
-  blurb: "Burns rocket fuel hard; efficiency falls off past its power knees.",
+  blurb: "Rocket fuel; falls off past its knees.",
   settings: [
     {
       type: "select",
@@ -176,7 +176,7 @@ const universalChemicalFuelEngine: PowerSourceDefinition = {
   name: "Universal Chemical Fuel Engine",
   group: "engines",
   unlock: "LuV",
-  blurb: "Any chemical fuel plus combustion promoter, up to 150% efficiency.",
+  blurb: "Any fuel plus combustion promoter.",
   settings: [
     {
       type: "select",

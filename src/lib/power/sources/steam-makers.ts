@@ -75,7 +75,9 @@ function buildBoiler(spec: BoilerSpec): PowerSourceDefinition {
     name: spec.name,
     group: "steam",
     unlock: spec.unlock,
-    blurb: `Makes ${formatAmount(spec.steamPerTick)} L/t of ${spec.steamGrade.toLowerCase()} on dual fuel.`,
+    blurb: `${formatAmount(spec.steamPerTick)} L/t of ${
+      spec.steamGrade === "SH Steam" ? "SH steam" : "steam"
+    } on dual fuel.`,
     settings: [
       {
         type: "select",
@@ -171,8 +173,10 @@ function buildExchanger(entry: (typeof powerPlannerData.heatExchangers)[number])
     group: "steam",
     unlock: isExtreme ? "UHV" : isThermalBoiler ? "HV" : entry.name.startsWith("Whakawhiti") ? "UV" : "EV",
     blurb: isExtreme
-      ? "Hot fluid to superheated or supercritical steam at scale."
-      : "Turns hot fluids into steam and hands the cold fluid back.",
+      ? "Hot fluids to supercritical steam."
+      : entry.name.startsWith("Whakawhiti")
+        ? "32 heat exchangers in one block."
+        : "Hot fluids to steam; cold comes back.",
     settings,
     compute(read): PowerModel {
       const fluidName = read.select("fluid");
