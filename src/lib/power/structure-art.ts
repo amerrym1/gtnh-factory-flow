@@ -18,6 +18,7 @@ const STRUCTURE_ART_IDS = new Set([
   "extreme-combustion-engine",
   "large-semifluid-generator",
   "large-rocket-engine",
+  "large-neutralization-engine",
   "universal-chemical-fuel-engine",
   "large-bronze-boiler",
   "large-steel-boiler",
@@ -40,6 +41,13 @@ const STRUCTURE_ART_IDS = new Set([
   "eye-of-harmony",
 ]);
 
+/** Sources that share another source's render (one workbook image for all). */
+const STRUCTURE_ART_ALIASES: Record<string, string> = {
+  "xl-turbo-hp-steam-turbine": "xl-turbo-steam-turbine",
+  "xl-turbo-sc-steam-turbine": "xl-turbo-steam-turbine",
+};
+
 export function getPowerStructureArt(sourceId: string): string | undefined {
-  return STRUCTURE_ART_IDS.has(sourceId) ? `/power-art/${sourceId}.png` : undefined;
+  const id = STRUCTURE_ART_ALIASES[sourceId] ?? sourceId;
+  return STRUCTURE_ART_IDS.has(id) ? `/power-art/${id}.png` : undefined;
 }
