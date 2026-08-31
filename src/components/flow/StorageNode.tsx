@@ -750,20 +750,33 @@ function TargetLine({
   const setStorageTarget = useFactoryStore((state) => state.setStorageTarget);
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const target = storage.targetPerSecond;
-  const shown = draft ?? (target !== undefined && target > 0 ? trimTrailingDecimalZeros(String(target)) : "");
+  // The field speaks the BOARD'S rate unit, like every number around it: the
+  // stored figure is canonical per-second, the display and the typing are in
+  // whatever /t /s /min /hr the board is set to, converted at the edges.
+  const shown =
+    draft ??
+    (target !== undefined && target > 0
+      ? trimTrailingDecimalZeros((target * rateUnitMultiplier()).toFixed(4))
+      : "");
+  const suffix = rateUnitSuffix(storage.kind === "fluid").trimStart();
   const unreachable = result?.targetUnreachable === true;
   const commit = () => {
     if (draft === undefined) {
       return;
     }
     const value = Number.parseFloat(draft);
-    setStorageTarget(storage.id, Number.isFinite(value) && value > 0 ? value : undefined);
+    setStorageTarget(
+      storage.id,
+      Number.isFinite(value) && value > 0 ? value / rateUnitMultiplier() : undefined,
+    );
     setDraft(undefined);
   };
   return (
     // z-40, like the header's buttons: the invisible wire handles blanket
-    // the well at z-30, and anything below them cannot be clicked.
-    <div className="storage-net-line relative z-40 flex h-4 items-center justify-center gap-[2px] whitespace-nowrap text-center leading-4">
+    // the well at z-30, and anything below them cannot be clicked. The input
+    // wears the same raised paper the machine-count field wears, so it reads
+    // as a place to type instead of a bare black slot.
+    <div className="storage-net-line relative z-40 flex h-4 items-center justify-center gap-[3px] whitespace-nowrap text-center leading-none">
       <input
         value={shown}
         onChange={(event) => setDraft(event.target.value)}
@@ -783,15 +796,20 @@ function TargetLine({
         title={
           unreachable
             ? "No chain on the board can make this much at any machine count."
-            : "Make at least this much per second. Empty catches whatever is left."
+            : "Make at least this much. Empty catches whatever is left."
         }
-        aria-label="Required amount per second"
+        aria-label="Required amount"
         className={[
-          "nodrag h-4 w-[56px] border border-[var(--mc-15)] bg-[#0a0c10] px-1 text-center text-[10px] font-bold tabular-nums outline-none placeholder:text-[#6b7280] focus:border-[var(--mc-good)]",
-          unreachable ? "text-[#ff9191]" : "text-[#7ede96]",
+          "nodrag h-4 w-[52px] border px-1 text-center text-[10px] font-bold tabular-nums outline-none",
+          "bg-[var(--mc-85)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)]",
+          "placeholder:font-normal placeholder:text-[var(--mc-ink-muted)]",
+          "focus:bg-[var(--mc-100)] focus:ring-1",
+          unreachable
+            ? "border-[#c33] text-[#b91c1c] focus:border-[#c33] focus:ring-red-400"
+            : "border-[var(--mc-47)] text-[var(--mc-ink)] focus:border-cyan-700 focus:ring-cyan-400",
         ].join(" ")}
       />
-      <span className="text-[8px] font-bold text-[#a8afbb]">/s</span>
+      <span className="text-[8px] font-bold text-[#a8afbb]">{suffix}</span>
     </div>
   );
 }
