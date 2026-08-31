@@ -4543,10 +4543,15 @@ function formatSolvedMachines(value: number): string {
   if (value <= 0.0000005) {
     return "0";
   }
+  // Below the finest step the cell can print, say so rather than rounding a
+  // real sliver to nothing.
+  if (value < 0.0005) {
+    return "<0.001";
+  }
   if (value >= 100) {
     return String(Math.ceil(value - 0.000001));
   }
-  const decimals = value < 1 ? 4 : value < 10 ? 3 : 2;
+  const decimals = value < 1 ? 3 : value < 10 ? 2 : 1;
   return value.toFixed(decimals).replace(/\.?0+$/, "");
 }
 
