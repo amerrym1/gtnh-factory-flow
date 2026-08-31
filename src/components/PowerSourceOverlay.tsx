@@ -214,18 +214,19 @@ export function PowerSourceOverlay() {
                               tracking: BOILERS AND EXCHANGERS must hold one
                               line at the narrowest column. */}
                           <div
-                            className="flex items-center gap-1.5 border-2 border-[var(--mc-15)] px-2 py-2.5 shadow-[inset_2px_2px_0_rgba(255,255,255,0.3),inset_-2px_-2px_0_rgba(0,0,0,0.3)]"
-                            // Muted bronze rather than full amber: warm
-                            // enough to never read as a card strip, quiet
-                            // enough to not shout five times per screen.
-                            style={{ backgroundColor: "color-mix(in srgb, #d99a2b 60%, var(--mc-56) 40%)" }}
+                            className="flex items-center gap-1.5 border-2 border-[var(--mc-15)] px-2 py-2.5 shadow-[inset_2px_2px_0_rgba(255,255,255,0.18),inset_-2px_-2px_0_rgba(0,0,0,0.35)]"
+                            // Between the first grey plate and the full
+                            // bronze: a dim brass, warm enough to stand
+                            // apart from the card strips, dark enough to
+                            // carry light amber ink.
+                            style={{ backgroundColor: "color-mix(in srgb, #d99a2b 35%, var(--mc-49) 65%)" }}
                           >
                             {/* The pixel face has one weight, so the half
                                 pixel of shadow is what bold means here. */}
-                            <span className="truncate text-[16px] font-black uppercase leading-none text-[#1c1503] [text-shadow:0.5px_0_0_currentColor]">
+                            <span className="truncate text-[16px] font-black uppercase leading-none text-amber-100 [text-shadow:0.5px_0_0_currentColor]">
                               {group.name}
                             </span>
-                            <span className="ml-auto text-[13px] font-black leading-none tabular-nums text-[#1c1503]/60">
+                            <span className="ml-auto text-[13px] font-black leading-none tabular-nums text-amber-100/60">
                               {groupHits.length}
                             </span>
                           </div>
