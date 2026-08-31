@@ -7316,6 +7316,7 @@ const SourceToolbar = memo(function SourceToolbar({
   shiftedDown: boolean;
 }) {
   const addCustomRateNode = useFactoryStore((state) => state.addCustomRateNode);
+  const openPowerMenu = useFactoryStore((state) => state.openPowerMenu);
   const boardView = useBoardView();
   const rateUnit = useFactoryStore((state) => state.rateUnit);
   const setRateUnit = useFactoryStore((state) => state.setRateUnit);
@@ -7442,6 +7443,19 @@ const SourceToolbar = memo(function SourceToolbar({
           the recipe book like everything else. The trash can spawner went
           earlier (2026-08-23), to the drawer pill's third position. */}
       <ToolTray>
+        {/* The generator catalog gets a plate that says so: power is a whole
+            wing of the game, not a little icon to hunt for. The bolt's own
+            amber on the toolbar's dark face, the word spelled out. */}
+        <button
+          type="button"
+          onClick={openPowerMenu}
+          className="pointer-events-auto relative z-10 flex h-8 items-center gap-1.5 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] px-2.5 font-mono text-[12px] font-black tracking-wide text-amber-400 shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+          title="Place a generator"
+          aria-label="Place a generator"
+        >
+          <Zap className="h-4 w-4 fill-current" />
+          POWER
+        </button>
         <button
           type="button"
           onClick={addCustomRateNode}
