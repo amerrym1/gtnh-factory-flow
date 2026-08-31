@@ -7205,7 +7205,12 @@ const SolveModeButton = memo(function SolveModeButton() {
   return (
     <button
       type="button"
-      onClick={() => setSolveMode(!solveMode)}
+      onClick={() => {
+        // The one button with a voice of its own: the whole board changes
+        // meaning, and the shimmer says which way it went.
+        playBoardSound(solveMode ? "solveOff" : "solveOn");
+        setSolveMode(!solveMode);
+      }}
       aria-pressed={solveMode}
       className={[
         "pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)]",

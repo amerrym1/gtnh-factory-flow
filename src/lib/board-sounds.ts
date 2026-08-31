@@ -112,6 +112,8 @@ export type BoardSoundKind =
   | "close" // a board window folds to its summary card
   | "adjust" // a setting on a card changed: machine count, drain pill, config
   | "sweep" // one sound for a bulk change (paste, arrange, import)
+  | "solveOn" // the board shifts into solve mode: a rising shimmer
+  | "solveOff" // and back to plan mode: the same shimmer, settling home
   // The build timelapse's family (board-timelapse.ts): the same events as
   // place/connect/open, but SLID rather than set down - mostly brush, a
   // whisper of tone - because dozens fire in a row and the thump family
@@ -315,6 +317,59 @@ function blip(ctx: AudioContext, out: AudioNode, options: BlipOptions): void {
   }
 }
 
+/**
+ * The ETHEREAL material, for the two mode-shift sounds only: a slow-swelled
+ * chord of detuned sines (fundamental pair, a fifth, a whisper of octave)
+ * gliding as one, through the same pitch-tracking lowpass the blips use. The
+ * swell is what separates it from the whole percussive vocabulary - nothing
+ * else on the board fades IN - so it reads as the room changing rather than
+ * a thing being placed. Deliberately soft-topped: shifting dimensions must
+ * never read as an alarm.
+ */
+function shimmerPad(
+  ctx: AudioContext,
+  out: AudioNode,
+  options: { from: number; to: number; duration: number; peak: number },
+): void {
+  const t0 = ctx.currentTime + SCHEDULE_AHEAD;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.linearRampToValueAtTime(options.peak, t0 + 0.08);
+  gain.gain.exponentialRampToValueAtTime(options.peak * 0.45, t0 + options.duration * 0.6);
+  gain.gain.exponentialRampToValueAtTime(0.002, t0 + options.duration);
+  gain.gain.linearRampToValueAtTime(0, t0 + options.duration + 0.03);
+  const rounder = ctx.createBiquadFilter();
+  rounder.type = "lowpass";
+  rounder.frequency.value = 2600;
+  rounder.Q.value = 0.4;
+  rounder.connect(gain);
+  gain.connect(out);
+  // Two detuned fundamentals beat gently against each other - that slow
+  // interference is the "shimmer"; the fifth gives it a chord's calm.
+  const layers = [
+    { multiple: 1, detune: -5, level: 0.45 },
+    { multiple: 1, detune: 6, level: 0.45 },
+    { multiple: 1.498, detune: 3, level: 0.26 },
+    { multiple: 2.004, detune: -4, level: 0.12 },
+  ];
+  for (const layer of layers) {
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.detune.value = layer.detune;
+    const layerGain = ctx.createGain();
+    layerGain.gain.value = layer.level;
+    osc.frequency.setValueAtTime(options.from * layer.multiple, t0);
+    osc.frequency.exponentialRampToValueAtTime(
+      options.to * layer.multiple,
+      t0 + options.duration * 0.7,
+    );
+    osc.connect(layerGain);
+    layerGain.connect(rounder);
+    osc.start(t0);
+    osc.stop(t0 + options.duration + 0.05);
+  }
+}
+
 /** A filtered puff of noise: the knock and brush material. */
 function puff(
   ctx: AudioContext,
@@ -414,6 +469,24 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void
       // One broad soft brush for a bulk change, however big it was.
       puff(ctx, out, { frequency: 700, q: 0.9, duration: 0.3, peak: 0.34 });
       blip(ctx, out, { from: 233, to: 311, duration: 0.28, peak: 0.2 });
+      break;
+    case "solveOn":
+      // Shifting INTO the other dimension: the pad swells and rises a
+      // fifth, two tiny sparkles drift up after it, and a high wash of air
+      // breathes over the top. Big change, quiet voice.
+      shimmerPad(ctx, out, { from: 262, to: 392, duration: 0.6, peak: 0.24 });
+      blip(ctx, out, { from: 1319, to: 1319, duration: 0.12, peak: 0.06, delay: 0.18 });
+      blip(ctx, out, { from: 1760, to: 1760, duration: 0.14, peak: 0.045, delay: 0.32 });
+      puff(ctx, out, { frequency: 3000, q: 0.6, duration: 0.35, peak: 0.06, delay: 0.05 });
+      break;
+    case "solveOff":
+      // The same shimmer settling home: the pad glides back down the fifth
+      // (the close family's motion, nothing like the delete step), sparkles
+      // descending, the air a shade lower.
+      shimmerPad(ctx, out, { from: 392, to: 262, duration: 0.55, peak: 0.22 });
+      blip(ctx, out, { from: 1319, to: 1319, duration: 0.12, peak: 0.05, delay: 0.16 });
+      blip(ctx, out, { from: 988, to: 988, duration: 0.14, peak: 0.045, delay: 0.3 });
+      puff(ctx, out, { frequency: 2200, q: 0.6, duration: 0.3, peak: 0.05, delay: 0.05 });
       break;
     case "shuffle":
       // A card SLID onto the table: two brushes - a soft body and a lighter
