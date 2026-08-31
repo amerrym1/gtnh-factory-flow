@@ -65,6 +65,11 @@ const BOILER_SPECS: BoilerSpec[] = [
 
 const NO_FUEL = "None";
 
+const WATER_KINDS = [
+  { key: "Water", label: "Water" },
+  { key: "Distilled Water", label: "Distilled Water" },
+];
+
 function fuelChoices(table: PowerFuelEntry[]): Array<{ key: string; label: string }> {
   return [{ key: NO_FUEL, label: "None" }, ...table.map((entry) => ({ key: entry.name, label: entry.name }))];
 }
@@ -93,6 +98,15 @@ function buildBoiler(spec: BoilerSpec): PowerSourceDefinition {
         options: fuelChoices(spec.solidTable),
         defaultKey: NO_FUEL,
       },
+      // MTELargeBoilerBase.consumeWater tries plain water first and falls
+      // back to distilled; either works, same amount, no difference.
+      {
+        type: "select",
+        id: "waterKind",
+        label: "Water supply",
+        options: WATER_KINDS,
+        defaultKey: "Water",
+      },
     ],
     compute(read): PowerModel {
       const liquidName = read.select("liquidFuel");
@@ -111,7 +125,7 @@ function buildBoiler(spec: BoilerSpec): PowerSourceDefinition {
         inputs.push(items(solid.name, 1 / (solid.burnTime * (dual ? 2 : 1))));
       }
       if (steamPerTick > 0) {
-        inputs.push(liters("Water", (steamPerTick / 160) * 20));
+        inputs.push(liters(read.select("waterKind"), (steamPerTick / 160) * 20));
       }
 
       return {
@@ -163,6 +177,20 @@ function buildExchanger(entry: (typeof powerPlannerData.heatExchangers)[number])
     },
     { type: "number", id: "tier", label: "Pipe tier", min: 1, max: 10, step: 1, defaultValue: 1 },
   ];
+  if (isThermalBoiler) {
+    // MTEThermalBoiler.useWater takes plain water first, distilled second;
+    // the true exchangers demand distilled and explode without it.
+    settings.push({
+      type: "select",
+      id: "waterKind",
+      label: "Water supply",
+      options: [
+        { key: "Water", label: "Water" },
+        { key: "Distilled Water", label: "Distilled Water" },
+      ],
+      defaultKey: "Water",
+    });
+  }
 
   return {
     id,
@@ -202,9 +230,10 @@ function buildExchanger(entry: (typeof powerPlannerData.heatExchangers)[number])
       if (coldReturn) {
         outputs.push(liters(coldReturn, used));
       }
+      const waterName = isThermalBoiler ? read.select("waterKind") : "Distilled Water";
       return {
         euPerTick: 0,
-        inputs: [liters(fluidName, used), liters("Distilled Water", steamPerSecond / 160)],
+        inputs: [liters(fluidName, used), liters(waterName, steamPerSecond / 160)],
         outputs,
         stats: [
           stat("Steam", `${formatAmount(steamPerSecond / 20)} L/t ${grade}`),

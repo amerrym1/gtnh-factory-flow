@@ -113,6 +113,13 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/ardite_plasma-3db184f5b710.png",
    "dominantColor": "#e97e00"
   },
+  "Argon": {
+   "kind": "fluid",
+   "id": "argon",
+   "displayName": "Argon",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/argon-75a954d49b6d.png",
+   "dominantColor": "#33003d"
+  },
   "Argon Plasma": {
    "kind": "fluid",
    "id": "plasma.argon",
@@ -407,6 +414,13 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/chipped_amber-99c7e6e96068.png",
    "dominantColor": "#b15900"
   },
+  "Chlorine": {
+   "kind": "fluid",
+   "id": "chlorine",
+   "displayName": "Chlorine",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/chlorine-655cebe42b20.png",
+   "dominantColor": "#1b5252"
+  },
   "Chlorine Plasma": {
    "kind": "fluid",
    "id": "plasma.chlorine",
@@ -490,6 +504,13 @@
    "displayName": "Solar Salt (Cold)",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/solar_salt_cold-9da66af9aadf.png",
    "dominantColor": "#1e5398"
+  },
+  "Combustion Promoter": {
+   "kind": "fluid",
+   "id": "combustionpromotor",
+   "displayName": "Combustion Promoter",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/combustion_promoter-f867aa2f2448.png",
+   "dominantColor": "#2a898a"
   },
   "Coolant": {
    "kind": "fluid",
@@ -1254,6 +1275,13 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/infinity_plate-794ae7460126.png",
    "dominantColor": "#844945"
   },
+  "Iodine": {
+   "kind": "fluid",
+   "id": "iodine",
+   "displayName": "Iodine",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/iodine-98ab59f6caf9.png",
+   "dominantColor": "#87208a"
+  },
   "Iodine Plasma": {
    "kind": "fluid",
    "id": "plasma.iodine",
@@ -1380,6 +1408,13 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/lftr_fuel_3-cfa1a5938968.png",
    "dominantColor": "#69936f"
   },
+  "Li2BeF4": {
+   "kind": "fluid",
+   "id": "molten.lithiumtetrafluoroberyllatelftb",
+   "displayName": "Lithium Tetrafluoroberyllate (LFTB)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/lithium_tetrafluoroberyllate_lftb-3445a49788a0.png",
+   "dominantColor": "#9aaea2"
+  },
   "Light Fuel": {
    "kind": "fluid",
    "id": "liquid_light_fuel",
@@ -1462,6 +1497,13 @@
    "id": "gregtech:gt.metaitem.02@22326",
    "displayName": "Long Enriched Naquadah Rod",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/long_enriched_naquadah_rod-e7d0ae4317ff.png",
+   "dominantColor": "#6b7280"
+  },
+  "Long Naquadah Rod": {
+   "kind": "item",
+   "id": "gregtech:gt.metaitem.02@22324",
+   "displayName": "Long Naquadah Rod",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/long_naquadah_rod-9ed35548cba7.png",
    "dominantColor": "#6b7280"
   },
   "Long Tiberium Rod (LuV)": {
@@ -1597,12 +1639,26 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_americium-37993a6845bb.png",
    "dominantColor": "#b6b6b6"
   },
+  "Molten Antimony": {
+   "kind": "fluid",
+   "id": "molten.antimony",
+   "displayName": "Molten Antimony",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_antimony-aba8a527a20b.png",
+   "dominantColor": "#cecee0"
+  },
   "Molten Arcanite": {
    "kind": "fluid",
    "id": "molten.arcanite",
    "displayName": "Molten Arcanite",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_arcanite-43add88e7f10.png",
    "dominantColor": "#5f6c56"
+  },
+  "Molten Ardite": {
+   "kind": "fluid",
+   "id": "ardite.molten",
+   "displayName": "Molten Ardite",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_ardite-0224c08a597b.png",
+   "dominantColor": "#b78a52"
   },
   "Molten Arsenic": {
    "kind": "fluid",
@@ -1624,6 +1680,27 @@
    "displayName": "Molten Atomic Separation Catalyst",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_atomic_separation_catalyst-98a963da1b6e.png",
    "dominantColor": "#d3550b"
+  },
+  "Molten Awakened Draconium": {
+   "kind": "fluid",
+   "id": "molten.draconiumawakened",
+   "displayName": "Molten Awakened Draconium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_awakened_draconium-2737cb0f29b3.png",
+   "dominantColor": "#e54900"
+  },
+  "Molten Barium": {
+   "kind": "fluid",
+   "id": "molten.barium",
+   "displayName": "Molten Barium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_barium-aecc4b7309c6.png",
+   "dominantColor": "#e6e6e6"
+  },
+  "Molten Bedrockium": {
+   "kind": "fluid",
+   "id": "molten.bedrockium",
+   "displayName": "Molten Bedrockium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_bedrockium-789242189f9e.png",
+   "dominantColor": "#2d2d2d"
   },
   "Molten Beryllium": {
    "kind": "fluid",
@@ -1674,6 +1751,20 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_celestial_tungsten-1ca512224791.png",
    "dominantColor": "#2f2f2f"
   },
+  "Molten Cerium": {
+   "kind": "fluid",
+   "id": "molten.cerium",
+   "displayName": "Molten Cerium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_cerium-3c6858b8cefd.png",
+   "dominantColor": "#73c686"
+  },
+  "Molten Chromatic Glass": {
+   "kind": "fluid",
+   "id": "molten.chromaticglass",
+   "displayName": "Molten Chromatic Glass",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_chromatic_glass-7c57429fbc63.png",
+   "dominantColor": "#ef0000"
+  },
   "Molten Chrome": {
    "kind": "fluid",
    "id": "molten.chrome",
@@ -1695,12 +1786,40 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_copper-8bc37150ee0e.png",
    "dominantColor": "#fab64b"
   },
+  "Molten Cosmic Neutronium": {
+   "kind": "fluid",
+   "id": "molten.cosmicneutronium",
+   "displayName": "Molten Cosmic Neutronium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_cosmic_neutronium-8efd53dc6ebb.png",
+   "dominantColor": "#373737"
+  },
+  "Molten Creon": {
+   "kind": "fluid",
+   "id": "molten.creon",
+   "displayName": "Molten Creon",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_creon-4e1a7b6c257a.png",
+   "dominantColor": "#420042"
+  },
   "Molten Curium": {
    "kind": "fluid",
    "id": "molten.curium",
    "displayName": "Molten Curium",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_curium-b192646f5b61.png",
    "dominantColor": "#894356"
+  },
+  "Molten Desh": {
+   "kind": "fluid",
+   "id": "molten.desh",
+   "displayName": "Molten Desh",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_desh-5bd8308eef41.png",
+   "dominantColor": "#252525"
+  },
+  "Molten Draconium": {
+   "kind": "fluid",
+   "id": "molten.draconium",
+   "displayName": "Molten Draconium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_draconium-37d81db31a17.png",
+   "dominantColor": "#6f3ea0"
   },
   "Molten Dragonblood": {
    "kind": "fluid",
@@ -1716,12 +1835,40 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_duranium-23602deb827a.png",
    "dominantColor": "#e6e6e6"
   },
+  "Molten Dysprosium": {
+   "kind": "fluid",
+   "id": "molten.dysprosium",
+   "displayName": "Molten Dysprosium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_dysprosium-ae8909e34059.png",
+   "dominantColor": "#62c34a"
+  },
   "Molten Enriched Naquadah Alloy": {
    "kind": "fluid",
    "id": "molten.enriched naquadah alloy",
    "displayName": "Molten Enriched Naquadah Alloy",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_enriched_naquadah_alloy-e508b47fbc82.png",
    "dominantColor": "#14063a"
+  },
+  "Molten Erbium": {
+   "kind": "fluid",
+   "id": "molten.erbium",
+   "displayName": "Molten Erbium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_erbium-b3a88ca36fef.png",
+   "dominantColor": "#a48d4b"
+  },
+  "Molten Europium": {
+   "kind": "fluid",
+   "id": "molten.europium",
+   "displayName": "Molten Europium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_europium-1b7a132388d6.png",
+   "dominantColor": "#e1a6e9"
+  },
+  "Molten Flerovium": {
+   "kind": "fluid",
+   "id": "molten.flerovium_gt5u",
+   "displayName": "Molten Flerovium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_flerovium-6df74e53f4ab.png",
+   "dominantColor": "#dcd8e4"
   },
   "Molten Force": {
    "kind": "fluid",
@@ -1730,12 +1877,26 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_force-07c443da938c.png",
    "dominantColor": "#eded00"
   },
+  "Molten Gadolinium": {
+   "kind": "fluid",
+   "id": "molten.gadolinium",
+   "displayName": "Molten Gadolinium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_gadolinium-b066151b364c.png",
+   "dominantColor": "#37ad1a"
+  },
   "Molten Gallium": {
    "kind": "fluid",
    "id": "molten.gallium",
    "displayName": "Molten Gallium",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_gallium-50f254a8c0e3.png",
    "dominantColor": "#cacaea"
+  },
+  "Molten Germanium": {
+   "kind": "fluid",
+   "id": "molten.germanium",
+   "displayName": "Molten Germanium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_germanium-e4274626a5e3.png",
+   "dominantColor": "#9d9d9d"
   },
   "Molten Glowstone": {
    "kind": "fluid",
@@ -1751,12 +1912,47 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_gold-4ec6e1baaf61.png",
    "dominantColor": "#e8e81b"
   },
+  "Molten Holmium": {
+   "kind": "fluid",
+   "id": "molten.holmium",
+   "displayName": "Molten Holmium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_holmium-389d2e8c83bd.png",
+   "dominantColor": "#14079a"
+  },
+  "Molten Hypogen": {
+   "kind": "fluid",
+   "id": "molten.hypogen",
+   "displayName": "Molten Hypogen",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_hypogen-561fb3e96581.png",
+   "dominantColor": "#c37244"
+  },
+  "Molten Ichorium": {
+   "kind": "fluid",
+   "id": "molten.ichorium",
+   "displayName": "Molten Ichorium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_ichorium-cfecae2effc3.png",
+   "dominantColor": "#bd6c0a"
+  },
+  "Molten Indium": {
+   "kind": "fluid",
+   "id": "molten.indium",
+   "displayName": "Molten Indium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_indium-bd044504aa06.png",
+   "dominantColor": "#3b0076"
+  },
   "Molten Infinity": {
    "kind": "fluid",
    "id": "molten.infinity",
    "displayName": "Molten Infinity",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_infinity-a1ce68b688fe.png",
    "dominantColor": "#a685d6"
+  },
+  "Molten Iodine": {
+   "kind": "fluid",
+   "id": "molten.iodine",
+   "displayName": "Molten Iodine",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_iodine-15862c3c8662.png",
+   "dominantColor": "#4c4c4c"
   },
   "Molten Iridium": {
    "kind": "fluid",
@@ -1771,6 +1967,13 @@
    "displayName": "Molten Iron",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_iron-9669ae40f838.png",
    "dominantColor": "#b6b6b6"
+  },
+  "Molten Lanthanum": {
+   "kind": "fluid",
+   "id": "molten.lanthanum",
+   "displayName": "Molten Lanthanum",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_lanthanum-dbcc2f2c39f5.png",
+   "dominantColor": "#818181"
   },
   "Molten Lead": {
    "kind": "fluid",
@@ -1807,6 +2010,20 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_manganese-0a957df8849a.png",
    "dominantColor": "#e3e3e3"
   },
+  "Molten Meteoric Iron": {
+   "kind": "fluid",
+   "id": "molten.meteoriciron",
+   "displayName": "Molten Meteoric Iron",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_meteoric_iron-d07a4321de71.png",
+   "dominantColor": "#5b2d49"
+  },
+  "Molten Molybdenum": {
+   "kind": "fluid",
+   "id": "molten.molybdenum",
+   "displayName": "Molten Molybdenum",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_molybdenum-03c0e54502d9.png",
+   "dominantColor": "#a8a8cd"
+  },
   "Molten Naquadah": {
    "kind": "fluid",
    "id": "molten.naquadah",
@@ -1835,6 +2052,13 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_neptunium-a3eac3bada8a.png",
    "dominantColor": "#9dada1"
   },
+  "Molten Neutronium": {
+   "kind": "fluid",
+   "id": "molten.neutronium",
+   "displayName": "Molten Neutronium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_neutronium-4fa8d3f6719e.png",
+   "dominantColor": "#e2e2e2"
+  },
   "Molten Nickel": {
    "kind": "fluid",
    "id": "molten.nickel",
@@ -1849,12 +2073,33 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_niobium-cfb4a9a32f4f.png",
    "dominantColor": "#aea5b8"
   },
+  "Molten Oriharukon": {
+   "kind": "fluid",
+   "id": "molten.oriharukon",
+   "displayName": "Molten Oriharukon",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_oriharukon-0a0dc2d1e33b.png",
+   "dominantColor": "#5e725e"
+  },
   "Molten Osmium": {
    "kind": "fluid",
    "id": "molten.osmium",
    "displayName": "Molten Osmium",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_osmium-747b6d64d0ca.png",
    "dominantColor": "#2e2ee8"
+  },
+  "Molten Palladium": {
+   "kind": "fluid",
+   "id": "molten.palladium",
+   "displayName": "Molten Palladium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_palladium-33d540a55f12.png",
+   "dominantColor": "#a1a1a1"
+  },
+  "Molten Platinum": {
+   "kind": "fluid",
+   "id": "molten.platinum",
+   "displayName": "Molten Platinum",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_platinum-444f60408d3d.png",
+   "dominantColor": "#eaeab7"
   },
   "Molten Plutonium-239": {
    "kind": "fluid",
@@ -1877,6 +2122,20 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_potassium-0ed33c8e0f49.png",
    "dominantColor": "#90a1d0"
   },
+  "Molten Praseodymium": {
+   "kind": "fluid",
+   "id": "molten.praseodymium",
+   "displayName": "Molten Praseodymium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_praseodymium-0415d935be5e.png",
+   "dominantColor": "#6bc376"
+  },
+  "Molten Promethium": {
+   "kind": "fluid",
+   "id": "molten.promethium",
+   "displayName": "Molten Promethium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_promethium-fbcbbf46eb90.png",
+   "dominantColor": "#22a831"
+  },
   "Molten Quantum": {
    "kind": "fluid",
    "id": "molten.quantum",
@@ -1897,6 +2156,13 @@
    "displayName": "Molten Redstone",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_redstone-3b815d0a77b3.png",
    "dominantColor": "#a40c0c"
+  },
+  "Molten Rhenium": {
+   "kind": "fluid",
+   "id": "molten.rhenium",
+   "displayName": "Molten Rhenium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_rhenium-c40321cc44be.png",
+   "dominantColor": "#767676"
   },
   "Molten Rhugnor": {
    "kind": "fluid",
@@ -1919,6 +2185,13 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_runite-59c0b8880134.png",
    "dominantColor": "#2f9d95"
   },
+  "Molten Samarium": {
+   "kind": "fluid",
+   "id": "molten.samarium",
+   "displayName": "Molten Samarium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_samarium-f04b3805328b.png",
+   "dominantColor": "#eaeabb"
+  },
   "Molten Selenium": {
    "kind": "fluid",
    "id": "molten.selenium",
@@ -1926,12 +2199,40 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_selenium-d127d3408fc1.png",
    "dominantColor": "#959595"
   },
+  "Molten Shirabon": {
+   "kind": "fluid",
+   "id": "molten.shirabon",
+   "displayName": "Molten Shirabon",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_shirabon-297319b19b43.png",
+   "dominantColor": "#cc1363"
+  },
   "Molten Silver": {
    "kind": "fluid",
    "id": "molten.silver",
    "displayName": "Molten Silver",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_silver-01c458489578.png",
    "dominantColor": "#c9c9e9"
+  },
+  "Molten Six-Phased Copper": {
+   "kind": "fluid",
+   "id": "molten.sixphasedcopper",
+   "displayName": "Molten Six-Phased Copper",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_six-phased_copper-9491c4da479b.png",
+   "dominantColor": "#ee7013"
+  },
+  "Molten SpaceTime": {
+   "kind": "fluid",
+   "id": "molten.spacetime",
+   "displayName": "Molten SpaceTime",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_spacetime-223bad07dc92.png",
+   "dominantColor": "#31153f"
+  },
+  "Molten Strontium": {
+   "kind": "fluid",
+   "id": "molten.strontium",
+   "displayName": "Molten Strontium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_strontium-d57711187f6c.png",
+   "dominantColor": "#bababa"
   },
   "Molten Tantalum": {
    "kind": "fluid",
@@ -1954,12 +2255,40 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_tellurium-8513a631fe93.png",
    "dominantColor": "#c0ee50"
   },
+  "Molten Tengam": {
+   "kind": "fluid",
+   "id": "molten.tengampurified",
+   "displayName": "Molten Purified Tengam",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_purified_tengam-42b7b427ba4c.png",
+   "dominantColor": "#afd26a"
+  },
+  "Molten Terbium": {
+   "kind": "fluid",
+   "id": "molten.terbium",
+   "displayName": "Molten Terbium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_terbium-c2da5883faef.png",
+   "dominantColor": "#e8e8e8"
+  },
+  "Molten Thallium": {
+   "kind": "fluid",
+   "id": "molten.thallium",
+   "displayName": "Molten Thallium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_thallium-e8a2ad16b14a.png",
+   "dominantColor": "#898989"
+  },
   "Molten Thorium": {
    "kind": "fluid",
    "id": "molten.thorium",
    "displayName": "Molten Thorium",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_thorium-b5a846c72fcb.png",
    "dominantColor": "#001c00"
+  },
+  "Molten Thulium": {
+   "kind": "fluid",
+   "id": "molten.thulium",
+   "displayName": "Molten Thulium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_thulium-f168cfa8b6f5.png",
+   "dominantColor": "#5364b5"
   },
   "Molten Tin": {
    "kind": "fluid",
@@ -1981,6 +2310,13 @@
    "displayName": "Molten Titansteel",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_titansteel-74cf15b83ce2.png",
    "dominantColor": "#604a49"
+  },
+  "Molten Tritanium": {
+   "kind": "fluid",
+   "id": "molten.tritanium",
+   "displayName": "Molten Tritanium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_tritanium-962f26efda1a.png",
+   "dominantColor": "#580000"
   },
   "Molten Tungsten": {
    "kind": "fluid",
@@ -2009,6 +2345,13 @@
    "displayName": "Molten Vanadium",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_vanadium-c589f71a9ddd.png",
    "dominantColor": "#2d2d2d"
+  },
+  "Molten Ytterbium": {
+   "kind": "fluid",
+   "id": "molten.ytterbium",
+   "displayName": "Molten Ytterbium",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/molten_ytterbium-9512c894d381.png",
+   "dominantColor": "#29b94a"
   },
   "Molten Yttrium": {
    "kind": "fluid",
@@ -2087,6 +2430,55 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/naquadah_based_liquid_fuel_mkvi-c8fc677102de.png",
    "dominantColor": "#260000"
   },
+  "Naquadah Based Liquid Fuel MkI (Depleted)": {
+   "kind": "fluid",
+   "id": "naquadah based liquid fuel mki (depleted)",
+   "displayName": "Naquadah Based Liquid Fuel MkI (Depleted)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/naquadah_based_liquid_fuel_mki_depleted-93e77f75de4b.png",
+   "dominantColor": "#a19a99"
+  },
+  "Naquadah Based Liquid Fuel MkII (Depleted)": {
+   "kind": "fluid",
+   "id": "naquadah based liquid fuel mkii (depleted)",
+   "displayName": "Naquadah Based Liquid Fuel MkII (Depleted)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/naquadah_based_liquid_fuel_mkii_depleted-1d7ab23ec38e.png",
+   "dominantColor": "#8d8988"
+  },
+  "Naquadah Based Liquid Fuel MkIII (Depleted)": {
+   "kind": "fluid",
+   "id": "naquadah based liquid fuel mkiii (depleted)",
+   "displayName": "Naquadah Based Liquid Fuel MkIII (Depleted)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/naquadah_based_liquid_fuel_mkiii_depleted-497135455ae1.png",
+   "dominantColor": "#51322c"
+  },
+  "Naquadah Based Liquid Fuel MkIV (Depleted)": {
+   "kind": "fluid",
+   "id": "naquadah based liquid fuel mkiv (depleted)",
+   "displayName": "Naquadah Based Liquid Fuel MkIV (Depleted)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/naquadah_based_liquid_fuel_mkiv_depleted-7dab204aa812.png",
+   "dominantColor": "#70291b"
+  },
+  "Naquadah Based Liquid Fuel MkV (Depleted)": {
+   "kind": "fluid",
+   "id": "naquadah based liquid fuel mkv (depleted)",
+   "displayName": "Naquadah Based Liquid Fuel MkV (Depleted)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/naquadah_based_liquid_fuel_mkv_depleted-a5998ce9826c.png",
+   "dominantColor": "#cacaca"
+  },
+  "Naquadah Based Liquid Fuel MkVI (Depleted)": {
+   "kind": "fluid",
+   "id": "naquadah based liquid fuel mkvi (depleted)",
+   "displayName": "Naquadah Based Liquid Fuel MkVI (Depleted)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/naquadah_based_liquid_fuel_mkvi_depleted-ca06edaee6ab.png",
+   "dominantColor": "#792828"
+  },
+  "Naquadah Bolt": {
+   "kind": "item",
+   "id": "tconstruct:boltpart@1574",
+   "displayName": "Naquadah Bolt",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/naquadah_bolt-7ce4999355f5.png",
+   "dominantColor": "#6f6f2c"
+  },
   "Naquadah Gas": {
    "kind": "fluid",
    "id": "naquadah gas",
@@ -2100,6 +2492,13 @@
    "displayName": "Naquadah Plasma",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/naquadah_plasma-4948621aca93.png",
    "dominantColor": "#00f800"
+  },
+  "Naquadah Rod": {
+   "kind": "item",
+   "id": "gregtech:gt.metaitem.01@23324",
+   "displayName": "Naquadah Rod",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/naquadah_rod-d6b4d066be7c.png",
+   "dominantColor": "#6b7280"
   },
   "Naquadria Bolt (ZPM)": {
    "kind": "item",
@@ -2387,6 +2786,13 @@
    "displayName": "Platinum Plasma",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/platinum_plasma-75484102fcf3.png",
    "dominantColor": "#edf9c3"
+  },
+  "Plutonium Based Liquid Fuel (Depleted)": {
+   "kind": "fluid",
+   "id": "plutonium based liquid fuel (depleted)",
+   "displayName": "Plutonium Based Liquid Fuel (Depleted)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/plutonium_based_liquid_fuel_depleted-d54beecc0356.png",
+   "dominantColor": "#511414"
   },
   "Plutonium Fuel (Excited)": {
    "kind": "fluid",
@@ -2752,6 +3158,13 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/superheated_steam-712b02d8cd5f.png",
    "dominantColor": "#c1c8c8"
   },
+  "T-Salt": {
+   "kind": "fluid",
+   "id": "molten.thoriumdepletedmoltensalttsalt",
+   "displayName": "Thorium Depleted Molten Salt (T Salt)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/thorium_depleted_molten_salt_t_salt-d9ba5cd4a61e.png",
+   "dominantColor": "#818c89"
+  },
   "Tachyon Rich Temporal Fluid": {
    "kind": "fluid",
    "id": "temporalfluid",
@@ -2772,6 +3185,13 @@
    "displayName": "Tantalum Plasma",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/tantalum_plasma-4ef91e467bec.png",
    "dominantColor": "#62b3f9"
+  },
+  "TB-Salt": {
+   "kind": "fluid",
+   "id": "molten.thoriumberylliumdepletedmoltensalttbsalt",
+   "displayName": "Thorium-Beryllium Depleted Molten Salt (TB Salt)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/thorium-beryllium_depleted_molten_salt_tb_salt-ad4e5aeacba1.png",
+   "dominantColor": "#748c7a"
   },
   "Tellurium Plasma": {
    "kind": "fluid",
@@ -2814,6 +3234,13 @@
    "displayName": "Thallium Plasma",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/thallium_plasma-08906bbaa997.png",
    "dominantColor": "#a2aaaa"
+  },
+  "Thorium Based Liquid Fuel (Depleted)": {
+   "kind": "fluid",
+   "id": "thorium based liquid fuel (depleted)",
+   "displayName": "Thorium Based Liquid Fuel (Depleted)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/thorium_based_liquid_fuel_depleted-fb756cb2f608.png",
+   "dominantColor": "#63566d"
   },
   "Thorium Fuel (Excited)": {
    "kind": "fluid",
@@ -2898,6 +3325,27 @@
    "displayName": "Tungsten Plasma",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/tungsten_plasma-bb704fb16ee2.png",
    "dominantColor": "#2e3131"
+  },
+  "U-Salt": {
+   "kind": "fluid",
+   "id": "molten.uraniumdepletedmoltensaltusalt",
+   "displayName": "Uranium Depleted Molten Salt (U Salt)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/uranium_depleted_molten_salt_u_salt-77c7c3748407.png",
+   "dominantColor": "#84a087"
+  },
+  "UF6": {
+   "kind": "fluid",
+   "id": "molten.uraniumhexafluoride",
+   "displayName": "Uranium Hexafluoride",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/uranium_hexafluoride-6b590915d0ce.png",
+   "dominantColor": "#81bb84"
+  },
+  "Uranium Based Liquid Fuel (Depleted)": {
+   "kind": "fluid",
+   "id": "uranium based liquid fuel (depleted)",
+   "displayName": "Uranium Based Liquid Fuel (Depleted)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/uranium_based_liquid_fuel_depleted-0142cf31fd3c.png",
+   "dominantColor": "#576e30"
   },
   "Uranium Fuel (Excited)": {
    "kind": "fluid",

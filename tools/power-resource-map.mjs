@@ -76,6 +76,12 @@ const ALIASES = {
   "Naquadria Bolt (ZPM)": "Naquadria Bolt",
   "Naquadria Rod (UV)": "Naquadria Rod",
   "Forestry Biomass": "Biomass",
+  "Li2BeF4": "Lithium Tetrafluoroberyllate (LFTB)",
+  "U-Salt": "Uranium Depleted Molten Salt (U Salt)",
+  "T-Salt": "Thorium Depleted Molten Salt (T Salt)",
+  "TB-Salt": "Thorium-Beryllium Depleted Molten Salt (TB Salt)",
+  UF6: "Uranium Hexafluoride",
+  "Molten Tengam": "Molten Purified Tengam",
 };
 
 /** Names whose match is a specific id (display-name collisions). */
@@ -111,7 +117,38 @@ const AUX_NAMES = [
   ["Dense Superheated Steam", "fluid"],
   ["Dense Supercritical Steam", "fluid"],
   ["Uranium-233", "fluid"],
+  ["Li2BeF4", "fluid"],
+  ["U-Salt", "fluid"],
+  ["T-Salt", "fluid"],
+  ["TB-Salt", "fluid"],
+  ["UF6", "fluid"],
+  ["Combustion Promoter", "fluid"],
+  ["Molten Tengam", "fluid"],
+  ["Molten SpaceTime", "fluid"],
+  ["Molten Shirabon", "fluid"],
+  // The LNR's depleted fuel returns, litre for litre with the fuel burned.
+  ["Thorium Based Liquid Fuel (Depleted)", "fluid"],
+  ["Uranium Based Liquid Fuel (Depleted)", "fluid"],
+  ["Plutonium Based Liquid Fuel (Depleted)", "fluid"],
+  ["Naquadah Based Liquid Fuel MkI (Depleted)", "fluid"],
+  ["Naquadah Based Liquid Fuel MkII (Depleted)", "fluid"],
+  ["Naquadah Based Liquid Fuel MkIII (Depleted)", "fluid"],
+  ["Naquadah Based Liquid Fuel MkIV (Depleted)", "fluid"],
+  ["Naquadah Based Liquid Fuel MkV (Depleted)", "fluid"],
+  ["Naquadah Based Liquid Fuel MkVI (Depleted)", "fluid"],
+  // Spent naquadah reactor rods come back as plain naquadah parts.
+  ["Naquadah Bolt", "item"],
+  ["Naquadah Rod", "item"],
+  ["Long Naquadah Rod", "item"],
 ];
+
+/**
+ * Plasma exhausts follow the game's registry fallback: the de-powered
+ * fluid under the plain name if one exists, else the molten form. Both
+ * candidates are probed as FLUIDS ONLY - a name that only matches an item
+ * must stay unresolved or the turbine would exhaust litres of an item.
+ */
+const STRICT_FLUID = new Set();
 
 function collectNames() {
   const wanted = new Map();
@@ -154,6 +191,15 @@ function collectNames() {
   for (const [name, kind] of AUX_NAMES) {
     add(name, kind);
   }
+  for (const entry of data.plasmas) {
+    const base = entry.name.replace(/ Plasma$/, "");
+    if (base !== entry.name) {
+      add(base, "fluid");
+      STRICT_FLUID.add(base);
+      add(`Molten ${base}`, "fluid");
+      STRICT_FLUID.add(`Molten ${base}`);
+    }
+  }
   return wanted;
 }
 
@@ -193,9 +239,12 @@ await Promise.all(
       try {
         const override = ID_OVERRIDES[name];
         const results = await search(override ? name.replace("Ench. ", "").replace("Block of ", "") : target);
-        const found = override
+        let found = override
           ? results.find((entry) => entry.kind === override.kind && entry.id === override.id)
           : pick(results, target, kind);
+        if (found && STRICT_FLUID.has(name) && found.kind !== "fluid") {
+          found = undefined;
+        }
         if (found) {
           map[name] = {
             kind: found.kind,

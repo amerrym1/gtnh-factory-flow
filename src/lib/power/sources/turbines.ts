@@ -12,6 +12,7 @@ import {
   findRotor,
   fuelOptions,
   powerPlannerData,
+  resolvePowerResource,
   ROTOR_SIZE_NAMES,
   rotorDurability,
   type RotorClassData,
@@ -40,11 +41,33 @@ const STEAM_EXHAUST: Record<string, string | undefined> = {
   "Dense SH Steam": "Dense Steam",
 };
 
-/** Decay gas the plasma leaves behind, from the fusion table where known. */
+/**
+ * The de-powered fluid a plasma turbine returns, 1 L per 1 L of plasma.
+ * MTELargeTurbinePlasma strips the "plasma." fluid-name prefix and takes
+ * the plain fluid if the registry has one, else the molten form - so every
+ * plasma exhausts, not only the fusion-made ones. The fusion table's decay
+ * column wins where it exists (same rule, already spelled out); the rest
+ * mirror the registry fallback against our own resource map.
+ */
 function plasmaExhaust(plasmaName: string): string | undefined {
   const recipe = powerPlannerData.fusionRecipes.find((entry) => entry.name === plasmaName);
-  // The workbook spells "no decay product" as a literal None.
-  return recipe?.decayOutput && recipe.decayOutput !== "None" ? recipe.decayOutput : undefined;
+  if (recipe?.decayOutput) {
+    return recipe.decayOutput !== "None" ? recipe.decayOutput : undefined;
+  }
+  const base = plasmaName.replace(/ Plasma$/, "");
+  if (base === plasmaName) {
+    return undefined;
+  }
+  if (resolvePowerResource(base)) {
+    return base;
+  }
+  const molten = `Molten ${base}`;
+  if (resolvePowerResource(molten)) {
+    return molten;
+  }
+  // Neither form is a registered fluid: the game consumes the plasma and
+  // outputs nothing (the null-check around addOutputPartial).
+  return undefined;
 }
 
 function classData(rotor: RotorEntry, turbineClass: TurbineClass): RotorClassData {
@@ -171,7 +194,9 @@ function buildTurbine(spec: TurbineSpec): PowerSourceDefinition {
       id: "fuel",
       label: "Fuel",
       options: fuelOptions(spec.xl ? powerPlannerData.gasFuelsXl : powerPlannerData.gasFuels),
-      defaultKey: "Benzene",
+      // The XL hard-refuses benzene in the game (and Fox's XL fuel table
+      // matches), so its default is the sheet's own pick.
+      defaultKey: spec.xl ? "Nitrobenzene" : "Benzene",
     });
   } else if (spec.turbineClass === "plasma") {
     settings.push({
@@ -315,6 +340,13 @@ function buildTurbine(spec: TurbineSpec): PowerSourceDefinition {
         const exhaust = STEAM_EXHAUST[fuelName];
         if (exhaust) {
           outputs.push(liters(exhaust, flowPerSecond));
+        } else {
+          // Plain steam condenses: MTELargeTurbineSteam returns distilled
+          // water at 1 L per 160 L of steam. The XL's dense-steam path uses
+          // its own 160.1 divisor on the steam-equivalent litres - the
+          // game's constant, not a typo.
+          const steamEquivalent = dense ? flowPerSecond * 1000 : flowPerSecond;
+          outputs.push(liters("Distilled Water", steamEquivalent / (dense ? 160.1 : 160)));
         }
       } else if (spec.turbineClass === "plasma") {
         const exhaust = plasmaExhaust(fuelName);

@@ -48,9 +48,12 @@ const ENGINE_SPECS: EngineSpec[] = [
     fuels: powerPlannerData.eceFuels,
     baseOutput: 10900,
     boostedOutput: 32700,
-    lubricantPerHour: 8000,
+    // The tooltip claims 8000 L/hr; the code's getAdditiveFactor() is 1,
+    // same as the LCE (MTEExtremeCombustionEngine, verified in source).
+    lubricantPerHour: 1000,
     booster: "Liquid Oxygen",
     boosterPerSecond: 40,
+    unboostedFuelCap: 10900,
   },
   {
     id: "large-semifluid-generator",
@@ -60,7 +63,7 @@ const ENGINE_SPECS: EngineSpec[] = [
     fuels: powerPlannerData.semifluidFuels,
     baseOutput: 2048,
     boostedOutput: 6144,
-    lubricantPerHour: 2000,
+    lubricantPerHour: 1000,
     booster: "Oxygen",
     boosterPerSecond: 80,
     defaultFuel: "Creosote Oil",
@@ -95,7 +98,10 @@ function buildEngine(spec: EngineSpec): PowerSourceDefinition {
       const effectiveEu = euPerLiter * (boost ? 1.5 : 1);
       const fuelPerSecond = effectiveEu > 0 && output > 0 ? (output / effectiveEu) * 20 : 0;
 
-      const inputs = [liters(fuel.name, fuelPerSecond), liters("Lubricant", spec.lubricantPerHour / 3600)];
+      // All three engines pay 1 L of lubricant per 72 ticks, doubled while
+      // boosted (the depleteInput at mRuntime % 72 in every engine class).
+      const lubricantPerSecond = (spec.lubricantPerHour / 3600) * (boost ? 2 : 1);
+      const inputs = [liters(fuel.name, fuelPerSecond), liters("Lubricant", lubricantPerSecond)];
       if (boost) {
         inputs.push(liters(spec.booster, spec.boosterPerSecond));
       }
@@ -114,8 +120,10 @@ function buildEngine(spec: EngineSpec): PowerSourceDefinition {
 
 /**
  * Large Rocket Engine (GT++): output scales with throttle and fuel, with
- * cube-root falloff past the 30,000 and 80,000 EU/t knees; air intake, CO2
- * out, liquid hydrogen boost x3 on the knees.
+ * cube-root falloff past the 30,000 and 80,000 EU/t knees; liquid hydrogen
+ * boost x3 on the knees. Air intake is euProduction/100 per tick and CO2
+ * is CONSUMED as the lubricant (1 L per 72 ticks, x3 boosted) - the game
+ * outputs nothing (MTELargeRocketEngine).
  */
 const largeRocketEngine: PowerSourceDefinition = {
   id: "large-rocket-engine",
@@ -146,18 +154,25 @@ const largeRocketEngine: PowerSourceDefinition = {
     const falloff1 = throttle > knee1 ? Math.cbrt(30000) / Math.cbrt(power) : 1;
     const falloff2 = throttle > knee2 ? Math.cbrt(80000) / Math.cbrt(power) : 1;
     const euPerTick = Math.max(0, 1.6384 * power * falloff1 * falloff2);
+    // euProduction is the pre-dynamo figure the game meters air and
+    // hydrogen against; the 1.6384 is the dynamo-side efficiency bonus.
+    const euProduction = power * falloff1 * falloff2;
 
     const inputs = [
       liters(fuel.name, throttle),
-      liters("Air", Math.floor(0.01 * euPerTick)),
+      // aAirToConsume = euProduction / 100 per tick.
+      liters("Air", (euProduction / 100) * 20),
+      // consumeCO2: 1 L per 72 ticks, 3 L boosted - the engine's lubricant.
+      liters("Carbon Dioxide", (kneeFactor * 20) / 72),
     ];
     if (boost) {
-      inputs.push(liters("Liquid Hydrogen", Math.floor(0.003 * euPerTick)));
+      // consumeLOH: 3 x euProduction / 1000 L once per 21-tick fuel cycle.
+      inputs.push(liters("Liquid Hydrogen", ((3 * euProduction) / 1000) * (20 / 21)));
     }
     return {
       euPerTick,
       inputs,
-      outputs: [liters("Carbon Dioxide", (1000 * kneeFactor) / 3600)],
+      outputs: [],
       stats: [
         stat("EU per L", formatAmount(throttle > 0 ? euPerTick / (throttle / 20) : 0)),
         stat("Power knees", `${formatAmount(knee1)} / ${formatAmount(knee2)} L/s`),

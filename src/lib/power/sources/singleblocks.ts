@@ -96,6 +96,20 @@ const SPECS: SingleblockSpec[] = [
 
 const STEAM_EU_PER_LITER = 0.5;
 
+/**
+ * The naquadah reactors hand back a plain naquadah part for every rod
+ * burned (FuelLoader registers the depleted item on each fuel recipe).
+ * Tiberium rods are pack-side fuels the loader does not cover; they get
+ * no return until their depleted form is confirmed.
+ */
+const NAQUADAH_SPENT: Record<string, string | undefined> = {
+  "Enriched Naquadah Bolt (EV)": "Naquadah Bolt",
+  "Enriched Naquadah Rod (IV)": "Naquadah Rod",
+  "Long Enriched Naquadah Rod (LuV)": "Long Naquadah Rod",
+  "Naquadria Bolt (ZPM)": "Naquadah Bolt",
+  "Naquadria Rod (UV)": "Naquadah Rod",
+};
+
 function buildSingleblock(spec: SingleblockSpec): PowerSourceDefinition {
   const tiers = familyTierOptions(spec.family);
   const settings: PowerSourceDefinition["settings"] = [
@@ -137,10 +151,11 @@ function buildSingleblock(spec: SingleblockSpec): PowerSourceDefinition {
         const euPerItem = fuel.euPerItem ?? 0;
         // The workbook prices solids per hour: (V+loss)/EU/eff x 20 x 3600.
         const perHour = euPerItem > 0 ? ((voltage + ampLoss) / (euPerItem * efficiency)) * 20 * 3600 : 0;
+        const spent = spec.family === "naquadah" ? NAQUADAH_SPENT[fuel.name] : undefined;
         return {
           euPerTick: voltage,
           inputs: [items(fuel.name, perHour / 3600)],
-          outputs: [],
+          outputs: spent ? [items(spent, perHour / 3600)] : [],
           stats: [
             stat("Efficiency", percent(efficiency)),
             stat("Fuel per hour", formatAmount(perHour)),

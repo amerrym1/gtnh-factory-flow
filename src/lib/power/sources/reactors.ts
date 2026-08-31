@@ -31,7 +31,9 @@ const thtr: PowerSourceDefinition = {
     const pebbleCost = Math.floor(fill * 0.005 * efficiency);
     const hotCoolantPerSecond = 4800 * efficiency * 20;
     return {
-      euPerTick: -3840 / efficiency,
+      // MTEThoriumHighTempReactor draws a flat RECIPE_IV/2 regardless of
+      // fill; only the coolant line scales with efficiency.
+      euPerTick: -3840,
       inputs: [liters("Coolant", hotCoolantPerSecond)],
       outputs: [liters("Hot Coolant", hotCoolantPerSecond)],
       stats: [
@@ -68,12 +70,20 @@ const htgr: PowerSourceDefinition = {
     const efficiency = Math.min(1, 0.1 + 0.9 * (1 - Math.pow(1 - x, 3)));
     const multiplier = pebble.base * x * Math.pow(1 + (pebble.mult - 1) * x, 1 + (pebble.exp - 1) * x);
     const pebbleCost = fill * (Math.PI - 3) * 0.01 * efficiency;
-    const hotCoolantPerSecond = 0.5 * fill * multiplier;
-    const steamPerTick = 0.1 * fill * multiplier * 160;
+    // MTEHighTempGasCooledReactor: COOLANT_PER_BALL 0.5 and WATER_PER_BALL
+    // 0.1 are per-TICK litres at full helium; steam is water x160.
+    const hotCoolantPerTick = 0.5 * fill * multiplier;
+    const waterPerTick = 0.1 * fill * multiplier;
     return {
       euPerTick: -1536,
-      inputs: [liters("Coolant", hotCoolantPerSecond)],
-      outputs: [liters("Hot Coolant", hotCoolantPerSecond), liters("Steam", steamPerTick * 20)],
+      inputs: [
+        liters("Coolant", hotCoolantPerTick * 20),
+        liters("Distilled Water", waterPerTick * 20),
+      ],
+      outputs: [
+        liters("Hot Coolant", hotCoolantPerTick * 20),
+        liters("Steam", waterPerTick * 160 * 20),
+      ],
       stats: [
         stat("Efficiency", percent(efficiency)),
         stat("Output multiplier", formatAmount(multiplier)),
@@ -105,6 +115,7 @@ const lftr: PowerSourceDefinition = {
     // 16 amps of the fuel's base tier: "Net Amps (EV)" names the tier.
     const tierName = fuel.powerLabel.match(/\(([A-Z]+)\)/)?.[1] ?? "EV";
     const euPerTick = tierPower(tierName).voltage * 16;
+    const inputs = [liters(fuel.name, 1), liters("Li2BeF4", 2)];
     const outputs = [
       liters("U-Salt", fuel.uSalt / 100),
       liters("T-Salt", fuel.tSalt / 100),
@@ -112,9 +123,11 @@ const lftr: PowerSourceDefinition = {
       liters("UF6", fuel.uf6 / 100),
       liters("Uranium-233", fuel.uranium233PerSecond),
     ].filter((flow) => flow.perSecond > 0);
+    // The recipes also drink the carrier salt: 200 L Li2BeF4 per 100 s
+    // alongside 100 L of fuel salt (RecipeLoaderLFTR).
     return {
       euPerTick,
-      inputs: [liters(fuel.name, 1)],
+      inputs,
       outputs,
       stats: [stat("EU per L", formatAmount(fuel.euPerLiter))],
     };
@@ -195,9 +208,11 @@ const dehp: PowerSourceDefinition = {
       };
     }
     const steamPerTick = 25_600;
+    // MTEDeepEarthHeatingPump: waterConsume = (25600 + 160) / 160 = 161 L/t,
+    // one more than the clean ratio - the game's own integer arithmetic.
     return {
       euPerTick: -480,
-      inputs: [liters("Distilled Water", (steamPerTick / 160) * 20)],
+      inputs: [liters("Distilled Water", 161 * 20)],
       outputs: [liters("SH Steam", steamPerTick * 20)],
       stats: [stat("Steam", `${formatAmount(steamPerTick)} L/t superheated`)],
     };
@@ -246,17 +261,20 @@ const solarTower: PowerSourceDefinition = {
   },
 };
 
-/** Panel EU/t doubles the classic ladder; values are the GT panel blocks. */
+/**
+ * MTESolarGenerator outputs V[tier] EU/t (1 for ULV): the panel's tier
+ * name and its voltage line up, so an LV panel makes a full 32 EU/t.
+ */
 const SOLAR_PANEL_TIERS = [
   { key: "ULV", label: "Solar Panel (1 EU/t)", eut: 1 },
-  { key: "LV", label: "LV Solar Panel (8 EU/t)", eut: 8 },
-  { key: "MV", label: "MV Solar Panel (32 EU/t)", eut: 32 },
-  { key: "HV", label: "HV Solar Panel (128 EU/t)", eut: 128 },
-  { key: "EV", label: "EV Solar Panel (512 EU/t)", eut: 512 },
-  { key: "IV", label: "IV Solar Panel (2,048 EU/t)", eut: 2048 },
-  { key: "LuV", label: "LuV Solar Panel (8,192 EU/t)", eut: 8192 },
-  { key: "ZPM", label: "ZPM Solar Panel (32,768 EU/t)", eut: 32768 },
-  { key: "UV", label: "UV Solar Panel (131,072 EU/t)", eut: 131072 },
+  { key: "LV", label: "LV Solar Panel (32 EU/t)", eut: 32 },
+  { key: "MV", label: "MV Solar Panel (128 EU/t)", eut: 128 },
+  { key: "HV", label: "HV Solar Panel (512 EU/t)", eut: 512 },
+  { key: "EV", label: "EV Solar Panel (2,048 EU/t)", eut: 2048 },
+  { key: "IV", label: "IV Solar Panel (8,192 EU/t)", eut: 8192 },
+  { key: "LuV", label: "LuV Solar Panel (32,768 EU/t)", eut: 32768 },
+  { key: "ZPM", label: "ZPM Solar Panel (131,072 EU/t)", eut: 131072 },
+  { key: "UV", label: "UV Solar Panel (524,288 EU/t)", eut: 524288 },
 ];
 
 const solarPanel: PowerSourceDefinition = {

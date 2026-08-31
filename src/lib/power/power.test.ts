@@ -107,7 +107,11 @@ describe("turbines", () => {
     // floor(0.95 x 0.5 x 1600) = 760 EU/t.
     expect(model.euPerTick).toBe(760);
     expect(model.inputs[0]).toMatchObject({ name: "Steam", perSecond: 1600 * 20 });
-    expect(model.outputs).toHaveLength(0);
+    // MTELargeTurbineSteam condenses: 1 L distilled water per 160 L steam.
+    expect(model.outputs[0]).toMatchObject({
+      name: "Distilled Water",
+      perSecond: (1600 * 20) / 160,
+    });
   });
 
   it("exhausts superheated steam into plain steam 1:1", () => {
@@ -196,9 +200,14 @@ describe("reactors and endgame", () => {
   });
 
   it("computes the HTGR glowstone multiplier (2.444)", () => {
+    // COOLANT_PER_BALL is a per-tick figure; hot coolant out = 0.5 x fill x
+    // multiplier L/t, and the steam line is the water line x160.
     const model = compute("htgr", { pebble: "Glowstone", fill: "10000" });
-    const multiplier = model.outputs[0].perSecond / (0.5 * 10000);
+    const multiplier = model.outputs[0].perSecond / (0.5 * 10000 * 20);
     expect(multiplier).toBeCloseTo(2.444, 2);
+    const water = model.inputs.find((flow) => flow.name === "Distilled Water");
+    const steam = model.outputs.find((flow) => flow.name === "Steam");
+    expect(steam?.perSecond).toBeCloseTo((water?.perSecond ?? 0) * 160, 6);
   });
 
   it("gives the LFTR 16 amps of its fuel's tier", () => {
@@ -255,17 +264,6 @@ describe("resource resolution", () => {
       // LNR fuels the resolver could not place.
       "Uranium Fuel",
       "Plutonium Fuel",
-      // LFTR sparged salts (no dataset fluids).
-      "U-Salt",
-      "T-Salt",
-      "TB-Salt",
-      "UF6",
-      // UCFE promoter and the antimatter catalysts, not yet mapped.
-      "Combustion Promoter",
-      "Molten Tengam",
-      "Molten SpaceTime",
-      "Molten Shirabon",
-      "Depleted Naquadah Fuel Mk V",
     ]);
     const unresolved = new Set<string>();
     const collect = (model: ReturnType<(typeof POWER_SOURCES)[number]["compute"]>) => {

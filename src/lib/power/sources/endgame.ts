@@ -10,6 +10,23 @@ import { formatAmount, liters, stat } from "./helpers";
 
 const NONE = "None";
 
+/**
+ * The LNR returns its fuel depleted, litre for litre (FuelRecipeLoader
+ * pairs every fuel with a depleted output; the machine copies the same
+ * amount to both sides).
+ */
+const LNR_DEPLETED: Record<string, string | undefined> = {
+  "Thorium Fuel (Excited)": "Thorium Based Liquid Fuel (Depleted)",
+  "Uranium Fuel (Excited)": "Uranium Based Liquid Fuel (Depleted)",
+  "Plutonium Fuel (Excited)": "Plutonium Based Liquid Fuel (Depleted)",
+  "Naq Fuel Mk-I": "Naquadah Based Liquid Fuel MkI (Depleted)",
+  "Naq Fuel Mk-II": "Naquadah Based Liquid Fuel MkII (Depleted)",
+  "Naq Fuel Mk-III": "Naquadah Based Liquid Fuel MkIII (Depleted)",
+  "Naq Fuel Mk-IV": "Naquadah Based Liquid Fuel MkIV (Depleted)",
+  "Naq Fuel Mk-V": "Naquadah Based Liquid Fuel MkV (Depleted)",
+  "Naq Fuel Mk-VI": "Naquadah Based Liquid Fuel MkVI (Depleted)",
+};
+
 const lnr: PowerSourceDefinition = {
   id: "large-naquadah-reactor",
   name: "Large Naquadah Reactor",
@@ -68,10 +85,11 @@ const lnr: PowerSourceDefinition = {
     if (booster && booster.litersPerSecond > 0) {
       inputs.push(liters(booster.name, booster.litersPerSecond));
     }
+    const depleted = LNR_DEPLETED[fuel.name];
     return {
       euPerTick,
       inputs,
-      outputs: [],
+      outputs: depleted ? [liters(depleted, fuelPerSecond)] : [],
       stats: [stat("Fuel", `${formatAmount(fuelPerSecond)} L/s`)],
     };
   },
@@ -248,7 +266,7 @@ const antimatter: PowerSourceDefinition = {
         liters("Molten Tengam", Math.pow(amount, 0.5)),
         liters("Molten SpaceTime", Math.pow(amount, 0.5)),
         liters("Molten Shirabon", Math.pow(amount, 2 / 7)),
-        liters("Depleted Naquadah Fuel Mk V", Math.pow(amount, 1 / 3)),
+        liters("Naquadah Based Liquid Fuel MkV (Depleted)", Math.pow(amount, 1 / 3)),
       ],
       outputs: [],
       stats: [
