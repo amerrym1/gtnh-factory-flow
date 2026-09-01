@@ -1133,6 +1133,40 @@ textarea {
 }
 
 /*
+ * The item tiles' playing-card hover. The tile's pointermove handler writes
+ * the cursor's position into these vars directly on the element (no React
+ * involved), and the tile tilts a few degrees toward the cursor while a soft
+ * gleam follows it. Subtle on purpose: the tilt caps at ~5deg and the gleam
+ * is a faint white radial, not a shine sweep.
+ */
+.resource-tile {
+  position: relative;
+  transform: perspective(340px) rotateX(var(--tile-rx, 0deg)) rotateY(var(--tile-ry, 0deg));
+  transition: transform 140ms ease-out;
+}
+.resource-tile:hover {
+  transform: perspective(340px) rotateX(var(--tile-rx, 0deg)) rotateY(var(--tile-ry, 0deg))
+    scale(1.05);
+}
+.resource-tile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    110px circle at var(--tile-gx, 50%) var(--tile-gy, 50%),
+    rgba(255, 255, 255, 0.16),
+    transparent 65%
+  );
+  opacity: 0;
+  transition: opacity 140ms ease-out;
+  pointer-events: none;
+}
+.resource-tile:hover::after {
+  opacity: 1;
+}
+
+/*
  * Scrolls, but without a scrollbar taking a bite out of the row.
  *
  * For a short horizontal strip inside a fixed-height bar, a classic Windows

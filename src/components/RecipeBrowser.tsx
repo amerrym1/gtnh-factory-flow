@@ -1977,6 +1977,36 @@ function useResourceBrowseMenu(
   };
 }
 
+/**
+ * The playing-card hover: write where the cursor sits on the tile into CSS
+ * vars on the element itself, and globals.css turns them into a small tilt
+ * and a gleam. Direct style writes, so a hover never re-renders the list.
+ */
+function tileTiltMove(event: PointerEvent<HTMLElement>) {
+  if (event.pointerType !== "mouse") {
+    return;
+  }
+  const element = event.currentTarget;
+  const rect = element.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) {
+    return;
+  }
+  const x = (event.clientX - rect.left) / rect.width - 0.5;
+  const y = (event.clientY - rect.top) / rect.height - 0.5;
+  element.style.setProperty("--tile-rx", `${(-y * 9).toFixed(2)}deg`);
+  element.style.setProperty("--tile-ry", `${(x * 9).toFixed(2)}deg`);
+  element.style.setProperty("--tile-gx", `${((x + 0.5) * 100).toFixed(1)}%`);
+  element.style.setProperty("--tile-gy", `${((y + 0.5) * 100).toFixed(1)}%`);
+}
+
+function tileTiltReset(event: PointerEvent<HTMLElement>) {
+  const style = event.currentTarget.style;
+  style.removeProperty("--tile-rx");
+  style.removeProperty("--tile-ry");
+  style.removeProperty("--tile-gx");
+  style.removeProperty("--tile-gy");
+}
+
 function ResourceResultPage({
   resources,
   activeResource,
@@ -2012,6 +2042,7 @@ function ResourceResultPage({
     >
       {resources.map((resource) => {
         const active = activeResource?.kind === resource.kind && activeResource.id === resource.id;
+        const press = rowBrowse.pressProps(resource);
 
         return (
           // No hover tooltip: the tile already says what it is, and a tooltip
@@ -2032,11 +2063,15 @@ function ResourceResultPage({
                 }
                 browse(resource, "uses");
               }}
-              {...rowBrowse.pressProps(resource)}
+              {...press}
+              onPointerMove={(event) => {
+                press.onPointerMove(event);
+                tileTiltMove(event);
+              }}
+              onPointerLeave={tileTiltReset}
               aria-label={resourceLabel(resource)}
-              title={resourceLabel(resource)}
               className={[
-                "flex min-w-0 flex-col items-center gap-0.5 overflow-hidden rounded-[4px] border px-0.5 pt-0.5",
+                "resource-tile flex min-w-0 flex-col items-center gap-0.5 overflow-hidden rounded-[4px] border px-0.5 pt-0.5",
                 // The power tile's own whisper of amber; selection still wins.
                 !active && resource.id === POWER_EU_CLAUSE_ID ? "bg-amber-400/[0.07]" : "",
                 active
