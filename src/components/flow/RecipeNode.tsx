@@ -80,7 +80,9 @@ import {
   CROP_SEED_BED_TIER_CONTROL_ID,
   cropsNhCropsPerMachine,
   cropsNhEnvironmentFromTiers,
+  cropsNhExpectedDrop,
   cropsNhFarmEut,
+  cropsNhGrowthRate,
   cropsNhGrowthSpeedMultiplier,
   cropsNhHarvestRoundMultiplier,
   cropsNhHarvestTicks,
@@ -4958,21 +4960,84 @@ function CropConfigPanel({
     const harvestN = tint(setup.harvestUnits, CROP_IF_HARVEST_UNIT_CONTROL_ID);
     const biomeN = tint(setup.environmentUnits, CROP_IF_ENVIRONMENT_UNIT_CONTROL_ID);
     const ocN = tint(setup.overclocks, CROP_IF_OVERCLOCK_CONTROL_ID);
-    const line = (label: string, body: ReactNode) => (
-      <div key={label} className="flex min-w-0 items-baseline gap-1.5 whitespace-nowrap">
-        <span className="w-[52px] shrink-0 uppercase tracking-wide">{label}</span>
-        <span className="min-w-0 overflow-hidden text-ellipsis tabular-nums text-[var(--mc-ink)]">
-          {body}
+    // The classic aligned-equations look: every derivation right-aligns into
+    // one shared "=" column and the answers stand in a bright left-aligned
+    // column of their own - the eye can read just the results, or the whole
+    // working, without a box in sight.
+    const line = (label: string, math: ReactNode, result: ReactNode) => (
+      <div
+        key={label}
+        className="grid min-w-0 grid-cols-[44px_minmax(0,1fr)_auto] items-baseline gap-x-1 whitespace-nowrap"
+      >
+        <span className="uppercase tracking-wide">{label}</span>
+        <span className="min-w-0 overflow-hidden text-ellipsis text-right tabular-nums">
+          {math}
+        </span>
+        <span className="min-w-0 overflow-hidden text-ellipsis text-[10px] font-semibold tabular-nums text-[var(--mc-ink)]">
+          {" "}= {result}
         </span>
       </div>
     );
+    // THE STORY, each line feeding the next until the card's own per-second
+    // figure falls out: food sets the growth rate, the rate sets the seconds
+    // per harvest, the gain sets the items per harvest, and the last line is
+    // the output the wires carry.
+    const surplusPct =
+      supply >= demand ? 100 + (supply - demand) : Math.max(0, 100 - (demand - supply) * 4);
+    const rate = cropsNhGrowthRate(cropStats, env);
+    const cycleSec = cropStats.growthCycleTicks / 20;
+    const cycles = rate > 0 ? Math.ceil(cropStats.growthPoints / rate) : 0;
+    const harvestSec = rate > 0 ? (cycles * cycleSec) / speedMult : 0;
+    const itemsPerHarvest =
+      cropStats.drops.reduce(
+        (sum, drop) => sum + cropsNhExpectedDrop(cropStats, env.gain, drop),
+        0,
+      ) * roundMult;
+    const outPerSec = rate > 0 ? (itemsPerHarvest / harvestSec) * crops : 0;
     const lines: ReactNode[] = [
       line(
         "food",
+        <>(5+{waterBonus}+{fertBonus}+{skyBonus}+{env.biomeBonus})·5 vs {cropStats.tier}·10</>,
         <>
-          (5+{waterBonus}+{fertBonus}+{skyBonus}+{env.biomeBonus})·5 = {supply} vs{" "}
-          {cropStats.tier}·10 = {demand} needed
+          {supply} vs {demand}{" "}
+          <span style={{ color: supply >= demand ? "#7fd94a" : "#e06060" }}>
+            → {surplusPct}%
+          </span>
         </>,
+      ),
+      line(
+        "grows",
+        <>(6+{env.growth})·{surplusPct}%</>,
+        <>
+          {rate} pts per {formatCompact(cycleSec)}s
+        </>,
+      ),
+      line(
+        "harvest",
+        rate > 0 ? (
+          <>
+            ceil({cropStats.growthPoints.toLocaleString()}/{rate})·{formatCompact(cycleSec)}s
+            {speedMult !== 1 ? <> ÷ {formatCompact(speedMult)} speed</> : null}
+          </>
+        ) : (
+          <>too hungry to grow</>
+        ),
+        rate > 0 ? <>every {formatCompact(harvestSec)}s</> : <span style={{ color: "#e06060" }}>never</span>,
+      ),
+      line(
+        "drops",
+        <>
+          {formatCompact(cropStats.dropChance)}·1.03<sup>{env.gain}</sup>
+          {roundMult !== 1 ? <> rounds ·{formatCompact(roundMult)} harvests</> : <> rounds</>}
+        </>,
+        <>{formatCompact(itemsPerHarvest)} items</>,
+      ),
+      line(
+        "output",
+        <>
+          {formatCompact(itemsPerHarvest)} ÷ {formatCompact(harvestSec)}s · {crops.toLocaleString()} seeds
+        </>,
+        <>{formatCompact(outPerSec)}/s</>,
       ),
     ];
     if (isFarm) {
@@ -4984,49 +5049,28 @@ function CropConfigPanel({
       const baseEu = Math.round(farmEu / (unitPowerFactor * 4 ** setup.overclocks));
       lines.push(
         line(
-          "speed",
-          <>
-            (1+{growthN})·{setup.fertilizerUnits > 0 ? tint("1.5", CROP_IF_FERTILIZER_UNIT_CONTROL_ID) : "1"}·2
-            <sup>{ocN}</sup> = ×{formatCompact(speedMult)}
-          </>,
-        ),
-        line(
-          "harvests",
-          <>
-            (1+0.2·{setup.tierIndex}+0.5·{fertN})·(1+0.2·{harvestN}) = ×
-            {formatCompact(roundMult)}
-          </>,
-        ),
-        line(
           "power",
           <>
-            {baseEu.toLocaleString()}·(1+1.25·{growthN}+0.5·({fertN}+{harvestN}+{biomeN}))·4
-            <sup>{ocN}</sup> = {Math.round(farmEu).toLocaleString()} EU/t a farm
+            {baseEu}·(1+1.25·{growthN}+0.5·({fertN}+{harvestN}+{biomeN}))·4
+            <sup>{ocN}</sup>·{machines}
           </>,
+          <>{Math.round(farmEu * machines).toLocaleString()} EU/t</>,
         ),
       );
     } else {
       const euPerHarvest = cropsNhManagerEuPerHarvest(setup);
       lines.push(
         line(
-          "harvests",
-          <>
-            1+0.05·{setup.tierIndex} = ×{formatCompact(roundMult)}
-          </>,
-        ),
-        line(
           "power",
-          <>
-            {(euPerHarvest * 8).toLocaleString()}/8 = {euPerHarvest.toLocaleString()} EU a
-            harvest
-          </>,
+          <>{(euPerHarvest * 8).toLocaleString()}/8 per crop picked</>,
+          <>{euPerHarvest.toLocaleString()} EU</>,
         ),
       );
     }
     return (
       <div className="mt-1 border-t border-[var(--mc-56)] pt-0.5 text-[9px] leading-[11px] text-[var(--mc-ink-muted)]">
         {head}
-        {lines}
+        <div className="mt-0.5 space-y-0.5">{lines}</div>
       </div>
     );
   })();
@@ -5042,7 +5086,7 @@ function CropConfigPanel({
     (cropCells.length > 0 ? Math.ceil(cropCells.length / 4) * (CROP_PANEL_ROW_PX + 4) : 0) +
     (unitCells.length > 0 ? 16 + Math.ceil(unitCells.length / 3) * (CROP_PANEL_ROW_PX + 4) : 0) +
     (footer ? 16 : 0) +
-    (cropStats ? (formulasOpen ? (isFarm ? 66 : 54) : 18) : 0);
+    (cropStats ? (formulasOpen ? 96 : 18) : 0);
   // The crop's own tiles sit right under the hairline with no section head
   // of their own - what they are is obvious - and the farm's hardware
   // follows under the UPGRADES head with its slot budget.
@@ -5051,6 +5095,10 @@ function CropConfigPanel({
       className={["nodrag min-w-0", className].join(" ")}
       minCells={Math.max(1, Math.ceil(bodyPx / BOARD_GRID))}
       clearancePx={4}
+      // The block's own rounding slack goes ABOVE the knobs (where the
+      // cluster already breathes), never under the formulas fold, where a
+      // collapsed strip read as a big empty shelf.
+      align="end"
     >
       <div className="min-w-0 border-t border-[var(--mc-56)] pb-1 pt-0.5">
         {cropCells.length > 0 ? (
