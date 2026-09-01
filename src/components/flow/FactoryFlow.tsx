@@ -9109,8 +9109,12 @@ function ResourceEdgeComponent({
   // wash it rides with: zoomed in, the wire keeps its resource colour
   // whatever smart view is picked.
   const flowRate = data?.flowRate;
-  const edgeColor =
-    flowRate?.color === true && boardDetailLevel === NODE_DETAIL_GLANCE
+  // A power wire is ALWAYS the POWER button's amber - never the resource
+  // color pipeline's saturate/brighten pass, never the glance flow ramp.
+  const isPowerEdge = data?.resource?.kind === "power";
+  const edgeColor = isPowerEdge
+    ? "#fbbf24"
+    : flowRate?.color === true && boardDetailLevel === NODE_DETAIL_GLANCE
       ? flowRampColor(flowRate.heat)
       : resolvedResourceColor;
   // The board's motion switches. Move motion glides this wire onto a new
@@ -9256,7 +9260,6 @@ function ResourceEdgeComponent({
   // after the fact so the router, the lanes and the hit-testing all still
   // see the straight line. Power edges are few by construction (only
   // generators make EU), so the extra path build costs nothing board-wide.
-  const isPowerEdge = data?.resource?.kind === "power";
   const lightningPath = useMemo(
     () => (isPowerEdge && liveRoute.points.length >= 2 ? zigzagSvgPath(liveRoute.points) : undefined),
     [isPowerEdge, liveRoute.points],
@@ -9473,7 +9476,9 @@ function ResourceEdgeComponent({
               // Highlighted, the casing IS the solid part of the glow: the
               // same gold line the cards outline in, 3px per side to match
               // their outline, with the resource colour still in the core.
-              stroke: isHighlighted ? "var(--glow-line)" : "#111827",
+              // A power wire's casing runs a shade warm - a whisper of
+              // orange at the line's edges instead of the neutral dark.
+              stroke: isHighlighted ? "var(--glow-line)" : isPowerEdge ? "#452c05" : "#111827",
               // While a timelapse draws this wire, no inline dash: an inline
               // strokeDasharray outranks the draw-in's normalized dash, and
               // the starved dots spawning whole gave the wire away instantly.
@@ -9516,7 +9521,7 @@ function ResourceEdgeComponent({
               filter: isHighlighted
                 ? "drop-shadow(0 0 6px var(--glow-halo))"
                 : isPowerEdge
-                  ? "drop-shadow(0 0 4px rgba(255,210,87,0.5))"
+                  ? "drop-shadow(0 0 4px rgba(251,191,36,0.5))"
                   : undefined,
               // Edges select/hover through their label, never the stroke:
               // edges render above nodes (zIndex 20) so their slot-anchored
@@ -10581,11 +10586,12 @@ function compactPolylinePoints(points: Array<{ x: number; y: number } | undefine
  * straight so the stub still meets its port square.
  */
 function zigzagSvgPath(points: Array<{ x: number; y: number }>): string {
-  const STEP = 11;
-  const AMP = 2.6;
+  const STEP = 8;
+  const AMP = 4.4;
   const CALM = 8;
   const out: Array<{ x: number; y: number }> = [];
   let flip = 1;
+  let strike = 0;
   for (let i = 0; i < points.length - 1; i += 1) {
     const a = points[i]!;
     const b = points[i + 1]!;
@@ -10606,7 +10612,16 @@ function zigzagSvgPath(points: Array<{ x: number; y: number }>): string {
     const from = first ? CALM : STEP * 0.5;
     const to = length - (last ? CALM : STEP * 0.5);
     for (let d = from; d < to; d += STEP) {
-      out.push({ x: a.x + ux * d + px * AMP * flip, y: a.y + uy * d + py * AMP * flip });
+      // Real lightning never repeats: each strike's throw varies between
+      // roughly half and full amplitude, DETERMINISTICALLY (a hash of the
+      // strike index, never Math.random) so the bolt is identical every
+      // render and never shivers.
+      strike += 1;
+      const wobble = 0.55 + 0.45 * (((strike * 7919) % 13) / 12);
+      out.push({
+        x: a.x + ux * d + px * AMP * wobble * flip,
+        y: a.y + uy * d + py * AMP * wobble * flip,
+      });
       flip = -flip;
     }
   }

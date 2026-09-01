@@ -138,6 +138,24 @@ const STRICT_BUFFER_LINE = "Passes on what is pulled. Extra backs up the machine
  * that buffers are; idle is dimmer still - a drawer mid-drag has nothing to
  * announce.
  */
+/**
+ * POWER drawers wear their own tint whatever the role: EU is not a material
+ * and its tile must not read as one more green product. A somber burnt
+ * amber - vibrant but deliberately NOT the bright wire amber, so the tile
+ * is ground and the lightning stays the light. Paint still wins.
+ */
+const POWER_STORAGE_TINT = "#c07c17";
+
+function storageTint(storage: Pick<FactoryStorage, "kind" | "colorTag">, role: StorageRole): string {
+  if (storage.colorTag) {
+    return GT_NODE_COLORS[storage.colorTag].swatch;
+  }
+  if (storage.kind === "power") {
+    return POWER_STORAGE_TINT;
+  }
+  return ROLE_TINTS[role];
+}
+
 const ROLE_TINTS: Record<StorageRole, string> = {
   source: "#ef4444",
   product: "#10b981",
@@ -314,9 +332,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
   // plumbing. The item's own colour lives in its icon; painting the frame
   // with it too said the same thing twice and left the four jobs looking
   // alike. Paint (colorTag) still wins when the player chose one.
-  const tint =
-    (storage.colorTag ? GT_NODE_COLORS[storage.colorTag].swatch : undefined) ??
-    ROLE_TINTS[role];
+  const tint = storageTint(storage, role);
   const borderColor = `color-mix(in srgb, ${tint} 55%, #262b34)`;
   const inputHandleId = makeResourceHandleId("input", {
     kind: storage.kind,
@@ -615,8 +631,7 @@ export function StorageTileFace({
 }) {
   const isTank = storage.kind === "fluid";
   const isPlainFluid = isTank && !storage.iconPath && !storage.iconAtlas;
-  const tint =
-    (storage.colorTag ? GT_NODE_COLORS[storage.colorTag].swatch : undefined) ?? ROLE_TINTS[role];
+  const tint = storageTint(storage, role);
   const borderColor = `color-mix(in srgb, ${tint} 55%, #262b34)`;
   return (
     <div className="storage-node-card relative flex h-[80px] w-[100px] flex-col p-1 text-[#e8e9ee]">
@@ -976,7 +991,9 @@ function StorageHeader({
       >
         {word}
       </div>
-      {isDrainRole(role) ? <DrainModeSwap storageId={storageId} role={role} /> : null}
+      {isDrainRole(role) ? (
+        <DrainModeSwap storageId={storageId} role={role} kind={storage.kind} />
+      ) : null}
       {role === "buffer" ? <BufferModeSwap storageId={storageId} strict={strict} /> : null}
     </div>
   );
@@ -1021,12 +1038,28 @@ function BufferModeSwap({ storageId, strict }: { storageId: string; strict: bool
  * A three-way cycle since 2026-08-23: product, byproduct, trash. The trash
  * step is what replaced the toolbar's separate trash can node.
  */
-function DrainModeSwap({ storageId, role }: { storageId: string; role: StorageRole }) {
+function DrainModeSwap({
+  storageId,
+  role,
+  kind,
+}: {
+  storageId: string;
+  role: StorageRole;
+  kind: FactoryStorage["kind"];
+}) {
   const setStorageDrainMode = useFactoryStore((state) => state.setStorageDrainMode);
   // Always the cycle arrows: the button is the CONTROL, and the tile's word
   // and silhouette already say which state it is in.
+  // POWER cannot be trashed - there is no bin for electricity - so its
+  // cycle is two states: product and byproduct.
   const next: StorageDrainMode =
-    role === "product" ? "byproduct" : role === "byproduct" ? "trash" : "product";
+    role === "product"
+      ? "byproduct"
+      : role === "byproduct"
+        ? kind === "power"
+          ? "product"
+          : "trash"
+        : "product";
 
   return (
     <button
@@ -1039,7 +1072,9 @@ function DrainModeSwap({ storageId, role }: { storageId: string; role: StorageRo
         role === "product"
           ? "Product: pulls the machine flat out. Click to make it a byproduct."
           : role === "byproduct"
-            ? "Byproduct: catches what is left over. Click to make it a trash bin."
+            ? kind === "power"
+              ? "Byproduct: catches what is left over. Click to make it a product."
+              : "Byproduct: catches what is left over. Click to make it a trash bin."
             : "Trash: voids what arrives. Click to make it a product."
       }
       aria-label={`Switch to ${next}`}

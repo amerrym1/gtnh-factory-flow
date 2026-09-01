@@ -26,9 +26,9 @@ export const POWER_EU_RESOURCE = {
   kind: "power",
   id: "eu",
   displayName: "EU",
-  // The power gold: wires and drawer tints read their color from the
-  // resource, and EU's is the same gold every power surface already wears.
-  dominantColor: "#ffd257",
+  // The power amber: the POWER button's own text-amber-400, so wires and
+  // tints match the button that starts the whole wing.
+  dominantColor: "#fbbf24",
 } as const;
 
 export interface RecipePowerInfo {

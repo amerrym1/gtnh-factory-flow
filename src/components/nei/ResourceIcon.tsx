@@ -365,16 +365,18 @@ function IconImage({
  */
 function PowerIconGlyph({ iconPixelSize }: { iconPixelSize?: number }) {
   const size = iconPixelSize ?? 32;
-  // The same thunderbolt the power UI has always worn (the EU socket, the
-  // ledger), filled solid in the power gold.
+  // The same thunderbolt, same amber, as the POWER button top-left - and a
+  // step smaller than the box, because the bolt reads bigger than a sprite
+  // of equal size (all its ink is in the middle).
+  const bolt = Math.max(10, Math.round(size * 0.7));
   return (
-    <Zap
+    <span
       aria-hidden
-      width={size}
-      height={size}
-      className="fill-current text-amber-300"
-      strokeWidth={1.5}
-    />
+      className="flex items-center justify-center"
+      style={{ width: size, height: size }}
+    >
+      <Zap width={bolt} height={bolt} className="fill-current text-amber-400" strokeWidth={1.5} />
+    </span>
   );
 }
 
