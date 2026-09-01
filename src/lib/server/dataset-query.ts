@@ -280,12 +280,39 @@ function getMachineConfigResources(catalog: LoadedRecipeIndex): DatasetResourceI
   return catalog.resources
     .filter(
       (resource) =>
-        resource.tooltip?.some(isMachineConfigTooltipLine) || tableIds.has(resource.id),
+        resource.tooltip?.some(isMachineConfigTooltipLine) ||
+        tableIds.has(resource.id) ||
+        isCropHarvesterComponent(resource.displayName),
     )
     .map((resource) => ({
       ...resource,
       recipeCount: 0,
     }));
+}
+
+// The crop card's harvester knobs name their faces by dataset display name
+// (seed beds, farm upgrade units, the tiered Crop Managers); ship those
+// faces too, or the crop settings panel can only draw its labelled-slot
+// fallback for them.
+const CROP_HARVESTER_COMPONENT_PATTERN =
+  /^(Seed Bed|Growth Acceleration Unit|Fertilization Unit|Advanced Harvesting Unit|Environmental Enhancement Unit|Overclocked Growth Acceleration Unit) \(|Crop Manager/;
+
+// Faces for the crop card's own knobs (growth, gain, water, fertilizer, sky,
+// biome) - `cropsNhAnalyticControls` names these; extend both together.
+const CROP_KNOB_FACE_NAMES = new Set([
+  "Crop Sticks",
+  "Plant Lens",
+  "Water Bucket",
+  "Fertilizer",
+  "Daylight Detector",
+  "Grass Block",
+]);
+
+function isCropHarvesterComponent(displayName: string | undefined) {
+  return (
+    displayName !== undefined &&
+    (CROP_HARVESTER_COMPONENT_PATTERN.test(displayName) || CROP_KNOB_FACE_NAMES.has(displayName))
+  );
 }
 
 function isMachineConfigTooltipLine(line: string) {

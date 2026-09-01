@@ -68,6 +68,24 @@ import {
   getVoltageTierIndex,
   BEE_INDUSTRIAL_PRODUCTION_CONTROL_ID,
   BEE_INDUSTRIAL_SPEED_CONTROL_ID,
+  CROP_GAIN_STAT_CONTROL_ID,
+  CROP_GROWTH_STAT_CONTROL_ID,
+  CROP_HARVESTER_INDUSTRIAL_FARM_ID,
+  CROP_IF_ENVIRONMENT_UNIT_CONTROL_ID,
+  CROP_IF_FERTILIZER_UNIT_CONTROL_ID,
+  CROP_IF_GROWTH_UNIT_CONTROL_ID,
+  CROP_IF_HARVEST_UNIT_CONTROL_ID,
+  CROP_IF_OVERCLOCK_CONTROL_ID,
+  CROP_MANAGER_TIER_CONTROL_ID,
+  CROP_NO_MANAGER_KEY,
+  CROP_SEED_BED_TIER_CONTROL_ID,
+  cropsNhCropsPerMachine,
+  cropsNhEnvironmentFromTiers,
+  cropsNhHarvesterEnvironment,
+  cropsNhHarvesterFromTiers,
+  cropsNhIsHandPicked,
+  cropsNhUnitSlotsUsed,
+  cropsNhUpgradeSlots,
   isSteamMachineHandler,
   isBeeFrameSlotControlId,
   isBeeProductionConfigControl,
@@ -710,18 +728,14 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     ) : undefined;
   const passiveProductionPanel =
     cropProductionControls.length > 0 ? (
-      <PassiveProductionConfigPanel
+      <CropConfigPanel
         className={CROP_CONFIG_PANEL_WIDTH_CLASS}
         controls={cropProductionControls}
+        handlerId={selectedMachineHandler.id}
+        machineConfigTiers={projectNode.machineConfigTiers}
+        machineCount={projectNode.machineCount}
         onSelect={updateMachineConfigTier}
         getControlHelp={(controlId) => cropControlHelp(effectiveRecipe, controlId)}
-        title={selectedMachineHandler.label}
-        collapsed={projectNode.settingsCollapsed === true}
-        onToggleCollapsed={() =>
-          updateNode(projectNode.id, {
-            settingsCollapsed: !(projectNode.settingsCollapsed === true),
-          })
-        }
       />
     ) : beePanelControls.length > 0 ? (
       <PassiveProductionConfigPanel
@@ -4254,6 +4268,445 @@ function PassiveProductionConfigPanel({
           ))}
         </div>
       )}
+    </GridBlock>
+  );
+}
+
+// The crop panel's own face: a quiet gray-green wash over the ordinary panel
+// paper - the same trick the power cards play with amber. Only the background
+// changes; every element on it keeps the site's ordinary colours.
+const CROP_PANEL_FACE = "color-mix(in srgb, var(--mc-71) 88%, #52684a 12%)";
+const CROP_PANEL_ROW_PX = 30;
+
+/** One +/- stepper row of the crop settings panel. */
+function CropStepperRow({
+  icon,
+  label,
+  effect,
+  value,
+  min,
+  max,
+  lockedHint,
+  onStep,
+  help,
+}: {
+  icon: ReactNode;
+  label: string;
+  /** What the current count does, in the row's own words. */
+  effect?: string;
+  value: number;
+  min: number;
+  max: number;
+  /** Why the row cannot go up right now ("No free slot"). */
+  lockedHint?: string;
+  onStep: (next: number) => void;
+  help?: ReactNode;
+}) {
+  const step = (direction: -1 | 1) => {
+    const next = Math.max(min, Math.min(max, value + direction));
+    if (next !== value) {
+      onStep(next);
+    }
+  };
+  const buttonClass =
+    "flex h-6 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-55)] text-[13px] font-bold leading-none shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] enabled:hover:bg-[var(--mc-63)] disabled:opacity-35";
+  const row = (
+    <div
+      className="nodrag nowheel flex items-center gap-1.5"
+      style={{ height: CROP_PANEL_ROW_PX }}
+      onWheel={(event) => {
+        event.stopPropagation();
+        step(event.deltaY < 0 ? 1 : -1);
+      }}
+    >
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[11px] font-bold uppercase leading-[13px] text-[var(--mc-ink)]">
+          {label}
+        </span>
+        <span className="block truncate text-[10px] leading-[12px] text-[var(--mc-ink-muted)]">
+          {effect}
+        </span>
+      </span>
+      <button
+        type="button"
+        className={buttonClass}
+        disabled={value <= min}
+        onClick={(event) => {
+          event.stopPropagation();
+          step(-1);
+        }}
+        aria-label={`Fewer ${label}`}
+      >
+        −
+      </button>
+      <span className="w-4 shrink-0 text-center text-[13px] font-bold tabular-nums text-[var(--mc-ink)]">
+        {value}
+      </span>
+      <button
+        type="button"
+        className={buttonClass}
+        disabled={value >= max}
+        title={value >= max ? lockedHint : undefined}
+        onClick={(event) => {
+          event.stopPropagation();
+          step(1);
+        }}
+        aria-label={`More ${label}`}
+      >
+        +
+      </button>
+    </div>
+  );
+  return help ? <MinecraftTooltip content={help}>{row}</MinecraftTooltip> : row;
+}
+
+/** A chip that cycles its options: click forward, right-click back, wheel both. */
+function CropCycleRow({
+  icon,
+  label,
+  options,
+  currentKey,
+  effect,
+  tierColored,
+  onPick,
+  help,
+}: {
+  icon: ReactNode;
+  label: string;
+  options: MachineConfigTierOption[];
+  currentKey: string;
+  effect?: string;
+  /** Paint the chip in the game's voltage colours (tier chips only). */
+  tierColored?: boolean;
+  onPick: (option: MachineConfigTierOption, index: number) => void;
+  help?: ReactNode;
+}) {
+  const index = Math.max(
+    0,
+    options.findIndex((option) => option.key === currentKey),
+  );
+  const current = options[index]!;
+  const step = (direction: -1 | 1) => {
+    const next = options[Math.max(0, Math.min(options.length - 1, index + direction))];
+    if (next && next.key !== current.key) {
+      onPick(next, options.indexOf(next));
+    }
+  };
+  const tierColor = tierColored
+    ? (GT_TIER_COLORS as Record<string, (typeof GT_TIER_COLORS)["LV"] | undefined>)[current.label]
+    : undefined;
+  const row = (
+    <div
+      className="nodrag nowheel flex items-center gap-1.5"
+      style={{ height: CROP_PANEL_ROW_PX }}
+      onWheel={(event) => {
+        event.stopPropagation();
+        step(event.deltaY < 0 ? 1 : -1);
+      }}
+    >
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[11px] font-bold uppercase leading-[13px] text-[var(--mc-ink)]">
+          {label}
+        </span>
+        {effect ? (
+          <span className="block truncate text-[10px] leading-[12px] text-[var(--mc-ink-muted)]">
+            {effect}
+          </span>
+        ) : null}
+      </span>
+      <button
+        type="button"
+        className="flex h-6 min-w-[46px] shrink-0 items-center justify-center border px-1 text-[12px] font-bold leading-none shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]"
+        style={
+          tierColor
+            ? {
+                backgroundColor: tierColor.background,
+                borderColor: tierColor.border,
+                color: tierColor.text,
+                textShadow: `1px 1px 0 ${tierColor.shadow}`,
+                textDecoration: tierColor.underline ? "underline" : undefined,
+                boxShadow: "none",
+              }
+            : { backgroundColor: "var(--mc-55)", borderColor: "var(--mc-33)" }
+        }
+        onClick={(event) => {
+          event.stopPropagation();
+          step(1);
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          step(-1);
+        }}
+        title={`${label}: ${current.label}. Click for the next, right-click for the previous, wheel for both.`}
+        aria-label={label}
+      >
+        {current.label}
+      </button>
+    </div>
+  );
+  return help ? <MinecraftTooltip content={help}>{row}</MinecraftTooltip> : row;
+}
+
+/**
+ * The crop card's settings, redrawn as a bespoke panel: tier chips in the
+ * game's voltage colours, one +/- stepper per farm unit with the real block
+ * art, and the farm's shared upgrade-slot budget made physical as a row of
+ * pips - a setup the game cannot build cannot be dialed in here either.
+ */
+function CropConfigPanel({
+  className = "",
+  controls,
+  handlerId,
+  machineConfigTiers,
+  machineCount,
+  onSelect,
+  getControlHelp,
+}: {
+  className?: string;
+  controls: MachineConfigTierControl[];
+  handlerId: string | undefined;
+  machineConfigTiers: Record<string, string | undefined> | undefined;
+  machineCount: number;
+  onSelect: (controlId: string, nextTier: string) => void;
+  getControlHelp?: (controlId: string) => ReactNode;
+}) {
+  if (controls.length === 0) {
+    return null;
+  }
+
+  const setup = cropsNhHarvesterFromTiers(machineConfigTiers, handlerId);
+  const isFarm = setup.id === CROP_HARVESTER_INDUSTRIAL_FARM_ID;
+  const handPicked = cropsNhIsHandPicked(setup);
+  const slots = cropsNhUpgradeSlots(setup.tierIndex);
+  const used = cropsNhUnitSlotsUsed(setup);
+  const remaining = Math.max(0, slots - used);
+  const capacity = cropsNhCropsPerMachine(setup);
+  const crops = Math.max(1, Math.round(machineCount));
+  const machines = handPicked ? 0 : Math.max(1, Math.ceil(crops / capacity));
+
+  const pickWithSound = (controlId: string, key: string, soundStep: number) => {
+    playBoardSound("dialRate", { step: Math.max(0, Math.min(3, soundStep)) });
+    suppressBoardSound("adjust", 150);
+    onSelect(controlId, key);
+  };
+  const stepperRow = (
+    control: MachineConfigTierControl,
+    value: number,
+    min: number,
+    max: number,
+    effect?: string,
+    lockedHint?: string,
+  ) => (
+    <CropStepperRow
+      key={control.id}
+      icon={
+        <ConfigTierIcon
+          resource={control.current.resource ?? control.resource}
+          sizeClass="!h-[26px] !w-[26px]"
+        />
+      }
+      label={control.label}
+      effect={effect}
+      value={value}
+      min={min}
+      max={max}
+      lockedHint={lockedHint}
+      onStep={(next) => pickWithSound(control.id, String(next), next)}
+      help={getControlHelp?.(control.id)}
+    />
+  );
+
+  const rows = controls.map((control) => {
+    switch (control.id) {
+      case CROP_MANAGER_TIER_CONTROL_ID:
+      case CROP_SEED_BED_TIER_CONTROL_ID:
+        return (
+          <CropCycleRow
+            key={control.id}
+            icon={
+              <ConfigTierIcon
+                resource={control.current.resource ?? control.resource}
+                sizeClass="!h-[26px] !w-[26px]"
+              />
+            }
+            label={control.label}
+            options={control.tiers}
+            currentKey={control.current.key}
+            effect={
+              control.id === CROP_SEED_BED_TIER_CONTROL_ID
+                ? `${capacity.toLocaleString()} seeds each · ${slots} upgrade slot${slots === 1 ? "" : "s"}`
+                : handPicked
+                  ? "Nobody automates the harvest"
+                  : `${capacity.toLocaleString()} crop sticks each`
+            }
+            tierColored
+            onPick={(next) => {
+              // The board's one voltage-tier voice: LV clicks, UV crackles.
+              playBoardSound("dialPower", {
+                step:
+                  next.key === CROP_NO_MANAGER_KEY ? 0 : Number.parseInt(next.key, 10) + 1,
+              });
+              suppressBoardSound("adjust", 150);
+              onSelect(control.id, next.key);
+            }}
+            help={getControlHelp?.(control.id)}
+          />
+        );
+      case CROP_GROWTH_STAT_CONTROL_ID:
+      case CROP_GAIN_STAT_CONTROL_ID: {
+        const value = Number.parseInt(control.current.key, 10) || 1;
+        return stepperRow(
+          control,
+          value,
+          1,
+          31,
+          control.id === CROP_GROWTH_STAT_CONTROL_ID
+            ? "Higher ripens sooner"
+            : "Higher drops more per harvest",
+        );
+      }
+      case CROP_IF_GROWTH_UNIT_CONTROL_ID:
+        return stepperRow(
+          control,
+          setup.growthUnits,
+          0,
+          setup.overclocks > 0 ? 0 : setup.growthUnits + remaining,
+          setup.overclocks > 0
+            ? "The Overclocked unit replaces these"
+            : `+${setup.growthUnits * 100}% growth speed`,
+          setup.overclocks > 0 ? "The Overclocked unit replaces these" : "No free upgrade slot",
+        );
+      case CROP_IF_FERTILIZER_UNIT_CONTROL_ID:
+        return stepperRow(
+          control,
+          setup.fertilizerUnits,
+          0,
+          Math.min(1, setup.fertilizerUnits + remaining),
+          setup.fertilizerUnits > 0 ? "×1.5 speed · +0.5 harvest rounds" : "Feeds enriched fertilizer",
+          remaining === 0 && setup.fertilizerUnits === 0 ? "No free upgrade slot" : "The farm fits one",
+        );
+      case CROP_IF_HARVEST_UNIT_CONTROL_ID:
+        return stepperRow(
+          control,
+          setup.harvestUnits,
+          0,
+          Math.min(2, setup.harvestUnits + remaining),
+          `×${(1 + setup.harvestUnits * 0.2).toFixed(1)} harvest rounds`,
+          remaining === 0 && setup.harvestUnits < 2 ? "No free upgrade slot" : "The farm fits two",
+        );
+      case CROP_IF_ENVIRONMENT_UNIT_CONTROL_ID: {
+        // A card adds a liked biome TAG, which stacks with the biome's own
+        // tags up to the two-tag cap - so the honest number is the delta the
+        // cards actually buy in this biome, not units x 14.
+        const baseEnv = cropsNhEnvironmentFromTiers(machineConfigTiers);
+        const withCards = cropsNhHarvesterEnvironment(setup, baseEnv);
+        const withoutCards = cropsNhHarvesterEnvironment(
+          { ...setup, environmentUnits: 0 },
+          baseEnv,
+        );
+        return stepperRow(
+          control,
+          setup.environmentUnits,
+          0,
+          Math.min(2, setup.environmentUnits + remaining),
+          `+${withCards.biomeBonus - withoutCards.biomeBonus} biome score in this biome`,
+          remaining === 0 && setup.environmentUnits < 2 ? "No free upgrade slot" : "The farm fits two",
+        );
+      }
+      case CROP_IF_OVERCLOCK_CONTROL_ID: {
+        const belowZpm = setup.tierIndex < 7;
+        const noSlot = setup.overclocks === 0 && remaining === 0;
+        return stepperRow(
+          control,
+          setup.overclocks,
+          0,
+          belowZpm || noSlot ? setup.overclocks : 6,
+          setup.overclocks > 0
+            ? `×${2 ** setup.overclocks} output · ×${4 ** setup.overclocks} EU`
+            : "Doubles output, quadruples EU, per step",
+          belowZpm ? "Needs a ZPM seed bed or better" : "No free upgrade slot",
+        );
+      }
+      default:
+        return (
+          <CropCycleRow
+            key={control.id}
+            icon={
+              <ConfigTierIcon
+                resource={control.current.resource ?? control.resource}
+                sizeClass="!h-[26px] !w-[26px]"
+              />
+            }
+            label={control.label}
+            options={control.tiers}
+            currentKey={control.current.key}
+            onPick={(next, index) => pickWithSound(control.id, next.key, index)}
+            help={getControlHelp?.(control.id)}
+          />
+        );
+    }
+  });
+
+  const slotPips = isFarm ? (
+    <div key="crop-slot-pips" className="col-span-2 flex h-[18px] items-center gap-1.5">
+      <span className="text-[10px] font-bold uppercase leading-[12px] text-[var(--mc-ink-muted)]">
+        Upgrade Slots
+      </span>
+      <span className="flex items-center gap-[3px]">
+        {Array.from({ length: slots }, (_unused, index) => (
+          <span
+            key={index}
+            className="h-2.5 w-2.5 border border-[var(--mc-33)]"
+            style={{
+              backgroundColor: index < used ? "var(--mc-93)" : "var(--mc-47)",
+            }}
+          />
+        ))}
+      </span>
+      <span className="ml-auto text-[10px] font-bold tabular-nums leading-[12px] text-[var(--mc-ink-muted)]">
+        {used}/{slots}
+      </span>
+    </div>
+  ) : null;
+  const footer = handPicked ? null : (
+    <div
+      key="crop-machine-footer"
+      className="col-span-2 flex h-[16px] items-center text-[10px] leading-[12px] text-[var(--mc-ink-muted)]"
+    >
+      <span className="truncate">
+        {crops.toLocaleString()} planted / {capacity.toLocaleString()} per machine
+      </span>
+      <span className="ml-auto shrink-0 font-bold text-[var(--mc-ink)]">
+        ×{machines.toLocaleString()} {isFarm ? "Industrial Farm" : "Crop Manager"}
+        {machines === 1 ? "" : "s"}
+      </span>
+    </div>
+  );
+
+  const bodyPx =
+    Math.ceil(rows.length / 2) * (CROP_PANEL_ROW_PX + 2) + (slotPips ? 18 : 0) + (footer ? 16 : 0);
+  return (
+    <GridBlock
+      className={[
+        "nodrag border-2 border-[var(--mc-47)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]",
+        className,
+      ].join(" ")}
+      style={{ backgroundColor: CROP_PANEL_FACE }}
+      minCells={Math.max(1, Math.ceil(bodyPx / BOARD_GRID))}
+      clearancePx={4}
+    >
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1.5 gap-y-0.5">
+        {rows}
+        {slotPips}
+        {footer}
+      </div>
     </GridBlock>
   );
 }

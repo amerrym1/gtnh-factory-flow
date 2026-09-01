@@ -3,8 +3,12 @@ import type { FactoryNode, Recipe } from "@/lib/model/types";
 import { applyMachineHandlerToRecipe } from "@/lib/model/recipe-rules";
 import {
   cropsNhCropsPerMachine,
+  cropsNhEnvironmentFromTiers,
+  cropsNhEutPerCrop,
+  cropsNhHarvesterEnvironment,
   cropsNhHarvesterFromTiers,
   cropsNhSquarePerTier,
+  cropsNhUnitSlotsUsed,
   cropsNhUpgradeSlots,
   enrichPassiveProductionRecipe,
 } from "@/lib/model/passive-production";
@@ -561,6 +565,100 @@ describe("CropsNH harvesters", () => {
     );
     expect(cropsNhUpgradeSlots(2)).toBe(1);
     expect(setup.growthUnits + setup.fertilizerUnits).toBeLessThanOrEqual(1);
+  });
+
+  it("squeezes EVERY unit type through the shared slot budget, not just growth", () => {
+    // MTEIndustrialFarm: one 'U' upgrade position per slice, all five unit
+    // types compete for them. An MV farm (1 slot) asked for a fertilizer
+    // unit, two harvest units and two biome cards keeps only the first in
+    // the degrade order.
+    const setup = cropsNhHarvesterFromTiers(
+      {
+        cropSeedBedTier: "2",
+        cropIfFertilizerUnits: "1",
+        cropIfHarvestUnits: "2",
+        cropIfEnvironmentUnits: "2",
+      },
+      "crop-industrial-farm",
+    );
+    expect(cropsNhUnitSlotsUsed(setup)).toBe(1);
+    expect(setup.fertilizerUnits).toBe(1);
+    expect(setup.harvestUnits).toBe(0);
+    expect(setup.environmentUnits).toBe(0);
+  });
+
+  it("charges the Overclocked unit one slot and drops growth units under it", () => {
+    // ZPM bed: 6 slots. The Overclocked unit is one block whatever its
+    // overclock count, growth units are exclusive with it, and the rest of
+    // the units still fit beside it.
+    const setup = cropsNhHarvesterFromTiers(
+      {
+        cropSeedBedTier: "7",
+        cropIfOverclocks: "4",
+        cropIfGrowthUnits: "5",
+        cropIfFertilizerUnits: "1",
+        cropIfHarvestUnits: "2",
+        cropIfEnvironmentUnits: "2",
+      },
+      "crop-industrial-farm",
+    );
+    expect(setup.overclocks).toBe(4);
+    expect(setup.growthUnits).toBe(0);
+    expect(setup.fertilizerUnits).toBe(1);
+    expect(setup.harvestUnits).toBe(2);
+    expect(setup.environmentUnits).toBe(2);
+    expect(cropsNhUnitSlotsUsed(setup)).toBe(6);
+  });
+
+  it("stacks biome cards with the biome's real tags, never with the humidity substitute", () => {
+    const farmEnv = (biomeKey: string, environmentUnits: number) =>
+      cropsNhHarvesterEnvironment(
+        cropsNhHarvesterFromTiers(
+          {
+            cropSeedBedTier: "3",
+            cropBiome: biomeKey,
+            cropIfEnvironmentUnits: String(environmentUnits),
+          },
+          "crop-industrial-farm",
+        ),
+        cropsNhEnvironmentFromTiers({ cropBiome: biomeKey }),
+      ).biomeBonus;
+    // A card adds one liked TAG (`getNutrientScore` adds module tags to the
+    // biome's set), so one real tag plus one card is the full two-tag 28.
+    expect(farmEnv("one-tag", 1)).toBe(28);
+    // Tags cap at two; a third source of tags buys nothing.
+    expect(farmEnv("two-tags", 2)).toBe(28);
+    // The 80%-humidity substitute simulates ONE tag inside a max(), so one
+    // card in a humid no-tag biome is still 14, and two cards reach 28.
+    expect(farmEnv("humid", 1)).toBe(14);
+    expect(farmEnv("humid", 2)).toBe(28);
+    expect(farmEnv("none", 1)).toBe(14);
+  });
+
+  it("bills the farm's units and overclocks the way getPowerUsage does", () => {
+    // IV bed: base VP = 7680 EU/t. Two growth units (+1.25 each), one
+    // fertilizer and one harvest unit (+0.5 each) make x4.5, spread over the
+    // bed's 27x27 seeds.
+    const setup = cropsNhHarvesterFromTiers(
+      {
+        cropSeedBedTier: "5",
+        cropIfGrowthUnits: "2",
+        cropIfFertilizerUnits: "1",
+        cropIfHarvestUnits: "1",
+      },
+      "crop-industrial-farm",
+    );
+    expect(cropsNhEutPerCrop(setup) * cropsNhSquarePerTier(5)).toBeCloseTo(7680 * 4.5, 6);
+    // The OverclockCalculator QUADRUPLES consumption per overclock while
+    // production only doubles; the Overclocked unit itself adds no percentage.
+    const overclocked = cropsNhHarvesterFromTiers(
+      { cropSeedBedTier: "7", cropIfOverclocks: "2" },
+      "crop-industrial-farm",
+    );
+    expect(cropsNhEutPerCrop(overclocked) * cropsNhSquarePerTier(7)).toBeCloseTo(
+      Math.floor((8 * 4 ** 7 * 30) / 32) * 16,
+      6,
+    );
   });
 
   it("keeps by-hand cards exactly where they were before harvesters existed", () => {
