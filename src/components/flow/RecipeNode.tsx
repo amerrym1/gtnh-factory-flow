@@ -89,6 +89,8 @@ import {
   type CustomRateMode,
 } from "@/lib/model/custom-rate";
 import {
+  powerDisplayFromEuT,
+  powerDisplaySuffix,
   rateMultiplierForKind,
   rateSuffixForKind,
   rateUnitMultiplier,
@@ -1029,12 +1031,14 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   const value = shown[0] ?? glancePowerCardEuT;
                   const figure =
                     value === glancePowerCardEuT
-                      ? formatCompact(glancePowerCardEuT)
-                      : formatCompactStable(value);
+                      ? formatCompact(powerDisplayFromEuT(glancePowerCardEuT))
+                      : formatCompactStable(powerDisplayFromEuT(value));
                   return powerCardMakes ? `+${figure}` : figure;
                 }}
               />
-              <span className="ml-1.5 text-[18px] font-semibold opacity-70">EU/t</span>
+              <span className="ml-1.5 text-[18px] font-semibold opacity-70">
+                {powerDisplaySuffix()}
+              </span>
             </>
           }
           word={powerCardGlanceWord}
@@ -1070,11 +1074,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     // Same pact as the footer's POWER cell: stable widths
                     // mid-tween, the clean compact form at rest.
                     return value === glanceDrawEuT
-                      ? formatCompact(glanceDrawEuT)
-                      : formatCompactStable(value);
+                      ? formatCompact(powerDisplayFromEuT(glanceDrawEuT))
+                      : formatCompactStable(powerDisplayFromEuT(value));
                   }}
                 />
-                <span className="ml-1.5 text-[18px] font-semibold opacity-70">EU/t</span>
+                <span className="ml-1.5 text-[18px] font-semibold opacity-70">
+                  {powerDisplaySuffix()}
+                </span>
               </>
             ) : steamReport ? (
               // A steam machine's draw is litres, not EU: same cell, its own
@@ -1681,11 +1687,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                             <Stat
                               label="Power"
                               value={`${formatCompact(
-                                Math.abs(powerInfo.euPerTick) *
-                                  projectNode.machineCount *
-                                  Math.max(1, projectNode.parallel) *
-                                  drawScale,
-                              )} EU/t`}
+                                powerDisplayFromEuT(
+                                  Math.abs(powerInfo.euPerTick) *
+                                    projectNode.machineCount *
+                                    Math.max(1, projectNode.parallel) *
+                                    drawScale,
+                                ),
+                              )} ${powerDisplaySuffix()}`}
                             />
                           ) : null}
                           {powerReport ? (
@@ -2789,7 +2797,9 @@ function PowerEuSocketRow({
             <span className="block truncate text-[10px] leading-[12px] tabular-nums text-amber-200/90">
               <MotionNumberText
                 values={[totalEuT]}
-                render={(shown) => `${formatCompact(shown[0] ?? totalEuT)} EU/t`}
+                render={(shown) =>
+                  `${formatCompact(powerDisplayFromEuT(shown[0] ?? totalEuT))} ${powerDisplaySuffix()}`
+                }
               />
             </span>
           </span>
@@ -4714,13 +4724,15 @@ function PowerStat({
                 values={[drawEuT]}
                 render={(shown) =>
                   shown[0] === drawEuT
-                    ? formatCompact(drawEuT)
-                    : formatCompactStable(shown[0] ?? drawEuT)
+                    ? formatCompact(powerDisplayFromEuT(drawEuT))
+                    : formatCompactStable(powerDisplayFromEuT(shown[0] ?? drawEuT))
                 }
               />
               {/* The unit rides small and grey against the number: the row
-                  is fighting for width and EVERY power figure is EU/t. */}
-              <span className="ml-0.5 text-[8px] text-[var(--mc-ink-muted)]">EU/t</span>
+                  is fighting for width; the unit is the board's power dial. */}
+              <span className="ml-0.5 text-[8px] text-[var(--mc-ink-muted)]">
+                {powerDisplaySuffix()}
+              </span>
             </>
           )}
         </div>
