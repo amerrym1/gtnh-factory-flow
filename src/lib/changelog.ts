@@ -78,8 +78,9 @@ export const CHANGELOG: ChangelogEntry[] = [
     headline: "The board toolbars stop crossing on narrow boards",
     notes: [
       "When the board is too narrow for both toolbar rows, the paint tools fold into one brush button.",
-      "Narrower still, the build tools fold into a hammer button and the paint row takes its own line.",
-      "The rows unfold on the line below, so nothing sits on top of anything else.",
+      "Narrower still, the build tools fold into a hammer button too.",
+      "On the narrowest boards the brush button holds the whole right side.",
+      "Each set unfolds on the line below, so nothing sits on top of anything else.",
     ],
   },
   {

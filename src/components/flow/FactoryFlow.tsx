@@ -6297,16 +6297,16 @@ export function FactoryFlow() {
         dockToggleWarning={dockToggleWarning}
         onAutoArrange={handleAutoArrange}
         folded={toolbarFold.paint}
+        foldAll={toolbarFold.paintFoldsAll}
         openGroup={openToolGroup}
         onToggleGroup={handleToolGroupToggle}
-        shiftedDown={toolbarFold.paintBelow}
+        shiftedDown={false}
       />
       <SourceToolbar
         folded={toolbarFold.build}
         openGroup={openToolGroup}
         onToggleGroup={handleToolGroupToggle}
         shiftedDown={false}
-        secondLineTaken={toolbarFold.paintBelow}
       />
       {/* The help layer rings the toolbars; with the paint row folded away
           there is nothing to ring, so it becomes the sheet, as on a phone. */}
@@ -6902,11 +6902,6 @@ interface ToolGroupProps {
   label: string;
   /** Which corner the toolbar lives in, and so which way it unfolds. */
   side: "left" | "right";
-  /**
-   * The unfolded row skips the second line: on a board too narrow for both
-   * folded rows the paint row has moved down onto it (toolbar-fold.ts).
-   */
-  secondLineTaken?: boolean;
   children: React.ReactNode;
 }
 
@@ -7032,7 +7027,6 @@ function ToolGroup({
   icon: Icon,
   label,
   side,
-  secondLineTaken = false,
   children,
 }: ToolGroupProps) {
   if (!folded) {
@@ -7057,8 +7051,7 @@ function ToolGroup({
         // root it is positioned against — which folded is one 36px button, so
         // every row wrapped into a vertical column one button wide.
         // top-[3rem]: the plated trigger stands 44px tall now.
-        "absolute flex w-max max-w-[calc(var(--board-width,100vw)-24px)] flex-wrap items-start gap-1 transition-[opacity,transform] duration-100",
-        secondLineTaken ? "top-[6rem]" : "top-[3rem]",
+        "absolute top-[3rem] flex w-max max-w-[calc(var(--board-width,100vw)-24px)] flex-wrap items-start gap-1 transition-[opacity,transform] duration-100",
         side === "left" ? "left-0 justify-start" : "right-0 justify-end",
         isOpen ? "translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0",
       ].join(" ")}
@@ -7459,15 +7452,12 @@ const SourceToolbar = memo(function SourceToolbar({
   openGroup,
   onToggleGroup,
   shiftedDown,
-  secondLineTaken,
 }: {
   folded: boolean;
   openGroup?: ToolGroupId;
   onToggleGroup: (group: ToolGroupId | undefined) => void;
   /** A banner has the top line: step down one. */
   shiftedDown: boolean;
-  /** The paint row sits on the second line, so the fold-out takes the third. */
-  secondLineTaken: boolean;
 }) {
   const addCustomRateNode = useFactoryStore((state) => state.addCustomRateNode);
   const addCropFarmNode = useFactoryStore((state) => state.addCropFarmNode);
@@ -7551,7 +7541,6 @@ const SourceToolbar = memo(function SourceToolbar({
         icon={Hammer}
         label="build tools"
         side="left"
-        secondLineTaken={secondLineTaken}
       >
       {/* How the numbers read: ONE key wearing the current unit, opening the
           four units as a named list. Four permanent keys spent three slots
@@ -8866,6 +8855,7 @@ const PaintToolbar = memo(function PaintToolbar({
   dockToggleWarning,
   onAutoArrange,
   folded,
+  foldAll,
   openGroup,
   onToggleGroup,
   shiftedDown,
@@ -8886,6 +8876,11 @@ const PaintToolbar = memo(function PaintToolbar({
   /** Runs the arrange; the fold-out's setting rides along per press. */
   onAutoArrange: (options: { tidyBoardInteriors: boolean }) => void;
   folded: boolean;
+  /**
+   * The whole row folds into the brush, the bin and whole-board keys
+   * included: a board too narrow for the folded row (toolbar-fold.ts).
+   */
+  foldAll: boolean;
   openGroup?: ToolGroupId;
   onToggleGroup: (group: ToolGroupId | undefined) => void;
   shiftedDown: boolean;
@@ -8936,6 +8931,107 @@ const PaintToolbar = memo(function PaintToolbar({
       return !was;
     });
   }, []);
+
+  /* The whole-board pair and the corner slot: the rules and the tidy-up act
+     on everything at once, so they live by the corner with the view button
+     rather than among the card tools, OUTSIDE the fold group. Until the board
+     is too narrow even for the folded row, when they fold in with the rest. */
+  const wholeBoardTrays = (
+    <>
+        <ToolTray>
+          <SolveModeButton />
+          <SetupRulesButton open={isRulesOpen} onOpenChange={setRulesOpen} />
+          {/* Auto-arrange opens a small sheet, like the rules beside it: one
+              setting saying whether boards you drew are opened up, and the
+              button that runs the arrange. The arrange respects boards by
+              default, so the setting is where you say otherwise. */}
+          <div ref={arrangeRef} className="pointer-events-auto flex">
+            <button
+              type="button"
+              onClick={() => setArrangeMenuOpen((was) => !was)}
+              aria-expanded={isArrangeMenuOpen}
+              className={[
+                "relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)]",
+                isArrangeMenuOpen ? TOOL_FACE_ON : TOOL_FACE_OFF,
+              ].join(" ")}
+              title="Auto-arrange"
+              aria-label="Auto-arrange the board"
+            >
+              <Network className="h-4 w-4" />
+            </button>
+            {isArrangeMenuOpen ? (
+              <div className="absolute right-0 top-[calc(100%+6px)] z-30 flex w-[300px] max-w-[calc(100vw-24px)] flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+                <button
+                  type="button"
+                  onClick={onToggleTidyBoards}
+                  aria-pressed={tidyBoardInteriors}
+                  className={[
+                    "flex items-start gap-2 border-2 p-2 text-left",
+                    tidyBoardInteriors
+                      ? `border-[var(--mc-good)] ${TOOL_FACE_ON}`
+                      : `border-[var(--mc-15)] ${TOOL_FACE_OFF}`,
+                  ].join(" ")}
+                >
+                  <span
+                    aria-hidden
+                    className={[
+                      "mt-[1px] flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)]",
+                      tidyBoardInteriors ? "bg-[var(--mc-good)]" : "bg-[var(--mc-24)]",
+                    ].join(" ")}
+                  >
+                    {tidyBoardInteriors ? (
+                      <Check className="h-3 w-3 text-[var(--mc-15)]" strokeWidth={4} />
+                    ) : null}
+                  </span>
+                  <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
+                    <span className="font-mono text-[12px] font-black uppercase">
+                      Rearrange inside boards
+                    </span>
+                    <span
+                      className={[
+                        "font-mono text-[10px] font-black tracking-[1px]",
+                        tidyBoardInteriors
+                          ? "text-[var(--mc-good)]"
+                          : "text-[var(--mc-ink-muted)]",
+                      ].join(" ")}
+                    >
+                      {tidyBoardInteriors ? "ON" : "OFF"}
+                    </span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeArrangeMenu();
+                    onAutoArrange({ tidyBoardInteriors });
+                  }}
+                  className="flex items-center justify-center gap-2 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] p-2 font-mono text-[12px] font-black uppercase text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+                  aria-label="Arrange the board"
+                >
+                  <Network className="h-4 w-4" />
+                  Arrange
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <BoardMuteButton />
+        </ToolTray>
+        {/* The corner slot: view options are one button and a sheet at every
+            width, reachable while the paint row is folded away on a phone. The
+            timelapse door lives beside it: also a way of looking, not a tool
+            that changes the plan. */}
+        <ToolTray>
+          <BoardTimelapseMenu />
+          <BoardViewMenu
+            view={view}
+            onChange={onViewChange}
+            dockToggleWarning={dockToggleWarning}
+            open={isViewMenuOpen}
+            onOpenChange={setViewMenuOpen}
+          />
+        </ToolTray>
+    </>
+  );
 
   return (
     <div
@@ -9125,102 +9221,9 @@ const PaintToolbar = memo(function PaintToolbar({
           <Trash2 className={isDeleteMode ? "h-4 w-4 text-red-500" : "h-4 w-4"} />
         </button>
       </ToolTray>
+      {foldAll ? wholeBoardTrays : null}
       </ToolGroup>
-      {/* The whole-board pair, OUTSIDE the fold group: the board's rules and
-          the tidy-up act on everything at once, so they live by the corner
-          with the view button rather than among the card tools. */}
-      <ToolTray>
-        <SolveModeButton />
-        <SetupRulesButton open={isRulesOpen} onOpenChange={setRulesOpen} />
-        {/* Auto-arrange opens a small sheet, like the rules beside it: one
-            setting saying whether boards you drew are opened up, and the
-            button that runs the arrange. The arrange respects boards by
-            default, so the setting is where you say otherwise. */}
-        <div ref={arrangeRef} className="pointer-events-auto flex">
-          <button
-            type="button"
-            onClick={() => setArrangeMenuOpen((was) => !was)}
-            aria-expanded={isArrangeMenuOpen}
-            className={[
-              "relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)]",
-              isArrangeMenuOpen ? TOOL_FACE_ON : TOOL_FACE_OFF,
-            ].join(" ")}
-            title="Auto-arrange"
-            aria-label="Auto-arrange the board"
-          >
-            <Network className="h-4 w-4" />
-          </button>
-          {isArrangeMenuOpen ? (
-            <div className="absolute right-0 top-[calc(100%+6px)] z-30 flex w-[300px] max-w-[calc(100vw-24px)] flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
-              <button
-                type="button"
-                onClick={onToggleTidyBoards}
-                aria-pressed={tidyBoardInteriors}
-                className={[
-                  "flex items-start gap-2 border-2 p-2 text-left",
-                  tidyBoardInteriors
-                    ? `border-[var(--mc-good)] ${TOOL_FACE_ON}`
-                    : `border-[var(--mc-15)] ${TOOL_FACE_OFF}`,
-                ].join(" ")}
-              >
-                <span
-                  aria-hidden
-                  className={[
-                    "mt-[1px] flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)]",
-                    tidyBoardInteriors ? "bg-[var(--mc-good)]" : "bg-[var(--mc-24)]",
-                  ].join(" ")}
-                >
-                  {tidyBoardInteriors ? (
-                    <Check className="h-3 w-3 text-[var(--mc-15)]" strokeWidth={4} />
-                  ) : null}
-                </span>
-                <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
-                  <span className="font-mono text-[12px] font-black uppercase">
-                    Rearrange inside boards
-                  </span>
-                  <span
-                    className={[
-                      "font-mono text-[10px] font-black tracking-[1px]",
-                      tidyBoardInteriors
-                        ? "text-[var(--mc-good)]"
-                        : "text-[var(--mc-ink-muted)]",
-                    ].join(" ")}
-                  >
-                    {tidyBoardInteriors ? "ON" : "OFF"}
-                  </span>
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  closeArrangeMenu();
-                  onAutoArrange({ tidyBoardInteriors });
-                }}
-                className="flex items-center justify-center gap-2 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] p-2 font-mono text-[12px] font-black uppercase text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
-                aria-label="Arrange the board"
-              >
-                <Network className="h-4 w-4" />
-                Arrange
-              </button>
-            </div>
-          ) : null}
-        </div>
-        <BoardMuteButton />
-      </ToolTray>
-      {/* The corner slot: view options are one button and a sheet at every
-          width, reachable while the paint row is folded away on a phone. The
-          timelapse door lives beside it: also a way of looking, not a tool
-          that changes the plan. */}
-      <ToolTray>
-        <BoardTimelapseMenu />
-        <BoardViewMenu
-          view={view}
-          onChange={onViewChange}
-          dockToggleWarning={dockToggleWarning}
-          open={isViewMenuOpen}
-          onOpenChange={setViewMenuOpen}
-        />
-      </ToolTray>
+      {foldAll ? null : wholeBoardTrays}
     </div>
   );
 });

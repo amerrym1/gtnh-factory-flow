@@ -30,7 +30,7 @@ const BREATH = 24;
 
 export const FOLD_PAINT_BELOW = BUILD_ROW_WIDTH + PAINT_ROW_WIDTH + SIDE_MARGINS + BREATH;
 export const FOLD_BUILD_BELOW = BUILD_ROW_WIDTH + PAINT_ROW_FOLDED_WIDTH + SIDE_MARGINS + BREATH;
-/** Under this even both folded rows cross; the player has a column to close. */
+/** Under this even both folded rows cross, so the whole paint row folds. */
 export const BOTH_FOLDED_WIDTH =
   BUILD_ROW_FOLDED_WIDTH + PAINT_ROW_FOLDED_WIDTH + SIDE_MARGINS + BREATH;
 
@@ -38,22 +38,23 @@ export interface ToolbarFold {
   build: boolean;
   paint: boolean;
   /**
-   * The paint row steps down to the second line: the board is too narrow for
-   * both folded rows on one line, so they take one each.
+   * The WHOLE paint row folds into the brush, bin and whole-board keys
+   * included: the board is too narrow for even the folded rows side by side,
+   * and they stay on ONE line - a second line is a blank band over the board.
    */
-  paintBelow: boolean;
+  paintFoldsAll: boolean;
 }
 
 /** Which toolbars fold on a board this wide. Compact folds both regardless. */
 export function toolbarFoldFor(boardWidth: number, compact: boolean): ToolbarFold {
-  const paintBelow = boardWidth < BOTH_FOLDED_WIDTH;
+  const paintFoldsAll = boardWidth < BOTH_FOLDED_WIDTH;
   if (compact) {
-    return { build: true, paint: true, paintBelow };
+    return { build: true, paint: true, paintFoldsAll };
   }
   return {
     paint: boardWidth < FOLD_PAINT_BELOW,
     build: boardWidth < FOLD_BUILD_BELOW,
-    paintBelow,
+    paintFoldsAll,
   };
 }
 
@@ -88,7 +89,7 @@ export function useToolbarFold(
       setFold((current) =>
         current.build === next.build &&
         current.paint === next.paint &&
-        current.paintBelow === next.paintBelow
+        current.paintFoldsAll === next.paintFoldsAll
           ? current
           : next,
       );

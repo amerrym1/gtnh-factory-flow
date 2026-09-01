@@ -618,8 +618,8 @@ Working notes for future agents on GTNH Factory Flow.
   both side columns open leave a 1400px window a 722px board, and the two
   rows want 833px, so the paint tray sat buried under POWER. The paint row
   folds first (under 881px), the build row next (under 721px), and under
-  452px the paint row steps down to the second line and the build fold-out
-  to the third. State holds only the fold, never the width; the width rides
+  452px the WHOLE paint row (bin, rules, arrange, view) folds into the brush
+  so both rows stay on one line - a second line read as a blank band. State holds only the fold, never the width; the width rides
   the element as `--board-width`, which caps the unfolded rows. Compact
   still folds both regardless. Re-measure the row widths in that file if a
   key is added to either toolbar.
