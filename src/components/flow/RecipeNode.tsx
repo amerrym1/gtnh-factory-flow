@@ -4312,7 +4312,8 @@ function PassiveProductionConfigPanel({
 // paint (crop cards wear the green ramp) so every element on it is drawn in
 // the same chrome as everything else on the site.
 const CROP_PANEL_FACE = "#43493e";
-const CROP_PANEL_ROW_PX = 24;
+/** Caption line plus a 28px control row, the machine config panel's shape. */
+const CROP_PANEL_ROW_PX = 46;
 
 /** The unit types' pip colours, one per block, echoed by the slot pips. */
 const CROP_UNIT_PIP_COLORS: Record<string, string> = {
@@ -4357,11 +4358,10 @@ function CropStepperRow({
     }
   };
   const buttonClass =
-    "flex h-6 w-4 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-55)] text-[11px] font-bold leading-none shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] enabled:hover:bg-[var(--mc-63)] disabled:opacity-35";
+    "flex h-7 w-6 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-55)] text-[13px] font-bold leading-none shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] enabled:hover:bg-[var(--mc-63)] disabled:opacity-35";
   const row = (
-    <div
-      className="nodrag nowheel flex items-center gap-1"
-      style={{ height: CROP_PANEL_ROW_PX }}
+    <label
+      className="nodrag nowheel min-w-0"
       title={[effect, value >= max && lockedHint ? lockedHint : undefined]
         .filter(Boolean)
         .join(" · ")}
@@ -4370,44 +4370,46 @@ function CropStepperRow({
         step(event.deltaY < 0 ? 1 : -1);
       }}
     >
-      <span
-        className="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)]"
-        style={pipColor ? { borderBottomColor: pipColor, borderBottomWidth: 2 } : undefined}
-      >
-        {icon}
-      </span>
-      <span className="min-w-0 flex-1 whitespace-nowrap text-[10px] font-bold uppercase leading-none text-[var(--mc-ink)]">
+      <span className="mb-0.5 block whitespace-nowrap text-[12px] font-bold uppercase leading-[14px] text-[var(--mc-ink-muted)]">
         {label}
       </span>
-      <button
-        type="button"
-        className={buttonClass}
-        disabled={value <= min}
-        onClick={(event) => {
-          event.stopPropagation();
-          step(-1);
-        }}
-        aria-label={`Fewer ${label}`}
-      >
-        −
-      </button>
-      <span className="w-4 shrink-0 text-center text-[12px] font-bold tabular-nums leading-none text-[var(--mc-ink)]">
-        {value}
+      <span className="flex min-w-0 items-center gap-1">
+        <span
+          className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]"
+          style={pipColor ? { borderBottomColor: pipColor, borderBottomWidth: 2 } : undefined}
+        >
+          {icon}
+        </span>
+        <button
+          type="button"
+          className={buttonClass}
+          disabled={value <= min}
+          onClick={(event) => {
+            event.stopPropagation();
+            step(-1);
+          }}
+          aria-label={`Fewer ${label}`}
+        >
+          −
+        </button>
+        <span className="min-w-0 flex-1 border border-[var(--mc-33)] bg-[var(--mc-25)] py-[6px] text-center text-[13px] font-bold tabular-nums leading-none text-white">
+          {value}
+        </span>
+        <button
+          type="button"
+          className={buttonClass}
+          disabled={value >= max}
+          title={value >= max ? lockedHint : undefined}
+          onClick={(event) => {
+            event.stopPropagation();
+            step(1);
+          }}
+          aria-label={`More ${label}`}
+        >
+          +
+        </button>
       </span>
-      <button
-        type="button"
-        className={buttonClass}
-        disabled={value >= max}
-        title={value >= max ? lockedHint : undefined}
-        onClick={(event) => {
-          event.stopPropagation();
-          step(1);
-        }}
-        aria-label={`More ${label}`}
-      >
-        +
-      </button>
-    </div>
+    </label>
   );
   return help ? <MinecraftTooltip content={help}>{row}</MinecraftTooltip> : row;
 }
@@ -4440,38 +4442,39 @@ function CropCycleRow({
     }
   };
   const row = (
-    <div
-      className="nodrag nowheel flex items-center gap-1"
-      style={{ height: CROP_PANEL_ROW_PX }}
+    <label
+      className="nodrag nowheel min-w-0"
       onWheel={(event) => {
         event.stopPropagation();
         step(event.deltaY < 0 ? 1 : -1);
       }}
     >
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)]">
-        {icon}
-      </span>
-      <span className="min-w-0 flex-1 whitespace-nowrap text-[10px] font-bold uppercase leading-none text-[var(--mc-ink)]">
+      <span className="mb-0.5 block whitespace-nowrap text-[12px] font-bold uppercase leading-[14px] text-[var(--mc-ink-muted)]">
         {label}
       </span>
-      <button
-        type="button"
-        className="flex h-6 w-[60px] shrink-0 items-center justify-center whitespace-nowrap border border-[var(--mc-33)] bg-[var(--mc-55)] px-0.5 text-[10px] font-bold leading-none text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-63)]"
-        onClick={(event) => {
-          event.stopPropagation();
-          step(1);
-        }}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          step(-1);
-        }}
-        title={`${label}: ${current.label}. Click for the next, right-click for the previous, wheel for both.`}
-        aria-label={label}
-      >
-        {current.label}
-      </button>
-    </div>
+      <span className="flex min-w-0 items-center gap-1">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
+          {icon}
+        </span>
+        <button
+          type="button"
+          className="flex h-7 min-w-0 flex-1 items-center justify-center whitespace-nowrap border border-[var(--mc-33)] bg-[var(--mc-55)] px-1 text-[12px] font-bold leading-none text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-63)]"
+          onClick={(event) => {
+            event.stopPropagation();
+            step(1);
+          }}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            step(-1);
+          }}
+          title={`${label}: ${current.label}. Click for the next, right-click for the previous, wheel for both.`}
+          aria-label={label}
+        >
+          {current.label}
+        </button>
+      </span>
+    </label>
   );
   return help ? <MinecraftTooltip content={help}>{row}</MinecraftTooltip> : row;
 }
@@ -4620,7 +4623,7 @@ function CropConfigPanel({
       icon={
         <ConfigTierIcon
           resource={control.current.resource ?? control.resource}
-          sizeClass="!h-[22px] !w-[22px]"
+          sizeClass="!h-[26px] !w-[26px]"
         />
       }
       label={control.label}
@@ -4727,7 +4730,7 @@ function CropConfigPanel({
             icon={
               <ConfigTierIcon
                 resource={control.current.resource ?? control.resource}
-                sizeClass="!h-[22px] !w-[22px]"
+                sizeClass="!h-[26px] !w-[26px]"
               />
             }
             label={control.label}
@@ -4787,7 +4790,7 @@ function CropConfigPanel({
 
   const visibleRows = rows.filter(Boolean);
   const bodyPx =
-    Math.ceil(visibleRows.length / 2) * (CROP_PANEL_ROW_PX + 2) +
+    Math.ceil(visibleRows.length / 2) * (CROP_PANEL_ROW_PX + 4) +
     (slotPips ? 18 : 0) +
     (footer ? 16 : 0);
   return (
@@ -4803,7 +4806,7 @@ function CropConfigPanel({
       minCells={Math.max(1, Math.ceil(bodyPx / BOARD_GRID))}
       clearancePx={4}
     >
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1.5 gap-y-0.5">
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1.5 gap-y-1">
         {visibleRows}
         {slotPips}
         {footer}
