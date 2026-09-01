@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.50.0",
+    date: "2026-09-01",
+    headline: "Farm numbers, checked against the community calculator",
+    notes: [
+      "A farm bills its full power even when its last seed bed is not full.",
+      "The biome option knows partial humidity: 60% is worth +4, 70% is +9.",
+      "A Fertilizer knob says whether the farm is fed; an unfed crop grows slower.",
+      "The crop knobs fit one row across the top of the card.",
+    ],
+  },
+  {
     version: "2.49.0",
     date: "2026-09-01",
     headline: "The Industrial Farm learns its real rules",
