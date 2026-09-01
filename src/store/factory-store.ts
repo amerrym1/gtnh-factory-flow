@@ -10,7 +10,12 @@ import {
 } from "@/lib/model/edge-identity";
 import { normalizeLoadedProject } from "@/lib/model/project-normalize";
 import { quietBoardSoundsFor } from "@/lib/board-sounds";
-import { setActiveRateUnit, type RateUnit } from "@/lib/model/rate-unit";
+import {
+  setActivePowerDisplayUnit,
+  setActiveRateUnit,
+  type PowerDisplayUnit,
+  type RateUnit,
+} from "@/lib/model/rate-unit";
 import { registerBooksSink, solveBooks } from "./solve-books";
 import { applyRecipeInputOverrides, inputOverrideAmount } from "@/lib/model/recipe-input-overrides";
 import type { AlternativeCycleFace } from "@/lib/nei/alternative-cycle";
@@ -205,6 +210,9 @@ interface FactoryStore {
   /** Board-wide display unit for rates: per tick / second / minute / hour. */
   rateUnit: RateUnit;
   setRateUnit: (unit: RateUnit) => void;
+  /** EU/t, or amps of a chosen tier - the board-wide power display dial. */
+  powerDisplayUnit: PowerDisplayUnit;
+  setPowerDisplayUnit: (unit: PowerDisplayUnit) => void;
   setProject: (project: FactoryProject) => void;
   markHydratedProject: (project: FactoryProject) => void;
   undo: () => void;
@@ -767,6 +775,13 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
     setActiveRateUnit(unit);
     const { project } = get();
     set({ rateUnit: unit, lastResult: solveBooks(project) });
+  },
+  powerDisplayUnit: "eu",
+  setPowerDisplayUnit: (unit) => {
+    // Same singleton trick as the rate unit above, for the same reason.
+    setActivePowerDisplayUnit(unit);
+    const { project } = get();
+    set({ powerDisplayUnit: unit, lastResult: solveBooks(project) });
   },
   setProject: (project) => {
     // A plan ARRIVING (import, tab switch, setup open) is not an action;

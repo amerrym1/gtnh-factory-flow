@@ -1170,7 +1170,7 @@ function formatCompactRate(value: number, kind: string): string {
 
   // The floor is written per second and scaled with the unit, so "balanced"
   // still reads as a flat 0 while a real trickle keeps its digits per tick.
-  const spaced = unit.startsWith("L") || unit.startsWith("EU");
+  const spaced = unit.startsWith("L") || unit.startsWith("EU") || unit.startsWith("A ");
   if (!Number.isFinite(scaled) || abs < 0.005 * rateUnitPrecisionScale()) {
     return `0${spaced ? ` ${unit}` : unit}`;
   }

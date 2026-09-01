@@ -261,6 +261,8 @@ import {
 } from "@/lib/model/custom-rate";
 import { isTrashRecipe, TRASH_ANY_RESOURCE_ID } from "@/lib/model/trash";
 import { rateSuffixForKind, rateUnitSuffix, type RateUnit } from "@/lib/model/rate-unit";
+import { GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
+import { GT_TIER_COLORS } from "./tier-colors";
 import { useIsCompactViewport } from "@/lib/compact-view";
 import { browseHoveredPort } from "./port-browse";
 import { useBoardTouchGestures } from "./board-touch-gestures";
@@ -7458,6 +7460,14 @@ const SourceToolbar = memo(function SourceToolbar({
   const rateRef = useRef<HTMLDivElement | null>(null);
   const closeRateMenu = useCallback(() => setRateMenuOpen(false), []);
   useFoldoutDismiss(isRateMenuOpen, rateRef, closeRateMenu);
+  // The power unit key beside it: EU/t, or amps of a chosen tier - the
+  // second board-wide dial, worked exactly like the rate unit's.
+  const powerDisplayUnit = useFactoryStore((state) => state.powerDisplayUnit);
+  const setPowerDisplayUnit = useFactoryStore((state) => state.setPowerDisplayUnit);
+  const [isPowerUnitMenuOpen, setPowerUnitMenuOpen] = useState(false);
+  const powerUnitRef = useRef<HTMLDivElement | null>(null);
+  const closePowerUnitMenu = useCallback(() => setPowerUnitMenuOpen(false), []);
+  useFoldoutDismiss(isPowerUnitMenuOpen, powerUnitRef, closePowerUnitMenu);
   // Subscribe to the DEPTHS, not the history arrays: a selector returning the
   // array itself would re-render this toolbar on every project edit.
   const undo = useFactoryStore((state) => state.undo);
@@ -7476,9 +7486,9 @@ const SourceToolbar = memo(function SourceToolbar({
       data-help-anchor="build"
       className={[
         "nodrag pointer-events-none absolute left-3 flex items-start gap-2",
-        // Lifted while the rate menu hangs below, so a notice card cannot
+        // Lifted while either unit menu hangs below, so a notice card cannot
         // paint over it - the same lift the paint row gives its fold-outs.
-        isRateMenuOpen ? "z-40" : "z-20",
+        isRateMenuOpen || isPowerUnitMenuOpen ? "z-40" : "z-20",
         // Inside a pocket the breadcrumb takes the top line and every trigger row
         // steps down to make room; its fold-out follows, since that is positioned
         // against this root.
@@ -7564,6 +7574,112 @@ const SourceToolbar = memo(function SourceToolbar({
                   <span className="whitespace-nowrap font-mono text-[11px] font-semibold">
                     {choice.title}
                   </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        {/* The POWER unit: EU/t, or amps of a tier. Amps is how the game's
+            logistics are sized - dynamos, cables and hatches are all rated
+            in amps at a voltage - so "46 A LuV" answers the build question
+            "1.5M EU/t" leaves open. Amps of tier T = EU/t over T's voltage:
+            packets per tick, nothing more. */}
+        <div ref={powerUnitRef} className="relative flex">
+          <button
+            type="button"
+            onClick={() => setPowerUnitMenuOpen((was) => !was)}
+            aria-expanded={isPowerUnitMenuOpen}
+            title={
+              powerDisplayUnit === "eu"
+                ? "Power unit: EU per tick"
+                : `Power unit: amps of ${powerDisplayUnit}`
+            }
+            aria-label="Power unit"
+            className={[
+              "pointer-events-auto relative z-10 flex h-8 items-center gap-1 border-2 px-1.5 font-mono text-[11px] font-black",
+              // In a tier mode the WHOLE key wears the tier's color, bolt
+              // included - the key is the tier chip, not a chip beside one.
+              powerDisplayUnit === "eu"
+                ? `border-[var(--mc-15)] text-amber-400 ${isPowerUnitMenuOpen ? TOOL_FACE_ON : TOOL_FACE_OFF}`
+                : isPowerUnitMenuOpen
+                  ? "brightness-110"
+                  : "hover:brightness-110",
+            ].join(" ")}
+            style={
+              powerDisplayUnit === "eu"
+                ? undefined
+                : {
+                    background: GT_TIER_COLORS[powerDisplayUnit].background,
+                    borderColor: GT_TIER_COLORS[powerDisplayUnit].border,
+                    color: GT_TIER_COLORS[powerDisplayUnit].text,
+                  }
+            }
+          >
+            <Zap className="h-3 w-3 fill-current" />
+            {/* The board's one amps notation: number, then A, then tier -
+                "2.5 A LV" - and the key names the unit half of it, "A LV".
+                The game's underline convention rides only the tier word. */}
+            {powerDisplayUnit === "eu" ? (
+              "EU/t"
+            ) : (
+              <span>
+                A{" "}
+                <span
+                  style={{
+                    textDecoration: GT_TIER_COLORS[powerDisplayUnit].underline
+                      ? "underline"
+                      : undefined,
+                  }}
+                >
+                  {powerDisplayUnit}
+                </span>
+              </span>
+            )}
+          </button>
+          {isPowerUnitMenuOpen ? (
+            // EU/t and the fifteen tiers, one uniform 4x4 grid of equal
+            // cells - EU/t is a choice like any other, not a banner.
+            <div className="absolute left-0 top-[calc(100%+10px)] z-30 grid w-max grid-cols-4 gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
+              <button
+                type="button"
+                onClick={() => {
+                  setPowerDisplayUnit("eu");
+                  setPowerUnitMenuOpen(false);
+                }}
+                aria-pressed={powerDisplayUnit === "eu"}
+                title="EU per tick"
+                className={[
+                  "pointer-events-auto flex h-8 items-center justify-center gap-1 border-2 px-1.5 font-mono text-[11px] font-black",
+                  powerDisplayUnit === "eu"
+                    ? "border-white bg-[var(--mc-85)] text-amber-400 ring-2 ring-cyan-300"
+                    : "border-[var(--mc-15)] bg-[var(--mc-49)] text-amber-400 hover:bg-[var(--mc-61)]",
+                ].join(" ")}
+              >
+                <Zap className="h-3 w-3 fill-current" />
+                EU/t
+              </button>
+              {GT_VOLTAGE_TIERS.map(({ tier }) => (
+                <button
+                  key={tier}
+                  type="button"
+                  onClick={() => {
+                    setPowerDisplayUnit(tier);
+                    setPowerUnitMenuOpen(false);
+                  }}
+                  aria-pressed={powerDisplayUnit === tier}
+                  title={`Amps of ${tier}`}
+                  className={[
+                    "pointer-events-auto flex h-8 items-center justify-center border-2 px-1.5 font-mono text-[11px] font-black",
+                    powerDisplayUnit === tier ? "ring-2 ring-cyan-300" : "hover:brightness-110",
+                  ].join(" ")}
+                  style={{
+                    background: GT_TIER_COLORS[tier].background,
+                    borderColor: GT_TIER_COLORS[tier].border,
+                    color: GT_TIER_COLORS[tier].text,
+                    textDecoration: GT_TIER_COLORS[tier].underline ? "underline" : undefined,
+                  }}
+                >
+                  {tier}
                 </button>
               ))}
             </div>

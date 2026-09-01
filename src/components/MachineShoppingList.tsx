@@ -3,6 +3,7 @@
 import { useMemo, useRef, type ReactNode } from "react";
 import { Cloud, Zap } from "lucide-react";
 import { MotionNumberText } from "./flow/board-motion";
+import { powerDisplayFromEuT, powerDisplaySuffix } from "@/lib/model/rate-unit";
 import { GT_TIER_COLORS } from "./flow/tier-colors";
 import { useMachineHandlerIcons, type MachineHandlerIcon } from "./flow/machine-icons";
 import { machineArtPixels } from "./flow/MachinePicker";
@@ -395,11 +396,11 @@ export function MachineShoppingList() {
         values={[totalEuT]}
         render={(shown) =>
           shown[0] === totalEuT
-            ? formatCompact(totalEuT)
-            : formatCompactStable(shown[0] ?? totalEuT)
+            ? formatCompact(powerDisplayFromEuT(totalEuT))
+            : formatCompactStable(powerDisplayFromEuT(shown[0] ?? totalEuT))
         }
       />
-      <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
+      <span className="ml-0.5 text-[8px] font-normal text-[var(--mc-ink-muted)]">{powerDisplaySuffix()}</span>
     </span>
   ) : null;
 
@@ -453,11 +454,11 @@ export function MachineShoppingList() {
                 values={[totalEuT]}
                 render={(shown) =>
                   shown[0] === totalEuT
-                    ? formatCompact(totalEuT)
-                    : formatCompactStable(shown[0] ?? totalEuT)
+                    ? formatCompact(powerDisplayFromEuT(totalEuT))
+                    : formatCompactStable(powerDisplayFromEuT(shown[0] ?? totalEuT))
                 }
               />
-              <span className="ml-0.5 text-[9px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
+              <span className="ml-0.5 text-[9px] font-normal text-[var(--mc-ink-muted)]">{powerDisplaySuffix()}</span>
             </LedgerCell>
             <LedgerCell label="MADE" flushLeft className="text-emerald-300">
               <EuMark />
@@ -465,11 +466,11 @@ export function MachineShoppingList() {
                 values={[totalMadeEuT]}
                 render={(shown) =>
                   shown[0] === totalMadeEuT
-                    ? formatCompact(totalMadeEuT)
-                    : formatCompactStable(shown[0] ?? totalMadeEuT)
+                    ? formatCompact(powerDisplayFromEuT(totalMadeEuT))
+                    : formatCompactStable(powerDisplayFromEuT(shown[0] ?? totalMadeEuT))
                 }
               />
-              <span className="ml-0.5 text-[9px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
+              <span className="ml-0.5 text-[9px] font-normal text-[var(--mc-ink-muted)]">{powerDisplaySuffix()}</span>
             </LedgerCell>
             <LedgerCell
               label="NET"
@@ -482,12 +483,12 @@ export function MachineShoppingList() {
                   const value = shown[0] === netEuT ? netEuT : (shown[0] ?? netEuT);
                   const text =
                     shown[0] === netEuT
-                      ? formatCompact(Math.abs(netEuT))
-                      : formatCompactStable(Math.abs(value));
+                      ? formatCompact(powerDisplayFromEuT(Math.abs(netEuT)))
+                      : formatCompactStable(powerDisplayFromEuT(Math.abs(value)));
                   return `${value >= 0 ? "+" : "-"}${text}`;
                 }}
               />
-              <span className="ml-0.5 text-[9px] font-normal text-[var(--mc-ink-muted)]">EU/t</span>
+              <span className="ml-0.5 text-[9px] font-normal text-[var(--mc-ink-muted)]">{powerDisplaySuffix()}</span>
             </LedgerCell>
           </div>
         ) : hasEu && hasSteam ? (
@@ -911,11 +912,11 @@ function ListLine({
               values={[madeEuT]}
               render={(shown) =>
                 shown[0] === madeEuT
-                  ? `+${formatCompact(madeEuT)}`
-                  : `+${formatCompactStable(shown[0] ?? madeEuT)}`
+                  ? `+${formatCompact(powerDisplayFromEuT(madeEuT))}`
+                  : `+${formatCompactStable(powerDisplayFromEuT(shown[0] ?? madeEuT))}`
               }
             />
-            <span className="ml-0.5 text-[8px] text-[var(--mc-ink-muted)]">EU/t</span>
+            <span className="ml-0.5 text-[8px] text-[var(--mc-ink-muted)]">{powerDisplaySuffix()}</span>
           </span>
         ) : euT !== undefined ? (
           <>
@@ -924,13 +925,13 @@ function ListLine({
               values={[euT]}
               render={(shown) =>
                 shown[0] === euT
-                  ? formatCompact(euT)
-                  : formatCompactStable(shown[0] ?? euT)
+                  ? formatCompact(powerDisplayFromEuT(euT))
+                  : formatCompactStable(powerDisplayFromEuT(shown[0] ?? euT))
               }
             />
             {/* Same suffix treatment as the card's power cell: small, grey,
                 hugging the number. */}
-            <span className="ml-0.5 text-[8px] text-[var(--mc-ink-muted)]">EU/t</span>
+            <span className="ml-0.5 text-[8px] text-[var(--mc-ink-muted)]">{powerDisplaySuffix()}</span>
           </>
         ) : steamLs !== undefined ? (
           <>
