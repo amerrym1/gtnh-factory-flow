@@ -5919,10 +5919,10 @@ function MachineCountStat({
     const step = modifiers.shiftKey ? 100 : modifiers.ctrlKey || modifiers.metaKey ? 10 : 1;
     const next = Math.max(1, machineCount + direction * step);
     if (next !== machineCount) {
-      // The tap CLIMBS with the count, log-scaled so the first machines are
-      // audible rungs and a thousand-count scroll saturates instead of
-      // shrieking.
-      playBoardSound("dialRate", { step: Math.min(10, Math.log2(Math.max(1, next))) });
+      // The tap CLIMBS with the count, two rungs per decade capped at rung
+      // six (~1kHz): a crop card legitimately holds tens of thousands of
+      // seeds, and the full ladder up there was a dog whistle.
+      playBoardSound("dialRate", { step: Math.min(6, Math.log10(Math.max(1, next)) * 2) });
       suppressBoardSound("adjust", 150);
       setDraftState({ machineCount: next, draft: String(next) });
       onChange(next);
