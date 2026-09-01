@@ -34,8 +34,11 @@ import { getCommunityDb, isCommunityConfigured } from "@/lib/server/community";
  */
 
 const CACHE_TTL_MS = 30 * 60 * 1000;
-const PAGE_SIZE = 40;
+// Small pages, ordered by the primary key: a plan jsonb can run to megabytes,
+// and 40 of them in one statement tripped Postgres's statement timeout.
+const PAGE_SIZE = 10;
 const MAX_PLANS = 1000;
+const FAILURE_RETRY_MS = 2 * 60 * 1000;
 
 let cache: { at: number; map: Map<string, number> } | undefined;
 let inFlight: Promise<Map<string, number>> | undefined;
@@ -52,9 +55,10 @@ export async function getResourcePopularity(): Promise<Map<string, number>> {
       })
       .catch((error) => {
         console.error("resource popularity aggregation failed", error);
-        // A failed sweep should not hammer the database on every keystroke.
+        // A failed sweep should not hammer the database on every keystroke,
+        // but it should retry well before a good sweep would expire.
         const stale = cache?.map ?? new Map<string, number>();
-        cache = { at: Date.now(), map: stale };
+        cache = { at: Date.now() - CACHE_TTL_MS + FAILURE_RETRY_MS, map: stale };
         return stale;
       })
       .finally(() => {
@@ -74,9 +78,9 @@ async function buildPopularityMap(): Promise<Map<string, number>> {
   for (let offset = 0; offset < MAX_PLANS; offset += PAGE_SIZE) {
     const { data, error } = await db
       .from("community_plans")
-      .select("id, plan, outputs")
+      .select("plan, outputs")
       .or("is_public.eq.true,is_public.is.null")
-      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
     if (error) {
       throw new Error(error.message);
@@ -184,8 +188,12 @@ function scoreOnePlan(plan: unknown, outputs: unknown): Map<string, number> {
 
 const MADE_SCORE = 2;
 const USED_SCORE = 1;
-/** Items weigh a little more than fluids in the final tally. */
-const ITEM_WEIGHT = 1.5;
+/**
+ * Items weigh well over fluids in the final tally: every chain is flanked by
+ * the same dozen process gases, and at parity they buried every crafted thing
+ * (1.5 was tried and the top of the list was still all fluids).
+ */
+const ITEM_WEIGHT = 3;
 
 function resourceKey(resource: unknown): string | undefined {
   const entry = resource as { kind?: unknown; id?: unknown; displayName?: unknown };
@@ -202,7 +210,13 @@ function resourceKey(resource: unknown): string | undefined {
  * only means that cell's votes go unspent.
  */
 function canonicalKey(kind: string, id: string, displayName: unknown): string | undefined {
-  if (kind === "item" && id.startsWith("gregtech:gt.integrated_circuit")) {
+  // Plumbing, not products: every card holds a programmed circuit and every
+  // cell chain holds empties, so ranking them says nothing about what people
+  // build.
+  if (
+    kind === "item" &&
+    (id.startsWith("gregtech:gt.integrated_circuit") || id === "ic2:itemcellempty")
+  ) {
     return undefined;
   }
   if (kind === "item") {
