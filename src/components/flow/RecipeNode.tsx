@@ -80,8 +80,9 @@ import {
   CROP_SEED_BED_TIER_CONTROL_ID,
   cropsNhCropsPerMachine,
   cropsNhEnvironmentFromTiers,
-  cropsNhEutPerCrop,
+  cropsNhFarmEut,
   cropsNhHarvestTicks,
+  cropsNhHarvesterMachineCount,
   cropsNhHarvesterEnvironment,
   cropsNhHarvesterFromTiers,
   cropsNhIsHandPicked,
@@ -613,7 +614,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     }
     const crops = Math.max(0, Math.round(projectNode.machineCount));
     if (setup.id === CROP_HARVESTER_INDUSTRIAL_FARM_ID) {
-      return cropsNhEutPerCrop(setup) * crops;
+      // WHOLE farms bill: the last, partially filled farm draws its full
+      // power like the rest.
+      return cropsNhFarmEut(setup) * cropsNhHarvesterMachineCount(setup, crops);
     }
     if (!stats) {
       return 0;

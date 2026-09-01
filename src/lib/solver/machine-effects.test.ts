@@ -5,7 +5,9 @@ import {
   cropsNhCropsPerMachine,
   cropsNhEnvironmentFromTiers,
   cropsNhEutPerCrop,
+  cropsNhFarmEut,
   cropsNhHarvesterEnvironment,
+  cropsNhHarvesterMachineCount,
   cropsNhHarvesterFromTiers,
   cropsNhSquarePerTier,
   cropsNhUnitSlotsUsed,
@@ -702,6 +704,18 @@ describe("CropsNH harvesters", () => {
         "LV",
       ),
     ).toBeGreaterThan(0);
+  });
+
+  it("bills a partially filled farm as a whole farm", () => {
+    // A farm burns its full getPowerUsage however many seeds it holds: 900
+    // seeds in 729-seat IV farms is TWO farms at full draw, not 1.23 farms.
+    const setup = cropsNhHarvesterFromTiers({ cropSeedBedTier: "5" }, "crop-industrial-farm");
+    expect(cropsNhFarmEut(setup)).toBeCloseTo(7680, 6);
+    expect(cropsNhHarvesterMachineCount(setup, 900)).toBe(2);
+    expect(cropsNhFarmEut(setup) * cropsNhHarvesterMachineCount(setup, 900)).toBeCloseTo(
+      15360,
+      6,
+    );
   });
 
   it("bills the farm's units and overclocks the way getPowerUsage does", () => {

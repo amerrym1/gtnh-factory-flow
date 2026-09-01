@@ -13,7 +13,7 @@ import { isCustomRateRecipe } from "@/lib/model/custom-rate";
 import {
   CROP_HARVESTER_INDUSTRIAL_FARM_ID,
   cropsNhEnvironmentFromTiers,
-  cropsNhEutPerCrop,
+  cropsNhFarmEut,
   cropsNhHarvestTicks,
   cropsNhHarvesterFromTiers,
   cropsNhHarvesterMachineCount,
@@ -209,7 +209,10 @@ export function MachineShoppingList() {
         }
         const crops = Math.max(0, Math.round(node.machineCount));
         if (crop.id === CROP_HARVESTER_INDUSTRIAL_FARM_ID) {
-          return cropsNhEutPerCrop(crop) * crops;
+          // WHOLE farms bill: a farm draws its full power however many
+          // seeds it holds, so the last, partially filled farm costs the
+          // same as a full one.
+          return cropsNhFarmEut(crop) * cropsNhHarvesterMachineCount(crop, crops);
         }
         const stats = getCropsNhStats(recipe);
         if (!stats) {

@@ -625,6 +625,15 @@ export function cropsNhEutPerCrop(setup: CropHarvesterSetup): number {
   return (withUnits * 4 ** setup.overclocks) / cropsNhSquarePerTier(setup.tierIndex);
 }
 
+/**
+ * One WHOLE farm's draw: a farm burns its full `getPowerUsage` however many
+ * seeds it holds, so billing rides the farm count, never the seed count - a
+ * half-filled farm is not half a bill.
+ */
+export function cropsNhFarmEut(setup: CropHarvesterSetup): number {
+  return cropsNhEutPerCrop(setup) * cropsNhSquarePerTier(setup.tierIndex);
+}
+
 export function cropsNhManagerEuPerHarvest(setup: CropHarvesterSetup): number {
   return setup.id === CROP_HARVESTER_MANAGER_ID && setup.tierIndex >= 0
     ? gtVoltage(setup.tierIndex) / 8
