@@ -33,6 +33,14 @@ export function CropPickerMenu({
   const datasetManifest = useFactoryStore((state) => state.datasetManifest);
   const selectedDatasetVersionId = useFactoryStore((state) => state.selectedDatasetVersionId);
   const setNodeRecipe = useFactoryStore((state) => state.setNodeRecipe);
+  // On the Crop Manager, a machine-only crop harvests to NOTHING; the tile
+  // grays out so the dead pick is visible before it is made (the Industrial
+  // Farm tab shows them in full color).
+  const onIndustrialFarm = useFactoryStore(
+    (state) =>
+      state.project.nodes.find((entry) => entry.id === nodeId)?.machineHandlerId ===
+      "crop-industrial-farm",
+  );
   const version: DatasetVersion | undefined = datasetManifest?.versions.find(
     (entry) => entry.id === selectedDatasetVersionId,
   );
@@ -221,6 +229,7 @@ export function CropPickerMenu({
                 {machineOnly ? (
                   <p className="mt-1.5 text-[12px] leading-4 text-amber-300">
                     Grows only inside an Industrial Farm.
+                    {!onIndustrialFarm ? " This card's Crop Manager would harvest nothing." : ""}
                   </p>
                 ) : null}
               </div>
@@ -243,7 +252,10 @@ export function CropPickerMenu({
                   onClick={() => void handlePick(crop)}
                   // The left item shelf's language: a bare icon over its
                   // name, no box of its own, a quiet hover wash.
-                  className="flex flex-col items-center gap-0.5 p-0.5 pb-1 text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
+                  className={[
+                    "flex flex-col items-center gap-0.5 p-0.5 pb-1 text-[var(--mc-ink)] hover:bg-[var(--mc-85)]",
+                    machineOnly && !onIndustrialFarm ? "opacity-35 saturate-50" : "",
+                  ].join(" ")}
                 >
                   <span className="grid h-12 w-12 place-items-center overflow-hidden [filter:drop-shadow(1px_2px_2px_rgba(0,0,0,0.55))]">
                     {crop.outputs[0] ? (
