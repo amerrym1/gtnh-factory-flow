@@ -5015,9 +5015,12 @@ function CropConfigPanel({
       line(
         "harvest",
         rate > 0 ? (
+          // Every term stays put whatever the knobs say - an idle factor
+          // reads as its neutral value instead of vanishing, so the formula
+          // keeps one shape while the player turns things on and off.
           <>
-            ceil({cropStats.growthPoints.toLocaleString()}/{rate})·{formatCompact(cycleSec)}s
-            {speedMult !== 1 ? <> ÷ {formatCompact(speedMult)} speed</> : null}
+            ceil({cropStats.growthPoints.toLocaleString()}/{rate})·{formatCompact(cycleSec)}s ÷{" "}
+            {formatCompact(speedMult)} speed
           </>
         ) : (
           <>too hungry to grow</>
@@ -5027,8 +5030,8 @@ function CropConfigPanel({
       line(
         "drops",
         <>
-          {formatCompact(cropStats.dropChance)}·1.03<sup>{env.gain}</sup>
-          {roundMult !== 1 ? <> rounds ·{formatCompact(roundMult)} harvests</> : <> rounds</>}
+          {formatCompact(cropStats.dropChance)}·1.03<sup>{env.gain}</sup> rounds ·
+          {formatCompact(roundMult)} harvests
         </>,
         <>{formatCompact(itemsPerHarvest)} items</>,
       ),
