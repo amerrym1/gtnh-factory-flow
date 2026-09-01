@@ -81,9 +81,11 @@ const RESOURCE_DEFAULT_PAGE_SIZE = 6;
  * (Jack, 2026-08-31). Four columns in the standard panel; two short lines of
  * name, then the hover tooltip carries the rest.
  */
-// The height is exactly what the tile holds - a 40px icon + two 10px name
-// lines + borders - so a wrapped second line is never clipped.
-const RESOURCE_TILE_HEIGHT = 62;
+// The height is exactly what the tile holds - a 44px icon cell + two 10px
+// name lines + borders - so a wrapped second line is never clipped. Fluid art
+// deliberately stays at the previous 40px size inside the bigger cell: a
+// solid square at full cell size out-shouts every item around it.
+const RESOURCE_TILE_HEIGHT = 66;
 const RESOURCE_TILE_MIN_WIDTH = 58;
 const RESOURCE_TILE_GAP = 2;
 const RESOURCE_GRID_CELL = 56;
@@ -102,7 +104,9 @@ const RESOURCE_GRID_GAP = 4;
  * here; that is the trade, and much past this even ordinary items start to clip.
  */
 const RESOURCE_GRID_ART = "!h-full !w-full scale-[1.4]";
-const RESOURCE_PAGER_HEIGHT = 28;
+// The pager measures 28px (24 + 4 margin); the extra is slack so a fractional
+// device pixel can never clip the last row of tiles.
+const RESOURCE_PAGER_HEIGHT = 31;
 /** One mouse notch is 100 on most platforms, so one notch is one page. */
 const RESOURCE_WHEEL_PAGE_DELTA = 80;
 /** Whether the filter block under the search box is folded away. */
@@ -1863,7 +1867,7 @@ function ResourceResultSkeleton({
           className="flex shrink-0 flex-col items-center gap-1 pt-1"
           style={{ height: RESOURCE_TILE_HEIGHT }}
         >
-          <div className="h-10 w-10 shrink-0 animate-pulse rounded-[4px] bg-neutral-800/70" />
+          <div className="h-11 w-11 shrink-0 animate-pulse rounded-[4px] bg-neutral-800/70" />
           <div
             className="h-2.5 animate-pulse rounded bg-neutral-800/70"
             style={{ width: `${45 + ((index * 17) % 40)}%` }}
@@ -2047,7 +2051,7 @@ function ResourceResultPage({
               role="option"
               aria-selected={active}
             >
-              <span className="minecraft-pixel-art flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden drop-shadow-[0_2px_3px_rgba(0,0,0,0.5)]">
+              <span className="minecraft-pixel-art flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden drop-shadow-[0_2px_3px_rgba(0,0,0,0.5)]">
                 {resource.id === POWER_EU_CLAUSE_ID ? (
                   <span className="flex h-full w-full items-center justify-center bg-amber-400/10">
                     <Zap className="h-5 w-5 fill-current text-amber-400" aria-hidden />
@@ -2070,7 +2074,7 @@ function ResourceResultPage({
                         : undefined
                     }
                     className={
-                      resource.kind === "fluid" ? "!h-10 !w-10" : "!h-10 !w-10 scale-[1.5]"
+                      resource.kind === "fluid" ? "!h-11 !w-11" : "!h-11 !w-11 scale-[1.5]"
                     }
                   />
                 )}
