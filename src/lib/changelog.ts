@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.45.0",
+    date: "2026-08-31",
+    headline: "Power is a resource now",
+    notes: [
+      "Generators have a real EU port: wire it to a drawer on a gold lightning line, with its own connect and cut sounds.",
+      "An EU product drawer takes an amount in solve mode, and the generators and their fuel solve to meet it.",
+      "A new key by the rate unit shows all power as amps of a tier you pick, in the game's tier colors.",
+      "EU left the inputs and outputs lists: the machines panel is its ledger.",
+    ],
+  },
+  {
     version: "2.44.0",
     date: "2026-08-31",
     headline: "Solve mode settles in",
