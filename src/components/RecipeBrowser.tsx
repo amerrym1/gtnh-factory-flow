@@ -102,7 +102,7 @@ const RESOURCE_FILTERS_STORAGE_KEY = "gtnh-factory-flow.resource-filters.v1";
 /** The machine chips' multi-select: which maps' recipes the search shows. */
 const MAP_SELECTION_STORAGE_KEY = "gtnh-factory-flow.machine-map-selection.v1";
 
-type ResourceSortMode = "relevance" | "name" | "mod" | "made" | "uses";
+type ResourceSortMode = "relevance" | "popular" | "name" | "mod" | "made" | "uses";
 type ResourceViewMode = "list" | "grid";
 
 /**
@@ -1332,6 +1332,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
               className="h-7 min-w-0 rounded-[4px] border border-neutral-700 bg-[#17191d] px-1.5 text-xs text-neutral-100 outline-none"
             >
               <option value="relevance">Best match</option>
+              <option value="popular">Most popular</option>
               <option value="name">Name A–Z</option>
               <option value="mod">By mod</option>
               <option value="made">Most ways to make</option>

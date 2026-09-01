@@ -379,7 +379,14 @@ export async function resolveDatasetRecipeRefs(
     .filter((match): match is { importedId: string; recipeId: string } => Boolean(match));
 }
 
-export type ResourceQuerySort = "relevance" | "name" | "mod" | "recipes" | "made" | "uses";
+export type ResourceQuerySort =
+  | "relevance"
+  | "name"
+  | "mod"
+  | "recipes"
+  | "made"
+  | "uses"
+  | "popular";
 
 /**
  * How many recipes MAKE and how many USE each resource, read off the same
@@ -447,6 +454,8 @@ export async function queryDatasetResources(
     mod?: string;
     sort?: ResourceQuerySort;
     source?: ResourceSourceFilter;
+    /** Community popularity by `${kind}:${id}`, required only by sort "popular". */
+    popularity?: Map<string, number>;
   },
 ) {
   const catalog = await loadCatalog(versionId);
@@ -512,6 +521,7 @@ export async function queryDatasetResources(
     resolved.results,
     request.sort ?? "relevance",
     directionCounts,
+    request.popularity,
   );
 
   return {
@@ -555,6 +565,7 @@ function sortResourceMatches(
   matches: Array<{ resourceIndex: number; score: number }>,
   sort: ResourceQuerySort,
   directionCounts: Map<string, { madeBy: number; usedBy: number }>,
+  popularity?: Map<string, number>,
 ) {
   const nameOf = (match: { resourceIndex: number }) => {
     const resource = catalog.resourceIndex[match.resourceIndex];
@@ -599,6 +610,24 @@ function sortResourceMatches(
     return [...matches].sort(
       (left, right) =>
         countsOf(right).usedBy - countsOf(left).usedBy || nameOf(left).localeCompare(nameOf(right)),
+    );
+  }
+
+  if (sort === "popular") {
+    // What the community actually builds, aggregated over shared setups. A
+    // typed query still wins first: "steel" must find steel, not the most
+    // popular thing named vaguely like it. Resources no plan has touched
+    // fall back to the best-match order behind everything with a score.
+    const popularityOf = (match: { resourceIndex: number }) => {
+      const resource = catalog.resourceIndex[match.resourceIndex];
+      return (resource && popularity?.get(`${resource.kind}:${resource.id}`)) ?? 0;
+    };
+    return [...matches].sort(
+      (left, right) =>
+        right.score - left.score ||
+        popularityOf(right) - popularityOf(left) ||
+        countsOf(right).madeBy - countsOf(left).madeBy ||
+        nameOf(left).localeCompare(nameOf(right)),
     );
   }
 
