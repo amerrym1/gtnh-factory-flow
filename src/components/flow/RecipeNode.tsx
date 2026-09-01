@@ -5909,11 +5909,18 @@ function MachineCountStat({
     }
   };
 
-  const stepBy = (direction: 1 | -1, event: React.MouseEvent) => {
-    // Shift-click steps by 100, Ctrl-click (or Cmd on mac) by 10.
-    const step = event.shiftKey ? 100 : event.ctrlKey || event.metaKey ? 10 : 1;
+  const stepBy = (
+    direction: 1 | -1,
+    modifiers: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean },
+  ) => {
+    // Shift steps by 100, Ctrl (or Cmd on mac) by 10 - clicks and wheel alike.
+    const step = modifiers.shiftKey ? 100 : modifiers.ctrlKey || modifiers.metaKey ? 10 : 1;
     const next = Math.max(1, machineCount + direction * step);
     if (next !== machineCount) {
+      // The count dial ticks the wood-tap ladder as it walks, wrapping so a
+      // long scroll reads as movement rather than a stuck note.
+      playBoardSound("dialRate", { step: next % 4 });
+      suppressBoardSound("adjust", 150);
       setDraftState({ machineCount: next, draft: String(next) });
       onChange(next);
     }
@@ -5923,7 +5930,15 @@ function MachineCountStat({
     "nodrag flex h-5 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] hover:bg-[var(--mc-100)] active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)]";
 
   return (
-    <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+    <div
+      className="nodrag nowheel min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
+      // The wheel walks the count too, with the same shift/ctrl multipliers
+      // the buttons take. "nowheel" keeps React Flow from zooming under it.
+      onWheel={(event) => {
+        event.stopPropagation();
+        stepBy(event.deltaY < 0 ? 1 : -1, event);
+      }}
+    >
       <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">{label}</div>
       <div className="flex min-w-0 items-center gap-0.5">
         <button
