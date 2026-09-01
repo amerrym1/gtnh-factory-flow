@@ -106,6 +106,7 @@ export type BoardSoundKind =
   | "delete" // a card leaves the board
   | "connect" // a wire snaps in
   | "zap" // a POWER wire snaps in: a crackle of electricity
+  | "zapOff" // a POWER wire (or its drawer) goes: the discharge
   | "snap" // the dragged wire catches a compatible slot mid-drag
   | "unwire" // a wire is cut
   | "error" // a wire drop was refused
@@ -446,6 +447,15 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void
       puff(ctx, out, { frequency: 3400, q: 6, duration: 0.025, peak: 0.16, delay: 0.035 });
       puff(ctx, out, { frequency: 2300, q: 5, duration: 0.035, peak: 0.14, delay: 0.065 });
       blip(ctx, out, { from: 740, to: 988, duration: 0.1, peak: 0.18, delay: 0.015 });
+      break;
+    case "zapOff":
+      // The zap's complement: the same crackle material DISCHARGING - the
+      // sparks step down in brightness and the bite falls (down-motion is
+      // the delete family's, and this is a delete).
+      puff(ctx, out, { frequency: 3200, q: 6, duration: 0.03, peak: 0.18 });
+      puff(ctx, out, { frequency: 2300, q: 6, duration: 0.03, peak: 0.14, delay: 0.035 });
+      puff(ctx, out, { frequency: 1500, q: 5, duration: 0.045, peak: 0.12, delay: 0.07 });
+      blip(ctx, out, { from: 988, to: 659, duration: 0.11, peak: 0.16, delay: 0.015 });
       break;
     case "snap":
       // A quick grab: the scratch material but snappier - a short brush

@@ -104,6 +104,10 @@ describe("playProjectDiff", () => {
       edges: [{ ...powerEdge, source: "g", target: "s" }],
     } as Partial<FactoryProject>);
     expect(diff(machine, withEuDrawer)).toEqual(["zap"]);
+    // The complements: cutting the wire, or deleting the drawer with its
+    // wire, discharges instead of the ordinary delete or unwire.
+    expect(diff(withEuDrawer, machine)).toEqual(["zapOff"]);
+    expect(diff(wired, before)).toEqual(["zapOff"]);
   });
 
   it("tells a supply drawer from a catch drawer by the wire direction", () => {

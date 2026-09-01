@@ -213,8 +213,20 @@ export function playProjectDiff(prev: ProjectSoundSnapshot, next: ProjectSoundSn
       break;
     }
   }
+  // And its complement: a gesture that takes a power wire out (cutting it,
+  // or deleting the EU drawer it fed) discharges instead of the ordinary
+  // delete thud.
+  let removedPowerEdge = false;
+  for (const edgeId of prev.powerEdgeIds) {
+    if (!next.edgeIds.has(edgeId)) {
+      removedPowerEdge = true;
+      break;
+    }
+  }
   if (addedPowerEdge) {
     playBoardSound("zap");
+  } else if (removedPowerEdge) {
+    playBoardSound("zapOff");
   } else if (addedNodes > 0) {
     playBoardSound(placeKindFor(prev, next));
   } else if (removedNodes > 0) {
