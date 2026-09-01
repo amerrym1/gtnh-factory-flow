@@ -75,17 +75,24 @@ export function CropPickerMenu({
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    if (!needle) {
-      return crops;
-    }
-    return crops.filter((crop) => {
-      const haystack = [
-        cropDisplayName(crop.name),
-        ...crop.outputs.map((output) => output.displayName ?? output.id),
-      ]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(needle);
+    const matches = needle
+      ? crops.filter((crop) => {
+          const haystack = [
+            cropDisplayName(crop.name),
+            ...crop.outputs.map((output) => output.displayName ?? output.id),
+          ]
+            .join(" ")
+            .toLowerCase();
+          return haystack.includes(needle);
+        })
+      : crops;
+    // Tier order, name inside a tier: the list reads as a progression.
+    return [...matches].sort((a, b) => {
+      const tierOf = (crop: RecipeSummary) =>
+        (crop.metadata as { cropsNh?: { tier?: number } } | undefined)?.cropsNh?.tier ?? 99;
+      return (
+        tierOf(a) - tierOf(b) || cropDisplayName(a.name).localeCompare(cropDisplayName(b.name))
+      );
     });
   }, [crops, search]);
 
@@ -148,7 +155,7 @@ export function CropPickerMenu({
       ) : error ? (
         <div className="px-2 py-3 text-[12px] font-bold text-[var(--mc-bad)]">{error}</div>
       ) : (
-        <div className="grid max-h-[380px] grid-cols-5 gap-1 overflow-y-auto">
+        <div className="grid max-h-[420px] grid-cols-5 overflow-y-auto">
           {filtered.map((crop) => {
             const tier = (crop.metadata as { cropsNh?: { tier?: number } } | undefined)?.cropsNh
               ?.tier;
@@ -169,9 +176,11 @@ export function CropPickerMenu({
                 title={[name, tier ? `Tier ${tier}` : undefined, dropsLine]
                   .filter(Boolean)
                   .join(" · ")}
-                className="relative flex flex-col items-center gap-0.5 border-2 border-transparent p-1 text-[var(--mc-ink)] hover:border-[var(--mc-47)] hover:bg-[var(--mc-100)]"
+                // The left item shelf's language: a bare icon over its name,
+                // no box of its own, a quiet hover wash.
+                className="relative flex flex-col items-center gap-0.5 p-0.5 pb-1 text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
               >
-                <span className="grid h-9 w-9 place-items-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
+                <span className="grid h-12 w-12 place-items-center overflow-hidden [filter:drop-shadow(1px_2px_2px_rgba(0,0,0,0.55))]">
                   {crop.outputs[0] ? (
                     <ResourceIcon
                       // Chance badges are spelled out in the hover instead.
@@ -180,13 +189,13 @@ export function CropPickerMenu({
                       tooltip={false}
                       showAmount={false}
                       showConsumedState={false}
-                      size="sm"
-                      className="scale-[1.35]"
+                      size="md"
+                      className="scale-[1.4]"
                     />
                   ) : null}
                 </span>
                 {tier ? (
-                  <span className="absolute right-0.5 top-0.5 text-[8px] font-bold leading-none text-[var(--mc-ink-muted)]">
+                  <span className="absolute right-0.5 top-0.5 text-[8px] font-bold leading-none text-[color:var(--mc-47)]">
                     T{tier}
                   </span>
                 ) : null}
