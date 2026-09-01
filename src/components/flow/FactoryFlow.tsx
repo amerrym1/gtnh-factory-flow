@@ -7687,6 +7687,9 @@ const SourceToolbar = memo(function SourceToolbar({
                   {tier}
                 </button>
               ))}
+              <div className="col-span-4 pt-0.5 text-center font-mono text-[9px] font-semibold uppercase tracking-[0.5px] text-[var(--mc-ink-muted)]">
+                Display only
+              </div>
             </div>
           ) : null}
         </div>
