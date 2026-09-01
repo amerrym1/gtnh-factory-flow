@@ -66,6 +66,8 @@ const MACHINES = {
   htgr: { query: "gas-cooled", id: "gregtech:gt.blockmachines@12791" },
   lftr: { query: "thorium reactor", id: "gregtech:gt.blockmachines@751" },
   "ic2-fluid-reactor": { query: "nuclear reactor", id: "ic2:blockgenerator@5" },
+  // The Vacuum Reactor is the same IC2 block run on active cooling.
+  "vacuum-reactor": { query: "nuclear reactor", id: "ic2:blockgenerator@5" },
   dehp: { query: "deep earth", id: "gregtech:gt.blockmachines@12729" },
   "solar-tower": { query: "solar tower", id: "gregtech:gt.blockmachines@863" },
   "solar-panel": { query: "solar panel", id: "gregtech:gt.metaitem.01@32752" },

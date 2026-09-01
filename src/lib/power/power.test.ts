@@ -310,6 +310,28 @@ describe("reactors and endgame", () => {
     expect(model.outputs.some((flow) => flow.name === "Uranium-233")).toBe(true);
   });
 
+  it("runs the Vacuum Reactor uranium design at the wiki's 43,600 EU/t", () => {
+    const model = compute("vacuum-reactor", { design: "uranium" });
+    expect(model.euPerTick).toBe(43_600);
+    // 40 quad rods over their 20,000 s lifespan, burned to depleted rods.
+    expect(model.inputs).toEqual([
+      { name: "Quad Fuel Rod (Uranium)", perSecond: 40 / 20_000, unit: "item" },
+    ]);
+    expect(model.outputs).toEqual([
+      { name: "Quad Fuel Rod (Depleted Uranium)", perSecond: 40 / 20_000, unit: "item" },
+    ]);
+    expect(resolvePowerResource("Quad Fuel Rod (Uranium)")?.kind).toBe("item");
+    expect(resolvePowerResource("The Core (Depleted)")?.kind).toBe("item");
+  });
+
+  it("flags the hot Vacuum Reactor designs and prices The Core at 4.98M EU/t", () => {
+    const mox = compute("vacuum-reactor", { design: "mox" });
+    expect(mox.warnings?.some((line) => line.includes("98% Core Temp"))).toBe(true);
+    const core = compute("vacuum-reactor", { design: "core-40" });
+    expect(core.euPerTick).toBe(4_979_200);
+    expect(core.inputs).toEqual([{ name: "The Core", perSecond: 40 / 100_000, unit: "item" }]);
+  });
+
   it("multiplies the LNR by coolant and booster (5.85M EU/t)", () => {
     const model = compute("large-naquadah-reactor", {
       fuel: "Naq Fuel Mk-I",

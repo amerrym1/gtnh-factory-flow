@@ -247,6 +247,12 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/nuclear_reactor-69dcd45bd34a.png",
    "dominantColor": "#e3e510"
   },
+  "vacuum-reactor": {
+   "id": "ic2:blockgenerator@5",
+   "displayName": "Nuclear Reactor",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/nuclear_reactor-69dcd45bd34a.png",
+   "dominantColor": "#e3e510"
+  },
   "dehp": {
    "id": "gregtech:gt.blockmachines@12729",
    "displayName": "Deep Earth Heating Pump",

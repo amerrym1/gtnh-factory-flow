@@ -2899,6 +2899,76 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/pyrotheum_dust-b55a688bab36.png",
    "dominantColor": "#dabc33"
   },
+  "Quad Fuel Rod (Depleted Excited Uranium)": {
+   "kind": "item",
+   "id": "gregtech:gt.depletedrodexciteduranium4",
+   "displayName": "Quad Fuel Rod (Depleted Excited Uranium)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/quad_fuel_rod_depleted_excited_uranium-850e5f1dbbdc.png",
+   "dominantColor": "#3c3c3c"
+  },
+  "Quad Fuel Rod (Depleted High Density Plutonium)": {
+   "kind": "item",
+   "id": "gregtech:gt.depletedrodhighdensityplutonium4",
+   "displayName": "Quad Fuel Rod (Depleted High Density Plutonium)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/quad_fuel_rod_depleted_high_density_plutonium-298554da5b45.png",
+   "dominantColor": "#613051"
+  },
+  "Quad Fuel Rod (Depleted MOX)": {
+   "kind": "item",
+   "id": "gregtech:gt.depletedrodmox4",
+   "displayName": "Quad Fuel Rod (Depleted MOX)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/quad_fuel_rod_depleted_mox-7dd9cfd2b9b1.png",
+   "dominantColor": "#333333"
+  },
+  "Quad Fuel Rod (Depleted Thorium)": {
+   "kind": "item",
+   "id": "gregtech:gt.depletedrodthorium4",
+   "displayName": "Quad Fuel Rod (Depleted Thorium)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/quad_fuel_rod_depleted_thorium-60d1725a33df.png",
+   "dominantColor": "#323232"
+  },
+  "Quad Fuel Rod (Depleted Uranium)": {
+   "kind": "item",
+   "id": "gregtech:gt.depletedroduranium4",
+   "displayName": "Quad Fuel Rod (Depleted Uranium)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/quad_fuel_rod_depleted_uranium-3fb150a05608.png",
+   "dominantColor": "#3c3c3c"
+  },
+  "Quad Fuel Rod (Excited Uranium)": {
+   "kind": "item",
+   "id": "gregtech:gt.rodexciteduranium4",
+   "displayName": "Quad Fuel Rod (Excited Uranium)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/quad_fuel_rod_excited_uranium-d27206c07b99.png",
+   "dominantColor": "#5b7611"
+  },
+  "Quad Fuel Rod (High Density Plutonium)": {
+   "kind": "item",
+   "id": "gregtech:gt.rodhighdensityplutonium4",
+   "displayName": "Quad Fuel Rod (High Density Plutonium)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/quad_fuel_rod_high_density_plutonium-bb2cce03bad8.png",
+   "dominantColor": "#953232"
+  },
+  "Quad Fuel Rod (MOX)": {
+   "kind": "item",
+   "id": "gregtech:gt.rodmox4",
+   "displayName": "Quad Fuel Rod (MOX)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/quad_fuel_rod_mox-e6d081ee2242.png",
+   "dominantColor": "#505050"
+  },
+  "Quad Fuel Rod (Thorium)": {
+   "kind": "item",
+   "id": "gregtech:gt.rodthorium4",
+   "displayName": "Quad Fuel Rod (Thorium)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/quad_fuel_rod_thorium-d91417a4f68e.png",
+   "dominantColor": "#4e4e4e"
+  },
+  "Quad Fuel Rod (Uranium)": {
+   "kind": "item",
+   "id": "gregtech:gt.roduranium4",
+   "displayName": "Quad Fuel Rod (Uranium)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/quad_fuel_rod_uranium-47bf8d6634d7.png",
+   "dominantColor": "#3f6a13"
+  },
   "Quicksilver": {
    "kind": "item",
    "id": "thaumcraft:itemresource@3",
@@ -3276,6 +3346,20 @@
    "displayName": "Thallium Plasma",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/thallium_plasma-08906bbaa997.png",
    "dominantColor": "#a2aaaa"
+  },
+  "The Core": {
+   "kind": "item",
+   "id": "gregtech:gt.rodnaquadah32",
+   "displayName": "The Core",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/the_core-b13e2fd1dee7.png",
+   "dominantColor": "#292f56"
+  },
+  "The Core (Depleted)": {
+   "kind": "item",
+   "id": "gregtech:gt.depletedrodnaquadah32",
+   "displayName": "The Core (Depleted)",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/the_core_depleted-8d2f82f86191.png",
+   "dominantColor": "#1b1f37"
   },
   "Thorium Based Liquid Fuel (Depleted)": {
    "kind": "fluid",

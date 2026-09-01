@@ -6,7 +6,7 @@
  */
 import { powerPlannerData } from "../planner-data";
 import type { PowerModel, PowerSourceDefinition } from "../types";
-import { formatAmount, items, liters, percent, stat, tierPower } from "./helpers";
+import { formatAmount, items, lifespanHours, liters, percent, stat, tierPower } from "./helpers";
 
 const thtr: PowerSourceDefinition = {
   id: "thtr",
@@ -179,6 +179,153 @@ const ic2FluidReactor: PowerSourceDefinition = {
   },
 };
 
+/**
+ * The wiki's tested Vacuum Reactor designs (actively cooled IC2 reactor,
+ * coolant cells recooled in a Vacuum Freezer). EU and lifespans are the
+ * wiki's Reactor Planner figures; rods burn to their depleted forms at
+ * count / lifespan per second. Coolant cells circulate through the
+ * freezer instead of being consumed, so they are stat lines.
+ */
+const VACUUM_DESIGNS = [
+  {
+    key: "thorium",
+    label: "Thorium (8,720 EU/t)",
+    euPerTick: 8720,
+    rod: "Quad Fuel Rod (Thorium)",
+    depleted: "Quad Fuel Rod (Depleted Thorium)",
+    rods: 40,
+    rodLife: 50_000,
+    coolant: "14 x 360k He Coolant Cell",
+    coolantLife: 1071,
+    freezer: "Vacuum Freezer (MV hatch)",
+  },
+  {
+    key: "uranium",
+    label: "Uranium (43,600 EU/t)",
+    euPerTick: 43_600,
+    rod: "Quad Fuel Rod (Uranium)",
+    depleted: "Quad Fuel Rod (Depleted Uranium)",
+    rods: 40,
+    rodLife: 20_000,
+    coolant: "14 x 360k He Coolant Cell",
+    coolantLife: 267,
+    freezer: "Vacuum Freezer (HV hatch)",
+  },
+  {
+    key: "mox",
+    label: "MOX (107,979 EU/t)",
+    euPerTick: 107_979,
+    rod: "Quad Fuel Rod (MOX)",
+    depleted: "Quad Fuel Rod (Depleted MOX)",
+    rods: 40,
+    rodLife: 10_000,
+    coolant: "14 x 360k He Coolant Cell",
+    coolantLife: 267,
+    freezer: "Vacuum Freezer (HV hatch)",
+    hot: true,
+  },
+  {
+    key: "hd-plutonium",
+    label: "High Density Plutonium (301,958 EU/t)",
+    euPerTick: 301_958,
+    rod: "Quad Fuel Rod (High Density Plutonium)",
+    depleted: "Quad Fuel Rod (Depleted High Density Plutonium)",
+    rods: 40,
+    rodLife: 70_000,
+    coolant: "14 x 540k Sp Coolant Cell",
+    coolantLife: 401,
+    freezer: "Vacuum Freezer (HV hatch)",
+    hot: true,
+  },
+  {
+    key: "excited-uranium",
+    label: "Excited Uranium (1.05M EU/t)",
+    euPerTick: 1_046_400,
+    rod: "Quad Fuel Rod (Excited Uranium)",
+    depleted: "Quad Fuel Rod (Depleted Excited Uranium)",
+    rods: 40,
+    rodLife: 6_000,
+    coolant: "14 x 1080k Sp Coolant Cell",
+    coolantLife: 50,
+    freezer: "Mega Vacuum Freezer (EV hatch)",
+  },
+  {
+    key: "core-25",
+    label: "The Core x25 (3.2M EU/t)",
+    euPerTick: 3_200_000,
+    rod: "The Core",
+    depleted: "The Core (Depleted)",
+    rods: 25,
+    rodLife: 100_000,
+    coolant: "16 x 1080k Sp Coolant Cell",
+    coolantLife: 11,
+    freezer: "Mega Vacuum Freezer (LuV hatch)",
+  },
+  {
+    key: "core-40",
+    label: "The Core x40 (4.98M EU/t)",
+    euPerTick: 4_979_200,
+    rod: "The Core",
+    depleted: "The Core (Depleted)",
+    rods: 40,
+    rodLife: 100_000,
+    coolant: "14 x 1080k Sp Coolant Cell",
+    coolantLife: 11,
+    freezer: "Mega Vacuum Freezer (LuV hatch)",
+  },
+  {
+    key: "core-40-capacitor",
+    label: "The Core x40, heat capacitors (4.98M EU/t)",
+    euPerTick: 4_979_200,
+    rod: "The Core",
+    depleted: "The Core (Depleted)",
+    rods: 40,
+    rodLife: 100_000,
+    coolant: "14 x 1G Neutronium Heat Capacitor",
+    coolantLife: 9300,
+    freezer: "Mega Vacuum Freezer (UV hatch)",
+  },
+];
+
+const vacuumReactor: PowerSourceDefinition = {
+  id: "vacuum-reactor",
+  name: "Vacuum Reactor",
+  group: "reactors",
+  unlock: "EV",
+  blurb: "Actively cooled nuke: coolant cells and a Vacuum Freezer.",
+  settings: [
+    {
+      type: "select",
+      id: "design",
+      label: "Design",
+      options: VACUUM_DESIGNS.map(({ key, label }) => ({ key, label })),
+      defaultKey: "uranium",
+    },
+  ],
+  compute(read): PowerModel {
+    const design =
+      VACUUM_DESIGNS.find((entry) => entry.key === read.select("design")) ?? VACUUM_DESIGNS[1];
+    const rodsPerSecond = design.rods / design.rodLife;
+    const warnings = [
+      `Coolant cells are recooled by a ${design.freezer}, not consumed. That loop and its power are not modeled.`,
+    ];
+    if (design.hot) {
+      warnings.push("Runs at 98% Core Temp. The reactor melts down at 100%.");
+    }
+    return {
+      euPerTick: design.euPerTick,
+      inputs: [items(design.rod, rodsPerSecond)],
+      outputs: [items(design.depleted, rodsPerSecond)],
+      stats: [
+        stat("Coolant", design.coolant),
+        stat("Coolant lifespan", `${formatAmount(design.coolantLife)}s minimum`),
+        stat("Rod lifespan", lifespanHours(design.rodLife)),
+      ],
+      warnings,
+    };
+  },
+};
+
 const dehp: PowerSourceDefinition = {
   id: "dehp",
   name: "Deep Earth Heating Pump",
@@ -305,5 +452,12 @@ const solarPanel: PowerSourceDefinition = {
   },
 };
 
-export const reactorSources: PowerSourceDefinition[] = [thtr, htgr, lftr, ic2FluidReactor, dehp];
+export const reactorSources: PowerSourceDefinition[] = [
+  thtr,
+  htgr,
+  lftr,
+  ic2FluidReactor,
+  vacuumReactor,
+  dehp,
+];
 export const passiveSources: PowerSourceDefinition[] = [solarTower, solarPanel];
