@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.47.0",
+    date: "2026-08-31",
+    headline: "The item list learns what players build",
+    notes: [
+      "Most popular is the new default sort, ranked from the community's shared setups.",
+      "Results are one dense grid of named tiles with bigger icons, in place of the list and grid views.",
+      "Tiles lift on hover like a hand of cards.",
+      "The recent shelf, filters and pager slim down so more items fit on screen.",
+    ],
+  },
+  {
     version: "2.46.1",
     date: "2026-08-31",
     headline: "Every card follows the power unit",
