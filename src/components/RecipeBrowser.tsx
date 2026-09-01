@@ -81,9 +81,9 @@ const RESOURCE_DEFAULT_PAGE_SIZE = 6;
  * (Jack, 2026-08-31). Four columns in the standard panel; two short lines of
  * name, then the hover tooltip carries the rest.
  */
-// The height is exactly what the tile holds - a 36px icon + two 10px name
+// The height is exactly what the tile holds - a 40px icon + two 10px name
 // lines + borders - so a wrapped second line is never clipped.
-const RESOURCE_TILE_HEIGHT = 58;
+const RESOURCE_TILE_HEIGHT = 62;
 const RESOURCE_TILE_MIN_WIDTH = 58;
 const RESOURCE_TILE_GAP = 2;
 const RESOURCE_GRID_CELL = 56;
@@ -1863,7 +1863,7 @@ function ResourceResultSkeleton({
           className="flex shrink-0 flex-col items-center gap-1 pt-1"
           style={{ height: RESOURCE_TILE_HEIGHT }}
         >
-          <div className="h-9 w-9 shrink-0 animate-pulse rounded-[4px] bg-neutral-800/70" />
+          <div className="h-10 w-10 shrink-0 animate-pulse rounded-[4px] bg-neutral-800/70" />
           <div
             className="h-2.5 animate-pulse rounded bg-neutral-800/70"
             style={{ width: `${45 + ((index * 17) % 40)}%` }}
@@ -2047,7 +2047,7 @@ function ResourceResultPage({
               role="option"
               aria-selected={active}
             >
-              <span className="minecraft-pixel-art flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden drop-shadow-[0_2px_3px_rgba(0,0,0,0.5)]">
+              <span className="minecraft-pixel-art flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden drop-shadow-[0_2px_3px_rgba(0,0,0,0.5)]">
                 {resource.id === POWER_EU_CLAUSE_ID ? (
                   <span className="flex h-full w-full items-center justify-center bg-amber-400/10">
                     <Zap className="h-5 w-5 fill-current text-amber-400" aria-hidden />
@@ -2065,12 +2065,12 @@ function ResourceResultPage({
                     iconPixelSize={
                       resource.kind === "fluid"
                         ? isSwatchFluid(resource)
-                          ? 50
-                          : spriteArtPixels(36)
+                          ? 56
+                          : spriteArtPixels(40)
                         : undefined
                     }
                     className={
-                      resource.kind === "fluid" ? "!h-9 !w-9" : "!h-9 !w-9 scale-[1.5]"
+                      resource.kind === "fluid" ? "!h-10 !w-10" : "!h-10 !w-10 scale-[1.5]"
                     }
                   />
                 )}
