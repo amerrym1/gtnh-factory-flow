@@ -938,7 +938,7 @@ function cropsNhAnalyticControls(mode: "world" | "farm" = "world"): MachineConfi
       defaultKey: "100",
       tiers: [
         option("0", "Dry", CROP_WATER_CONTROL_ID, "Water Bucket"),
-        option("50", "Partial", CROP_WATER_CONTROL_ID, "Water Bucket"),
+        option("50", "Half", CROP_WATER_CONTROL_ID, "Water Bucket"),
         option("100", "Full", CROP_WATER_CONTROL_ID, "Water Bucket"),
       ],
     }),
@@ -948,7 +948,7 @@ function cropsNhAnalyticControls(mode: "world" | "farm" = "world"): MachineConfi
       defaultKey: "100",
       tiers: [
         option("0", "None", CROP_FERTILIZER_CONTROL_ID, "Fertilizer"),
-        option("50", "Partial", CROP_FERTILIZER_CONTROL_ID, "Fertilizer"),
+        option("50", "Half", CROP_FERTILIZER_CONTROL_ID, "Fertilizer"),
         option("100", "Full", CROP_FERTILIZER_CONTROL_ID, "Fertilizer"),
       ],
     }),
@@ -970,6 +970,8 @@ function cropsNhAnalyticControls(mode: "world" | "farm" = "world"): MachineConfi
         option("humid-60", "60% Wet", CROP_BIOME_CONTROL_ID, "Grass Block"),
         option("humid-70", "70% Wet", CROP_BIOME_CONTROL_ID, "Grass Block"),
         option("humid", "80% Wet", CROP_BIOME_CONTROL_ID, "Grass Block"),
+        // Labels stay one short word each: the four-across crop row's wells
+        // are narrow.
         option("one-tag", "1 Tag", CROP_BIOME_CONTROL_ID, "Grass Block"),
         option("two-tags", "2 Tags", CROP_BIOME_CONTROL_ID, "Grass Block"),
       ],

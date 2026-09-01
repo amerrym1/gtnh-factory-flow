@@ -4404,11 +4404,13 @@ const CROP_UNIT_PIP_COLORS: Record<string, string> = {
 // The SEEDS cell's exact chrome, shared by every crop knob so the settings
 // speak the same beveled tile language as the footer under them.
 const CROP_TILE_CLASS =
-  "nodrag nowheel min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 pb-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]";
+  "nodrag nowheel min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 pb-0.5 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]";
 const CROP_TILE_CAPTION_CLASS =
   "flex items-center gap-1 truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]";
+// Narrow buttons, so the word well between them keeps the width: "60% Wet"
+// has to fit a four-across tile.
 const CROP_TILE_BUTTON_CLASS =
-  "nodrag flex h-5 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] enabled:hover:bg-[var(--mc-100)] enabled:active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)] disabled:opacity-35";
+  "nodrag flex h-5 w-3.5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] enabled:hover:bg-[var(--mc-100)] enabled:active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)] disabled:opacity-35";
 
 /** The unit's tiny colour mark before its caption, echoing its slot pip. */
 function CropPipSwatch({ color }: { color?: string }) {
@@ -4484,7 +4486,7 @@ function CropStepperRow({
         >
           <Minus className="h-3 w-3" />
         </button>
-        <span className="h-[21px] w-0 min-w-0 flex-1 border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-center text-[14px] font-medium leading-[19px] tabular-nums text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)]">
+        <span className="h-5 w-0 min-w-0 flex-1 border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-center text-[13px] font-medium leading-[18px] tabular-nums text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)]">
           {value}
         </span>
         <button
@@ -4561,7 +4563,7 @@ function CropCycleRow({
         >
           <Minus className="h-3 w-3" />
         </button>
-        <span className="h-[21px] w-0 min-w-0 flex-1 overflow-hidden whitespace-nowrap border border-[var(--mc-47)] bg-[var(--mc-85)] px-0.5 text-center text-[11px] font-medium leading-[19px] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)]">
+        <span className="h-5 w-0 min-w-0 flex-1 overflow-hidden whitespace-nowrap border border-[var(--mc-47)] bg-[var(--mc-85)] px-0.5 text-center text-[10px] font-medium leading-[18px] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)]">
           {current.label}
         </span>
         <button
@@ -4882,7 +4884,7 @@ function CropConfigPanel({
   );
   const bodyPx =
     6 +
-    (cropCells.length > 0 ? Math.ceil(cropCells.length / 3) * (CROP_PANEL_ROW_PX + 4) : 0) +
+    (cropCells.length > 0 ? Math.ceil(cropCells.length / 4) * (CROP_PANEL_ROW_PX + 4) : 0) +
     (unitCells.length > 0 ? 16 + Math.ceil(unitCells.length / 3) * (CROP_PANEL_ROW_PX + 4) : 0) +
     (footer ? 16 : 0);
   // The crop's own tiles sit right under the hairline with no section head
@@ -4896,7 +4898,9 @@ function CropConfigPanel({
     >
       <div className="min-w-0 border-t border-[var(--mc-56)] pb-1 pt-0.5">
         {cropCells.length > 0 ? (
-          <div className="grid min-w-0 grid-cols-[repeat(3,minmax(0,1fr))] gap-x-1 gap-y-1">
+          // Four across: the crop's own knobs are narrow (a two-digit stat,
+          // a one-word option), so the row need not wrap.
+          <div className="grid min-w-0 grid-cols-[repeat(4,minmax(0,1fr))] gap-x-1 gap-y-1">
             {cropCells}
           </div>
         ) : null}
