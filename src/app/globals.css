@@ -1139,19 +1139,21 @@ textarea {
  * gleam follows it. Subtle on purpose: the tilt caps at ~5deg and the gleam
  * is a faint white radial, not a shine sweep.
  */
+/*
+ * ONE transform, on the tile: the art and the name grow together at the same
+ * rate and can never step on each other, and since the tile paints no box of
+ * its own, what the eye sees growing is just the item and its name.
+ */
 .resource-tile {
   position: relative;
+  transform: perspective(340px) rotateX(var(--tile-rx, 0deg)) rotateY(var(--tile-ry, 0deg));
+  transition: transform 140ms ease-out;
 }
 .resource-tile:hover {
-  /* The grown art may spill over its neighbours; it goes over, not under. */
+  transform: perspective(340px) rotateX(var(--tile-rx, 0deg)) rotateY(var(--tile-ry, 0deg))
+    scale(1.45);
+  /* The grown tile spills over its neighbours; it goes over, not under. */
   z-index: 10;
-}
-.resource-tile-art {
-  position: relative;
-  transform-origin: 50% 60%;
-  transition:
-    transform 140ms ease-out,
-    filter 140ms ease-out;
 }
 /*
  * The shimmer is filters, not an overlay: sprites are mostly transparent, and
@@ -1159,20 +1161,17 @@ textarea {
  * drop-shadow() both respect the alpha channel, so the white glow hugs the
  * item's actual silhouette.
  */
+.resource-tile-art {
+  transition: filter 140ms ease-out;
+}
 .resource-tile:hover .resource-tile-art {
-  transform: perspective(300px) rotateX(var(--tile-rx, 0deg)) rotateY(var(--tile-ry, 0deg))
-    scale(1.75);
-  filter: brightness(1.25) drop-shadow(0 0 4px rgba(255, 255, 255, 0.35))
+  filter: brightness(1.22) drop-shadow(0 0 4px rgba(255, 255, 255, 0.35))
     drop-shadow(0 5px 8px rgba(0, 0, 0, 0.6));
 }
 .resource-tile-name {
-  transform-origin: 50% 0%;
-  transition:
-    transform 140ms ease-out,
-    color 140ms ease-out;
+  transition: color 140ms ease-out;
 }
 .resource-tile:hover .resource-tile-name {
-  transform: scale(1.1);
   color: #e5e5e5;
 }
 

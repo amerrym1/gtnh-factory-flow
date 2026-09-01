@@ -1993,8 +1993,8 @@ function tileTiltMove(event: PointerEvent<HTMLElement>) {
   }
   const x = (event.clientX - rect.left) / rect.width - 0.5;
   const y = (event.clientY - rect.top) / rect.height - 0.5;
-  element.style.setProperty("--tile-rx", `${(-y * 18).toFixed(2)}deg`);
-  element.style.setProperty("--tile-ry", `${(x * 18).toFixed(2)}deg`);
+  element.style.setProperty("--tile-rx", `${(-y * 14).toFixed(2)}deg`);
+  element.style.setProperty("--tile-ry", `${(x * 14).toFixed(2)}deg`);
 }
 
 function tileTiltReset(event: PointerEvent<HTMLElement>) {
