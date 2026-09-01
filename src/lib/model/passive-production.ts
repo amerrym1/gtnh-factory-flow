@@ -967,9 +967,12 @@ function cropsNhAnalyticControls(mode: "world" | "farm" = "world"): MachineConfi
       defaultKey: "two-tags",
       tiers: [
         option("none", "None", CROP_BIOME_CONTROL_ID, "Grass Block"),
-        option("humid-60", "60% Wet", CROP_BIOME_CONTROL_ID, "Grass Block"),
-        option("humid-70", "70% Wet", CROP_BIOME_CONTROL_ID, "Grass Block"),
-        option("humid", "80% Wet", CROP_BIOME_CONTROL_ID, "Grass Block"),
+        // Humidity rungs, bare percentages: the four-across crop row's wells
+        // clip anything longer ("80% Wet" showed as "80% We"). The hover
+        // explains what the percent is.
+        option("humid-60", "60%", CROP_BIOME_CONTROL_ID, "Grass Block"),
+        option("humid-70", "70%", CROP_BIOME_CONTROL_ID, "Grass Block"),
+        option("humid", "80%", CROP_BIOME_CONTROL_ID, "Grass Block"),
         // Labels stay one short word each: the four-across crop row's wells
         // are narrow.
         option("one-tag", "1 Tag", CROP_BIOME_CONTROL_ID, "Grass Block"),

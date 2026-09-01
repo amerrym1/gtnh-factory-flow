@@ -5100,8 +5100,9 @@ function cropControlHelp(recipe: Recipe, controlId: string): ReactNode {
             biggest feeding boost there is.
           </p>
           <p className="text-slate-300">
-            Without a matching biome, a wet one (80%+ humidity, like a swamp or jungle) still gives
-            up to +14.
+            Without a matching biome, humidity stands in for one like: the percent options are the
+            biome&apos;s humidity, worth +4 at 60%, +9 at 70% and the full +14 at 80% or wetter
+            (a swamp or jungle). It never stacks with real likes.
           </p>
         </CropHelpPanel>
       );
