@@ -706,6 +706,30 @@ describe("CropsNH harvesters", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("walks the humidity gradient the way getNutrientsPerCycle does", () => {
+    // floor(clamp((rainfall - 0.5) / 0.3, 0, 1) * 14): 60% is +4, 70% +9,
+    // 80% the full simulated tag.
+    const bonus = (key: string) =>
+      cropsNhEnvironmentFromTiers({ cropBiome: key }).biomeBonus;
+    expect(bonus("humid-60")).toBe(4);
+    expect(bonus("humid-70")).toBe(9);
+    expect(bonus("humid")).toBe(14);
+  });
+
+  it("only grants the farm's fertilizer food while fertilizer is fed", () => {
+    const env = (tiers: Record<string, string>) =>
+      cropsNhHarvesterEnvironment(
+        cropsNhHarvesterFromTiers(tiers, "crop-industrial-farm"),
+        cropsNhEnvironmentFromTiers(tiers),
+      ).fertilizer;
+    expect(env({ cropSeedBedTier: "2" })).toBe(200);
+    expect(env({ cropSeedBedTier: "2", cropIfFertilized: "no" })).toBe(0);
+    // A Fertilization Unit runs on enriched fertilizer, so it forces fed.
+    expect(
+      env({ cropSeedBedTier: "3", cropIfFertilized: "no", cropIfFertilizerUnits: "1" }),
+    ).toBe(200);
+  });
+
   it("bills a partially filled farm as a whole farm", () => {
     // A farm burns its full getPowerUsage however many seeds it holds: 900
     // seeds in 729-seat IV farms is TWO farms at full draw, not 1.23 farms.

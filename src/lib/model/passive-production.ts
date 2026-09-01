@@ -31,6 +31,12 @@ export const CROP_IF_FERTILIZER_UNIT_CONTROL_ID = "cropIfFertilizerUnits";
 export const CROP_IF_HARVEST_UNIT_CONTROL_ID = "cropIfHarvestUnits";
 export const CROP_IF_ENVIRONMENT_UNIT_CONTROL_ID = "cropIfEnvironmentUnits";
 export const CROP_IF_OVERCLOCK_CONTROL_ID = "cropIfOverclocks";
+/**
+ * Whether the farm is fed fertilizer fluid. The +10 fertilizer food is an
+ * OPTIONAL input (`SIMULATED_FERTILIZER_STORAGE_WHEN_FERTILIZER_NOT_PROVIDED
+ * = 0`); a Fertilization Unit forces enriched fertilizer and therefore fed.
+ */
+export const CROP_IF_FERTILIZED_CONTROL_ID = "cropIfFertilized";
 
 export const CROP_HARVESTER_MANAGER_ID = "crop-manager";
 export const CROP_HARVESTER_INDUSTRIAL_FARM_ID = "crop-industrial-farm";
@@ -80,6 +86,7 @@ const CROP_CONTROL_IDS = new Set([
   CROP_IF_HARVEST_UNIT_CONTROL_ID,
   CROP_IF_ENVIRONMENT_UNIT_CONTROL_ID,
   CROP_IF_OVERCLOCK_CONTROL_ID,
+  CROP_IF_FERTILIZED_CONTROL_ID,
 ]);
 
 const BEE_CONTROL_IDS = new Set([
@@ -241,18 +248,25 @@ export function cropsNhExpectedDrop(
   return rounds * (drop.weight / 10000) * (drop.stackSize + (clampedGain + 1) / 100);
 }
 
+// The humidity substitute is a GRADIENT, not a switch:
+// floor(clamp((rainfall - 0.5) / 0.3, 0, 1) * 14), so a 60% biome is +4 and
+// a 70% one +9 on the way to the full +14 at 80%.
 const CROP_BIOME_BONUS_BY_KEY: Record<string, number> = {
   "two-tags": 28,
   "one-tag": 14,
   humid: 14,
+  "humid-70": 9,
+  "humid-60": 4,
   none: 0,
 };
 
-/** Real liked tags behind each biome option - humid's +14 is a simulated one. */
+/** Real liked tags behind each biome option - the humidity rungs simulate. */
 const CROP_BIOME_TAGS_BY_KEY: Record<string, number> = {
   "two-tags": 2,
   "one-tag": 1,
   humid: 0,
+  "humid-70": 0,
+  "humid-60": 0,
   none: 0,
 };
 
@@ -369,6 +383,11 @@ export interface CropHarvesterSetup {
   harvestUnits: number;
   environmentUnits: number;
   overclocks: number;
+  /**
+   * Whether the farm's optional fertilizer fluid is supplied (+10 food). A
+   * Fertilization Unit runs on enriched fertilizer, so it forces this on.
+   */
+  fertilized: boolean;
 }
 
 /**
@@ -511,6 +530,8 @@ export function cropsNhHarvesterFromTiers(
   const environmentUnits = take(clampInt(read(CROP_IF_ENVIRONMENT_UNIT_CONTROL_ID, 0), 0, MAX_ENVIRONMENTAL_UNITS));
   const growthUnits =
     overclocks > 0 ? 0 : take(clampInt(read(CROP_IF_GROWTH_UNIT_CONTROL_ID, 0), 0, slots));
+  const fertilized =
+    fertilizerUnits > 0 || tiers?.[CROP_IF_FERTILIZED_CONTROL_ID] !== "no";
   return {
     id,
     tierIndex,
@@ -519,6 +540,7 @@ export function cropsNhHarvesterFromTiers(
     harvestUnits,
     environmentUnits,
     overclocks,
+    fertilized,
   };
 }
 
@@ -562,7 +584,9 @@ export function cropsNhHarvesterEnvironment(
   return {
     ...base,
     water: INDUSTRIAL_FARM_SIMULATED_STORAGE,
-    fertilizer: INDUSTRIAL_FARM_SIMULATED_STORAGE,
+    // The +10 fertilizer food only exists while fertilizer fluid is fed:
+    // `SIMULATED_FERTILIZER_STORAGE_WHEN_FERTILIZER_NOT_PROVIDED = 0`.
+    fertilizer: setup.fertilized ? INDUSTRIAL_FARM_SIMULATED_STORAGE : 0,
     sky: true,
     biomeBonus: Math.max(humiditySimulated, tags * CROP_BIOME_BONUS_PER_TAG),
   };
@@ -943,7 +967,9 @@ function cropsNhAnalyticControls(mode: "world" | "farm" = "world"): MachineConfi
       defaultKey: "two-tags",
       tiers: [
         option("none", "None", CROP_BIOME_CONTROL_ID, "Grass Block"),
-        option("humid", "Humid", CROP_BIOME_CONTROL_ID, "Grass Block"),
+        option("humid-60", "60% Wet", CROP_BIOME_CONTROL_ID, "Grass Block"),
+        option("humid-70", "70% Wet", CROP_BIOME_CONTROL_ID, "Grass Block"),
+        option("humid", "80% Wet", CROP_BIOME_CONTROL_ID, "Grass Block"),
         option("one-tag", "1 Tag", CROP_BIOME_CONTROL_ID, "Grass Block"),
         option("two-tags", "2 Tags", CROP_BIOME_CONTROL_ID, "Grass Block"),
       ],
@@ -1091,9 +1117,18 @@ function cropHarvesterHandlers(stats?: CropsNhStats): MachineHandler[] {
               ? "No Growth Acceleration Units"
               : `${count} Growth Acceleration Unit${count > 1 ? "s" : ""} (+${count * 100}% speed)`,
         }),
+        selectControl({
+          id: CROP_IF_FERTILIZED_CONTROL_ID,
+          label: "Fertilizer",
+          defaultKey: "yes",
+          tiers: [
+            option("no", "None", CROP_IF_FERTILIZED_CONTROL_ID, "Fertilizer"),
+            option("yes", "Fed", CROP_IF_FERTILIZED_CONTROL_ID, "Fertilizer"),
+          ],
+        }),
         countControl({
           id: CROP_IF_FERTILIZER_UNIT_CONTROL_ID,
-          label: "Fertilizer",
+          label: "Fert Unit",
           max: MAX_FERTILIZER_UNITS,
           resourceId: "crop_if_fertilizer_unit",
           itemName: "Fertilization Unit (MV)",
