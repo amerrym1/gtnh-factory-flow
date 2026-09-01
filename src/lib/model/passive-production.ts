@@ -896,7 +896,7 @@ function cropsNhAnalyticControls(mode: "world" | "farm" = "world"): MachineConfi
       defaultKey: "yes",
       tiers: [
         option("no", "Covered", CROP_SKY_CONTROL_ID, "Daylight Detector"),
-        option("yes", "Open Sky", CROP_SKY_CONTROL_ID, "Daylight Detector"),
+        option("yes", "Open", CROP_SKY_CONTROL_ID, "Daylight Detector"),
       ],
     }),
     selectControl({
@@ -904,7 +904,7 @@ function cropsNhAnalyticControls(mode: "world" | "farm" = "world"): MachineConfi
       label: "Biome",
       defaultKey: "two-tags",
       tiers: [
-        option("none", "No Bonus", CROP_BIOME_CONTROL_ID, "Grass Block"),
+        option("none", "None", CROP_BIOME_CONTROL_ID, "Grass Block"),
         option("humid", "Humid", CROP_BIOME_CONTROL_ID, "Grass Block"),
         option("one-tag", "1 Tag", CROP_BIOME_CONTROL_ID, "Grass Block"),
         option("two-tags", "2 Tags", CROP_BIOME_CONTROL_ID, "Grass Block"),
