@@ -1,3 +1,4 @@
+import { getFilledCellFluidEquivalent } from "@/lib/model/resources";
 import { getCommunityDb, isCommunityConfigured } from "@/lib/server/community";
 
 /**
@@ -9,11 +10,22 @@ import { getCommunityDb, isCommunityConfigured } from "@/lib/server/community";
  *   +2  the plan MAKES it (it is an output of a recipe some card runs),
  *   else +1 if it only USES it (an input of such a recipe, or a drawer);
  *       the stronger role wins, they do not stack
- *   +log10(1 + rate) the plan SHIPS it (the row's denormalized boundary
- *       outputs carry real items/s / L/s; log so a quarry pumping 10,000 L/s
- *       of steam counts more than a trickle but cannot drown everything else)
+ *   +min(1, log10(1 + rate)) the plan SHIPS it (the row's denormalized
+ *       boundary outputs carry real items/s / L/s). Capped at +1 so a plan's
+ *       whole vote is bounded: fifty setups trickling water must always
+ *       outrank one setup gushing a billion lava - popularity is how many
+ *       people build it, never how much of it there is.
  * Every plan weighs the same. Weighting by votes or views would just make
  * the front page vote twice.
+ *
+ * Three shaping rules on top (Jack, 2026-08-31):
+ * - Programmed circuits score nothing. Every other card holds one; ranking
+ *   them says nothing about what people build.
+ * - A filled cell IS its fluid: the cell's votes land on the fluid's key
+ *   (name-tolerant, the same equivalence the recipe search uses), so only
+ *   the fluid climbs the list and the two forms never split their score.
+ * - Items weigh a little more than fluids: one crafted item usually stands
+ *   for more work than one of the litres flanking it.
  *
  * Keys are `${kind}:${id}`, the same shape the dataset catalog uses, so the
  * resources route can look straight up. Cached in-process for half an hour;
@@ -72,7 +84,8 @@ async function buildPopularityMap(): Promise<Map<string, number>> {
     for (const row of data ?? []) {
       const votes = scoreOnePlan(row.plan, row.outputs);
       for (const [key, score] of votes) {
-        totals.set(key, (totals.get(key) ?? 0) + score);
+        const weight = key.startsWith("item:") ? ITEM_WEIGHT : 1;
+        totals.set(key, (totals.get(key) ?? 0) + score * weight);
       }
     }
     if (!data || data.length < PAGE_SIZE) {
@@ -128,9 +141,16 @@ function scoreOnePlan(plan: unknown, outputs: unknown): Map<string, number> {
     }
     if (Array.isArray(project.storages)) {
       for (const storage of project.storages) {
-        const entry = storage as { kind?: unknown; resourceId?: unknown };
+        const entry = storage as {
+          kind?: unknown;
+          resourceId?: unknown;
+          displayName?: unknown;
+        };
         if (typeof entry.kind === "string" && typeof entry.resourceId === "string") {
-          vote(`${entry.kind}:${entry.resourceId}`, USED_SCORE);
+          vote(
+            canonicalKey(entry.kind, entry.resourceId, entry.displayName),
+            USED_SCORE,
+          );
         }
       }
     }
@@ -139,15 +159,23 @@ function scoreOnePlan(plan: unknown, outputs: unknown): Map<string, number> {
   // Boundary output rates ride on top of the appearance vote.
   if (Array.isArray(outputs)) {
     for (const stat of outputs) {
-      const entry = stat as { kind?: unknown; resourceId?: unknown; ratePerSecond?: unknown };
+      const entry = stat as {
+        kind?: unknown;
+        resourceId?: unknown;
+        displayName?: unknown;
+        ratePerSecond?: unknown;
+      };
       if (
         typeof entry.kind === "string" &&
         typeof entry.resourceId === "string" &&
         typeof entry.ratePerSecond === "number" &&
         entry.ratePerSecond > 0
       ) {
-        const key = `${entry.kind}:${entry.resourceId}`;
-        votes.set(key, (votes.get(key) ?? 0) + Math.log10(1 + entry.ratePerSecond));
+        const key = canonicalKey(entry.kind, entry.resourceId, entry.displayName);
+        if (key) {
+          const shipBonus = Math.min(1, Math.log10(1 + entry.ratePerSecond));
+          votes.set(key, (votes.get(key) ?? 0) + shipBonus);
+        }
       }
     }
   }
@@ -156,10 +184,36 @@ function scoreOnePlan(plan: unknown, outputs: unknown): Map<string, number> {
 
 const MADE_SCORE = 2;
 const USED_SCORE = 1;
+/** Items weigh a little more than fluids in the final tally. */
+const ITEM_WEIGHT = 1.5;
 
 function resourceKey(resource: unknown): string | undefined {
-  const entry = resource as { kind?: unknown; id?: unknown };
+  const entry = resource as { kind?: unknown; id?: unknown; displayName?: unknown };
   return typeof entry?.kind === "string" && typeof entry?.id === "string"
-    ? `${entry.kind}:${entry.id}`
+    ? canonicalKey(entry.kind, entry.id, entry.displayName)
     : undefined;
+}
+
+/**
+ * The key a vote actually lands on: circuits land nowhere, and a filled
+ * cell's vote lands on its fluid so only the fluid shows in the ranking.
+ * The fluid id is derived from the cell's name; a rare miss ("Molten Cast
+ * Iron" is `molten.castiron`) scores a key no dataset resource wears, which
+ * only means that cell's votes go unspent.
+ */
+function canonicalKey(kind: string, id: string, displayName: unknown): string | undefined {
+  if (kind === "item" && id.startsWith("gregtech:gt.integrated_circuit")) {
+    return undefined;
+  }
+  if (kind === "item") {
+    const fluid = getFilledCellFluidEquivalent({
+      kind: "item",
+      id,
+      displayName: typeof displayName === "string" ? displayName : undefined,
+    });
+    if (fluid) {
+      return `fluid:${fluid.id}`;
+    }
+  }
+  return `${kind}:${id}`;
 }
