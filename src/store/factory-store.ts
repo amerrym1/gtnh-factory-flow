@@ -1630,19 +1630,29 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
                 entry.id === recipe.id ? mergeRecipe(entry, recipe) : entry,
               )
             : [...state.project.recipes, recipe],
-          nodes: state.project.nodes.map((entry) =>
-            entry.id === nodeId
-              ? {
-                  ...entry,
-                  recipeId: recipe.id,
-                  overclockTier: recipe.minimumTier,
-                  machineConfigTiers: undefined,
-                  machineHandlerId: undefined,
-                  coilTier: undefined,
-                  recipeInputOverrides: undefined,
-                }
-              : entry,
-          ),
+          nodes: state.project.nodes.map((entry) => {
+            if (entry.id !== nodeId) {
+              return entry;
+            }
+            // Swapping the CROP keeps the FARM: the harvester tab and its
+            // knobs (seed bed, units, feeding) describe the machine the
+            // player built, not the plant in it, and every crop card offers
+            // the same two handlers with the same controls.
+            const keepHarvester =
+              entry.machineHandlerId !== undefined &&
+              (recipe.machineHandlers ?? []).some(
+                (handler) => handler.id === entry.machineHandlerId,
+              );
+            return {
+              ...entry,
+              recipeId: recipe.id,
+              overclockTier: recipe.minimumTier,
+              machineConfigTiers: keepHarvester ? entry.machineConfigTiers : undefined,
+              machineHandlerId: keepHarvester ? entry.machineHandlerId : undefined,
+              coilTier: undefined,
+              recipeInputOverrides: undefined,
+            };
+          }),
           // The old recipe's resources no longer exist on this node.
           edges: state.project.edges.filter(
             (edge) => edge.source !== nodeId && edge.target !== nodeId,

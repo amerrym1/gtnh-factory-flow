@@ -5015,25 +5015,38 @@ function CropConfigPanel({
       line(
         "harvest",
         rate > 0 ? (
-          // Every term stays put whatever the knobs say - an idle factor
-          // reads as its neutral value instead of vanishing, so the formula
-          // keeps one shape while the player turns things on and off.
-          <>
-            ceil({cropStats.growthPoints.toLocaleString()}/{rate})·{formatCompact(cycleSec)}s ÷{" "}
-            {formatCompact(speedMult)} speed
-          </>
+          // Every term stays put whatever the knobs say, and every unit
+          // count stands IN the equation wearing its own colour - so when a
+          // green knob moves, a green number moves here.
+          isFarm ? (
+            <>
+              ⌈{cropStats.growthPoints}/{rate}⌉·{formatCompact(cycleSec)}s ÷ (1+{growthN}
+              )·(1+0.5·{fertN})·2<sup>{ocN}</sup>
+            </>
+          ) : (
+            <>
+              ⌈{cropStats.growthPoints}/{rate}⌉·{formatCompact(cycleSec)}s
+            </>
+          )
         ) : (
           <>too hungry to grow</>
         ),
-        rate > 0 ? <>every {formatCompact(harvestSec)}s</> : <span style={{ color: "#e06060" }}>never</span>,
+        rate > 0 ? <>{formatCompact(harvestSec)}s</> : <span style={{ color: "#e06060" }}>never</span>,
       ),
       line(
         "drops",
-        <>
-          {formatCompact(cropStats.dropChance)}·1.03<sup>{env.gain}</sup> rounds ·
-          {formatCompact(roundMult)} harvests
-        </>,
-        <>{formatCompact(itemsPerHarvest)} items</>,
+        isFarm ? (
+          <>
+            {formatCompact(cropStats.dropChance)}·1.03<sup>{env.gain}</sup>·(1+0.2·
+            {setup.tierIndex}+0.5·{fertN})·(1+0.2·{harvestN})
+          </>
+        ) : (
+          <>
+            {formatCompact(cropStats.dropChance)}·1.03<sup>{env.gain}</sup>·(1+0.05·
+            {setup.tierIndex})
+          </>
+        ),
+        <>{formatCompact(itemsPerHarvest)}</>,
       ),
       line(
         "output",
@@ -5084,12 +5097,10 @@ function CropConfigPanel({
       {trailing}
     </div>
   );
-  const bodyPx =
-    6 +
-    (cropCells.length > 0 ? Math.ceil(cropCells.length / 4) * (CROP_PANEL_ROW_PX + 4) : 0) +
-    (unitCells.length > 0 ? 16 + Math.ceil(unitCells.length / 3) * (CROP_PANEL_ROW_PX + 4) : 0) +
-    (footer ? 16 : 0) +
-    (cropStats ? (formulasOpen ? 96 : 18) : 0);
+  // A LOW floor on purpose: GridBlock measures the real content and rounds
+  // up, so an inflated estimate here only bought dead space between the
+  // ports and the hairline. Two cells covers the emptiest legacy panel.
+  const bodyPx = 40;
   // The crop's own tiles sit right under the hairline with no section head
   // of their own - what they are is obvious - and the farm's hardware
   // follows under the UPGRADES head with its slot budget.
