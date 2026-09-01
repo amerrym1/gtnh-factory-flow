@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
+import { Zap } from "lucide-react";
 import type { ResourceAmount, ResourceIconAtlasRef, ResourceKind } from "@/lib/model/types";
 import { NEI_TEXTURES } from "@/lib/nei-renderer/theme/textures";
 import {
@@ -364,22 +365,16 @@ function IconImage({
  */
 function PowerIconGlyph({ iconPixelSize }: { iconPixelSize?: number }) {
   const size = iconPixelSize ?? 32;
+  // The same thunderbolt the power UI has always worn (the EU socket, the
+  // ledger), filled solid in the power gold.
   return (
-    <svg
+    <Zap
       aria-hidden
       width={size}
       height={size}
-      viewBox="0 0 16 16"
-      style={{ imageRendering: "pixelated" }}
-      shapeRendering="crispEdges"
-    >
-      <path
-        d="M9 1 L4 9 L7 9 L6 15 L12 6 L8.6 6 Z"
-        fill="#ffd257"
-        stroke="#8a6a13"
-        strokeWidth="0.75"
-      />
-    </svg>
+      className="fill-current text-amber-300"
+      strokeWidth={1.5}
+    />
   );
 }
 

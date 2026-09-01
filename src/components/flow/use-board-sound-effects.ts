@@ -39,6 +39,8 @@ interface ProjectSoundSnapshot {
   storageIds: Set<string>;
   /** Edge endpoints, to see which way a freshly spawned drawer faces. */
   edgeEnds: Map<string, { source: string; target: string }>;
+  /** POWER wires, for the zap: connecting electricity sounds electric. */
+  powerEdgeIds: Set<string>;
   /**
    * Every card serialized through the cosmetic filter: machine counts,
    * tiers, drain pills, config choices survive; positions and art do not.
@@ -82,9 +84,13 @@ export function snapshotProject(project: FactoryProject): ProjectSoundSnapshot {
   }
   const edgeIds = new Set<string>();
   const edgeEnds = new Map<string, { source: string; target: string }>();
+  const powerEdgeIds = new Set<string>();
   for (const edge of project.edges) {
     edgeIds.add(edge.id);
     edgeEnds.set(edge.id, { source: edge.source, target: edge.target });
+    if (edge.resourceKind === "power") {
+      powerEdgeIds.add(edge.id);
+    }
   }
   const openPocketIds = new Set<string>();
   for (const pocket of project.pockets ?? []) {
@@ -99,6 +105,7 @@ export function snapshotProject(project: FactoryProject): ProjectSoundSnapshot {
     openPocketIds,
     storageIds,
     edgeEnds,
+    powerEdgeIds,
     configSignature: signatureParts.join("\n"),
   };
 }
@@ -196,7 +203,19 @@ export function playProjectDiff(prev: ProjectSoundSnapshot, next: ProjectSoundSn
   // step, and playing place AND delete together came out twice as loud as
   // either action alone - which read as broken volume, not as two events.
   // Priority: what arrived beats what left, cards beat wires.
-  if (addedNodes > 0) {
+  // Except ELECTRICITY: a gesture that lands a power wire zaps, whatever
+  // else came with it - the EU drag that spawns a drawer is still, to the
+  // hand, "I connected power to something".
+  let addedPowerEdge = false;
+  for (const edgeId of next.powerEdgeIds) {
+    if (!prev.edgeIds.has(edgeId)) {
+      addedPowerEdge = true;
+      break;
+    }
+  }
+  if (addedPowerEdge) {
+    playBoardSound("zap");
+  } else if (addedNodes > 0) {
     playBoardSound(placeKindFor(prev, next));
   } else if (removedNodes > 0) {
     playBoardSound("delete");

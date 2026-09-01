@@ -105,6 +105,7 @@ export type BoardSoundKind =
   | "placeSource" // a drawer spawns to SUPPLY something: thump stepping up
   | "delete" // a card leaves the board
   | "connect" // a wire snaps in
+  | "zap" // a POWER wire snaps in: a crackle of electricity
   | "snap" // the dragged wire catches a compatible slot mid-drag
   | "unwire" // a wire is cut
   | "error" // a wire drop was refused
@@ -436,6 +437,15 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void
       // The old wide-interval chime read as a fanfare.
       blip(ctx, out, { from: 523, to: 523, duration: 0.08, peak: 0.24 });
       blip(ctx, out, { from: 587, to: 587, duration: 0.14, peak: 0.26, delay: 0.06 });
+      break;
+    case "zap":
+      // Electricity latching: three tiny bright sparks of narrow noise in
+      // quick succession with a rising bite of tone under them - crackle,
+      // not alarm. Pitch motion is UP (down stays reserved for delete).
+      puff(ctx, out, { frequency: 2800, q: 6, duration: 0.03, peak: 0.22 });
+      puff(ctx, out, { frequency: 3400, q: 6, duration: 0.025, peak: 0.16, delay: 0.035 });
+      puff(ctx, out, { frequency: 2300, q: 5, duration: 0.035, peak: 0.14, delay: 0.065 });
+      blip(ctx, out, { from: 740, to: 988, duration: 0.1, peak: 0.18, delay: 0.015 });
       break;
     case "snap":
       // A quick grab: the scratch material but snappier - a short brush

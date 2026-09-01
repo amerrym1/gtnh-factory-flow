@@ -91,6 +91,21 @@ describe("playProjectDiff", () => {
     expect(diff(drawerBefore, drawerAfter)).toEqual(["adjust"]);
   });
 
+  it("zaps for a power wire, even when the gesture spawned a drawer too", () => {
+    const powerEdge = { ...edge("pz"), resourceKind: "power" as const, resourceId: "eu" };
+    const before = project({ nodes: [node("a"), node("b")] });
+    const wired = project({ nodes: [node("a"), node("b")], edges: [powerEdge] });
+    expect(diff(before, wired)).toEqual(["zap"]);
+
+    const machine = project({ nodes: [node("g")] });
+    const withEuDrawer = project({
+      nodes: [node("g")],
+      storages: [{ id: "s", kind: "power", resourceId: "eu", position: { x: 0, y: 0 } }],
+      edges: [{ ...powerEdge, source: "g", target: "s" }],
+    } as Partial<FactoryProject>);
+    expect(diff(machine, withEuDrawer)).toEqual(["zap"]);
+  });
+
   it("tells a supply drawer from a catch drawer by the wire direction", () => {
     const machine = project({ nodes: [node("m")] });
     const withSupply = project({

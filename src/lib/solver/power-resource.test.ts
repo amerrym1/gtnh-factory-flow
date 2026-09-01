@@ -94,6 +94,10 @@ describe("power as a resource", () => {
     );
     expect(result.nodes["g"]!.utilization).toBeCloseTo(1, 5);
     expect(result.storages["bank"]!.producedPerSecond).toBeCloseTo(640, 4);
+    // EU stays out of the resource books: not an item, never an
+    // INPUTS/OUTPUTS row. The MACHINES panel's MADE column accounts it.
+    expect(result.resources["power:eu"]).toBeUndefined();
+    expect(result.unconsumedOutputs.some((b) => b.kind === "power")).toBe(false);
   });
 
   it("solve mode: a typed EU amount solves the generator count and its fuel", () => {
