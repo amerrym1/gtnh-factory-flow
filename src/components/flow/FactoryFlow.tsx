@@ -7649,10 +7649,13 @@ const SourceToolbar = memo(function SourceToolbar({
                 aria-pressed={powerDisplayUnit === "eu"}
                 title="EU per tick"
                 className={[
-                  "pointer-events-auto flex h-8 items-center justify-center gap-1 border-2 px-1.5 font-mono text-[11px] font-black",
+                  // One weight for the field, BLACK weight only for the
+                  // chosen unit - the boldness IS the selection mark, so it
+                  // can never read as inconsistency.
+                  "pointer-events-auto flex h-8 items-center justify-center gap-1 border-2 px-1.5 font-mono text-[11px]",
                   powerDisplayUnit === "eu"
-                    ? "border-white bg-[var(--mc-85)] text-amber-400 ring-2 ring-cyan-300"
-                    : "border-[var(--mc-15)] bg-[var(--mc-49)] text-amber-400 hover:bg-[var(--mc-61)]",
+                    ? "border-white bg-[var(--mc-85)] font-black text-amber-400 ring-2 ring-cyan-300"
+                    : "border-[var(--mc-15)] bg-[var(--mc-49)] font-bold text-amber-400 hover:bg-[var(--mc-61)]",
                 ].join(" ")}
               >
                 <Zap className="h-3 w-3 fill-current" />
@@ -7669,8 +7672,10 @@ const SourceToolbar = memo(function SourceToolbar({
                   aria-pressed={powerDisplayUnit === tier}
                   title={`Amps of ${tier}`}
                   className={[
-                    "pointer-events-auto flex h-8 items-center justify-center border-2 px-1.5 font-mono text-[11px] font-black",
-                    powerDisplayUnit === tier ? "ring-2 ring-cyan-300" : "hover:brightness-110",
+                    "pointer-events-auto flex h-8 items-center justify-center border-2 px-1.5 font-mono text-[11px]",
+                    powerDisplayUnit === tier
+                      ? "font-black ring-2 ring-cyan-300"
+                      : "font-bold hover:brightness-110",
                   ].join(" ")}
                   style={{
                     background: GT_TIER_COLORS[tier].background,
