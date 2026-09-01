@@ -668,11 +668,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         Math.min(options.length - 1, Math.max(0, (currentIndex < 0 ? 0 : currentIndex) + direction))
       ];
     if (next && (currentIndex < 0 || options[currentIndex] !== next)) {
-      // The supply ladder speaks the same electric language, quieter: the
-      // tier's own rung at a lower voice, so stepping hatches reads as
-      // "power adjusted" without claiming a tier changed.
+      // The supply ladder speaks the same electric language, quieter, and
+      // CLIMBS with the amps: each supply option is a quarter-rung above
+      // the last inside its tier, so more hatches audibly means more.
       playBoardSound("dialPower", {
-        step: getVoltageTierIndex(tierControl.current) + 1,
+        step: getVoltageTierIndex(tierControl.current) + 1 + options.indexOf(next) * 0.25,
         gain: 0.6,
       });
       quietBoardSoundsFor(150);
@@ -1501,8 +1501,18 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 currentHatches={powerReport?.hatches ?? 1}
                 catalog={energyHatchCatalog}
                 onPick={(familyId, hatches) => {
+                  const supplyOptions = energySupplyOptionsForTier(
+                    tierControl.current,
+                    energyHatchCatalog,
+                  );
+                  const supplyIndex = supplyOptions.findIndex(
+                    (option) => option.familyId === familyId && option.hatches === hatches,
+                  );
                   playBoardSound("dialPower", {
-                    step: getVoltageTierIndex(tierControl.current) + 1,
+                    step:
+                      getVoltageTierIndex(tierControl.current) +
+                      1 +
+                      Math.max(0, supplyIndex) * 0.25,
                     gain: 0.6,
                   });
                   quietBoardSoundsFor(150);

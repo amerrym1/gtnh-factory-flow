@@ -415,31 +415,33 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode, step 
       break;
     }
     case "dialPower": {
-      // The voltage ladder audibly CLIMBING, in the ZAP's spark material:
-      // two narrow crackles and a short rising bite, each tier a step up
-      // in pitch and a shade more energy - UV genuinely sounds more
-      // powerful than LV. Step 0 is EU/t, the neutral floor.
+      // The voltage ladder audibly CLIMBING, in the ZAP's spark material.
+      // The BITE carries the reading: a whole 1.16 ratio per rung (nearly
+      // a major second - adjacent tiers at 1.11 under the noise were
+      // indistinguishable, which read as one sound repeating), louder than
+      // the sparks, which stay for texture. Fractional rungs are real:
+      // supply steps climb in quarter-rungs inside their tier.
       const rung = Math.max(0, Math.min(16, step));
-      const bite = 196 * Math.pow(1.11, rung);
-      puff(ctx, out, {
-        frequency: 2000 + rung * 140,
-        q: 6,
-        duration: 0.03,
-        peak: 0.1 + rung * 0.005,
-      });
-      puff(ctx, out, {
-        frequency: 1400 + rung * 110,
-        q: 5,
-        duration: 0.035,
-        peak: 0.07 + rung * 0.004,
-        delay: 0.03,
-      });
+      const bite = 175 * Math.pow(1.16, rung);
       blip(ctx, out, {
         from: bite,
         to: bite * 1.12,
-        duration: 0.07,
-        peak: 0.1 + rung * 0.004,
+        duration: 0.09,
+        peak: 0.18 + rung * 0.004,
+      });
+      puff(ctx, out, {
+        frequency: 1800 + rung * 150,
+        q: 6,
+        duration: 0.03,
+        peak: 0.08 + rung * 0.004,
         delay: 0.01,
+      });
+      puff(ctx, out, {
+        frequency: 1300 + rung * 120,
+        q: 5,
+        duration: 0.035,
+        peak: 0.05 + rung * 0.003,
+        delay: 0.04,
       });
       break;
     }
