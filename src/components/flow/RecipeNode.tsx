@@ -605,6 +605,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // Farm burns `getPowerUsage` continuously spread over its seeds, the Crop
   // Manager spends `maxEUInput() / 8` per harvest - the same arithmetic the
   // MACHINES ledger bills. Zero when picked by hand.
+  // In solve mode a crop card's planted count is the ANSWER, not the input:
+  // every seed-scaled figure on the card follows the solved requirement.
+  const cropSolvedSeeds =
+    solveMode && isCropProductionNode
+      ? Math.ceil((result?.theoreticalMachinesRequired ?? 0) - 0.000001)
+      : undefined;
+  const cropSeedCount = cropSolvedSeeds ?? projectNode.machineCount;
   const cropDrawEuT = (() => {
     if (!isCropProductionNode) {
       return 0;
@@ -618,7 +625,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     if (cropsNhIsHandPicked(setup)) {
       return 0;
     }
-    const crops = Math.max(0, Math.round(projectNode.machineCount));
+    const crops = Math.max(0, Math.round(cropSeedCount));
     if (setup.id === CROP_HARVESTER_INDUSTRIAL_FARM_ID) {
       // WHOLE farms bill: the last, partially filled farm draws its full
       // power like the rest.
@@ -802,7 +809,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         controls={cropProductionControls}
         handlerId={selectedMachineHandler.id}
         machineConfigTiers={projectNode.machineConfigTiers}
-        machineCount={projectNode.machineCount}
+        machineCount={cropSeedCount}
         minSeedBedTier={getCropsNhStats(effectiveRecipe)?.minSeedBedTier}
         cropStats={getCropsNhStats(effectiveRecipe)}
         onSelect={updateMachineConfigTier}
