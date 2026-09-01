@@ -73,6 +73,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.46.1",
+    date: "2026-08-31",
+    headline: "Every card follows the power unit",
+    notes: [
+      "The power figures on machine cards convert with the amps dial, like the ledger and the wires.",
+    ],
+  },
+  {
     version: "2.46.0",
     date: "2026-08-31",
     headline: "Tier chips click, type and sing",
