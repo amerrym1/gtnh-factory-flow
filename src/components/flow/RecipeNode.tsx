@@ -5917,9 +5917,9 @@ function MachineCountStat({
     const step = modifiers.shiftKey ? 100 : modifiers.ctrlKey || modifiers.metaKey ? 10 : 1;
     const next = Math.max(1, machineCount + direction * step);
     if (next !== machineCount) {
-      // The count dial ticks the wood-tap ladder as it walks, wrapping so a
-      // long scroll reads as movement rather than a stuck note.
-      playBoardSound("dialRate", { step: next % 4 });
+      // One wood tap per step, a shade brighter going up than down - the
+      // wrapping pitch ladder tried first read as a looping melody.
+      playBoardSound("dialRate", { step: direction > 0 ? 2 : 1 });
       suppressBoardSound("adjust", 150);
       setDraftState({ machineCount: next, draft: String(next) });
       onChange(next);
