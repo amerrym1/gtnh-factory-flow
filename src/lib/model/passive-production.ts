@@ -130,6 +130,12 @@ export interface CropsNhStats {
   growthCycleTicks: number;
   growthMultiplier: number;
   machineOnly?: boolean;
+  /**
+   * `getMinSeedBedTier`: the Industrial Farm refuses this seed below this
+   * bed tier (`CHECK_RECIPE_RESULT_SEED_BED_TIER_TOO_LOW`), so the crop's
+   * seed bed ladder starts here.
+   */
+  minSeedBedTier?: number;
   drops: Array<{ id: string; stackSize: number; weight: number }>;
 }
 
@@ -192,6 +198,7 @@ export function getCropsNhStats(
     growthCycleTicks: toPositiveNumber(meta.growthCycleTicks) ?? 256,
     growthMultiplier: toPositiveNumber(meta.growthMultiplier) ?? 1,
     machineOnly: meta.machineOnly === true ? true : undefined,
+    minSeedBedTier: toPositiveNumber(meta.minSeedBedTier),
     drops,
   };
 }
@@ -424,9 +431,14 @@ export function getNodeMachineBuildCount(
   node: Pick<FactoryNode, "machineCount"> &
     Partial<Pick<FactoryNode, "machineConfigTiers" | "machineHandlerId">>,
 ): number {
-  if (recipe && getCropsNhStats(recipe)) {
+  const cropStats = recipe ? getCropsNhStats(recipe) : undefined;
+  if (recipe && cropStats) {
     return cropsNhHarvesterMachineCount(
-      cropsNhHarvesterFromTiers(node.machineConfigTiers, node.machineHandlerId),
+      cropsNhHarvesterFromTiers(
+        node.machineConfigTiers,
+        node.machineHandlerId,
+        cropStats.minSeedBedTier,
+      ),
       Math.round(node.machineCount),
     );
   }
@@ -444,6 +456,12 @@ export function cropsNhUpgradeSlots(tierIndex: number): number {
 export function cropsNhHarvesterFromTiers(
   tiers: Record<string, string | undefined> | undefined,
   handlerId: string | undefined,
+  /**
+   * The crop's own seed bed floor (`CropsNhStats.minSeedBedTier`): the game
+   * refuses the seed below it, so a stored lower tier clamps UP to it -
+   * exactly what the control's raised minimum shows.
+   */
+  minSeedBedTier?: number,
 ): CropHarvesterSetup {
   const id: CropHarvesterId =
     handlerId === CROP_HARVESTER_INDUSTRIAL_FARM_ID
@@ -453,6 +471,11 @@ export function cropsNhHarvesterFromTiers(
     const parsed = Number.parseInt(tiers?.[controlId] ?? "", 10);
     return Number.isFinite(parsed) ? parsed : fallback;
   };
+  const seedBedFloor = clampInt(
+    Math.max(SEED_BED_MIN_TIER_INDEX, minSeedBedTier ?? SEED_BED_MIN_TIER_INDEX),
+    SEED_BED_MIN_TIER_INDEX,
+    SEED_BED_MAX_TIER_INDEX,
+  );
   // There is no by-hand mode any more: an unset or legacy "none" manager
   // tier parses to nothing and lands on the LV machine.
   const tierIndex =
@@ -462,7 +485,7 @@ export function cropsNhHarvesterFromTiers(
           CROP_MANAGER_MIN_TIER_INDEX,
           CROP_MANAGER_MAX_TIER_INDEX,
         )
-      : clampInt(read(CROP_SEED_BED_TIER_CONTROL_ID, SEED_BED_MIN_TIER_INDEX), SEED_BED_MIN_TIER_INDEX, SEED_BED_MAX_TIER_INDEX);
+      : clampInt(read(CROP_SEED_BED_TIER_CONTROL_ID, seedBedFloor), seedBedFloor, SEED_BED_MAX_TIER_INDEX);
   // Every unit type competes for the same slots (one 'U' position per farm
   // slice in `MTEIndustrialFarm`), so the shared budget squeezes ALL of them,
   // not just growth units. The order is the degrade order when a saved plan's
@@ -828,7 +851,7 @@ function enrichCropProductionRecipe(recipe: Recipe): Recipe {
     eut: 0,
     // Only the analytic CropsNH cards get harvesters: the legacy IC2 crop
     // approximation has no Crop Manager or Industrial Farm behind it.
-    machineHandlers: analyticStats ? cropHarvesterHandlers() : [],
+    machineHandlers: analyticStats ? cropHarvesterHandlers(analyticStats) : [],
     machineConfigControls,
     notes: withPassiveProductionNote(
       recipe.notes,
@@ -997,7 +1020,14 @@ function countControl({
  * rather than a tab of its own. Sticks come first, so a card with nothing
  * chosen behaves exactly as it did before harvesters existed.
  */
-function cropHarvesterHandlers(): MachineHandler[] {
+function cropHarvesterHandlers(stats?: CropsNhStats): MachineHandler[] {
+  // The crop's own seed bed floor: the game refuses the seed below it, so
+  // the ladder simply starts there.
+  const seedBedMin = clampInt(
+    Math.max(SEED_BED_MIN_TIER_INDEX, stats?.minSeedBedTier ?? SEED_BED_MIN_TIER_INDEX),
+    SEED_BED_MIN_TIER_INDEX,
+    SEED_BED_MAX_TIER_INDEX,
+  );
   return [
     {
       id: CROP_HARVESTER_MANAGER_ID,
@@ -1036,9 +1066,9 @@ function cropHarvesterHandlers(): MachineHandler[] {
         voltageTierControl({
           id: CROP_SEED_BED_TIER_CONTROL_ID,
           label: "Seed Bed",
-          minTierIndex: SEED_BED_MIN_TIER_INDEX,
+          minTierIndex: seedBedMin,
           maxTierIndex: SEED_BED_MAX_TIER_INDEX,
-          defaultKey: String(SEED_BED_MIN_TIER_INDEX),
+          defaultKey: String(seedBedMin),
           itemName: (tierName) => `Seed Bed (${tierName})`,
         }),
         countControl({

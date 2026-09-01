@@ -602,9 +602,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     if (!isCropProductionNode) {
       return 0;
     }
+    const stats = getCropsNhStats(effectiveRecipe);
     const setup = cropsNhHarvesterFromTiers(
       projectNode.machineConfigTiers,
       projectNode.machineHandlerId,
+      stats?.minSeedBedTier,
     );
     if (cropsNhIsHandPicked(setup)) {
       return 0;
@@ -613,7 +615,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     if (setup.id === CROP_HARVESTER_INDUSTRIAL_FARM_ID) {
       return cropsNhEutPerCrop(setup) * crops;
     }
-    const stats = getCropsNhStats(effectiveRecipe);
     if (!stats) {
       return 0;
     }
@@ -793,6 +794,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         handlerId={selectedMachineHandler.id}
         machineConfigTiers={projectNode.machineConfigTiers}
         machineCount={projectNode.machineCount}
+        minSeedBedTier={getCropsNhStats(effectiveRecipe)?.minSeedBedTier}
         onSelect={updateMachineConfigTier}
         onSelectMany={(patch) =>
           updateNode(projectNode.id, {
@@ -4654,6 +4656,7 @@ function CropConfigPanel({
   handlerId,
   machineConfigTiers,
   machineCount,
+  minSeedBedTier,
   onSelect,
   onSelectMany,
   getControlHelp,
@@ -4663,6 +4666,8 @@ function CropConfigPanel({
   handlerId: string | undefined;
   machineConfigTiers: Record<string, string | undefined> | undefined;
   machineCount: number;
+  /** The crop's seed bed floor: math clamps to it exactly as the chip does. */
+  minSeedBedTier?: number;
   onSelect: (controlId: string, nextTier: string) => void;
   /**
    * Writes several knobs in one undo step. Every unit step commits the WHOLE
@@ -4676,7 +4681,7 @@ function CropConfigPanel({
     return null;
   }
 
-  const setup = cropsNhHarvesterFromTiers(machineConfigTiers, handlerId);
+  const setup = cropsNhHarvesterFromTiers(machineConfigTiers, handlerId, minSeedBedTier);
   const isFarm = setup.id === CROP_HARVESTER_INDUSTRIAL_FARM_ID;
   const handPicked = cropsNhIsHandPicked(setup);
   const slots = cropsNhUpgradeSlots(setup.tierIndex);
@@ -4697,6 +4702,7 @@ function CropConfigPanel({
     const nextSetup = cropsNhHarvesterFromTiers(
       { ...(machineConfigTiers ?? {}), [controlId]: String(next) },
       handlerId,
+      minSeedBedTier,
     );
     playBoardSound("dialRate", { step: Math.max(0, Math.min(10, next)) });
     suppressBoardSound("adjust", 150);

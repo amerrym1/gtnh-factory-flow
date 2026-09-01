@@ -643,6 +643,67 @@ describe("CropsNH harvesters", () => {
     expect(farmEnv("none", 1)).toBe(14);
   });
 
+  it("holds the seed bed at the crop's own minimum tier", () => {
+    // `CHECK_RECIPE_RESULT_SEED_BED_TIER_TOO_LOW`: the farm refuses a seed
+    // below its bed tier, so the ladder starts there and a stored lower
+    // tier clamps UP - display and math alike.
+    const setup = cropsNhHarvesterFromTiers(
+      { cropSeedBedTier: "2" },
+      "crop-industrial-farm",
+      5,
+    );
+    expect(setup.tierIndex).toBe(5);
+    const recipe = enrichPassiveProductionRecipe({
+      ...oilBerry(),
+      metadata: {
+        cropsNh: {
+          ...(oilBerry().metadata as { cropsNh: Record<string, unknown> }).cropsNh,
+          minSeedBedTier: 5,
+        },
+      },
+    });
+    const seedBed = applyMachineHandlerToRecipe(recipe, {
+      machineHandlerId: "crop-industrial-farm",
+    }).machineConfigControls!.find((control) => control.id === "cropSeedBedTier")!;
+    expect(seedBed.tiers[0]!.key).toBe("5");
+    expect(seedBed.defaultKey).toBe("5");
+  });
+
+  it("gives a Crop Manager nothing from a machine-only crop", () => {
+    // The guide's rule: Industrial Farm-only crops grow and spread in the
+    // world but drop NOTHING on harvest; only the farm runs them.
+    const base = oilBerry();
+    const recipe = enrichPassiveProductionRecipe({
+      ...base,
+      metadata: {
+        cropsNh: {
+          ...(base.metadata as { cropsNh: Record<string, unknown> }).cropsNh,
+          machineOnly: true,
+        },
+      },
+    });
+    const output = recipe.outputs[0]!;
+    expect(
+      getMachineOutputMultiplier(
+        recipe,
+        { machineHandlerId: "crop-manager", machineConfigTiers: { cropManagerTier: "3" } },
+        output,
+        "LV",
+      ),
+    ).toBe(0);
+    expect(
+      getMachineOutputMultiplier(
+        recipe,
+        {
+          machineHandlerId: "crop-industrial-farm",
+          machineConfigTiers: { cropSeedBedTier: "2" },
+        },
+        output,
+        "LV",
+      ),
+    ).toBeGreaterThan(0);
+  });
+
   it("bills the farm's units and overclocks the way getPowerUsage does", () => {
     // IV bed: base VP = 7680 EU/t. Two growth units (+1.25 each), one
     // fertilizer and one harvest unit (+0.5 each) make x4.5, spread over the

@@ -105,7 +105,11 @@ function CropSourceStatsContent({
   // Live math with the node's current knob settings (defaults when unset),
   // as reshaped by whichever harvester is picked: an Industrial Farm fixes
   // water, fertilizer and sky itself and speeds the crop up with its upgrades.
-  const setup = cropsNhHarvesterFromTiers(node?.machineConfigTiers, handler?.id);
+  const setup = cropsNhHarvesterFromTiers(
+    node?.machineConfigTiers,
+    handler?.id,
+    stats.minSeedBedTier,
+  );
   const speedMultiplier = cropsNhGrowthSpeedMultiplier(setup);
   const roundMultiplier = cropsNhHarvestRoundMultiplier(setup);
   const cropsPerMachine = cropsNhCropsPerMachine(setup);

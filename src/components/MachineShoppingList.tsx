@@ -161,8 +161,13 @@ export function MachineShoppingList() {
       // A crop card's machineCount is planted crops, not machines. What it
       // builds is the manager or farm those crops fill; a hand-picked or
       // legacy passive crop builds nothing and stays off the list.
-      const crop = getCropsNhStats(recipe)
-        ? cropsNhHarvesterFromTiers(node.machineConfigTiers, node.machineHandlerId)
+      const cropStats = getCropsNhStats(recipe);
+      const crop = cropStats
+        ? cropsNhHarvesterFromTiers(
+            node.machineConfigTiers,
+            node.machineHandlerId,
+            cropStats.minSeedBedTier,
+          )
         : undefined;
       if (crop ? cropsNhIsHandPicked(crop) : isCropProductionRecipe(recipe)) {
         continue;

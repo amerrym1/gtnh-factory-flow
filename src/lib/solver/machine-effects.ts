@@ -128,7 +128,17 @@ export function getMachineOutputMultiplier(
 ): number {
   const cropStats = getCropsNhStats(recipe);
   if (cropStats) {
-    const setup = cropsNhHarvesterFromTiers(node.machineConfigTiers, node.machineHandlerId);
+    const setup = cropsNhHarvesterFromTiers(
+      node.machineConfigTiers,
+      node.machineHandlerId,
+      cropStats.minSeedBedTier,
+    );
+    // A machine-only crop grown in the world drops NOTHING on harvest (the
+    // guide's rule: they grow and spread, but only a spade gets seeds out),
+    // so a Crop Manager over one produces zero. Only the farm runs it.
+    if (cropStats.machineOnly && setup.id !== "crop-industrial-farm") {
+      return 0;
+    }
     const env = cropsNhHarvesterEnvironment(
       setup,
       cropsNhEnvironmentFromTiers(node.machineConfigTiers),
@@ -376,7 +386,11 @@ export function getMachineDurationMultiplier(
 ): number {
   const cropStats = getCropsNhStats(recipe);
   if (cropStats) {
-    const setup = cropsNhHarvesterFromTiers(node.machineConfigTiers, node.machineHandlerId);
+    const setup = cropsNhHarvesterFromTiers(
+      node.machineConfigTiers,
+      node.machineHandlerId,
+      cropStats.minSeedBedTier,
+    );
     const env = cropsNhHarvesterEnvironment(
       setup,
       cropsNhEnvironmentFromTiers(node.machineConfigTiers),
