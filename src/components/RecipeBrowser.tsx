@@ -55,7 +55,7 @@ import { ChevronIcon } from "./PanelDrawer";
 import { BlueprintPanel } from "./BlueprintPanel";
 import { SetupsPanel } from "./SetupsPanel";
 import { MinecraftTooltip } from "./nei/MinecraftTooltip";
-import { ResourceIcon } from "./nei/ResourceIcon";
+import { isSwatchFluid, ResourceIcon, spriteArtPixels } from "./nei/ResourceIcon";
 import {
   RecipeSearchOverlay,
   type RecipeMapChip,
@@ -81,8 +81,8 @@ const RESOURCE_DEFAULT_PAGE_SIZE = 6;
  * (Jack, 2026-08-31). Four columns in the standard panel; two short lines of
  * name, then the hover tooltip carries the rest.
  */
-// The height is exactly what the tile holds - 2px pad + 32px icon + 2px gap +
-// two 10px name lines + borders - so a wrapped second line is never clipped.
+// The height is exactly what the tile holds - a 36px icon + two 10px name
+// lines + borders - so a wrapped second line is never clipped.
 const RESOURCE_TILE_HEIGHT = 58;
 const RESOURCE_TILE_MIN_WIDTH = 58;
 const RESOURCE_TILE_GAP = 2;
@@ -1863,7 +1863,7 @@ function ResourceResultSkeleton({
           className="flex shrink-0 flex-col items-center gap-1 pt-1"
           style={{ height: RESOURCE_TILE_HEIGHT }}
         >
-          <div className="h-8 w-8 shrink-0 animate-pulse rounded-[4px] bg-neutral-800/70" />
+          <div className="h-9 w-9 shrink-0 animate-pulse rounded-[4px] bg-neutral-800/70" />
           <div
             className="h-2.5 animate-pulse rounded bg-neutral-800/70"
             style={{ width: `${45 + ((index * 17) % 40)}%` }}
@@ -1977,32 +1977,6 @@ function useResourceBrowseMenu(
   };
 }
 
-/**
- * The playing-card hover: write where the cursor sits on the tile into CSS
- * vars on the element itself, and globals.css turns them into a small tilt
- * and a gleam. Direct style writes, so a hover never re-renders the list.
- */
-function tileTiltMove(event: PointerEvent<HTMLElement>) {
-  if (event.pointerType !== "mouse") {
-    return;
-  }
-  const element = event.currentTarget;
-  const rect = element.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0) {
-    return;
-  }
-  const x = (event.clientX - rect.left) / rect.width - 0.5;
-  const y = (event.clientY - rect.top) / rect.height - 0.5;
-  element.style.setProperty("--tile-rx", `${(-y * 14).toFixed(2)}deg`);
-  element.style.setProperty("--tile-ry", `${(x * 14).toFixed(2)}deg`);
-}
-
-function tileTiltReset(event: PointerEvent<HTMLElement>) {
-  const style = event.currentTarget.style;
-  style.removeProperty("--tile-rx");
-  style.removeProperty("--tile-ry");
-}
-
 function ResourceResultPage({
   resources,
   activeResource,
@@ -2038,7 +2012,6 @@ function ResourceResultPage({
     >
       {resources.map((resource) => {
         const active = activeResource?.kind === resource.kind && activeResource.id === resource.id;
-        const press = rowBrowse.pressProps(resource);
 
         return (
           // No hover tooltip: the tile already says what it is, and a tooltip
@@ -2059,26 +2032,22 @@ function ResourceResultPage({
                 }
                 browse(resource, "uses");
               }}
-              {...press}
-              onPointerMove={(event) => {
-                press.onPointerMove(event);
-                tileTiltMove(event);
-              }}
-              onPointerLeave={tileTiltReset}
+              {...rowBrowse.pressProps(resource)}
               aria-label={resourceLabel(resource)}
+              title={resourceLabel(resource)}
               className={[
-                // No hover box: the art and the name do the responding, so the
-                // tile only wears a border while it is the active browse.
-                "resource-tile flex min-w-0 flex-col items-center gap-0.5 rounded-[4px] border px-0.5 pt-0.5",
+                "flex min-w-0 flex-col items-center overflow-hidden rounded-[4px] border px-0.5",
                 // The power tile's own whisper of amber; selection still wins.
                 !active && resource.id === POWER_EU_CLAUSE_ID ? "bg-amber-400/[0.07]" : "",
-                active ? "border-cyan-400 bg-cyan-500/10" : "border-transparent",
+                active
+                  ? "border-cyan-400 bg-cyan-500/10"
+                  : "border-transparent hover:border-neutral-600 hover:bg-white/5",
               ].join(" ")}
               style={{ height: RESOURCE_TILE_HEIGHT }}
               role="option"
               aria-selected={active}
             >
-              <span className="resource-tile-art minecraft-pixel-art flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden drop-shadow-[0_2px_3px_rgba(0,0,0,0.5)]">
+              <span className="minecraft-pixel-art flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden drop-shadow-[0_2px_3px_rgba(0,0,0,0.5)]">
                 {resource.id === POWER_EU_CLAUSE_ID ? (
                   <span className="flex h-full w-full items-center justify-center bg-amber-400/10">
                     <Zap className="h-5 w-5 fill-current text-amber-400" aria-hidden />
@@ -2090,13 +2059,23 @@ function ResourceResultPage({
                     bare
                     showAmount={false}
                     tooltip={false}
-                    // Zoom the art without growing the cell (see crop picker);
-                    // the wrapper crops the overflow at the 32px cell.
-                    className="!h-8 !w-8 scale-[1.5]"
+                    // Items zoom-crop (the sprite ships transparent padding);
+                    // fluids are measured to the same visual size as their
+                    // item neighbours instead of the usual 78% inset.
+                    iconPixelSize={
+                      resource.kind === "fluid"
+                        ? isSwatchFluid(resource)
+                          ? 50
+                          : spriteArtPixels(36)
+                        : undefined
+                    }
+                    className={
+                      resource.kind === "fluid" ? "!h-9 !w-9" : "!h-9 !w-9 scale-[1.5]"
+                    }
                   />
                 )}
               </span>
-              <span className="resource-tile-name line-clamp-2 w-full break-words text-center text-[9px] leading-[10px] text-neutral-400">
+              <span className="line-clamp-2 w-full break-words text-center text-[9px] leading-[10px] text-neutral-400">
                 {resource.id === POWER_EU_CLAUSE_ID ? "Power (EU/t)" : resourceLabel(resource)}
               </span>
           </button>
