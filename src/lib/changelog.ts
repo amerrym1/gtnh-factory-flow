@@ -77,10 +77,10 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-09-01",
     headline: "Farm numbers, checked against the community calculator",
     notes: [
+      "A sprout button on the toolbar drops a crop farm card.",
+      "A Formulas strip on crop cards derives every number down to the output per second.",
       "A farm bills its full power even when its last seed bed is not full.",
-      "The biome option knows partial humidity: 60% is worth +4, 70% is +9.",
-      "A Fertilizer knob says whether the farm is fed; an unfed crop grows slower.",
-      "A Formulas strip on crop cards shows the exact math with your numbers plugged in.",
+      "The biome option knows partial humidity, and a Fertilizer knob says whether the farm is fed.",
     ],
   },
   {
