@@ -182,7 +182,6 @@ import { useFactoryStore } from "@/store/factory-store";
 import {
   GLANCE_NEUTRAL_SURFACE,
   GT_NODE_COLORS,
-  GT_NODE_RAMPS,
   glanceAccentFor,
   glanceCardVars,
   glanceSurfaceFor,
@@ -225,6 +224,13 @@ const CUSTOM_RATE_UNIVERSAL_HANDLE_IDS: readonly string[] = [
  * traverse the cuts convincingly).
  */
 const POWER_CARD_FACE = "color-mix(in srgb, var(--mc-78) 85%, #d99a2b 15%)";
+
+/**
+ * The crop sector's card face: the same trick in green - the crop card is a
+ * different material the way a power card is, and every element on it keeps
+ * its ordinary colours.
+ */
+const CROP_CARD_FACE = "color-mix(in srgb, var(--mc-78) 85%, #63a83e 15%)";
 
 export interface RecipeNodeData extends Record<string, unknown> {
   projectNode: FactoryNode;
@@ -965,6 +971,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               }
             : undefined),
           ...(isPowerCard ? { backgroundColor: POWER_CARD_FACE } : undefined),
+          ...(isCropProductionNode ? { backgroundColor: CROP_CARD_FACE } : undefined),
         }}
       >
       {/* The ring's mark, and the reason it is an ELEMENT rather than the
@@ -4307,13 +4314,8 @@ function PassiveProductionConfigPanel({
   );
 }
 
-// The crop panel's own face: a quiet gray-green, its own colour the way the
-// power cards' amber wash is. The panel pins the NEUTRAL ramp over the card's
-// paint (crop cards wear the green ramp) so every element on it is drawn in
-// the same chrome as everything else on the site.
-const CROP_PANEL_FACE = "#43493e";
-/** Caption line plus a 28px control row, the machine config panel's shape. */
-const CROP_PANEL_ROW_PX = 46;
+/** Caption line plus an h-6 control row, the power config panel's shape. */
+const CROP_PANEL_ROW_PX = 40;
 
 /** The unit types' pip colours, one per block, echoed by the slot pips. */
 const CROP_UNIT_PIP_COLORS: Record<string, string> = {
@@ -4324,9 +4326,13 @@ const CROP_UNIT_PIP_COLORS: Record<string, string> = {
   [CROP_IF_OVERCLOCK_CONTROL_ID]: "#e06060",
 };
 
-/** One single-line +/- stepper row of the crop settings panel. */
+/**
+ * One stepper cell of the crop settings, in the power config panel's exact
+ * language: a 10px tracking caption over an h-6 control row, no icon box, no
+ * bevel chrome. The caption wears the unit's slot-pip colour where it has
+ * one, which is what ties each knob to its pip without art.
+ */
 function CropStepperRow({
-  icon,
   label,
   effect,
   value,
@@ -4337,7 +4343,6 @@ function CropStepperRow({
   onStep,
   help,
 }: {
-  icon: ReactNode;
   label: string;
   /** What the current count does; lives in the hover, never on the row. */
   effect?: string;
@@ -4346,7 +4351,7 @@ function CropStepperRow({
   max: number;
   /** Why the row cannot go up right now ("No free slot"). */
   lockedHint?: string;
-  /** The unit's slot-pip colour, worn as a sliver on the icon box. */
+  /** The unit's slot-pip colour, worn by the caption. */
   pipColor?: string;
   onStep: (next: number) => void;
   help?: ReactNode;
@@ -4358,10 +4363,10 @@ function CropStepperRow({
     }
   };
   const buttonClass =
-    "flex h-7 w-6 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-55)] text-[13px] font-bold leading-none shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] enabled:hover:bg-[var(--mc-63)] disabled:opacity-35";
+    "nodrag flex h-6 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-71)] text-[12px] leading-none text-[var(--mc-ink)] enabled:hover:bg-[var(--mc-85)] disabled:opacity-35";
   const row = (
     <label
-      className="nodrag nowheel min-w-0"
+      className="nodrag nowheel flex min-w-0 flex-col gap-0.5"
       title={[effect, value >= max && lockedHint ? lockedHint : undefined]
         .filter(Boolean)
         .join(" · ")}
@@ -4370,16 +4375,13 @@ function CropStepperRow({
         step(event.deltaY < 0 ? 1 : -1);
       }}
     >
-      <span className="mb-0.5 block whitespace-nowrap text-[12px] font-bold uppercase leading-[14px] text-[var(--mc-ink-muted)]">
+      <span
+        className="truncate text-[10px] uppercase tracking-wide"
+        style={{ color: pipColor ?? "var(--mc-ink-muted)" }}
+      >
         {label}
       </span>
-      <span className="flex min-w-0 items-center gap-1">
-        <span
-          className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]"
-          style={pipColor ? { borderBottomColor: pipColor, borderBottomWidth: 2 } : undefined}
-        >
-          {icon}
-        </span>
+      <span className="flex items-center gap-0.5">
         <button
           type="button"
           className={buttonClass}
@@ -4392,7 +4394,7 @@ function CropStepperRow({
         >
           −
         </button>
-        <span className="min-w-0 flex-1 border border-[var(--mc-33)] bg-[var(--mc-25)] py-[6px] text-center text-[13px] font-bold tabular-nums leading-none text-white">
+        <span className="h-6 w-7 shrink-0 border border-[var(--mc-33)] bg-[var(--mc-93)] text-center text-[13px] leading-6 tabular-nums text-[var(--mc-ink)]">
           {value}
         </span>
         <button
@@ -4414,66 +4416,38 @@ function CropStepperRow({
   return help ? <MinecraftTooltip content={help}>{row}</MinecraftTooltip> : row;
 }
 
-/** A chip that cycles its options: click forward, right-click back, wheel both. */
+/** A select cell in the power panel's language, driven by MinecraftSelect. */
 function CropCycleRow({
-  icon,
   label,
   options,
   currentKey,
   onPick,
   help,
 }: {
-  icon: ReactNode;
   label: string;
   options: MachineConfigTierOption[];
   currentKey: string;
   onPick: (option: MachineConfigTierOption, index: number) => void;
   help?: ReactNode;
 }) {
-  const index = Math.max(
-    0,
-    options.findIndex((option) => option.key === currentKey),
-  );
-  const current = options[index]!;
-  const step = (direction: -1 | 1) => {
-    const next = options[Math.max(0, Math.min(options.length - 1, index + direction))];
-    if (next && next.key !== current.key) {
-      onPick(next, options.indexOf(next));
-    }
-  };
   const row = (
-    <label
-      className="nodrag nowheel min-w-0"
-      onWheel={(event) => {
-        event.stopPropagation();
-        step(event.deltaY < 0 ? 1 : -1);
-      }}
-    >
-      <span className="mb-0.5 block whitespace-nowrap text-[12px] font-bold uppercase leading-[14px] text-[var(--mc-ink-muted)]">
+    <label className="nodrag flex min-w-0 flex-col gap-0.5">
+      <span className="truncate text-[10px] uppercase tracking-wide text-[var(--mc-ink-muted)]">
         {label}
       </span>
-      <span className="flex min-w-0 items-center gap-1">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
-          {icon}
-        </span>
-        <button
-          type="button"
-          className="flex h-7 min-w-0 flex-1 items-center justify-center whitespace-nowrap border border-[var(--mc-33)] bg-[var(--mc-55)] px-1 text-[12px] font-bold leading-none text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-63)]"
-          onClick={(event) => {
-            event.stopPropagation();
-            step(1);
-          }}
-          onContextMenu={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            step(-1);
-          }}
-          title={`${label}: ${current.label}. Click for the next, right-click for the previous, wheel for both.`}
-          aria-label={label}
-        >
-          {current.label}
-        </button>
-      </span>
+      <MinecraftSelect
+        value={currentKey}
+        options={options.map((option) => ({ key: option.key, label: option.label }))}
+        onSelect={(key) => {
+          const index = options.findIndex((option) => option.key === key);
+          if (index >= 0 && key !== currentKey) {
+            onPick(options[index]!, index);
+          }
+        }}
+        disabled={options.length <= 1}
+        title={`${label}`}
+        ariaLabel={label}
+      />
     </label>
   );
   return help ? <MinecraftTooltip content={help}>{row}</MinecraftTooltip> : row;
@@ -4620,12 +4594,6 @@ function CropConfigPanel({
   ) => (
     <CropStepperRow
       key={control.id}
-      icon={
-        <ConfigTierIcon
-          resource={control.current.resource ?? control.resource}
-          sizeClass="!h-[26px] !w-[26px]"
-        />
-      }
       label={control.label}
       effect={effect}
       value={value}
@@ -4727,12 +4695,6 @@ function CropConfigPanel({
         return (
           <CropCycleRow
             key={control.id}
-            icon={
-              <ConfigTierIcon
-                resource={control.current.resource ?? control.resource}
-                sizeClass="!h-[26px] !w-[26px]"
-              />
-            }
             label={control.label}
             options={control.tiers}
             currentKey={control.current.key}
@@ -4753,8 +4715,8 @@ function CropConfigPanel({
   ];
 
   const slotPips = isFarm ? (
-    <div key="crop-slot-pips" className="col-span-2 flex h-[18px] items-center gap-1.5">
-      <span className="text-[10px] font-bold uppercase leading-[12px] text-[var(--mc-ink-muted)]">
+    <div key="crop-slot-pips" className="mt-1 flex h-[14px] items-center gap-1.5">
+      <span className="text-[10px] uppercase tracking-wide leading-[12px] text-[var(--mc-ink-muted)]">
         Upgrade Slots
       </span>
       <span className="flex items-center gap-[3px]">
@@ -4768,7 +4730,7 @@ function CropConfigPanel({
           />
         ))}
       </span>
-      <span className="ml-auto text-[10px] font-bold tabular-nums leading-[12px] text-[var(--mc-ink-muted)]">
+      <span className="ml-auto text-[10px] tabular-nums leading-[12px] text-[var(--mc-ink-muted)]">
         {used}/{slots}
       </span>
     </div>
@@ -4776,12 +4738,12 @@ function CropConfigPanel({
   const footer = handPicked ? null : (
     <div
       key="crop-machine-footer"
-      className="col-span-2 flex h-[16px] items-center text-[10px] leading-[12px] text-[var(--mc-ink-muted)]"
+      className="mt-0.5 flex h-[14px] items-center text-[10px] leading-[12px] text-[var(--mc-ink-muted)]"
     >
       <span className="truncate">
         {crops.toLocaleString()} planted / {capacity.toLocaleString()} per machine
       </span>
-      <span className="ml-auto shrink-0 font-bold text-[var(--mc-ink)]">
+      <span className="ml-auto shrink-0 text-[var(--mc-ink)]">
         ×{machines.toLocaleString()} {isFarm ? "Industrial Farm" : "Crop Manager"}
         {machines === 1 ? "" : "s"}
       </span>
@@ -4790,24 +4752,22 @@ function CropConfigPanel({
 
   const visibleRows = rows.filter(Boolean);
   const bodyPx =
+    8 +
     Math.ceil(visibleRows.length / 2) * (CROP_PANEL_ROW_PX + 4) +
     (slotPips ? 18 : 0) +
     (footer ? 16 : 0);
+  // The power config panel's exact container: a hairline over flat cells on
+  // the card's own washed face - no box, no bevel, no ramp of its own.
   return (
     <GridBlock
-      className={[
-        "nodrag border-2 border-[var(--mc-47)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]",
-        className,
-      ].join(" ")}
-      // The neutral ramp pinned over the card's paint: the panel's own face
-      // is the only coloured thing here, and every element on it draws in
-      // the site's ordinary chrome.
-      style={{ ...GT_NODE_RAMPS.gray, backgroundColor: CROP_PANEL_FACE }}
+      className={["nodrag min-w-0", className].join(" ")}
       minCells={Math.max(1, Math.ceil(bodyPx / BOARD_GRID))}
       clearancePx={4}
     >
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1.5 gap-y-1">
-        {visibleRows}
+      <div className="min-w-0 border-t border-[var(--mc-56)] py-1">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-2 gap-y-1">
+          {visibleRows}
+        </div>
         {slotPips}
         {footer}
       </div>
