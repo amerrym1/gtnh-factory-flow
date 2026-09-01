@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.48.0",
+    date: "2026-09-01",
+    headline: "Eight more ways to make power",
+    notes: [
+      "The Vacuum Reactor joins the reactors, with the wiki's eight tested rod designs.",
+      "Every small boiler makes steam now: coal, lava, solar and the GT++ Advanced Boilers.",
+      "The RTG turns radioisotope pellets into steady EU for days at a time.",
+      "The Dyson Swarm beams down 10M EU/t per module at the endgame.",
+    ],
+  },
+  {
     version: "2.47.0",
     date: "2026-08-31",
     headline: "The item list learns what players build",
