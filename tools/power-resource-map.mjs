@@ -89,6 +89,12 @@ const ID_OVERRIDES = {
   "Block of Cactus Coke": { kind: "item", id: "miscutils:blockcactuscoke" },
   "Block of Sugar Coke": { kind: "item", id: "miscutils:blocksugarcoke" },
   "Ench. Golden Apple": { kind: "item", id: "minecraft:golden_apple@1" },
+  // The RTG pellets' display names carry private-use glyph prefixes that
+  // defeat the exact-name match; pin them by id.
+  "Pu Pellet": { kind: "item", id: "miscutils:mu-metaitem.01@32041" },
+  "Sr Pellet": { kind: "item", id: "miscutils:mu-metaitem.01@32042" },
+  "Po Pellet": { kind: "item", id: "miscutils:mu-metaitem.01@32043" },
+  "Am Pellet": { kind: "item", id: "miscutils:mu-metaitem.01@32044" },
 };
 
 /** Flows that are settings/aux, not from the fuel tables. */
@@ -140,6 +146,12 @@ const AUX_NAMES = [
   ["Naquadah Bolt", "item"],
   ["Naquadah Rod", "item"],
   ["Long Naquadah Rod", "item"],
+  // RTG pellets, one every N real days.
+  ["Am Pellet", "item"],
+  ["Sr Pellet", "item"],
+  ["Pu Pellet", "item"],
+  ["Po Pellet", "item"],
+  ["Pellets of RTG Fuel", "item"],
   // The Vacuum Reactor's rods burn to their depleted forms.
   ["Quad Fuel Rod (Thorium)", "item"],
   ["Quad Fuel Rod (Depleted Thorium)", "item"],
@@ -268,7 +280,8 @@ await Promise.all(
           map[name] = {
             kind: found.kind,
             id: found.id,
-            displayName: found.displayName,
+            // Some names wear private-use glyph prefixes; strip them.
+            displayName: (found.displayName ?? name).replace(/[-]/g, "").trim(),
             iconPath: found.iconPath,
             dominantColor: found.dominantColor,
           };

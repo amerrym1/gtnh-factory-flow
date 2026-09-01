@@ -57,6 +57,13 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/aluminium_plasma-722e26462a56.png",
    "dominantColor": "#77c3ea"
   },
+  "Am Pellet": {
+   "kind": "item",
+   "id": "miscutils:mu-metaitem.01@32044",
+   "displayName": "Am Pellet",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/am_pellet-2aca4f39e314.png",
+   "dominantColor": "#4b4b4b"
+  },
   "Amber Dust": {
    "kind": "item",
    "id": "gregtech:gt.metaitem.01@2514",
@@ -2752,6 +2759,13 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/palladium_plasma-0d4cbe1c70a6.png",
    "dominantColor": "#a5adad"
   },
+  "Pellets of RTG Fuel": {
+   "kind": "item",
+   "id": "ic2:itemrtgpellet",
+   "displayName": "Pellets of RTG Fuel",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/pellets_of_rtg_fuel-c58022107549.png",
+   "dominantColor": "#751e19"
+  },
   "Perditio Crystal Plate": {
    "kind": "item",
    "id": "gregtech:gt.metaitem.01@17544",
@@ -2836,6 +2850,13 @@
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/plutonium_241_plasma-e8dfacf75d7f.png",
    "dominantColor": "#e84444"
   },
+  "Po Pellet": {
+   "kind": "item",
+   "id": "miscutils:mu-metaitem.01@32043",
+   "displayName": "Po Pellet",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/po_pellet-6e669ef1a6bc.png",
+   "dominantColor": "#003a3a"
+  },
   "Potassium Hydroxide Dust": {
    "kind": "item",
    "id": "gregtech:gt.metaitem.01@2243",
@@ -2891,6 +2912,13 @@
    "displayName": "Propionic Acid",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/propionic_acid-585d784d16da.png",
    "dominantColor": "#9ca575"
+  },
+  "Pu Pellet": {
+   "kind": "item",
+   "id": "miscutils:mu-metaitem.01@32041",
+   "displayName": "Pu Pellet",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/pu_pellet-e4d67938fef2.png",
+   "dominantColor": "#3a0000"
   },
   "Pyrotheum Dust": {
    "kind": "item",
@@ -3143,6 +3171,13 @@
    "displayName": "Spatially Enlarged Fluid",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/spatially_enlarged_fluid-36bca0030090.png",
    "dominantColor": "#22122d"
+  },
+  "Sr Pellet": {
+   "kind": "item",
+   "id": "miscutils:mu-metaitem.01@32042",
+   "displayName": "Sr Pellet",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/sr_pellet-7d33e4e3747b.png",
+   "dominantColor": "#3a3a00"
   },
   "Steam": {
    "kind": "fluid",

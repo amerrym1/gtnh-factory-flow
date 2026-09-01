@@ -300,6 +300,48 @@
    "displayName": "Antimatter Annihilation Matrix",
    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/antimatter_annihilation_matrix-95d662db3f8d.png",
    "dominantColor": "#89580b"
+  },
+  "small-coal-boiler": {
+   "id": "gregtech:gt.blockmachines@100",
+   "displayName": "Small Coal Boiler",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/small_coal_boiler-ffe586c7e375.png",
+   "dominantColor": "#983a0d"
+  },
+  "large-coal-boiler": {
+   "id": "gregtech:gt.blockmachines@101",
+   "displayName": "Large Coal Boiler",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/large_coal_boiler-215309f2d0f8.png",
+   "dominantColor": "#522c21"
+  },
+  "lava-boiler": {
+   "id": "gregtech:gt.blockmachines@102",
+   "displayName": "Reinforced Lava Boiler",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/reinforced_lava_boiler-5cc40b33fea6.png",
+   "dominantColor": "#2d2d2d"
+  },
+  "solar-boiler": {
+   "id": "gregtech:gt.blockmachines@105",
+   "displayName": "Simple Solar Boiler",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/simple_solar_boiler-dfdf493838fc.png",
+   "dominantColor": "#782e0b"
+  },
+  "advanced-boiler": {
+   "id": "gregtech:gt.blockmachines@753",
+   "displayName": "Advanced Boiler [LV]",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/advanced_boiler_lv-2014ce587068.png",
+   "dominantColor": "#6a6a6a"
+  },
+  "rtg": {
+   "id": "gregtech:gt.blockmachines@869",
+   "displayName": "Radioisotope Thermoelectric Generator",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/radioisotope_thermoelectric_generator-179e8171a0ef.png",
+   "dominantColor": "#243643"
+  },
+  "dyson-swarm": {
+   "id": "gregtech:gt.blockmachines@14001",
+   "displayName": "Dyson Swarm Ground Unit",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/dyson_swarm_ground_unit-ac01fe74b864.png",
+   "dominantColor": "#006262"
   }
  }
 }

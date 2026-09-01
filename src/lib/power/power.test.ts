@@ -286,6 +286,67 @@ describe("steam makers", () => {
   });
 });
 
+describe("singleblock boilers (game source constants)", () => {
+  it("burns the Small Coal Boiler at 1 energy per 45t: one coal is 360s of 120 L/s", () => {
+    const model = compute("small-coal-boiler", { solidFuel: "Coal" });
+    expect(model.outputs).toEqual([{ name: "Steam", perSecond: 120, unit: "L" }]);
+    // Coal is 1600 furnace ticks -> 160 boiler energy; 160 / (20/45) = 360s.
+    expect(model.inputs[0]).toEqual({ name: "Coal", perSecond: 1 / 360, unit: "item" });
+    expect(model.inputs[1]).toEqual({ name: "Water", perSecond: 120 / 160, unit: "L" });
+    expect(model.warnings?.some((line) => line.includes("by hand"))).toBe(true);
+  });
+
+  it("burns the Large Coal Boiler at 1 energy/s: one coal is 160s of 300 L/s", () => {
+    const model = compute("large-coal-boiler", { solidFuel: "Coal" });
+    expect(model.outputs).toEqual([{ name: "Steam", perSecond: 300, unit: "L" }]);
+    expect(model.inputs[0]).toEqual({ name: "Coal", perSecond: 1 / 160, unit: "item" });
+  });
+
+  it("runs the Reinforced Lava Boiler at 600 L/s steam on 3 L/s lava", () => {
+    const model = compute("lava-boiler", {});
+    expect(model.outputs).toEqual([{ name: "Steam", perSecond: 600, unit: "L" }]);
+    expect(model.inputs).toEqual([
+      { name: "Lava", perSecond: 3, unit: "L" },
+      { name: "Water", perSecond: 600 / 160, unit: "L" },
+    ]);
+  });
+
+  it("holds the solar boilers at full rate on distilled water and calcifies on regular", () => {
+    const fresh = compute("solar-boiler", { model: "steel" });
+    expect(fresh.outputs).toEqual([{ name: "Steam", perSecond: 360, unit: "L" }]);
+    expect(fresh.warnings ?? []).toEqual([]);
+    const calcified = compute("solar-boiler", {
+      model: "steel",
+      waterKind: "Water",
+      calcified: "1",
+    });
+    expect(calcified.outputs).toEqual([{ name: "Steam", perSecond: 120, unit: "L" }]);
+    expect(calcified.warnings?.length).toBe(1);
+  });
+
+  it("scales the GT++ Advanced Boiler by tier: HV is 2,250 L/s and coal lasts 160s", () => {
+    const model = compute("advanced-boiler", { tier: "HV", solidFuel: "Coal" });
+    expect(model.outputs).toEqual([{ name: "Steam", perSecond: 2250, unit: "L" }]);
+    expect(model.inputs[0]).toEqual({ name: "Coal", perSecond: 1 / 160, unit: "item" });
+  });
+});
+
+describe("RTG and Dyson Swarm", () => {
+  it("runs the RTG on a Pu-238 pellet at 60 EU/t for 88 real days", () => {
+    const model = compute("rtg", { pellet: "pu238" });
+    expect(model.euPerTick).toBe(60);
+    expect(model.inputs).toEqual([{ name: "Pu Pellet", perSecond: 1 / (88 * 86_400), unit: "item" }]);
+    expect(resolvePowerResource("Pu Pellet")?.id).toBe("miscutils:mu-metaitem.01@32041");
+  });
+
+  it("pays the Dyson Swarm 10M EU/t per module times the dimension factor", () => {
+    const model = compute("dyson-swarm", { modules: "250", factor: "2" });
+    expect(model.euPerTick).toBe(250 * 10_000_000 * 2);
+    expect(model.inputs).toEqual([{ name: "Cryotheum", perSecond: 1000, unit: "L" }]);
+    expect(model.warnings?.some((line) => line.includes("Modules burn off"))).toBe(true);
+  });
+});
+
 describe("reactors and endgame", () => {
   it("computes THTR full-fill efficiency 1.0 and the parasitic draw", () => {
     const model = compute("thtr", { fill: "675000" });

@@ -212,4 +212,54 @@ function buildSingleblock(spec: SingleblockSpec): PowerSourceDefinition {
   };
 }
 
-export const singleblockSources: PowerSourceDefinition[] = SPECS.map(buildSingleblock);
+/**
+ * GT++ RTG (MTERTGenerator): one pellet runs for its recipe's real days
+ * (20 x 86400 x days ticks) at the recipe's voltage, 100% efficiency,
+ * zero pollution. Voltages are TierEU.RECIPE values, days rounded as
+ * MetaGeneratedGregtechItems rounds them.
+ */
+const RTG_PELLETS = [
+  { key: "am241", name: "Am Pellet", label: "Am-241 (15 EU/t, 216 days)", euPerTick: 15, days: 216 },
+  { key: "sr90", name: "Sr Pellet", label: "Sr-90 (30 EU/t, 29 days)", euPerTick: 30, days: 29 },
+  { key: "pu238", name: "Pu Pellet", label: "Pu-238 (60 EU/t, 88 days)", euPerTick: 60, days: 88 },
+  { key: "po210", name: "Po Pellet", label: "Po-210 (480 EU/t, 1 day)", euPerTick: 480, days: 1 },
+  {
+    key: "ic2",
+    name: "Pellets of RTG Fuel",
+    label: "Pellets of RTG Fuel (7 EU/t, 3 days)",
+    euPerTick: 7,
+    days: 3,
+  },
+];
+
+const rtg: PowerSourceDefinition = {
+  id: "rtg",
+  name: "Radioisotope Thermoelectric Generator",
+  group: "burners",
+  unlock: "HV",
+  blurb: "Pellets decay into steady EU for real days.",
+  settings: [
+    {
+      type: "select",
+      id: "pellet",
+      label: "Pellet",
+      options: RTG_PELLETS.map(({ key, label }) => ({ key, label })),
+      defaultKey: "pu238",
+    },
+  ],
+  compute(read): PowerModel {
+    const pellet = RTG_PELLETS.find((row) => row.key === read.select("pellet")) ?? RTG_PELLETS[2];
+    const secondsPerPellet = pellet.days * 86_400;
+    return {
+      euPerTick: pellet.euPerTick,
+      inputs: [items(pellet.name, 1 / secondsPerPellet)],
+      outputs: [],
+      stats: [
+        stat("One pellet runs", `${pellet.days} real ${pellet.days === 1 ? "day" : "days"}`),
+        stat("Pollution", "None"),
+      ],
+    };
+  },
+};
+
+export const singleblockSources: PowerSourceDefinition[] = [...SPECS.map(buildSingleblock), rtg];

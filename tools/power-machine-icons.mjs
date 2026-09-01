@@ -76,6 +76,13 @@ const MACHINES = {
   "compact-fusion-reactor": { query: "fusion computer", id: "gregtech:gt.blockmachines@32019" },
   "eye-of-harmony": { query: "eye of harmony", id: "gregtech:gt.blockmachines@15410" },
   antimatter: { query: "antimatter", id: "goodgenerator:antimatterannihilationmatrix" },
+  "small-coal-boiler": { query: "small coal boiler", id: "gregtech:gt.blockmachines@100" },
+  "large-coal-boiler": { query: "large coal boiler", id: "gregtech:gt.blockmachines@101" },
+  "lava-boiler": { query: "lava boiler", id: "gregtech:gt.blockmachines@102" },
+  "solar-boiler": { query: "solar boiler", id: "gregtech:gt.blockmachines@105" },
+  "advanced-boiler": { query: "advanced boiler", id: "gregtech:gt.blockmachines@753" },
+  rtg: { query: "radioisotope", id: "gregtech:gt.blockmachines@869" },
+  "dyson-swarm": { query: "dyson", id: "gregtech:gt.blockmachines@14001" },
 };
 
 const out = {};

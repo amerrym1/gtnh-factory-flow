@@ -142,6 +142,246 @@ function buildBoiler(spec: BoilerSpec): PowerSourceDefinition {
   };
 }
 
+/**
+ * The singleblock boilers (MTEBoiler subclasses). Steam flows at the full
+ * per-second rate once hot; at steady state fuel is burned only to cancel
+ * cooldown, energyConsumption per cooldownInterval ticks, and a solid fuel
+ * item is worth its furnace burn time / 10 in boiler energy. Water is
+ * 1 L per 160 L of steam (GTValues.STEAM_PER_WATER).
+ */
+interface SmallBoilerSpec {
+  id: string;
+  name: string;
+  unlock: string;
+  steamPerSecond: number;
+  /** energyConsumption x 20 / cooldownInterval, from the machine's class. */
+  energyPerSecond: number;
+  automatable: boolean;
+}
+
+const SMALL_BOILER_SPECS: SmallBoilerSpec[] = [
+  // MTEBoilerBronze: 120 L/s, consumption 1 per 45t cooldown.
+  {
+    id: "small-coal-boiler",
+    name: "Small Coal Boiler",
+    unlock: "ULV",
+    steamPerSecond: 120,
+    energyPerSecond: 20 / 45,
+    automatable: false,
+  },
+  // MTEBoilerSteel, in-game name "Large Coal Boiler": 300 L/s, 2 per 40t.
+  {
+    id: "large-coal-boiler",
+    name: "Large Coal Boiler",
+    unlock: "LV",
+    steamPerSecond: 300,
+    energyPerSecond: 1,
+    automatable: false,
+  },
+];
+
+function buildSmallBoiler(spec: SmallBoilerSpec): PowerSourceDefinition {
+  const solidTable = powerPlannerData.boilerFuels.bronzeSolid;
+  return {
+    id: spec.id,
+    name: spec.name,
+    group: "steam",
+    unlock: spec.unlock,
+    blurb: `${formatAmount(spec.steamPerSecond)} L/s of steam from any furnace fuel.`,
+    settings: [
+      {
+        type: "select",
+        id: "solidFuel",
+        label: "Fuel",
+        options: solidTable.map((entry) => ({ key: entry.name, label: entry.name })),
+        defaultKey: "Coal",
+      },
+      {
+        type: "select",
+        id: "waterKind",
+        label: "Water supply",
+        options: WATER_KINDS,
+        defaultKey: "Water",
+      },
+    ],
+    compute(read): PowerModel {
+      const fuel = findFuel(solidTable, read.select("solidFuel"));
+      // euPerItem in the solid table IS the furnace burn time in ticks.
+      const energyPerItem = (fuel.euPerItem ?? 0) / 10;
+      const secondsPerItem = energyPerItem / spec.energyPerSecond;
+      const warnings: string[] = [];
+      if (!spec.automatable) {
+        warnings.push("GTNH turns small boiler automation off. Fuel goes in by hand.");
+      }
+      return {
+        euPerTick: 0,
+        inputs: [
+          items(fuel.name, secondsPerItem > 0 ? 1 / secondsPerItem : 0),
+          liters(read.select("waterKind"), spec.steamPerSecond / 160),
+        ],
+        outputs: [liters("Steam", spec.steamPerSecond)],
+        stats: [
+          stat("Steam", `${formatAmount(spec.steamPerSecond / 20)} L/t`),
+          stat("One item burns", `${formatAmount(secondsPerItem)}s`),
+        ],
+        warnings,
+      };
+    },
+  };
+}
+
+/**
+ * GT++ Advanced Boilers (MTEAdvancedBoilerBase): 750 L/s per tier,
+ * consumption 2 per 40t cooldown, automatable, and no water explosion.
+ */
+const ADVANCED_BOILER_TIERS = [
+  { key: "LV", label: "Advanced Boiler [LV] (750 L/s)", tier: 1 },
+  { key: "MV", label: "Advanced Boiler [MV] (1,500 L/s)", tier: 2 },
+  { key: "HV", label: "Advanced Boiler [HV] (2,250 L/s)", tier: 3 },
+];
+
+const advancedBoiler: PowerSourceDefinition = {
+  id: "advanced-boiler",
+  name: "Advanced Boiler",
+  group: "steam",
+  unlock: "LV",
+  blurb: "GT++ boilers: up to 2,250 L/s, safe and automatable.",
+  settings: [
+    {
+      type: "select",
+      id: "tier",
+      label: "Boiler",
+      options: ADVANCED_BOILER_TIERS.map(({ key, label }) => ({ key, label })),
+      defaultKey: "LV",
+    },
+    {
+      type: "select",
+      id: "solidFuel",
+      label: "Fuel",
+      options: powerPlannerData.boilerFuels.bronzeSolid.map((entry) => ({
+        key: entry.name,
+        label: entry.name,
+      })),
+      defaultKey: "Coal",
+    },
+    {
+      type: "select",
+      id: "waterKind",
+      label: "Water supply",
+      options: WATER_KINDS,
+      defaultKey: "Water",
+    },
+  ],
+  compute(read): PowerModel {
+    const entry =
+      ADVANCED_BOILER_TIERS.find((row) => row.key === read.select("tier")) ?? ADVANCED_BOILER_TIERS[0];
+    const steamPerSecond = 750 * entry.tier;
+    const fuel = findFuel(powerPlannerData.boilerFuels.bronzeSolid, read.select("solidFuel"));
+    const secondsPerItem = (fuel.euPerItem ?? 0) / 10;
+    return {
+      euPerTick: 0,
+      inputs: [
+        items(fuel.name, secondsPerItem > 0 ? 1 / secondsPerItem : 0),
+        liters(read.select("waterKind"), steamPerSecond / 160),
+      ],
+      outputs: [liters("Steam", steamPerSecond)],
+      stats: [
+        stat("Steam", `${formatAmount(steamPerSecond / 20)} L/t`),
+        stat("One item burns", `${formatAmount(secondsPerItem)}s`),
+      ],
+    };
+  },
+};
+
+/**
+ * MTEBoilerLava: 600 L/s, 1 boiler energy per L of lava, 3 per 20t
+ * cooldown, so 3 L/s of lava at steady state. Drains lava from below.
+ */
+const lavaBoiler: PowerSourceDefinition = {
+  id: "lava-boiler",
+  name: "Reinforced Lava Boiler",
+  group: "steam",
+  unlock: "LV",
+  blurb: "600 L/s of steam on 3 L/s of lava.",
+  settings: [
+    {
+      type: "select",
+      id: "waterKind",
+      label: "Water supply",
+      options: WATER_KINDS,
+      defaultKey: "Water",
+    },
+  ],
+  compute(read): PowerModel {
+    return {
+      euPerTick: 0,
+      inputs: [liters("Lava", 3), liters(read.select("waterKind"), 600 / 160)],
+      outputs: [liters("Steam", 600)],
+      stats: [stat("Steam", "30 L/t"), stat("Lava", "3 L/s")],
+    };
+  },
+};
+
+/**
+ * MTEBoilerSolar / MTEBoilerSolarSteel, values from MachineStats.cfg (at
+ * defaults): fuel-free steam that calcifies from max down to min output
+ * over its runtime on regular water; distilled water never calcifies.
+ */
+const SOLAR_BOILER_MODELS = [
+  { key: "bronze", label: "Simple Solar Boiler", max: 120, min: 40 },
+  { key: "steel", label: "Advanced Solar Boiler", max: 360, min: 120 },
+];
+
+const solarBoiler: PowerSourceDefinition = {
+  id: "solar-boiler",
+  name: "Solar Boiler",
+  group: "steam",
+  unlock: "ULV",
+  blurb: "Free steam from the sun. Calcifies on regular water.",
+  settings: [
+    {
+      type: "select",
+      id: "model",
+      label: "Boiler",
+      options: SOLAR_BOILER_MODELS.map(({ key, label }) => ({ key, label })),
+      defaultKey: "bronze",
+    },
+    {
+      type: "select",
+      id: "waterKind",
+      label: "Water supply",
+      options: WATER_KINDS,
+      defaultKey: "Distilled Water",
+    },
+    {
+      type: "toggle",
+      id: "calcified",
+      label: "Fully calcified",
+      defaultOn: false,
+      enabledWhen: { settingId: "waterKind", equals: "Water" },
+    },
+  ],
+  compute(read): PowerModel {
+    const model =
+      SOLAR_BOILER_MODELS.find((row) => row.key === read.select("model")) ?? SOLAR_BOILER_MODELS[0];
+    const onWater = read.select("waterKind") === "Water";
+    const steamPerSecond = onWater && read.on("calcified") ? model.min : model.max;
+    const warnings: string[] = [];
+    if (onWater) {
+      warnings.push(
+        `Regular water calcifies this boiler from ${model.max} down to ${model.min} L/s over 15 hours. Distilled water does not.`,
+      );
+    }
+    return {
+      euPerTick: 0,
+      inputs: [liters(read.select("waterKind"), steamPerSecond / 160)],
+      outputs: [liters("Steam", steamPerSecond)],
+      stats: [stat("Steam", `${formatAmount(steamPerSecond / 20)} L/t`), stat("Needs", "Open sky")],
+      warnings,
+    };
+  },
+};
+
 /** Exchanger tiers above 1 shift the threshold by the fluid's throttle and cost 1.5% steam each. */
 function buildExchanger(entry: (typeof powerPlannerData.heatExchangers)[number]): PowerSourceDefinition {
   const isThermalBoiler = entry.name === "Thermal Boiler";
@@ -247,6 +487,10 @@ function buildExchanger(entry: (typeof powerPlannerData.heatExchangers)[number])
 }
 
 export const steamMakerSources: PowerSourceDefinition[] = [
+  ...SMALL_BOILER_SPECS.map(buildSmallBoiler),
+  solarBoiler,
+  lavaBoiler,
+  advancedBoiler,
   ...BOILER_SPECS.map(buildBoiler),
   ...powerPlannerData.heatExchangers.map(buildExchanger),
 ];

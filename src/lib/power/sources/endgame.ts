@@ -281,10 +281,63 @@ const antimatter: PowerSourceDefinition = {
   },
 };
 
+/**
+ * Dyson Swarm Ground Unit (gtnhintergalactic TileEntityDysonSwarm): each
+ * deployed module makes euPerModule (pack config: 10,000,000 EU/t) times
+ * the dimension's power factor (Overworld 1.0), up to 10,000 modules. The
+ * swarm drinks the configured coolant, 3,600,000 L of Gelid Cryotheum per
+ * hour, and burns off modules each 72,000-tick cycle at a rate set by
+ * module count and supplied computation - that upkeep is not modeled.
+ */
+const dysonSwarm: PowerSourceDefinition = {
+  id: "dyson-swarm",
+  name: "Dyson Swarm",
+  group: "endgame",
+  unlock: "UEV",
+  blurb: "Orbital modules beaming power down.",
+  settings: [
+    {
+      type: "number",
+      id: "modules",
+      label: "Deployed modules",
+      min: 1,
+      max: 10_000,
+      step: 1,
+      defaultValue: 100,
+    },
+    {
+      type: "number",
+      id: "factor",
+      label: "Dimension power factor",
+      min: 0.01,
+      max: 3.37,
+      step: 0.01,
+      defaultValue: 1,
+    },
+  ],
+  compute(read): PowerModel {
+    const modules = read.number("modules");
+    const factor = read.number("factor");
+    return {
+      euPerTick: modules * 10_000_000 * factor,
+      inputs: [liters("Cryotheum", 1000)],
+      outputs: [],
+      stats: [
+        stat("Per module", `${formatAmount(10_000_000 * factor)} EU/t`),
+        stat("Overworld factor", "1"),
+      ],
+      warnings: [
+        "Modules burn off over time. The rate depends on module count and computation, and is not modeled.",
+      ],
+    };
+  },
+};
+
 export const endgameSources: PowerSourceDefinition[] = [
   lnr,
   buildFusion(false),
   buildFusion(true),
   eoh,
   antimatter,
+  dysonSwarm,
 ];
