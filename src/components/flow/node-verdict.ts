@@ -793,7 +793,23 @@ function findWorstOutputDeficit(
     if (!edgeResult) {
       continue;
     }
-    const wanted = honestEdgeAskPerSecond(edgeResult, result.nodes[edge.target], edge);
+    // An output-throttled consumer (disposal its binding limit — the same
+    // predicate the CLOGGED branch reads) cannot run faster however much it
+    // is fed, so its leftover ask is not hunger this card can answer. Its
+    // damped ask never collapses to shipped, and counting it crowned feeders
+    // BOTTLENECK at 18% while the real jam sat on the consumer's output side.
+    const targetResult = result.nodes[edge.target];
+    if (targetResult) {
+      const targetDisposal = clamp01(targetResult.disposalUtilization, 1);
+      const targetCapable = clamp01(targetResult.capableUtilization, 1);
+      if (
+        targetDisposal < 1 - VERDICT_EPSILON &&
+        targetDisposal < targetCapable - VERDICT_EPSILON
+      ) {
+        continue;
+      }
+    }
+    const wanted = honestEdgeAskPerSecond(edgeResult, targetResult, edge);
     const missing = Math.max(0, wanted - (edgeResult.transferredPerSecond ?? 0));
     if (missing <= RATE_EPSILON) {
       continue;

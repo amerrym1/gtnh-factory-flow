@@ -289,6 +289,48 @@ describe("deriveNodeVerdict", () => {
     expect(verdict.deficit?.machinesToAdd).toBe(3);
   });
 
+  it("stays quiet when the hungry-looking consumer is output-throttled (the crop farm)", () => {
+    // The real-world regression: a pyrolyse oven pinned by its charcoal
+    // disposal never eats more logs however many arrive, but its damped log
+    // ask never collapsed to shipped, so the 18% crop farm feeding it wore
+    // BOTTLENECK. A consumer whose disposal is its binding limit contributes
+    // no hunger upstream.
+    const proj = project({
+      recipes: [
+        { id: "r", name: "Crop", machineType: "Crop Farm", minimumTier: "ULV", durationTicks: 20, eut: 0, inputs: [], outputs: [] },
+        { id: "pyro", name: "Pyro", machineType: "Pyrolyse Oven", minimumTier: "MV", durationTicks: 20, eut: 1, inputs: [], outputs: [] },
+      ] as unknown as FactoryProject["recipes"],
+      nodes: [machineNode("Crop"), machineNode("Pyro", "pyro")],
+      edges: [edge("eLog", "Crop", "Pyro", "log")],
+    });
+    const result = throughput(
+      {
+        Crop: nodeResult({
+          nodeId: "Crop",
+          utilization: 0.18,
+          capableUtilization: 1,
+          demandUtilization: 0.075,
+          outputs: { "item:log": flow("item", "log", 25.5) },
+        }),
+        Pyro: nodeResult({
+          nodeId: "Pyro",
+          utilization: 0.76,
+          capableUtilization: 1,
+          demandUtilization: 0.32,
+          disposalUtilization: 0.32,
+          inputs: { "item:log": flow("item", "log", 6) },
+        }),
+      },
+      {
+        eLog: edgeResult({ transferredPerSecond: 4.57, demandPerSecond: 5.54 }),
+      },
+    );
+
+    const verdict = deriveNodeVerdict(proj, result, "Crop");
+    expect(verdict.kind).toBe("demand-set");
+    expect(verdict.deficit).toBeUndefined();
+  });
+
   it("un-greens a maxed producer whose consumer's ask converged away (the green tower)", () => {
     // The real-world regression: the solver's demandPerSecond converges down
     // to what was shipped, so the only honest hunger signal on a
