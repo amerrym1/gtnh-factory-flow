@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.49.0",
+    date: "2026-09-01",
+    headline: "The Industrial Farm learns its real rules",
+    notes: [
+      "A farm only fits as many upgrade units as its seed bed tier allows, and the card will not let you add more.",
+      "Crop cards show their harvester's tier top right, its power draw at the bottom, and the farm's own structure in a picture window.",
+      "The crop picker is an icon grid sorted by tier, and farm-only crops gray out where a Crop Manager would get nothing.",
+      "The By Hand option is gone: every crop card runs on a Crop Manager or an Industrial Farm.",
+    ],
+  },
+  {
     version: "2.48.0",
     date: "2026-09-01",
     headline: "Eight more ways to make power",
