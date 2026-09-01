@@ -1682,7 +1682,14 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           {!isCropFarmPlaceholder &&
           !isCustomRatePlaceholder &&
           (!calmMode || !isCustomRateNode) ? (
-            <GridBlock minCells={3} align="end" className="min-w-0">
+            <GridBlock
+              minCells={3}
+              // Crop cards pull their settings UP against the port rails and
+              // let the rounding slack fall to the bottom; everyone else
+              // keeps the footer anchored to the card's bottom edge.
+              align={isCropProductionNode ? "start" : "end"}
+              className="min-w-0"
+            >
               {/* A power card's knobs: fuel, tier, rotor, boost - written
                   through setPowerSetting so the owned recipe follows. */}
               {!calmMode && powerInfo ? (
@@ -2578,7 +2585,7 @@ function GridBlock({
   minCells?: number;
   style?: CSSProperties;
   /** Where content sits in the rounded-up block. The footer bottom-aligns. */
-  align?: "center" | "end";
+  align?: "start" | "center" | "end";
   /**
    * Extra height the measurement must reserve beyond the content itself —
    * the caller's own padding and border, which scrollHeight cannot see.
@@ -2614,7 +2621,11 @@ function GridBlock({
           height; the child stays auto. */}
       <div
         className={
-          align === "end" ? "flex h-full flex-col justify-end" : "flex h-full flex-col justify-center"
+          align === "end"
+            ? "flex h-full flex-col justify-end"
+            : align === "start"
+              ? "flex h-full flex-col justify-start"
+              : "flex h-full flex-col justify-center"
         }
       >
         <div ref={contentRef}>{children}</div>
@@ -4869,30 +4880,27 @@ function CropConfigPanel({
     </div>
   );
   const bodyPx =
-    8 +
-    (cropCells.length > 0 ? 16 + Math.ceil(cropCells.length / 3) * (CROP_PANEL_ROW_PX + 4) : 0) +
+    6 +
+    (cropCells.length > 0 ? Math.ceil(cropCells.length / 3) * (CROP_PANEL_ROW_PX + 4) : 0) +
     (unitCells.length > 0 ? 16 + Math.ceil(unitCells.length / 3) * (CROP_PANEL_ROW_PX + 4) : 0) +
     (footer ? 16 : 0);
-  // Two labeled sections over the card's washed face, each a grid of
-  // SEEDS-style tiles: the crop's own numbers, then the farm's hardware with
-  // its slot budget riding the section head.
+  // The crop's own tiles sit right under the hairline with no section head
+  // of their own - what they are is obvious - and the farm's hardware
+  // follows under the UPGRADES head with its slot budget.
   return (
     <GridBlock
       className={["nodrag min-w-0", className].join(" ")}
       minCells={Math.max(1, Math.ceil(bodyPx / BOARD_GRID))}
       clearancePx={4}
     >
-      <div className="min-w-0 border-t border-[var(--mc-56)] py-1">
+      <div className="min-w-0 border-t border-[var(--mc-56)] pb-1 pt-0.5">
         {cropCells.length > 0 ? (
-          <>
-            {sectionHead("Crop")}
-            <div className="grid min-w-0 grid-cols-[repeat(3,minmax(0,1fr))] gap-x-1 gap-y-1">
-              {cropCells}
-            </div>
-          </>
+          <div className="grid min-w-0 grid-cols-[repeat(3,minmax(0,1fr))] gap-x-1 gap-y-1">
+            {cropCells}
+          </div>
         ) : null}
         {unitCells.length > 0 ? (
-          <div className={cropCells.length > 0 ? "mt-1.5" : ""}>
+          <div className={cropCells.length > 0 ? "mt-1" : ""}>
             {sectionHead(
               "Upgrades",
               <>
