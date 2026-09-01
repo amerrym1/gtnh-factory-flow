@@ -227,9 +227,8 @@ export function CropPickerMenu({
                   ))}
                 </div>
                 {machineOnly ? (
-                  <p className="mt-1.5 text-[12px] leading-4 text-amber-300">
-                    Grows only inside an Industrial Farm.
-                    {!onIndustrialFarm ? " This card's Crop Manager would harvest nothing." : ""}
+                  <p className="mt-1.5 text-[12px] leading-4 text-slate-400">
+                    Only works in an Industrial Farm.
                   </p>
                 ) : null}
               </div>
