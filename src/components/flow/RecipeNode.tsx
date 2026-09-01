@@ -4687,7 +4687,7 @@ function CropConfigPanel({
   const machines = handPicked ? 0 : Math.max(1, Math.ceil(crops / capacity));
 
   const pickWithSound = (controlId: string, key: string, soundStep: number) => {
-    playBoardSound("dialRate", { step: Math.max(0, Math.min(3, soundStep)) });
+    playBoardSound("dialRate", { step: Math.max(0, Math.min(10, soundStep)) });
     suppressBoardSound("adjust", 150);
     onSelect(controlId, key);
   };
@@ -4698,7 +4698,7 @@ function CropConfigPanel({
       { ...(machineConfigTiers ?? {}), [controlId]: String(next) },
       handlerId,
     );
-    playBoardSound("dialRate", { step: Math.max(0, Math.min(3, next)) });
+    playBoardSound("dialRate", { step: Math.max(0, Math.min(10, next)) });
     suppressBoardSound("adjust", 150);
     onSelectMany({
       [CROP_IF_GROWTH_UNIT_CONTROL_ID]: String(nextSetup.growthUnits),
@@ -4729,7 +4729,9 @@ function CropConfigPanel({
       onStep={(next) =>
         isUnitControl(control.id)
           ? commitUnitStep(control.id, next)
-          : pickWithSound(control.id, String(next), next)
+          : // A 31-rung stat ladder squeezes onto the tap's 10 rungs so the
+            // top of the stat is the top of the climb, not a plateau.
+            pickWithSound(control.id, String(next), max > 10 ? (next / max) * 10 : next)
       }
       help={getControlHelp?.(control.id)}
     />
@@ -5917,9 +5919,10 @@ function MachineCountStat({
     const step = modifiers.shiftKey ? 100 : modifiers.ctrlKey || modifiers.metaKey ? 10 : 1;
     const next = Math.max(1, machineCount + direction * step);
     if (next !== machineCount) {
-      // One wood tap per step, a shade brighter going up than down - the
-      // wrapping pitch ladder tried first read as a looping melody.
-      playBoardSound("dialRate", { step: direction > 0 ? 2 : 1 });
+      // The tap CLIMBS with the count, log-scaled so the first machines are
+      // audible rungs and a thousand-count scroll saturates instead of
+      // shrieking.
+      playBoardSound("dialRate", { step: Math.min(10, Math.log2(Math.max(1, next))) });
       suppressBoardSound("adjust", 150);
       setDraftState({ machineCount: next, draft: String(next) });
       onChange(next);

@@ -423,10 +423,14 @@ function puff(
 function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode, step = 0): void {
   switch (kind) {
     case "dialRate": {
-      // The unit ladder as a pitch ladder: per tick lowest, per hour
-      // highest - one quiet PURE tap, wood not electricity, so the two
-      // dials can never be mistaken for each other by ear.
-      const frequency = [262, 330, 415, 523][Math.min(3, Math.max(0, Math.round(step)))]!;
+      // A ladder as a pitch ladder - one quiet PURE tap, wood not
+      // electricity, so it can never be mistaken for the voltage dial by
+      // ear. The old four-entry table (262/330/415/523) was exactly a 1.26
+      // ratio per rung; the formula keeps those notes and extends the climb
+      // to rung 10, fractional rungs included, so a counter walking up
+      // audibly walks UP instead of looping a four-note melody.
+      const rung = Math.max(0, Math.min(10, step));
+      const frequency = 262 * Math.pow(1.26, rung);
       blip(ctx, out, { from: frequency, to: frequency, duration: 0.09, peak: 0.18 });
       break;
     }
