@@ -182,6 +182,7 @@ import { useFactoryStore } from "@/store/factory-store";
 import {
   GLANCE_NEUTRAL_SURFACE,
   GT_NODE_COLORS,
+  GT_NODE_RAMPS,
   glanceAccentFor,
   glanceCardVars,
   glanceSurfaceFor,
@@ -443,6 +444,14 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       ? getCustomRateDial(projectNode, recipe)
       : undefined;
 
+    // The harvester's own voltage chip (Crop Manager tier or Seed Bed tier)
+    // wears the card's top-right tier slot, matching every other card: a crop
+    // card draws no EU so the ordinary chip never shows there.
+    const cropTierControl = cropProductionControls.find(
+      (control) =>
+        control.id === CROP_MANAGER_TIER_CONTROL_ID ||
+        control.id === CROP_SEED_BED_TIER_CONTROL_ID,
+    );
     return {
       machineHandlers,
       selectedMachineHandler,
@@ -452,6 +461,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       coilControl,
       coilResource,
       cropProductionControls,
+      cropTierControl,
       cropTitle,
       isCropFarmNode,
       isCropFarmPlaceholder,
@@ -495,6 +505,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     coilControl,
     coilResource,
     cropProductionControls,
+    cropTierControl,
     cropTitle,
     isCropFarmNode,
     isCropFarmPlaceholder,
@@ -555,11 +566,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // A generator's EU rides the output rail as its first row (a real port,
   // kind "power"); machines that only DRAW keep the figure in the footer.
   const hasOutputSide = rails.outputs.length > 0;
-  // A power card with a bare side says so instead of standing lopsided: a
-  // solar panel's left half reads "No input", not a hole. Inert rows -
-  // nothing to wire is the point.
-  const showNoInputRow = powerInfo !== undefined && rails.inputs.length === 0 && hasOutputSide;
-  const showNoOutputRow = powerInfo !== undefined && !hasOutputSide && rails.inputs.length > 0;
+  // A power card or a crop card with a bare side says so instead of standing
+  // lopsided: a solar panel's (or an Industrial Farm's) left half reads
+  // "No input", not a hole. Inert rows - nothing to wire is the point.
+  const saysNoFlow = powerInfo !== undefined || isCropProductionNode;
+  const showNoInputRow = saysNoFlow && rails.inputs.length === 0 && hasOutputSide;
+  const showNoOutputRow = saysNoFlow && !hasOutputSide && rails.inputs.length > 0;
   const hasInputSideView = rails.inputs.length > 0 || showNoInputRow;
   const hasOutputSideView = hasOutputSide || showNoOutputRow;
   // The card's draw figures follow the PEAK/AVG switch. PEAK is the full
@@ -735,6 +747,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         machineConfigTiers={projectNode.machineConfigTiers}
         machineCount={projectNode.machineCount}
         onSelect={updateMachineConfigTier}
+        onSelectMany={(patch) =>
+          updateNode(projectNode.id, {
+            machineConfigTiers: { ...(projectNode.machineConfigTiers ?? {}), ...patch },
+          })
+        }
         getControlHelp={(controlId) => cropControlHelp(effectiveRecipe, controlId)}
       />
     ) : beePanelControls.length > 0 ? (
@@ -1198,6 +1215,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               ...(tierControl ? [showHatchControl ? "max-content" : "50px"] : []),
               // A power card's tier chip (or its multiblock unlock chip).
               ...(powerInfo && !tierControl ? ["50px"] : []),
+              // A crop card's harvester tier (manager or seed bed) wears the
+              // same top-right slot as every other card's voltage chip.
+              ...(cropTierControl && !tierControl && !powerInfo && !calmMode ? ["50px"] : []),
             ].join(" "),
           }}
         >
@@ -1365,6 +1385,21 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               nodeId={projectNode.id}
               sourceId={powerInfo.sourceId}
               values={projectNode.machineConfigTiers}
+            />
+          ) : null}
+          {cropTierControl && !tierControl && !powerInfo && !calmMode ? (
+            // The harvester's voltage (Crop Manager tier, or the farm's Seed
+            // Bed) in the card's usual tier slot: click up, right click down,
+            // wheel to scroll - the classic cycle, everywhere.
+            <CropTierChip
+              control={cropTierControl}
+              onPick={(key) => {
+                playBoardSound("dialPower", {
+                  step: key === CROP_NO_MANAGER_KEY ? 0 : Number.parseInt(key, 10) + 1,
+                });
+                suppressBoardSound("adjust", 150);
+                updateMachineConfigTier(cropTierControl.id, key);
+              }}
             />
           ) : null}
           {tierControl && tierColor ? (
@@ -4272,13 +4307,23 @@ function PassiveProductionConfigPanel({
   );
 }
 
-// The crop panel's own face: a quiet gray-green wash over the ordinary panel
-// paper - the same trick the power cards play with amber. Only the background
-// changes; every element on it keeps the site's ordinary colours.
-const CROP_PANEL_FACE = "color-mix(in srgb, var(--mc-71) 88%, #52684a 12%)";
-const CROP_PANEL_ROW_PX = 30;
+// The crop panel's own face: a quiet gray-green, its own colour the way the
+// power cards' amber wash is. The panel pins the NEUTRAL ramp over the card's
+// paint (crop cards wear the green ramp) so every element on it is drawn in
+// the same chrome as everything else on the site.
+const CROP_PANEL_FACE = "#43493e";
+const CROP_PANEL_ROW_PX = 24;
 
-/** One +/- stepper row of the crop settings panel. */
+/** The unit types' pip colours, one per block, echoed by the slot pips. */
+const CROP_UNIT_PIP_COLORS: Record<string, string> = {
+  [CROP_IF_GROWTH_UNIT_CONTROL_ID]: "#6fbf50",
+  [CROP_IF_FERTILIZER_UNIT_CONTROL_ID]: "#c9a24a",
+  [CROP_IF_HARVEST_UNIT_CONTROL_ID]: "#5aa7d9",
+  [CROP_IF_ENVIRONMENT_UNIT_CONTROL_ID]: "#b06fd9",
+  [CROP_IF_OVERCLOCK_CONTROL_ID]: "#e06060",
+};
+
+/** One single-line +/- stepper row of the crop settings panel. */
 function CropStepperRow({
   icon,
   label,
@@ -4287,18 +4332,21 @@ function CropStepperRow({
   min,
   max,
   lockedHint,
+  pipColor,
   onStep,
   help,
 }: {
   icon: ReactNode;
   label: string;
-  /** What the current count does, in the row's own words. */
+  /** What the current count does; lives in the hover, never on the row. */
   effect?: string;
   value: number;
   min: number;
   max: number;
   /** Why the row cannot go up right now ("No free slot"). */
   lockedHint?: string;
+  /** The unit's slot-pip colour, worn as a sliver on the icon box. */
+  pipColor?: string;
   onStep: (next: number) => void;
   help?: ReactNode;
 }) {
@@ -4309,26 +4357,27 @@ function CropStepperRow({
     }
   };
   const buttonClass =
-    "flex h-6 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-55)] text-[13px] font-bold leading-none shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] enabled:hover:bg-[var(--mc-63)] disabled:opacity-35";
+    "flex h-6 w-4 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-55)] text-[11px] font-bold leading-none shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] enabled:hover:bg-[var(--mc-63)] disabled:opacity-35";
   const row = (
     <div
-      className="nodrag nowheel flex items-center gap-1.5"
+      className="nodrag nowheel flex items-center gap-1"
       style={{ height: CROP_PANEL_ROW_PX }}
+      title={[effect, value >= max && lockedHint ? lockedHint : undefined]
+        .filter(Boolean)
+        .join(" · ")}
       onWheel={(event) => {
         event.stopPropagation();
         step(event.deltaY < 0 ? 1 : -1);
       }}
     >
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
+      <span
+        className="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)]"
+        style={pipColor ? { borderBottomColor: pipColor, borderBottomWidth: 2 } : undefined}
+      >
         {icon}
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[11px] font-bold uppercase leading-[13px] text-[var(--mc-ink)]">
-          {label}
-        </span>
-        <span className="block truncate text-[10px] leading-[12px] text-[var(--mc-ink-muted)]">
-          {effect}
-        </span>
+      <span className="min-w-0 flex-1 whitespace-nowrap text-[10px] font-bold uppercase leading-none text-[var(--mc-ink)]">
+        {label}
       </span>
       <button
         type="button"
@@ -4342,7 +4391,7 @@ function CropStepperRow({
       >
         −
       </button>
-      <span className="w-4 shrink-0 text-center text-[13px] font-bold tabular-nums text-[var(--mc-ink)]">
+      <span className="w-4 shrink-0 text-center text-[12px] font-bold tabular-nums leading-none text-[var(--mc-ink)]">
         {value}
       </span>
       <button
@@ -4369,8 +4418,6 @@ function CropCycleRow({
   label,
   options,
   currentKey,
-  effect,
-  tierColored,
   onPick,
   help,
 }: {
@@ -4378,9 +4425,6 @@ function CropCycleRow({
   label: string;
   options: MachineConfigTierOption[];
   currentKey: string;
-  effect?: string;
-  /** Paint the chip in the game's voltage colours (tier chips only). */
-  tierColored?: boolean;
   onPick: (option: MachineConfigTierOption, index: number) => void;
   help?: ReactNode;
 }) {
@@ -4395,46 +4439,24 @@ function CropCycleRow({
       onPick(next, options.indexOf(next));
     }
   };
-  const tierColor = tierColored
-    ? (GT_TIER_COLORS as Record<string, (typeof GT_TIER_COLORS)["LV"] | undefined>)[current.label]
-    : undefined;
   const row = (
     <div
-      className="nodrag nowheel flex items-center gap-1.5"
+      className="nodrag nowheel flex items-center gap-1"
       style={{ height: CROP_PANEL_ROW_PX }}
       onWheel={(event) => {
         event.stopPropagation();
         step(event.deltaY < 0 ? 1 : -1);
       }}
     >
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)]">
         {icon}
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[11px] font-bold uppercase leading-[13px] text-[var(--mc-ink)]">
-          {label}
-        </span>
-        {effect ? (
-          <span className="block truncate text-[10px] leading-[12px] text-[var(--mc-ink-muted)]">
-            {effect}
-          </span>
-        ) : null}
+      <span className="min-w-0 flex-1 whitespace-nowrap text-[10px] font-bold uppercase leading-none text-[var(--mc-ink)]">
+        {label}
       </span>
       <button
         type="button"
-        className="flex h-6 min-w-[46px] shrink-0 items-center justify-center border px-1 text-[12px] font-bold leading-none shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]"
-        style={
-          tierColor
-            ? {
-                backgroundColor: tierColor.background,
-                borderColor: tierColor.border,
-                color: tierColor.text,
-                textShadow: `1px 1px 0 ${tierColor.shadow}`,
-                textDecoration: tierColor.underline ? "underline" : undefined,
-                boxShadow: "none",
-              }
-            : { backgroundColor: "var(--mc-55)", borderColor: "var(--mc-33)" }
-        }
+        className="flex h-6 w-[60px] shrink-0 items-center justify-center whitespace-nowrap border border-[var(--mc-33)] bg-[var(--mc-55)] px-0.5 text-[10px] font-bold leading-none text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-63)]"
         onClick={(event) => {
           event.stopPropagation();
           step(1);
@@ -4455,6 +4477,70 @@ function CropCycleRow({
 }
 
 /**
+ * The harvester's voltage chip in the card header's tier slot, in the game's
+ * tier colours; "By Hand" wears plain chrome.
+ */
+function CropTierChip({
+  control,
+  onPick,
+}: {
+  control: MachineConfigTierControl;
+  onPick: (key: string) => void;
+}) {
+  const index = Math.max(
+    0,
+    control.tiers.findIndex((tier) => tier.key === control.current.key),
+  );
+  const step = (direction: -1 | 1) => {
+    const next = control.tiers[Math.max(0, Math.min(control.tiers.length - 1, index + direction))];
+    if (next && next.key !== control.current.key) {
+      onPick(next.key);
+    }
+  };
+  const tierColor = (
+    GT_TIER_COLORS as Record<string, (typeof GT_TIER_COLORS)["LV"] | undefined>
+  )[control.current.label];
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        step(1);
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        step(-1);
+      }}
+      onWheel={(event) => {
+        event.stopPropagation();
+        step(event.deltaY < 0 ? 1 : -1);
+      }}
+      className="nodrag nowheel flex h-6 w-[50px] items-center justify-center border-2 px-1 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+      style={
+        tierColor
+          ? {
+              backgroundColor: tierColor.background,
+              borderColor: tierColor.border,
+              color: tierColor.text,
+              textShadow: `1px 1px 0 ${tierColor.shadow}`,
+              textDecoration: tierColor.underline ? "underline" : undefined,
+            }
+          : {
+              backgroundColor: "var(--mc-49)",
+              borderColor: "var(--mc-15)",
+              color: "#fff",
+            }
+      }
+      title={`${control.label}: ${control.current.label}. Click for the next tier, right-click for the previous, wheel for both.`}
+      aria-label={`${control.label} tier`}
+    >
+      {control.current.key === CROP_NO_MANAGER_KEY ? "HAND" : control.current.label}
+    </button>
+  );
+}
+
+/**
  * The crop card's settings, redrawn as a bespoke panel: tier chips in the
  * game's voltage colours, one +/- stepper per farm unit with the real block
  * art, and the farm's shared upgrade-slot budget made physical as a row of
@@ -4467,6 +4553,7 @@ function CropConfigPanel({
   machineConfigTiers,
   machineCount,
   onSelect,
+  onSelectMany,
   getControlHelp,
 }: {
   className?: string;
@@ -4475,6 +4562,12 @@ function CropConfigPanel({
   machineConfigTiers: Record<string, string | undefined> | undefined;
   machineCount: number;
   onSelect: (controlId: string, nextTier: string) => void;
+  /**
+   * Writes several knobs in one undo step. Every unit step commits the WHOLE
+   * normalized unit set, so what is stored always equals what is shown and a
+   * later change can never silently reshuffle slots between units.
+   */
+  onSelectMany: (patch: Record<string, string>) => void;
   getControlHelp?: (controlId: string) => ReactNode;
 }) {
   if (controls.length === 0) {
@@ -4496,6 +4589,24 @@ function CropConfigPanel({
     suppressBoardSound("adjust", 150);
     onSelect(controlId, key);
   };
+  // A unit step writes the WHOLE normalized set back, so stored values always
+  // equal the shown ones and later steps can never reshuffle slots.
+  const commitUnitStep = (controlId: string, next: number) => {
+    const nextSetup = cropsNhHarvesterFromTiers(
+      { ...(machineConfigTiers ?? {}), [controlId]: String(next) },
+      handlerId,
+    );
+    playBoardSound("dialRate", { step: Math.max(0, Math.min(3, next)) });
+    suppressBoardSound("adjust", 150);
+    onSelectMany({
+      [CROP_IF_GROWTH_UNIT_CONTROL_ID]: String(nextSetup.growthUnits),
+      [CROP_IF_FERTILIZER_UNIT_CONTROL_ID]: String(nextSetup.fertilizerUnits),
+      [CROP_IF_HARVEST_UNIT_CONTROL_ID]: String(nextSetup.harvestUnits),
+      [CROP_IF_ENVIRONMENT_UNIT_CONTROL_ID]: String(nextSetup.environmentUnits),
+      [CROP_IF_OVERCLOCK_CONTROL_ID]: String(nextSetup.overclocks),
+    });
+  };
+  const isUnitControl = (controlId: string) => controlId in CROP_UNIT_PIP_COLORS;
   const stepperRow = (
     control: MachineConfigTierControl,
     value: number,
@@ -4509,7 +4620,7 @@ function CropConfigPanel({
       icon={
         <ConfigTierIcon
           resource={control.current.resource ?? control.resource}
-          sizeClass="!h-[26px] !w-[26px]"
+          sizeClass="!h-[22px] !w-[22px]"
         />
       }
       label={control.label}
@@ -4518,7 +4629,12 @@ function CropConfigPanel({
       min={min}
       max={max}
       lockedHint={lockedHint}
-      onStep={(next) => pickWithSound(control.id, String(next), next)}
+      pipColor={CROP_UNIT_PIP_COLORS[control.id]}
+      onStep={(next) =>
+        isUnitControl(control.id)
+          ? commitUnitStep(control.id, next)
+          : pickWithSound(control.id, String(next), next)
+      }
       help={getControlHelp?.(control.id)}
     />
   );
@@ -4527,38 +4643,8 @@ function CropConfigPanel({
     switch (control.id) {
       case CROP_MANAGER_TIER_CONTROL_ID:
       case CROP_SEED_BED_TIER_CONTROL_ID:
-        return (
-          <CropCycleRow
-            key={control.id}
-            icon={
-              <ConfigTierIcon
-                resource={control.current.resource ?? control.resource}
-                sizeClass="!h-[26px] !w-[26px]"
-              />
-            }
-            label={control.label}
-            options={control.tiers}
-            currentKey={control.current.key}
-            effect={
-              control.id === CROP_SEED_BED_TIER_CONTROL_ID
-                ? `${capacity.toLocaleString()} seeds each · ${slots} upgrade slot${slots === 1 ? "" : "s"}`
-                : handPicked
-                  ? "Nobody automates the harvest"
-                  : `${capacity.toLocaleString()} crop sticks each`
-            }
-            tierColored
-            onPick={(next) => {
-              // The board's one voltage-tier voice: LV clicks, UV crackles.
-              playBoardSound("dialPower", {
-                step:
-                  next.key === CROP_NO_MANAGER_KEY ? 0 : Number.parseInt(next.key, 10) + 1,
-              });
-              suppressBoardSound("adjust", 150);
-              onSelect(control.id, next.key);
-            }}
-            help={getControlHelp?.(control.id)}
-          />
-        );
+        // The harvester's voltage lives in the card header's tier slot.
+        return null;
       case CROP_GROWTH_STAT_CONTROL_ID:
       case CROP_GAIN_STAT_CONTROL_ID: {
         const value = Number.parseInt(control.current.key, 10) || 1;
@@ -4641,7 +4727,7 @@ function CropConfigPanel({
             icon={
               <ConfigTierIcon
                 resource={control.current.resource ?? control.resource}
-                sizeClass="!h-[26px] !w-[26px]"
+                sizeClass="!h-[22px] !w-[22px]"
               />
             }
             label={control.label}
@@ -4653,6 +4739,15 @@ function CropConfigPanel({
         );
     }
   });
+  // The pips echo each unit's colour in a stable order, so the budget reads
+  // as "which blocks fill my slices", not just how many.
+  const pipFills = [
+    ...Array.from({ length: setup.growthUnits }, () => CROP_UNIT_PIP_COLORS[CROP_IF_GROWTH_UNIT_CONTROL_ID]!),
+    ...Array.from({ length: setup.fertilizerUnits }, () => CROP_UNIT_PIP_COLORS[CROP_IF_FERTILIZER_UNIT_CONTROL_ID]!),
+    ...Array.from({ length: setup.harvestUnits }, () => CROP_UNIT_PIP_COLORS[CROP_IF_HARVEST_UNIT_CONTROL_ID]!),
+    ...Array.from({ length: setup.environmentUnits }, () => CROP_UNIT_PIP_COLORS[CROP_IF_ENVIRONMENT_UNIT_CONTROL_ID]!),
+    ...(setup.overclocks > 0 ? [CROP_UNIT_PIP_COLORS[CROP_IF_OVERCLOCK_CONTROL_ID]!] : []),
+  ];
 
   const slotPips = isFarm ? (
     <div key="crop-slot-pips" className="col-span-2 flex h-[18px] items-center gap-1.5">
@@ -4665,7 +4760,7 @@ function CropConfigPanel({
             key={index}
             className="h-2.5 w-2.5 border border-[var(--mc-33)]"
             style={{
-              backgroundColor: index < used ? "var(--mc-93)" : "var(--mc-47)",
+              backgroundColor: pipFills[index] ?? "var(--mc-47)",
             }}
           />
         ))}
@@ -4690,20 +4785,26 @@ function CropConfigPanel({
     </div>
   );
 
+  const visibleRows = rows.filter(Boolean);
   const bodyPx =
-    Math.ceil(rows.length / 2) * (CROP_PANEL_ROW_PX + 2) + (slotPips ? 18 : 0) + (footer ? 16 : 0);
+    Math.ceil(visibleRows.length / 2) * (CROP_PANEL_ROW_PX + 2) +
+    (slotPips ? 18 : 0) +
+    (footer ? 16 : 0);
   return (
     <GridBlock
       className={[
         "nodrag border-2 border-[var(--mc-47)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]",
         className,
       ].join(" ")}
-      style={{ backgroundColor: CROP_PANEL_FACE }}
+      // The neutral ramp pinned over the card's paint: the panel's own face
+      // is the only coloured thing here, and every element on it draws in
+      // the site's ordinary chrome.
+      style={{ ...GT_NODE_RAMPS.gray, backgroundColor: CROP_PANEL_FACE }}
       minCells={Math.max(1, Math.ceil(bodyPx / BOARD_GRID))}
       clearancePx={4}
     >
       <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1.5 gap-y-0.5">
-        {rows}
+        {visibleRows}
         {slotPips}
         {footer}
       </div>

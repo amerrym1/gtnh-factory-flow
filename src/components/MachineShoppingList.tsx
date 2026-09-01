@@ -12,10 +12,14 @@ import { getSelectedMachineHandler } from "@/lib/model/recipe-rules";
 import { isCustomRateRecipe } from "@/lib/model/custom-rate";
 import {
   CROP_HARVESTER_INDUSTRIAL_FARM_ID,
+  cropsNhEnvironmentFromTiers,
+  cropsNhEutPerCrop,
+  cropsNhHarvestTicks,
   cropsNhHarvesterFromTiers,
   cropsNhHarvesterMachineCount,
   cropsNhHarvesterTierName,
   cropsNhIsHandPicked,
+  cropsNhManagerEuPerHarvest,
   getCropsNhStats,
   isCropProductionRecipe,
 } from "@/lib/model/passive-production";
@@ -190,11 +194,39 @@ export function MachineShoppingList() {
       const powerEuT = recipe.power ? recipe.power.euPerTick : undefined;
       const madeEuT =
         powerEuT !== undefined && powerEuT >= 0 ? powerEuT * runningCount : undefined;
+      // A crop harvester's draw, from the mod's own math: an Industrial Farm
+      // burns `getPowerUsage` continuously spread over its seeds; a Crop
+      // Manager spends `maxEUInput() / 8` on each crop it picks, so its
+      // per-tick figure is that spread over the harvest period.
+      const cropEuT = (() => {
+        if (!crop || cropsNhIsHandPicked(crop)) {
+          return undefined;
+        }
+        const crops = Math.max(0, Math.round(node.machineCount));
+        if (crop.id === CROP_HARVESTER_INDUSTRIAL_FARM_ID) {
+          return cropsNhEutPerCrop(crop) * crops;
+        }
+        const stats = getCropsNhStats(recipe);
+        if (!stats) {
+          return undefined;
+        }
+        const ticks = cropsNhHarvestTicks(
+          stats,
+          cropsNhEnvironmentFromTiers(node.machineConfigTiers),
+        );
+        return Number.isFinite(ticks) && ticks > 0
+          ? (cropsNhManagerEuPerHarvest(crop) * crops) / ticks
+          : 0;
+      })();
       const euT = report
         ? report.drawEuT * runningCount
-        : powerEuT !== undefined && powerEuT < 0
-          ? -powerEuT * runningCount
-          : undefined;
+        : cropEuT !== undefined
+          ? usage > 0
+            ? cropEuT
+            : 0
+          : powerEuT !== undefined && powerEuT < 0
+            ? -powerEuT * runningCount
+            : undefined;
       const steamLs = steam ? steam.drawSteamPerTick * 20 * runningCount : undefined;
 
       const group =

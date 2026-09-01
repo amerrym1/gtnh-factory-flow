@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import type { DatasetVersion, RecipeSummary } from "@/lib/datasets/types";
 import { DEFAULT_DATASET_MANIFEST_URL } from "@/lib/datasets/remote";
@@ -89,6 +89,20 @@ export function CropPickerMenu({
     });
   }, [crops, search]);
 
+  // Click-away closes the picker: capture phase, because the board's own
+  // handlers stop pointer events long before they would bubble up here.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      const root = rootRef.current;
+      if (root && event.target instanceof Node && !root.contains(event.target)) {
+        onClose();
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [onClose]);
+
   const handlePick = async (summary: RecipeSummary) => {
     if (!version) {
       return;
@@ -104,6 +118,7 @@ export function CropPickerMenu({
 
   return (
     <div
+      ref={rootRef}
       // "nowheel" stops React Flow from zooming the canvas when scrolling the
       // list: its native wheel handler runs before React's synthetic one, so
       // stopPropagation alone is not enough.
@@ -133,7 +148,7 @@ export function CropPickerMenu({
       ) : error ? (
         <div className="px-2 py-3 text-[12px] font-bold text-[var(--mc-bad)]">{error}</div>
       ) : (
-        <div className="max-h-[380px] overflow-y-auto">
+        <div className="grid max-h-[380px] grid-cols-5 gap-1 overflow-y-auto">
           {filtered.map((crop) => {
             const tier = (crop.metadata as { cropsNh?: { tier?: number } } | undefined)?.cropsNh
               ?.tier;
@@ -145,51 +160,44 @@ export function CropPickerMenu({
                   : name;
               })
               .join(", ");
+            const name = cropDisplayName(crop.name);
             return (
               <button
                 key={crop.id}
                 type="button"
                 onClick={() => void handlePick(crop)}
-                className="flex w-full items-center gap-2.5 border-2 border-transparent px-1.5 py-1.5 text-left text-[var(--mc-ink)] hover:border-[var(--mc-47)] hover:bg-[var(--mc-100)]"
+                title={[name, tier ? `Tier ${tier}` : undefined, dropsLine]
+                  .filter(Boolean)
+                  .join(" · ")}
+                className="relative flex flex-col items-center gap-0.5 border-2 border-transparent p-1 text-[var(--mc-ink)] hover:border-[var(--mc-47)] hover:bg-[var(--mc-100)]"
               >
-                <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
+                <span className="grid h-9 w-9 place-items-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
                   {crop.outputs[0] ? (
                     <ResourceIcon
-                      // Hide the chance badge here: chances are spelled out in
-                      // the drops line below instead.
+                      // Chance badges are spelled out in the hover instead.
                       resource={{ ...crop.outputs[0], chance: undefined }}
                       bare
                       tooltip={false}
                       showAmount={false}
                       showConsumedState={false}
-                      // The default md size (h-12 w-12) must exactly match the
-                      // cell above: the sprite draws at 200% of the box and the
-                      // box crops the rendered padding away, so a size mismatch
-                      // shows up as an off-center, shrunken icon. The extra
-                      // scale zooms the art without growing the cell; beyond
-                      // ~1.2 isometric block sprites start losing their
-                      // corners to the cell edges, which is acceptable here.
-                      size="md"
-                      className="scale-[1.4]"
+                      size="sm"
+                      className="scale-[1.35]"
                     />
                   ) : null}
                 </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-bold leading-4">
-                    {cropDisplayName(crop.name)}
+                {tier ? (
+                  <span className="absolute right-0.5 top-0.5 text-[8px] font-bold leading-none text-[var(--mc-ink-muted)]">
+                    T{tier}
                   </span>
-                  <span className="block truncate text-[10px] leading-4 text-[var(--mc-ink-muted)]">
-                    {dropsLine}
-                  </span>
-                </span>
-                <span className="shrink-0 text-[10px] font-bold uppercase text-[var(--mc-ink-muted)]">
-                  {tier ? `T${tier}` : ""}
+                ) : null}
+                <span className="w-full overflow-hidden text-center text-[9px] font-bold leading-[10px]">
+                  {name}
                 </span>
               </button>
             );
           })}
           {filtered.length === 0 ? (
-            <div className="px-2 py-3 text-[12px] font-bold text-[var(--mc-ink-muted)]">
+            <div className="col-span-5 px-2 py-3 text-[12px] font-bold text-[var(--mc-ink-muted)]">
               No crops match.
             </div>
           ) : null}

@@ -1046,7 +1046,7 @@ function cropHarvesterHandlers(): MachineHandler[] {
         }),
         countControl({
           id: CROP_IF_FERTILIZER_UNIT_CONTROL_ID,
-          label: "Fertilizer Unit",
+          label: "Fertilizer",
           max: MAX_FERTILIZER_UNITS,
           resourceId: "crop_if_fertilizer_unit",
           itemName: "Fertilization Unit (MV)",
@@ -1055,7 +1055,7 @@ function cropHarvesterHandlers(): MachineHandler[] {
         }),
         countControl({
           id: CROP_IF_HARVEST_UNIT_CONTROL_ID,
-          label: "Harvest Units",
+          label: "Harvesting",
           max: MAX_ADVANCED_HARVESTING_UNITS,
           resourceId: "crop_if_harvest_unit",
           itemName: "Advanced Harvesting Unit (MV)",
