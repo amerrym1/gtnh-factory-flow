@@ -408,30 +408,38 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode, step 
   switch (kind) {
     case "dialRate": {
       // The unit ladder as a pitch ladder: per tick lowest, per hour
-      // highest, one quiet flat tap - a dial clicking to a stop.
+      // highest - one quiet PURE tap, wood not electricity, so the two
+      // dials can never be mistaken for each other by ear.
       const frequency = [262, 330, 415, 523][Math.min(3, Math.max(0, Math.round(step)))]!;
       blip(ctx, out, { from: frequency, to: frequency, duration: 0.09, peak: 0.18 });
-      puff(ctx, out, { frequency: 1600, q: 2, duration: 0.025, peak: 0.07 });
       break;
     }
     case "dialPower": {
-      // The voltage ladder audibly CLIMBING: each tier a step up in pitch
-      // and a shade more spark, so UV genuinely sounds more powerful than
-      // LV. Step 0 is EU/t, the neutral bottom of the ladder.
+      // The voltage ladder audibly CLIMBING, in the ZAP's spark material:
+      // two narrow crackles and a short rising bite, each tier a step up
+      // in pitch and a shade more energy - UV genuinely sounds more
+      // powerful than LV. Step 0 is EU/t, the neutral floor.
       const rung = Math.max(0, Math.min(16, step));
-      const frequency = 233 * Math.pow(1.11, rung);
-      blip(ctx, out, {
-        from: frequency,
-        to: frequency * 1.05,
-        duration: 0.11,
-        peak: 0.16 + rung * 0.004,
+      const bite = 196 * Math.pow(1.11, rung);
+      puff(ctx, out, {
+        frequency: 2000 + rung * 140,
+        q: 6,
+        duration: 0.03,
+        peak: 0.1 + rung * 0.005,
       });
       puff(ctx, out, {
-        frequency: 1700 + rung * 130,
-        q: 4,
-        duration: 0.03,
-        peak: 0.05 + rung * 0.006,
-        delay: 0.015,
+        frequency: 1400 + rung * 110,
+        q: 5,
+        duration: 0.035,
+        peak: 0.07 + rung * 0.004,
+        delay: 0.03,
+      });
+      blip(ctx, out, {
+        from: bite,
+        to: bite * 1.12,
+        duration: 0.07,
+        peak: 0.1 + rung * 0.004,
+        delay: 0.01,
       });
       break;
     }

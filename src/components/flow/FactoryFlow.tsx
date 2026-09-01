@@ -7540,6 +7540,20 @@ const SourceToolbar = memo(function SourceToolbar({
           <button
             type="button"
             onClick={() => setRateMenuOpen((was) => !was)}
+            onWheel={(event) => {
+              // The key is also a wheel dial: scroll up climbs the ladder,
+              // clamped at the ends. Stopped so the board never zooms.
+              event.stopPropagation();
+              const index = RATE_UNIT_CHOICES.findIndex((choice) => choice.unit === rateUnit);
+              const next = Math.min(
+                RATE_UNIT_CHOICES.length - 1,
+                Math.max(0, index + (event.deltaY < 0 ? 1 : -1)),
+              );
+              if (next !== index) {
+                playBoardSound("dialRate", { step: next });
+                setRateUnit(RATE_UNIT_CHOICES[next]!.unit);
+              }
+            }}
             aria-expanded={isRateMenuOpen}
             title={`Rate unit: ${rateChoice.title.toLowerCase()}`}
             aria-label={`Rate unit: ${rateChoice.title.toLowerCase()}`}
@@ -7592,6 +7606,24 @@ const SourceToolbar = memo(function SourceToolbar({
           <button
             type="button"
             onClick={() => setPowerUnitMenuOpen((was) => !was)}
+            onWheel={(event) => {
+              // Same wheel dial as the rate key: EU/t is the floor, the
+              // tiers climb from it.
+              event.stopPropagation();
+              const ladder: Array<typeof powerDisplayUnit> = [
+                "eu",
+                ...GT_VOLTAGE_TIERS.map((entry) => entry.tier),
+              ];
+              const index = ladder.indexOf(powerDisplayUnit);
+              const next = Math.min(
+                ladder.length - 1,
+                Math.max(0, index + (event.deltaY < 0 ? 1 : -1)),
+              );
+              if (next !== index) {
+                playBoardSound("dialPower", { step: next });
+                setPowerDisplayUnit(ladder[next]!);
+              }
+            }}
             aria-expanded={isPowerUnitMenuOpen}
             title={
               powerDisplayUnit === "eu"
