@@ -6,8 +6,6 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   Factory,
-  LayoutGrid,
-  List,
   Search,
   X,
   Zap,
@@ -75,8 +73,16 @@ export {
 const RECIPE_QUERY_LIMIT = 120;
 
 const RESOURCE_DEFAULT_PAGE_SIZE = 6;
-const RESOURCE_ROW_HEIGHT = 40;
-const RESOURCE_ROW_GAP = 2;
+/**
+ * The one way results are drawn: a dense grid of tiles, each an icon with its
+ * name beside it. It replaced a list view (name plus a mod/recipe-count line
+ * nobody asked for, one item per row) and a bare grid view (no names at all) -
+ * as many items as the column holds without losing the name (Jack, 2026-08-31).
+ * Two short lines of name, then the hover tooltip carries the rest.
+ */
+const RESOURCE_TILE_HEIGHT = 36;
+const RESOURCE_TILE_MIN_WIDTH = 128;
+const RESOURCE_TILE_GAP = 4;
 const RESOURCE_GRID_CELL = 56;
 const RESOURCE_GRID_GAP = 4;
 /**
@@ -96,14 +102,12 @@ const RESOURCE_GRID_ART = "!h-full !w-full scale-[1.4]";
 const RESOURCE_PAGER_HEIGHT = 40;
 /** One mouse notch is 100 on most platforms, so one notch is one page. */
 const RESOURCE_WHEEL_PAGE_DELTA = 80;
-const RESOURCE_VIEW_STORAGE_KEY = "gtnh-factory-flow.resource-view.v1";
 /** Whether the filter block under the search box is folded away. */
 const RESOURCE_FILTERS_STORAGE_KEY = "gtnh-factory-flow.resource-filters.v1";
 /** The machine chips' multi-select: which maps' recipes the search shows. */
 const MAP_SELECTION_STORAGE_KEY = "gtnh-factory-flow.machine-map-selection.v1";
 
 type ResourceSortMode = "relevance" | "popular" | "name" | "mod" | "made" | "uses";
-type ResourceViewMode = "list" | "grid";
 
 /**
  * The one question the list is answering.
@@ -247,7 +251,6 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const [resourceTotal, setResourceTotal] = useState(0);
   const [resourceMod, setResourceMod] = useState("");
   const [resourceSort, setResourceSort] = useState<ResourceSortMode>("relevance");
-  const [resourceView, setResourceView] = useState<ResourceViewMode>("list");
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [resourceFilter, setResourceFilter] = useState<ResourceFilterMode>("all");
   // The machine chips' selection. Absent means everything is selected (the
@@ -563,22 +566,8 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     ],
   );
 
-  // The saved view preference is applied after mount (deferred) so the SSR
-  // markup and first client render agree.
-  useEffect(() => {
-    const stored = window.localStorage.getItem(RESOURCE_VIEW_STORAGE_KEY);
-    if (stored === "grid") {
-      return deferStateUpdate(() => setResourceView("grid"));
-    }
-    return undefined;
-  }, []);
-
-  const changeResourceView = useCallback((view: ResourceViewMode) => {
-    setResourceView(view);
-    window.localStorage.setItem(RESOURCE_VIEW_STORAGE_KEY, view);
-  }, []);
-
-  // Same deal for the filter fold: folded is the saved state, never the default,
+  // The filter fold's saved state is applied after mount (deferred) so the SSR
+  // markup and first client render agree. Folded is the saved state, never the default,
   // so nobody meets this column with its filters already hidden.
   useEffect(() => {
     if (window.localStorage.getItem(RESOURCE_FILTERS_STORAGE_KEY) === "folded") {
@@ -1235,21 +1224,6 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
                 </button>
               ) : null}
             </label>
-            {/* How the results are drawn, not which ones: it belongs with the box
-                they come out of rather than in the row of filters. */}
-            <button
-              type="button"
-              onClick={() => changeResourceView(resourceView === "list" ? "grid" : "list")}
-              title={resourceView === "list" ? "Switch to grid view" : "Switch to list view"}
-              aria-label={resourceView === "list" ? "Switch to grid view" : "Switch to list view"}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200"
-            >
-              {resourceView === "list" ? (
-                <LayoutGrid className="h-4 w-4" />
-              ) : (
-                <List className="h-4 w-4" />
-              )}
-            </button>
             {/* Folds everything below it away. Six filters and two dropdowns are
                 worth their space when you are narrowing a search down and worth
                 none of it when you are not, which on a phone is most of a screen
@@ -1367,7 +1341,6 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
                       : undefined
               }
               activeResource={activeResource}
-              view={resourceView}
               onPageChange={setResourcePage}
               onPageSizeChange={setResourcePageSize}
               onBrowse={browseResource}
@@ -1440,11 +1413,10 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
 
 function useResourcePageSize(
   containerRef: RefObject<HTMLDivElement | null>,
-  view: ResourceViewMode,
   onPageSizeChange: (pageSize: number) => void,
 ) {
   const [pageSize, setPageSize] = useState(RESOURCE_DEFAULT_PAGE_SIZE);
-  const [gridColumns, setGridColumns] = useState(6);
+  const [gridColumns, setGridColumns] = useState(2);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1453,27 +1425,20 @@ function useResourcePageSize(
     }
 
     const updatePageSize = () => {
-      const availableHeight = Math.max(RESOURCE_ROW_HEIGHT, container.clientHeight);
-      const listHeight = Math.max(RESOURCE_ROW_HEIGHT, availableHeight - RESOURCE_PAGER_HEIGHT);
-      let nextPageSize: number;
-      let nextColumns = 6;
-      if (view === "grid") {
-        const width = Math.max(RESOURCE_GRID_CELL, container.clientWidth);
-        nextColumns = Math.max(
-          1,
-          Math.floor((width + RESOURCE_GRID_GAP) / (RESOURCE_GRID_CELL + RESOURCE_GRID_GAP)),
-        );
-        const rows = Math.max(
-          1,
-          Math.floor((listHeight + RESOURCE_GRID_GAP) / (RESOURCE_GRID_CELL + RESOURCE_GRID_GAP)),
-        );
-        nextPageSize = nextColumns * rows;
-      } else {
-        nextPageSize = Math.max(
-          1,
-          Math.floor((listHeight + RESOURCE_ROW_GAP) / (RESOURCE_ROW_HEIGHT + RESOURCE_ROW_GAP)),
-        );
-      }
+      const availableHeight = Math.max(RESOURCE_TILE_HEIGHT, container.clientHeight);
+      const listHeight = Math.max(RESOURCE_TILE_HEIGHT, availableHeight - RESOURCE_PAGER_HEIGHT);
+      const width = Math.max(RESOURCE_TILE_MIN_WIDTH, container.clientWidth);
+      const nextColumns = Math.max(
+        1,
+        Math.floor(
+          (width + RESOURCE_TILE_GAP) / (RESOURCE_TILE_MIN_WIDTH + RESOURCE_TILE_GAP),
+        ),
+      );
+      const rows = Math.max(
+        1,
+        Math.floor((listHeight + RESOURCE_TILE_GAP) / (RESOURCE_TILE_HEIGHT + RESOURCE_TILE_GAP)),
+      );
+      const nextPageSize = nextColumns * rows;
 
       setPageSize((current) => (current === nextPageSize ? current : nextPageSize));
       setGridColumns((current) => (current === nextColumns ? current : nextColumns));
@@ -1484,7 +1449,7 @@ function useResourcePageSize(
     const observer = new ResizeObserver(updatePageSize);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [containerRef, onPageSizeChange, view]);
+  }, [containerRef, onPageSizeChange]);
 
   return { pageSize, gridColumns };
 }
@@ -1818,7 +1783,6 @@ function VirtualResourceResultList({
   error,
   emptyLabel,
   activeResource,
-  view,
   onPageChange,
   onPageSizeChange,
   onBrowse,
@@ -1831,13 +1795,12 @@ function VirtualResourceResultList({
   /** What "nothing here" means under the current filter. */
   emptyLabel?: string;
   activeResource?: IndexedResource;
-  view: ResourceViewMode;
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   onBrowse: (resource: IndexedResource, mode: "recipes" | "uses") => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { pageSize, gridColumns } = useResourcePageSize(containerRef, view, onPageSizeChange);
+  const { pageSize, gridColumns } = useResourcePageSize(containerRef, onPageSizeChange);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const handlePreviousPage = useCallback(() => {
     onPageChange(Math.max(0, currentPage - 1));
@@ -1853,7 +1816,7 @@ function VirtualResourceResultList({
           {error}
         </div>
       ) : isLoading && resources.length === 0 ? (
-        <ResourceResultSkeleton view={view} pageSize={pageSize} gridColumns={gridColumns} />
+        <ResourceResultSkeleton pageSize={pageSize} gridColumns={gridColumns} />
       ) : resources.length === 0 ? (
         <div className="rounded border border-dashed border-neutral-600 p-4 text-sm text-neutral-300">
           {emptyLabel ?? "No matching resource."}
@@ -1862,7 +1825,6 @@ function VirtualResourceResultList({
         <ResourceResultPage
           resources={resources}
           activeResource={activeResource}
-          view={view}
           gridColumns={gridColumns}
           isRefreshing={isLoading}
           onBrowseResource={onBrowse}
@@ -1880,39 +1842,28 @@ function VirtualResourceResultList({
 
 /** Pulsing placeholders shaped like the results, instead of a text box. */
 function ResourceResultSkeleton({
-  view,
   pageSize,
   gridColumns,
 }: {
-  view: ResourceViewMode;
   pageSize: number;
   gridColumns: number;
 }) {
   const count = Math.max(3, Math.min(pageSize, 60));
-  if (view === "grid") {
-    return (
-      <div
-        className="grid min-h-0 flex-1 content-start gap-1 overflow-hidden"
-        style={{ gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }}
-        aria-label="Loading resources"
-      >
-        {Array.from({ length: count }, (_, index) => (
-          <div
-            key={index}
-            className="aspect-square animate-pulse rounded-[4px] bg-neutral-800/70"
-          />
-        ))}
-      </div>
-    );
-  }
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden" aria-label="Loading resources">
+    <div
+      className="grid min-h-0 flex-1 content-start gap-1 overflow-hidden"
+      style={{ gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }}
+      aria-label="Loading resources"
+    >
       {Array.from({ length: count }, (_, index) => (
-        <div key={index} className="flex h-10 shrink-0 items-center gap-2.5 px-1.5">
-          <div className="h-8 w-8 animate-pulse rounded-[4px] bg-neutral-800/70" />
+        <div
+          key={index}
+          className="flex shrink-0 items-center gap-1.5 px-1"
+          style={{ height: RESOURCE_TILE_HEIGHT }}
+        >
+          <div className="h-7 w-7 shrink-0 animate-pulse rounded-[4px] bg-neutral-800/70" />
           <div
-            className="h-3 animate-pulse rounded bg-neutral-800/70"
+            className="h-3 min-w-0 animate-pulse rounded bg-neutral-800/70"
             style={{ width: `${45 + ((index * 17) % 40)}%` }}
           />
         </div>
@@ -2027,14 +1978,12 @@ function useResourceBrowseMenu(
 function ResourceResultPage({
   resources,
   activeResource,
-  view,
   gridColumns,
   isRefreshing,
   onBrowseResource,
 }: {
   resources: IndexedResource[];
   activeResource?: IndexedResource;
-  view: ResourceViewMode;
   gridColumns: number;
   isRefreshing: boolean;
   onBrowseResource: (resource: IndexedResource, mode: "recipes" | "uses") => void;
@@ -2049,92 +1998,13 @@ function ResourceResultPage({
   );
   const rowBrowse = useResourceBrowseMenu(browse);
 
-  if (view === "grid") {
-    return (
-      <div
-        className={[
-          "grid min-h-0 flex-1 content-start gap-1 overflow-hidden",
-          isRefreshing ? "opacity-60" : "",
-        ].join(" ")}
-        style={{ gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }}
-        aria-label="Resource results"
-        role="listbox"
-      >
-        {resources.map((resource) => {
-          const active =
-            activeResource?.kind === resource.kind && activeResource.id === resource.id;
-          return (
-            // A grid cell is art and nothing else, so the name and the line under
-            // it in list view are only ever a hover away. The icon's own tooltip
-            // is off: the nearest tooltip to the pointer wins, and this one knows
-            // more than the icon does.
-            <MinecraftTooltip
-              key={`${resource.kind}:${resource.id}`}
-              label={resourceTooltipLines(resource)}
-            >
-              <button
-                type="button"
-                onClick={(event) => {
-                  if (rowBrowse.claimedByMenu(event) || rowBrowse.openOnTap(event)) {
-                    return;
-                  }
-                  browse(resource, "recipes");
-                }}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  if (rowBrowse.claimedByMenu(event)) {
-                    return;
-                  }
-                  browse(resource, "uses");
-                }}
-                {...rowBrowse.pressProps(resource)}
-                aria-label={resourceLabel(resource)}
-                className={[
-                  "minecraft-pixel-art flex aspect-square items-center justify-center overflow-hidden rounded-[4px] border",
-                  active
-                    ? "border-cyan-400 bg-cyan-500/10"
-                    : "border-transparent hover:border-neutral-500 hover:bg-white/5",
-                ].join(" ")}
-                role="option"
-                aria-selected={active}
-              >
-                {resource.id === POWER_EU_CLAUSE_ID ? (
-                  // Its own faint amber ground and the word under the bolt:
-                  // a grid cell has no name line to say what this is.
-                  <span className="flex h-full w-full flex-col items-center justify-center gap-1 bg-amber-400/10">
-                    <Zap
-                      className="h-5 w-5 -translate-y-0.5 fill-current text-amber-400"
-                      aria-hidden
-                    />
-                    <span className="text-[12px] font-black leading-none text-white [text-shadow:1px_1px_0_#000]">
-                      EU/t
-                    </span>
-                  </span>
-                ) : (
-                  <ResourceIcon
-                    resource={{ ...resource, amount: 1 }}
-                    size="md"
-                    bare
-                    showAmount={false}
-                    tooltip={false}
-                    className={RESOURCE_GRID_ART}
-                  />
-                )}
-              </button>
-            </MinecraftTooltip>
-          );
-        })}
-        {rowBrowse.menu}
-      </div>
-    );
-  }
-
   return (
     <div
       className={[
-        "flex min-h-0 flex-1 flex-col justify-start gap-0.5 overflow-hidden",
+        "grid min-h-0 flex-1 content-start gap-1 overflow-hidden",
         isRefreshing ? "opacity-60" : "",
       ].join(" ")}
+      style={{ gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }}
       aria-label="Resource results"
       role="listbox"
     >
@@ -2142,66 +2012,65 @@ function ResourceResultPage({
         const active = activeResource?.kind === resource.kind && activeResource.id === resource.id;
 
         return (
-          <button
+          // The tile's tooltip carries what the tile itself no longer prints
+          // (full name, mod, recipe count). The icon's own tooltip is off: the
+          // nearest tooltip to the pointer wins, and this one knows more.
+          <MinecraftTooltip
             key={`${resource.kind}:${resource.id}`}
-            type="button"
-            onClick={(event) => {
-              if (rowBrowse.claimedByMenu(event) || rowBrowse.openOnTap(event)) {
-                return;
-              }
-              browse(resource, "recipes");
-            }}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              if (rowBrowse.claimedByMenu(event)) {
-                return;
-              }
-              browse(resource, "uses");
-            }}
-            {...rowBrowse.pressProps(resource)}
-            title={resourceLabel(resource)}
-            className={[
-              "flex h-10 w-full shrink-0 items-center gap-2.5 overflow-hidden rounded-[4px] border px-1.5 text-left text-sm text-neutral-50",
-              // The power row's own whisper of amber; selection still wins.
-              !active && resource.id === POWER_EU_CLAUSE_ID ? "bg-amber-400/[0.07]" : "",
-              active
-                ? "border-cyan-400 bg-cyan-500/10"
-                : "border-transparent hover:bg-white/5",
-            ].join(" ")}
-            role="option"
-            aria-selected={active}
+            label={resourceTooltipLines(resource)}
           >
-            <span className="minecraft-pixel-art flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden">
-              {resource.id === POWER_EU_CLAUSE_ID ? (
-                <span className="flex h-full w-full flex-col items-center justify-center gap-0.5 bg-amber-400/10">
-                  <Zap className="h-4 w-4 -translate-y-px fill-current text-amber-400" aria-hidden />
-                  <span className="text-[9px] font-black leading-none text-white [text-shadow:1px_1px_0_#000]">
-                    EU/t
+            <button
+              type="button"
+              onClick={(event) => {
+                if (rowBrowse.claimedByMenu(event) || rowBrowse.openOnTap(event)) {
+                  return;
+                }
+                browse(resource, "recipes");
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                if (rowBrowse.claimedByMenu(event)) {
+                  return;
+                }
+                browse(resource, "uses");
+              }}
+              {...rowBrowse.pressProps(resource)}
+              aria-label={resourceLabel(resource)}
+              className={[
+                "flex min-w-0 items-center gap-1.5 overflow-hidden rounded-[4px] border px-1 text-left",
+                // The power tile's own whisper of amber; selection still wins.
+                !active && resource.id === POWER_EU_CLAUSE_ID ? "bg-amber-400/[0.07]" : "",
+                active
+                  ? "border-cyan-400 bg-cyan-500/10"
+                  : "border-transparent hover:border-neutral-600 hover:bg-white/5",
+              ].join(" ")}
+              style={{ height: RESOURCE_TILE_HEIGHT }}
+              role="option"
+              aria-selected={active}
+            >
+              <span className="minecraft-pixel-art flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden">
+                {resource.id === POWER_EU_CLAUSE_ID ? (
+                  <span className="flex h-full w-full items-center justify-center bg-amber-400/10">
+                    <Zap className="h-4 w-4 fill-current text-amber-400" aria-hidden />
                   </span>
-                </span>
-              ) : (
-                <ResourceIcon
-                  resource={{ ...resource, amount: 1 }}
-                  size="sm"
-                  bare
-                  showAmount={false}
-                  tooltip={false}
-                  // Zoom the art without growing the cell (see crop picker);
-                  // the wrapper crops the overflow at the 32px cell.
-                  className="!h-8 !w-8 scale-[1.5]"
-                />
-              )}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate leading-tight [text-shadow:1px_1px_0_#000]">
-                {resourceLabel(resource)}
+                ) : (
+                  <ResourceIcon
+                    resource={{ ...resource, amount: 1 }}
+                    size="sm"
+                    bare
+                    showAmount={false}
+                    tooltip={false}
+                    // Zoom the art without growing the cell (see crop picker);
+                    // the wrapper crops the overflow at the 28px cell.
+                    className="!h-7 !w-7 scale-[1.5]"
+                  />
+                )}
               </span>
-              <span className="block truncate text-[10px] leading-tight text-neutral-500">
-                {getResourceModLabel(resource)}
-                {resource.recipeCount > 0 ? ` · ${resource.recipeCount} recipes` : ""}
+              <span className="line-clamp-2 min-w-0 flex-1 break-words text-[11px] leading-[13px] text-neutral-50 [text-shadow:1px_1px_0_#000]">
+                {resource.id === POWER_EU_CLAUSE_ID ? "Power (EU/t)" : resourceLabel(resource)}
               </span>
-            </span>
-          </button>
+            </button>
+          </MinecraftTooltip>
         );
       })}
       {rowBrowse.menu}
