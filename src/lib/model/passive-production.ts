@@ -944,7 +944,7 @@ function cropsNhAnalyticControls(mode: "world" | "farm" = "world"): MachineConfi
     }),
     selectControl({
       id: CROP_FERTILIZER_CONTROL_ID,
-      label: "Fertilizer",
+      label: "Fert",
       defaultKey: "100",
       tiers: [
         option("0", "None", CROP_FERTILIZER_CONTROL_ID, "Fertilizer"),
@@ -954,7 +954,7 @@ function cropsNhAnalyticControls(mode: "world" | "farm" = "world"): MachineConfi
     }),
     selectControl({
       id: CROP_SKY_CONTROL_ID,
-      label: "Sky Access",
+      label: "Sky",
       defaultKey: "yes",
       tiers: [
         option("no", "Covered", CROP_SKY_CONTROL_ID, "Daylight Detector"),
@@ -1124,7 +1124,7 @@ function cropHarvesterHandlers(stats?: CropsNhStats): MachineHandler[] {
         }),
         selectControl({
           id: CROP_IF_FERTILIZED_CONTROL_ID,
-          label: "Fertilizer",
+          label: "Fert",
           defaultKey: "yes",
           tiers: [
             option("no", "None", CROP_IF_FERTILIZED_CONTROL_ID, "Fertilizer"),

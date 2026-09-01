@@ -80,7 +80,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "A farm bills its full power even when its last seed bed is not full.",
       "The biome option knows partial humidity: 60% is worth +4, 70% is +9.",
       "A Fertilizer knob says whether the farm is fed; an unfed crop grows slower.",
-      "The crop knobs fit one row across the top of the card.",
+      "A Formulas strip on crop cards shows the exact math with your numbers plugged in.",
     ],
   },
   {

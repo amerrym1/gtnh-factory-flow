@@ -81,8 +81,12 @@ import {
   cropsNhCropsPerMachine,
   cropsNhEnvironmentFromTiers,
   cropsNhFarmEut,
+  cropsNhGrowthSpeedMultiplier,
+  cropsNhHarvestRoundMultiplier,
   cropsNhHarvestTicks,
   cropsNhHarvesterMachineCount,
+  cropsNhNutrientScore,
+  type CropsNhStats,
   cropsNhHarvesterEnvironment,
   cropsNhHarvesterFromTiers,
   cropsNhIsHandPicked,
@@ -798,6 +802,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         machineConfigTiers={projectNode.machineConfigTiers}
         machineCount={projectNode.machineCount}
         minSeedBedTier={getCropsNhStats(effectiveRecipe)?.minSeedBedTier}
+        cropStats={getCropsNhStats(effectiveRecipe)}
         onSelect={updateMachineConfigTier}
         onSelectMany={(patch) =>
           updateNode(projectNode.id, {
@@ -4412,6 +4417,23 @@ const CROP_TILE_CAPTION_CLASS =
 const CROP_TILE_BUTTON_CLASS =
   "nodrag flex h-5 w-3.5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] enabled:hover:bg-[var(--mc-100)] enabled:active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)] disabled:opacity-35";
 
+/** One browser-wide fold for every crop card's worked-formula strip. */
+const CROP_FORMULAS_OPEN_KEY = "gtnh-factory-flow.crop-formulas-open.v1";
+function readCropFormulasOpen(): boolean {
+  try {
+    return window.localStorage.getItem(CROP_FORMULAS_OPEN_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+function writeCropFormulasOpen(open: boolean) {
+  try {
+    window.localStorage.setItem(CROP_FORMULAS_OPEN_KEY, open ? "1" : "0");
+  } catch {
+    // A blocked storage just forgets the fold.
+  }
+}
+
 /** The unit's tiny colour mark before its caption, echoing its slot pip. */
 function CropPipSwatch({ color }: { color?: string }) {
   return color ? (
@@ -4662,6 +4684,7 @@ function CropConfigPanel({
   machineConfigTiers,
   machineCount,
   minSeedBedTier,
+  cropStats,
   onSelect,
   onSelectMany,
   getControlHelp,
@@ -4673,6 +4696,8 @@ function CropConfigPanel({
   machineCount: number;
   /** The crop's seed bed floor: math clamps to it exactly as the chip does. */
   minSeedBedTier?: number;
+  /** The crop's own stats, for the plugged-in formula strip. */
+  cropStats?: CropsNhStats;
   onSelect: (controlId: string, nextTier: string) => void;
   /**
    * Writes several knobs in one undo step. Every unit step commits the WHOLE
@@ -4682,6 +4707,13 @@ function CropConfigPanel({
   onSelectMany: (patch: Record<string, string>) => void;
   getControlHelp?: (controlId: string) => ReactNode;
 }) {
+  const [formulasOpen, setFormulasOpen] = useState(readCropFormulasOpen);
+  const onToggleFormulas = () => {
+    setFormulasOpen((open) => {
+      writeCropFormulasOpen(!open);
+      return !open;
+    });
+  };
   if (controls.length === 0) {
     return null;
   }
@@ -4876,6 +4908,129 @@ function CropConfigPanel({
     </div>
   );
 
+  // THE WORKED FORMULAS: every number on this card, derived in front of the
+  // player with their own settings plugged in. Muted fine print under the
+  // footer, one equation per line, each unit's count in its own pip colour.
+  // Folds on its FORMULAS head; the choice is a browser preference shared by
+  // every crop card.
+  const workedFormulas = (() => {
+    if (!cropStats) {
+      return null;
+    }
+    const head = (
+      <button
+        type="button"
+        className="nodrag flex h-[12px] w-full items-center gap-1 text-left text-[9px] uppercase tracking-wide text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]"
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleFormulas();
+        }}
+        aria-expanded={formulasOpen}
+        title={formulasOpen ? "Hide the worked formulas" : "Show the worked formulas"}
+      >
+        <ChevronDown
+          aria-hidden
+          className={["h-2.5 w-2.5 shrink-0", formulasOpen ? "" : "-rotate-90"].join(" ")}
+        />
+        <span>Formulas</span>
+      </button>
+    );
+    if (!formulasOpen) {
+      return (
+        <div className="mt-1 border-t border-[var(--mc-56)] pt-0.5">{head}</div>
+      );
+    }
+    const env = cropsNhHarvesterEnvironment(setup, cropsNhEnvironmentFromTiers(machineConfigTiers));
+    const waterBonus = Math.floor((Math.min(100, Math.max(0, env.water)) + 9) / 10);
+    const fertBonus = Math.floor((Math.min(100, Math.max(0, env.fertilizer)) + 9) / 10);
+    const skyBonus = env.sky ? 2 : 0;
+    const supply = cropsNhNutrientScore(env) * 5;
+    const demand = cropStats.tier * 10;
+    const speedMult = cropsNhGrowthSpeedMultiplier(setup);
+    const roundMult = cropsNhHarvestRoundMultiplier(setup);
+    // Each unit's count wears its slot-pip colour, so the equation reads
+    // back to the knobs above without a legend.
+    const tint = (value: ReactNode, controlId: string) => (
+      <span style={{ color: CROP_UNIT_PIP_COLORS[controlId] }}>{value}</span>
+    );
+    const growthN = tint(setup.growthUnits, CROP_IF_GROWTH_UNIT_CONTROL_ID);
+    const fertN = tint(setup.fertilizerUnits, CROP_IF_FERTILIZER_UNIT_CONTROL_ID);
+    const harvestN = tint(setup.harvestUnits, CROP_IF_HARVEST_UNIT_CONTROL_ID);
+    const biomeN = tint(setup.environmentUnits, CROP_IF_ENVIRONMENT_UNIT_CONTROL_ID);
+    const ocN = tint(setup.overclocks, CROP_IF_OVERCLOCK_CONTROL_ID);
+    const line = (label: string, body: ReactNode) => (
+      <div key={label} className="flex min-w-0 items-baseline gap-1.5 whitespace-nowrap">
+        <span className="w-[52px] shrink-0 uppercase tracking-wide">{label}</span>
+        <span className="min-w-0 overflow-hidden text-ellipsis tabular-nums text-[var(--mc-ink)]">
+          {body}
+        </span>
+      </div>
+    );
+    const lines: ReactNode[] = [
+      line(
+        "food",
+        <>
+          (5+{waterBonus}+{fertBonus}+{skyBonus}+{env.biomeBonus})·5 = {supply} vs{" "}
+          {cropStats.tier}·10 = {demand} needed
+        </>,
+      ),
+    ];
+    if (isFarm) {
+      const unitPowerFactor =
+        1 +
+        1.25 * setup.growthUnits +
+        0.5 * (setup.fertilizerUnits + setup.harvestUnits + setup.environmentUnits);
+      const farmEu = cropsNhFarmEut(setup);
+      const baseEu = Math.round(farmEu / (unitPowerFactor * 4 ** setup.overclocks));
+      lines.push(
+        line(
+          "speed",
+          <>
+            (1+{growthN})·{setup.fertilizerUnits > 0 ? tint("1.5", CROP_IF_FERTILIZER_UNIT_CONTROL_ID) : "1"}·2
+            <sup>{ocN}</sup> = ×{formatCompact(speedMult)}
+          </>,
+        ),
+        line(
+          "harvests",
+          <>
+            (1+0.2·{setup.tierIndex}+0.5·{fertN})·(1+0.2·{harvestN}) = ×
+            {formatCompact(roundMult)}
+          </>,
+        ),
+        line(
+          "power",
+          <>
+            {baseEu.toLocaleString()}·(1+1.25·{growthN}+0.5·({fertN}+{harvestN}+{biomeN}))·4
+            <sup>{ocN}</sup> = {Math.round(farmEu).toLocaleString()} EU/t a farm
+          </>,
+        ),
+      );
+    } else {
+      const euPerHarvest = cropsNhManagerEuPerHarvest(setup);
+      lines.push(
+        line(
+          "harvests",
+          <>
+            1+0.05·{setup.tierIndex} = ×{formatCompact(roundMult)}
+          </>,
+        ),
+        line(
+          "power",
+          <>
+            {(euPerHarvest * 8).toLocaleString()}/8 = {euPerHarvest.toLocaleString()} EU a
+            harvest
+          </>,
+        ),
+      );
+    }
+    return (
+      <div className="mt-1 border-t border-[var(--mc-56)] pt-0.5 text-[9px] leading-[11px] text-[var(--mc-ink-muted)]">
+        {head}
+        {lines}
+      </div>
+    );
+  })();
+
   const sectionHead = (title: string, trailing?: ReactNode) => (
     <div className="mb-0.5 flex h-[14px] items-center gap-1.5 text-[10px] uppercase tracking-wide leading-[12px] text-[var(--mc-ink-muted)]">
       <span>{title}</span>
@@ -4886,7 +5041,8 @@ function CropConfigPanel({
     6 +
     (cropCells.length > 0 ? Math.ceil(cropCells.length / 4) * (CROP_PANEL_ROW_PX + 4) : 0) +
     (unitCells.length > 0 ? 16 + Math.ceil(unitCells.length / 3) * (CROP_PANEL_ROW_PX + 4) : 0) +
-    (footer ? 16 : 0);
+    (footer ? 16 : 0) +
+    (cropStats ? (formulasOpen ? (isFarm ? 66 : 54) : 18) : 0);
   // The crop's own tiles sit right under the hairline with no section head
   // of their own - what they are is obvious - and the farm's hardware
   // follows under the UPGRADES head with its slot budget.
@@ -4929,6 +5085,7 @@ function CropConfigPanel({
           </div>
         ) : null}
         {footer}
+        {workedFormulas}
       </div>
     </GridBlock>
   );
