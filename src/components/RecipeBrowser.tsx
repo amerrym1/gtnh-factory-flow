@@ -2071,18 +2071,18 @@ function ResourceResultPage({
               onPointerLeave={tileTiltReset}
               aria-label={resourceLabel(resource)}
               className={[
-                "resource-tile flex min-w-0 flex-col items-center gap-0.5 overflow-hidden rounded-[4px] border px-0.5 pt-0.5",
+                // No hover box: the art and the name do the responding, so the
+                // tile only wears a border while it is the active browse.
+                "resource-tile flex min-w-0 flex-col items-center gap-0.5 rounded-[4px] border px-0.5 pt-0.5",
                 // The power tile's own whisper of amber; selection still wins.
                 !active && resource.id === POWER_EU_CLAUSE_ID ? "bg-amber-400/[0.07]" : "",
-                active
-                  ? "border-cyan-400 bg-cyan-500/10"
-                  : "border-transparent hover:border-neutral-600 hover:bg-white/5",
+                active ? "border-cyan-400 bg-cyan-500/10" : "border-transparent",
               ].join(" ")}
               style={{ height: RESOURCE_TILE_HEIGHT }}
               role="option"
               aria-selected={active}
             >
-              <span className="minecraft-pixel-art flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden drop-shadow-[0_2px_3px_rgba(0,0,0,0.5)]">
+              <span className="resource-tile-art minecraft-pixel-art flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden drop-shadow-[0_2px_3px_rgba(0,0,0,0.5)]">
                 {resource.id === POWER_EU_CLAUSE_ID ? (
                   <span className="flex h-full w-full items-center justify-center bg-amber-400/10">
                     <Zap className="h-5 w-5 fill-current text-amber-400" aria-hidden />
@@ -2100,7 +2100,7 @@ function ResourceResultPage({
                   />
                 )}
               </span>
-              <span className="line-clamp-2 w-full break-words text-center text-[9px] leading-[10px] text-neutral-400">
+              <span className="resource-tile-name line-clamp-2 w-full break-words text-center text-[9px] leading-[10px] text-neutral-400">
                 {resource.id === POWER_EU_CLAUSE_ID ? "Power (EU/t)" : resourceLabel(resource)}
               </span>
           </button>

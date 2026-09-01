@@ -1141,29 +1141,49 @@ textarea {
  */
 .resource-tile {
   position: relative;
-  transform: perspective(340px) rotateX(var(--tile-rx, 0deg)) rotateY(var(--tile-ry, 0deg));
-  transition: transform 140ms ease-out;
 }
 .resource-tile:hover {
-  transform: perspective(340px) rotateX(var(--tile-rx, 0deg)) rotateY(var(--tile-ry, 0deg))
-    scale(1.05);
+  /* The grown art may spill over its neighbours; it goes over, not under. */
+  z-index: 10;
 }
-.resource-tile::after {
+.resource-tile-art {
+  position: relative;
+  transform-origin: 50% 60%;
+  transition:
+    transform 140ms ease-out,
+    filter 140ms ease-out;
+}
+.resource-tile:hover .resource-tile-art {
+  transform: perspective(300px) rotateX(var(--tile-rx, 0deg)) rotateY(var(--tile-ry, 0deg))
+    scale(1.35);
+  filter: brightness(1.12) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.55));
+}
+/* The gleam sits on the art's own little window, following the cursor. */
+.resource-tile-art::after {
   content: "";
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
+  inset: -4px;
   background: radial-gradient(
-    110px circle at var(--tile-gx, 50%) var(--tile-gy, 50%),
-    rgba(255, 255, 255, 0.16),
-    transparent 65%
+    30px circle at var(--tile-gx, 50%) var(--tile-gy, 50%),
+    rgba(255, 255, 255, 0.28),
+    transparent 70%
   );
   opacity: 0;
   transition: opacity 140ms ease-out;
   pointer-events: none;
 }
-.resource-tile:hover::after {
+.resource-tile:hover .resource-tile-art::after {
   opacity: 1;
+}
+.resource-tile-name {
+  transform-origin: 50% 0%;
+  transition:
+    transform 140ms ease-out,
+    color 140ms ease-out;
+}
+.resource-tile:hover .resource-tile-name {
+  transform: scale(1.1);
+  color: #e5e5e5;
 }
 
 /*
