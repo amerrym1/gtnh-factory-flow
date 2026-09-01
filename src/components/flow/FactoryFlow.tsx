@@ -7555,7 +7555,6 @@ const SourceToolbar = memo(function SourceToolbar({
               }
             }}
             aria-expanded={isRateMenuOpen}
-            title={`Rate unit: ${rateChoice.title.toLowerCase()}`}
             aria-label={`Rate unit: ${rateChoice.title.toLowerCase()}`}
             className={[
               "pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)] font-mono text-[12px] font-black",
@@ -7625,21 +7624,18 @@ const SourceToolbar = memo(function SourceToolbar({
               }
             }}
             aria-expanded={isPowerUnitMenuOpen}
-            title={
+            aria-label={
               powerDisplayUnit === "eu"
                 ? "Power unit: EU per tick"
                 : `Power unit: amps of ${powerDisplayUnit}`
             }
-            aria-label="Power unit"
             className={[
-              "pointer-events-auto relative z-10 flex h-8 items-center gap-1 border-2 px-1.5 font-mono text-[11px] font-black",
-              // In a tier mode the WHOLE key wears the tier's color, bolt
-              // included - the key is the tier chip, not a chip beside one.
+              "pointer-events-auto relative z-10 flex h-8 items-center gap-1 border-2 px-1.5 font-mono text-[11px] font-bold",
+              // In a tier mode the WHOLE key IS the tier chip the machine
+              // cards wear: same bevel, same text shadow, same weight.
               powerDisplayUnit === "eu"
-                ? `border-[var(--mc-15)] text-amber-400 ${isPowerUnitMenuOpen ? TOOL_FACE_ON : TOOL_FACE_OFF}`
-                : isPowerUnitMenuOpen
-                  ? "brightness-110"
-                  : "hover:brightness-110",
+                ? `border-[var(--mc-15)] font-black text-amber-400 ${isPowerUnitMenuOpen ? TOOL_FACE_ON : TOOL_FACE_OFF}`
+                : `shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] ${isPowerUnitMenuOpen ? "brightness-110" : "hover:brightness-110"}`,
             ].join(" ")}
             style={
               powerDisplayUnit === "eu"
@@ -7648,6 +7644,7 @@ const SourceToolbar = memo(function SourceToolbar({
                     background: GT_TIER_COLORS[powerDisplayUnit].background,
                     borderColor: GT_TIER_COLORS[powerDisplayUnit].border,
                     color: GT_TIER_COLORS[powerDisplayUnit].text,
+                    textShadow: `1px 1px 0 ${GT_TIER_COLORS[powerDisplayUnit].shadow}`,
                   }
             }
           >
@@ -7684,15 +7681,14 @@ const SourceToolbar = memo(function SourceToolbar({
                   setPowerUnitMenuOpen(false);
                 }}
                 aria-pressed={powerDisplayUnit === "eu"}
-                title="EU per tick"
+                aria-label="EU per tick"
                 className={[
-                  // One weight for the field, BLACK weight only for the
-                  // chosen unit - the boldness IS the selection mark, so it
-                  // can never read as inconsistency.
-                  "pointer-events-auto flex h-8 items-center justify-center gap-1 border-2 px-1.5 font-mono text-[11px]",
+                  // The EU/t cell wears the same bevel as the tier chips,
+                  // on the toolbar's dark face with the amber bolt.
+                  "pointer-events-auto flex h-8 items-center justify-center gap-1 border-2 px-1.5 font-mono text-[11px] font-bold shadow-[inset_2px_2px_0_rgba(255,255,255,0.25),inset_-2px_-2px_0_rgba(0,0,0,0.45)]",
                   powerDisplayUnit === "eu"
-                    ? "border-white bg-[var(--mc-85)] font-black text-amber-400 ring-2 ring-cyan-300"
-                    : "border-[var(--mc-15)] bg-[var(--mc-49)] font-bold text-amber-400 hover:bg-[var(--mc-61)]",
+                    ? "border-[var(--mc-15)] bg-[var(--mc-61)] text-amber-400 ring-2 ring-cyan-300"
+                    : "border-[var(--mc-15)] bg-[var(--mc-49)] text-amber-400 hover:bg-[var(--mc-61)]",
                 ].join(" ")}
               >
                 <Zap className="h-3 w-3 fill-current" />
@@ -7709,17 +7705,18 @@ const SourceToolbar = memo(function SourceToolbar({
                     setPowerUnitMenuOpen(false);
                   }}
                   aria-pressed={powerDisplayUnit === tier}
-                  title={`Amps of ${tier}`}
+                  aria-label={`Amps of ${tier}`}
                   className={[
-                    "pointer-events-auto flex h-8 items-center justify-center border-2 px-1.5 font-mono text-[11px]",
-                    powerDisplayUnit === tier
-                      ? "font-black ring-2 ring-cyan-300"
-                      : "font-bold hover:brightness-110",
+                    // The machine cards' own chip treatment: bevel, text
+                    // shadow, bold - the menu is a tray of the real chips.
+                    "pointer-events-auto flex h-8 items-center justify-center border-2 px-1.5 font-mono text-[11px] font-bold shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)]",
+                    powerDisplayUnit === tier ? "ring-2 ring-cyan-300" : "hover:brightness-110",
                   ].join(" ")}
                   style={{
                     background: GT_TIER_COLORS[tier].background,
                     borderColor: GT_TIER_COLORS[tier].border,
                     color: GT_TIER_COLORS[tier].text,
+                    textShadow: `1px 1px 0 ${GT_TIER_COLORS[tier].shadow}`,
                     textDecoration: GT_TIER_COLORS[tier].underline ? "underline" : undefined,
                   }}
                 >
