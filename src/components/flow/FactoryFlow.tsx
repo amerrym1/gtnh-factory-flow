@@ -7630,7 +7630,9 @@ const SourceToolbar = memo(function SourceToolbar({
                 : `Power unit: amps of ${powerDisplayUnit}`
             }
             className={[
-              "pointer-events-auto relative z-10 flex h-8 items-center gap-1 border-2 px-1.5 font-mono text-[11px] font-bold",
+              // Fixed width: the tier names run two to three letters and a
+              // wheel-scroll through them must not pump the toolbar.
+              "pointer-events-auto relative z-10 flex h-8 w-[72px] items-center justify-center gap-1 border-2 px-1 font-mono text-[11px] font-bold",
               // In a tier mode the WHOLE key IS the tier chip the machine
               // cards wear: same bevel, same text shadow, same weight.
               powerDisplayUnit === "eu"
