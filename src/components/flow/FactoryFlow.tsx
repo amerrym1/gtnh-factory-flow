@@ -7552,11 +7552,12 @@ const SourceToolbar = memo(function SourceToolbar({
           </button>
           {isRateMenuOpen ? (
             <div className="absolute left-0 top-[calc(100%+10px)] z-30 flex w-max flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[4px_4px_0_rgba(0,0,0,0.45)]">
-              {RATE_UNIT_CHOICES.map((choice) => (
+              {RATE_UNIT_CHOICES.map((choice, index) => (
                 <button
                   key={choice.unit}
                   type="button"
                   onClick={() => {
+                    playBoardSound("dialRate", { step: index });
                     setRateUnit(choice.unit);
                     setRateMenuOpen(false);
                   }}
@@ -7646,6 +7647,7 @@ const SourceToolbar = memo(function SourceToolbar({
               <button
                 type="button"
                 onClick={() => {
+                  playBoardSound("dialPower", { step: 0 });
                   setPowerDisplayUnit("eu");
                   setPowerUnitMenuOpen(false);
                 }}
@@ -7664,11 +7666,13 @@ const SourceToolbar = memo(function SourceToolbar({
                 <Zap className="h-3 w-3 fill-current" />
                 EU/t
               </button>
-              {GT_VOLTAGE_TIERS.map(({ tier }) => (
+              {GT_VOLTAGE_TIERS.map(({ tier }, index) => (
                 <button
                   key={tier}
                   type="button"
                   onClick={() => {
+                    // Rung 1 upward: the EU/t cell is the ladder's floor.
+                    playBoardSound("dialPower", { step: index + 1 });
                     setPowerDisplayUnit(tier);
                     setPowerUnitMenuOpen(false);
                   }}

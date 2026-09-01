@@ -122,7 +122,9 @@ export type BoardSoundKind =
   // sums into a drum solo at that rate.
   | "shuffle" // a card slides onto the table
   | "shuffleWire" // its wires brush in
-  | "shuffleBoard"; // a frame is drawn around finished cards
+  | "shuffleBoard" // a frame is drawn around finished cards
+  | "dialRate" // the rate unit dial: one tap, pitched by the chosen step
+  | "dialPower"; // the power unit dial: a tap that grows with the tier
 
 let audioContext: AudioContext | undefined;
 let masterGain: GainNode | undefined;
@@ -402,8 +404,37 @@ function puff(
  * needs duration (the body stage of the envelope), harmonics (triangle
  * over sine), and some energy above 500Hz. Every voice carries all three.
  */
-function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode): void {
+function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode, step = 0): void {
   switch (kind) {
+    case "dialRate": {
+      // The unit ladder as a pitch ladder: per tick lowest, per hour
+      // highest, one quiet flat tap - a dial clicking to a stop.
+      const frequency = [262, 330, 415, 523][Math.min(3, Math.max(0, Math.round(step)))]!;
+      blip(ctx, out, { from: frequency, to: frequency, duration: 0.09, peak: 0.18 });
+      puff(ctx, out, { frequency: 1600, q: 2, duration: 0.025, peak: 0.07 });
+      break;
+    }
+    case "dialPower": {
+      // The voltage ladder audibly CLIMBING: each tier a step up in pitch
+      // and a shade more spark, so UV genuinely sounds more powerful than
+      // LV. Step 0 is EU/t, the neutral bottom of the ladder.
+      const rung = Math.max(0, Math.min(16, step));
+      const frequency = 233 * Math.pow(1.11, rung);
+      blip(ctx, out, {
+        from: frequency,
+        to: frequency * 1.05,
+        duration: 0.11,
+        peak: 0.16 + rung * 0.004,
+      });
+      puff(ctx, out, {
+        frequency: 1700 + rung * 130,
+        q: 4,
+        duration: 0.03,
+        peak: 0.05 + rung * 0.006,
+        delay: 0.015,
+      });
+      break;
+    }
     case "place":
       // One FLAT rounded thump with a knock: a card set down. No pitch
       // fall at all - any downward movement here read as the delete
@@ -552,6 +583,8 @@ export function playBoardSound(
      * anything pushed too far - but the voices are tuned for 1.
      */
     gain?: number;
+    /** The dial voices' rung: which choice was picked, 0 upward. */
+    step?: number;
   },
 ): void {
   if (typeof window === "undefined" || !areBoardSoundsEnabled()) {
@@ -593,7 +626,7 @@ export function playBoardSound(
     voice.gain.value = duck * (options?.gain ?? 1);
     voice.connect(out);
     activeVoices.set(kind, voice);
-    schedule(kind, ctx, voice);
+    schedule(kind, ctx, voice, options?.step ?? 0);
     window.setTimeout(() => {
       if (activeVoices.get(kind) === voice) {
         activeVoices.delete(kind);
