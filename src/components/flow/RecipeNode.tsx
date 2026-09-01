@@ -4939,14 +4939,22 @@ function CropConfigPanel({
       >
         <ChevronDown
           aria-hidden
-          className={["h-2.5 w-2.5 shrink-0", formulasOpen ? "" : "-rotate-90"].join(" ")}
+          className={[
+            // Rotates in place; the box never moves between states.
+            "h-2.5 w-2.5 shrink-0 transition-transform duration-100",
+            formulasOpen ? "" : "-rotate-90",
+          ].join(" ")}
         />
-        <span>Formulas</span>
+        <span className="text-[9px] leading-[11px]">Formulas</span>
       </button>
     );
     if (!formulasOpen) {
+      // The SAME wrapper the open state uses, minus the lines: the head must
+      // be pixel-identical folded and unfolded.
       return (
-        <div className="mt-1 border-t border-[var(--mc-56)] pt-0.5">{head}</div>
+        <div className="mt-1 border-t border-[var(--mc-56)] pt-0.5 text-[9px] leading-[11px] text-[var(--mc-ink-muted)]">
+          {head}
+        </div>
       );
     }
     const env = cropsNhHarvesterEnvironment(setup, cropsNhEnvironmentFromTiers(machineConfigTiers));
@@ -5104,10 +5112,16 @@ function CropConfigPanel({
       {trailing}
     </div>
   );
-  // A LOW floor on purpose: GridBlock measures the real content and rounds
-  // up, so an inflated estimate here only bought dead space between the
-  // ports and the hairline. Two cells covers the emptiest legacy panel.
-  const bodyPx = 40;
+  // An ACCURATE floor, neither inflated nor tiny: an inflated estimate
+  // bought dead space between the ports and the hairline, and a bare floor
+  // painted the panel one frame short before GridBlock's measurement caught
+  // up, which flashed the whole card's layout.
+  const bodyPx =
+    8 +
+    (cropCells.length > 0 ? Math.ceil(cropCells.length / 4) * 44 : 0) +
+    (unitCells.length > 0 ? 16 + Math.ceil(unitCells.length / 3) * 44 : 0) +
+    (footer ? 16 : 0) +
+    (cropStats ? (formulasOpen ? 12 + 6 * 11 + 8 : 18) : 0);
   // The crop's own tiles sit right under the hairline with no section head
   // of their own - what they are is obvious - and the farm's hardware
   // follows under the UPGRADES head with its slot budget.
