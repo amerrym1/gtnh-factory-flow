@@ -81,9 +81,12 @@ import {
   CROP_SEED_BED_TIER_CONTROL_ID,
   cropsNhCropsPerMachine,
   cropsNhEnvironmentFromTiers,
+  cropsNhEutPerCrop,
+  cropsNhHarvestTicks,
   cropsNhHarvesterEnvironment,
   cropsNhHarvesterFromTiers,
   cropsNhIsHandPicked,
+  cropsNhManagerEuPerHarvest,
   cropsNhUnitSlotsUsed,
   cropsNhUpgradeSlots,
   isSteamMachineHandler,
@@ -230,7 +233,7 @@ const POWER_CARD_FACE = "color-mix(in srgb, var(--mc-78) 85%, #d99a2b 15%)";
  * different material the way a power card is, and every element on it keeps
  * its ordinary colours.
  */
-const CROP_CARD_FACE = "color-mix(in srgb, var(--mc-78) 85%, #63a83e 15%)";
+const CROP_CARD_FACE = "color-mix(in srgb, var(--mc-78) 74%, #4f8c33 26%)";
 
 export interface RecipeNodeData extends Record<string, unknown> {
   projectNode: FactoryNode;
@@ -294,13 +297,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // Card colour is IDENTITY, not decoration (2026-08-30): player paint no
   // longer applies to recipe cards - a stored colorTag is ignored, not
   // stripped, so plans stay untouched. The tints that remain say what a card
-  // IS: custom rate blue, crop green, and the power sector's subtle amber
-  // face below. Drawers and boards still take paint.
-  const paintTag = isCustomRateRecipe(recipe)
-    ? "blue"
-    : isCropFarmRecipe(recipe)
-      ? "green"
-      : undefined;
+  // IS: custom rate blue, and the sector FACES below (power amber, crop
+  // green) - a face washes only the card's ground, so every element on it
+  // keeps its exact ordinary colours. The crop cards' green RAMP was
+  // deliberately retired for the face (Jack, 2026-09-01): a ramp greens
+  // every button and dropdown, and the ask was a green card, not green
+  // chrome. Drawers and boards still take paint.
+  const paintTag = isCustomRateRecipe(recipe) ? "blue" : undefined;
   // A generator wears the power sector's face: the card BACKGROUND warms
   // toward amber. Everything ON the card keeps its exact ordinary colours -
   // this is not the paint ramp, just the window's own ground.
@@ -565,8 +568,16 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   );
   const powerStalled = powerReport !== undefined && powerReport.state !== "ok";
   // The picture window's material: the workbook render for a multiblock,
-  // the machine item for a singleblock. Both are map lookups.
-  const powerArt = powerInfo ? getPowerStructureArt(powerInfo.sourceId) : undefined;
+  // the machine item for a singleblock. Both are map lookups. The Industrial
+  // Farm is the one non-generator multiblock with a render of its own, so a
+  // crop card on that handler wears the same window (and the same hide
+  // button) as any large turbine.
+  const cropStructureArt =
+    selectedMachineHandler.id === CROP_HARVESTER_INDUSTRIAL_FARM_ID
+      ? "/power-art/industrial-farm.png"
+      : undefined;
+  const powerArt =
+    (powerInfo ? getPowerStructureArt(powerInfo.sourceId) : undefined) ?? cropStructureArt;
   const powerMachineIcon = powerInfo ? getPowerMachineIcon(powerInfo.sourceId) : undefined;
   const hasPowerPicture = Boolean(powerArt || powerMachineIcon?.iconPath);
   // A generator's EU rides the output rail as its first row (a real port,
@@ -584,6 +595,37 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // draw the machine spikes to when it runs, 0 only at exactly 0% (a machine
   // that never starts draws nothing); AVG weights it by the solve's usage.
   const drawScale = drawScaleFor(averageDraw, result?.utilization);
+  // The crop harvester's draw for the footer's POWER cell: the Industrial
+  // Farm burns `getPowerUsage` continuously spread over its seeds, the Crop
+  // Manager spends `maxEUInput() / 8` per harvest - the same arithmetic the
+  // MACHINES ledger bills. Zero when picked by hand.
+  const cropDrawEuT = (() => {
+    if (!isCropProductionNode) {
+      return 0;
+    }
+    const setup = cropsNhHarvesterFromTiers(
+      projectNode.machineConfigTiers,
+      projectNode.machineHandlerId,
+    );
+    if (cropsNhIsHandPicked(setup)) {
+      return 0;
+    }
+    const crops = Math.max(0, Math.round(projectNode.machineCount));
+    if (setup.id === CROP_HARVESTER_INDUSTRIAL_FARM_ID) {
+      return cropsNhEutPerCrop(setup) * crops;
+    }
+    const stats = getCropsNhStats(effectiveRecipe);
+    if (!stats) {
+      return 0;
+    }
+    const ticks = cropsNhHarvestTicks(
+      stats,
+      cropsNhEnvironmentFromTiers(projectNode.machineConfigTiers),
+    );
+    return Number.isFinite(ticks) && ticks > 0
+      ? (cropsNhManagerEuPerHarvest(setup) * crops) / ticks
+      : 0;
+  })();
   const glanceDrawEuT = powerReport
     ? powerDrawEuT(powerReport, projectNode) * drawScale
     : 0;
@@ -971,7 +1013,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               }
             : undefined),
           ...(isPowerCard ? { backgroundColor: POWER_CARD_FACE } : undefined),
-          ...(isCropProductionNode ? { backgroundColor: CROP_CARD_FACE } : undefined),
+          ...(isCropProductionNode || isCropFarmNode
+            ? { backgroundColor: CROP_CARD_FACE }
+            : undefined),
         }}
       >
       {/* The ring's mark, and the reason it is an ELEMENT rather than the
@@ -1550,7 +1594,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         {/* The picture window sits under the title bar, over the ports:
             the multiblock render (or the machine item), full card width. */}
         {!calmMode && hasPowerPicture && !powerArtHidden ? (
-          <PowerStructureWindow art={powerArt} icon={powerMachineIcon} />
+          <PowerStructureWindow
+            art={powerArt}
+            icon={powerMachineIcon}
+            tint={cropStructureArt ? "#4f8c33" : undefined}
+          />
         ) : null}
         {/* The card body. No paint of its own: the window behind it is
             already the ramp's face, painted or not. */}
@@ -1715,6 +1763,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                               ...(powerInfo && powerInfo.euPerTick < 0 ? ["auto"] : []),
                               ...(powerReport ? ["auto"] : []),
                               ...(steamReport ? ["auto"] : []),
+                              ...(cropDrawEuT > 0 ? ["auto"] : []),
                               ...(machineParallelMultiplier > 1 && !parallelChipLifts
                                 ? ["auto"]
                                 : []),
@@ -1768,6 +1817,17 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                               nodeParallel={projectNode.parallel}
                               utilization={result?.utilization}
                               average={averageDraw}
+                            />
+                          ) : null}
+                          {cropDrawEuT > 0 ? (
+                            // The harvester's draw in the machine's own
+                            // language: the POWER cell, riding the PEAK/AVG
+                            // switch like every draw figure on the board.
+                            <Stat
+                              label="Power"
+                              value={`${formatCompact(
+                                powerDisplayFromEuT(cropDrawEuT * drawScale),
+                              )} ${powerDisplaySuffix()}`}
                             />
                           ) : null}
                           {machineParallelMultiplier > 1 && !parallelChipLifts ? (
@@ -2676,14 +2736,23 @@ function writePowerArtCollapsed(nodeId: string, collapsed: boolean) {
  * The header's picture button hides it entirely; hidden, nothing renders.
  * Height plus the breathing room below stays a whole number of grid cells.
  */
-function PowerStructureWindow({ art, icon }: { art?: string; icon?: PowerMachineIcon }) {
+function PowerStructureWindow({
+  art,
+  icon,
+  tint = "#d99a2b",
+}: {
+  art?: string;
+  icon?: PowerMachineIcon;
+  /** The sector's colour behind the render: power amber, crop green. */
+  tint?: string;
+}) {
   if (!art && !icon?.iconPath) {
     return null;
   }
   return (
     <div
       className="box-border mb-2 flex h-[112px] w-full items-center justify-center overflow-hidden border-2 border-[var(--mc-47)] p-1 shadow-[inset_2px_2px_0_rgba(0,0,0,0.3),inset_-2px_-2px_0_rgba(255,255,255,0.04)]"
-      style={{ backgroundColor: "color-mix(in srgb, var(--mc-33) 92%, #d99a2b 8%)" }}
+      style={{ backgroundColor: `color-mix(in srgb, var(--mc-33) 92%, ${tint} 8%)` }}
     >
       {art ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -4416,7 +4485,10 @@ function CropStepperRow({
   return help ? <MinecraftTooltip content={help}>{row}</MinecraftTooltip> : row;
 }
 
-/** A select cell in the power panel's language, driven by MinecraftSelect. */
+/**
+ * An option cell as the same +/- stepper the counts use: the well shows the
+ * option's word instead of a number, minus walks back, plus walks forward.
+ */
 function CropCycleRow({
   label,
   options,
@@ -4430,24 +4502,60 @@ function CropCycleRow({
   onPick: (option: MachineConfigTierOption, index: number) => void;
   help?: ReactNode;
 }) {
+  const index = Math.max(
+    0,
+    options.findIndex((option) => option.key === currentKey),
+  );
+  const current = options[index]!;
+  const step = (direction: -1 | 1) => {
+    const next = options[Math.max(0, Math.min(options.length - 1, index + direction))];
+    if (next && next.key !== current.key) {
+      onPick(next, options.indexOf(next));
+    }
+  };
+  const buttonClass =
+    "nodrag flex h-6 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-71)] text-[12px] leading-none text-[var(--mc-ink)] enabled:hover:bg-[var(--mc-85)] disabled:opacity-35";
   const row = (
-    <label className="nodrag flex min-w-0 flex-col gap-0.5">
+    <label
+      className="nodrag nowheel flex min-w-0 flex-col gap-0.5"
+      title={`${label}: ${current.label}`}
+      onWheel={(event) => {
+        event.stopPropagation();
+        step(event.deltaY < 0 ? 1 : -1);
+      }}
+    >
       <span className="truncate text-[10px] uppercase tracking-wide text-[var(--mc-ink-muted)]">
         {label}
       </span>
-      <MinecraftSelect
-        value={currentKey}
-        options={options.map((option) => ({ key: option.key, label: option.label }))}
-        onSelect={(key) => {
-          const index = options.findIndex((option) => option.key === key);
-          if (index >= 0 && key !== currentKey) {
-            onPick(options[index]!, index);
-          }
-        }}
-        disabled={options.length <= 1}
-        title={`${label}`}
-        ariaLabel={label}
-      />
+      <span className="flex min-w-0 items-center gap-0.5">
+        <button
+          type="button"
+          className={buttonClass}
+          disabled={index <= 0}
+          onClick={(event) => {
+            event.stopPropagation();
+            step(-1);
+          }}
+          aria-label={`Previous ${label}`}
+        >
+          −
+        </button>
+        <span className="h-6 min-w-0 flex-1 overflow-hidden whitespace-nowrap border border-[var(--mc-33)] bg-[var(--mc-93)] px-1 text-center text-[12px] leading-6 text-[var(--mc-ink)]">
+          {current.label}
+        </span>
+        <button
+          type="button"
+          className={buttonClass}
+          disabled={index >= options.length - 1}
+          onClick={(event) => {
+            event.stopPropagation();
+            step(1);
+          }}
+          aria-label={`Next ${label}`}
+        >
+          +
+        </button>
+      </span>
     </label>
   );
   return help ? <MinecraftTooltip content={help}>{row}</MinecraftTooltip> : row;
@@ -4753,7 +4861,7 @@ function CropConfigPanel({
   const visibleRows = rows.filter(Boolean);
   const bodyPx =
     8 +
-    Math.ceil(visibleRows.length / 2) * (CROP_PANEL_ROW_PX + 4) +
+    Math.ceil(visibleRows.length / 3) * (CROP_PANEL_ROW_PX + 4) +
     (slotPips ? 18 : 0) +
     (footer ? 16 : 0);
   // The power config panel's exact container: a hairline over flat cells on
@@ -4765,7 +4873,7 @@ function CropConfigPanel({
       clearancePx={4}
     >
       <div className="min-w-0 border-t border-[var(--mc-56)] py-1">
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-2 gap-y-1">
+        <div className="grid min-w-0 grid-cols-[repeat(3,minmax(0,1fr))] gap-x-1.5 gap-y-1">
           {visibleRows}
         </div>
         {slotPips}
