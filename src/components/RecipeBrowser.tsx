@@ -1993,18 +1993,14 @@ function tileTiltMove(event: PointerEvent<HTMLElement>) {
   }
   const x = (event.clientX - rect.left) / rect.width - 0.5;
   const y = (event.clientY - rect.top) / rect.height - 0.5;
-  element.style.setProperty("--tile-rx", `${(-y * 9).toFixed(2)}deg`);
-  element.style.setProperty("--tile-ry", `${(x * 9).toFixed(2)}deg`);
-  element.style.setProperty("--tile-gx", `${((x + 0.5) * 100).toFixed(1)}%`);
-  element.style.setProperty("--tile-gy", `${((y + 0.5) * 100).toFixed(1)}%`);
+  element.style.setProperty("--tile-rx", `${(-y * 18).toFixed(2)}deg`);
+  element.style.setProperty("--tile-ry", `${(x * 18).toFixed(2)}deg`);
 }
 
 function tileTiltReset(event: PointerEvent<HTMLElement>) {
   const style = event.currentTarget.style;
   style.removeProperty("--tile-rx");
   style.removeProperty("--tile-ry");
-  style.removeProperty("--tile-gx");
-  style.removeProperty("--tile-gy");
 }
 
 function ResourceResultPage({

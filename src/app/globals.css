@@ -1153,27 +1153,17 @@ textarea {
     transform 140ms ease-out,
     filter 140ms ease-out;
 }
+/*
+ * The shimmer is filters, not an overlay: sprites are mostly transparent, and
+ * a painted gradient lit up the empty pixels too. brightness() and
+ * drop-shadow() both respect the alpha channel, so the white glow hugs the
+ * item's actual silhouette.
+ */
 .resource-tile:hover .resource-tile-art {
   transform: perspective(300px) rotateX(var(--tile-rx, 0deg)) rotateY(var(--tile-ry, 0deg))
-    scale(1.35);
-  filter: brightness(1.12) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.55));
-}
-/* The gleam sits on the art's own little window, following the cursor. */
-.resource-tile-art::after {
-  content: "";
-  position: absolute;
-  inset: -4px;
-  background: radial-gradient(
-    30px circle at var(--tile-gx, 50%) var(--tile-gy, 50%),
-    rgba(255, 255, 255, 0.28),
-    transparent 70%
-  );
-  opacity: 0;
-  transition: opacity 140ms ease-out;
-  pointer-events: none;
-}
-.resource-tile:hover .resource-tile-art::after {
-  opacity: 1;
+    scale(1.75);
+  filter: brightness(1.25) drop-shadow(0 0 4px rgba(255, 255, 255, 0.35))
+    drop-shadow(0 5px 8px rgba(0, 0, 0, 0.6));
 }
 .resource-tile-name {
   transform-origin: 50% 0%;
