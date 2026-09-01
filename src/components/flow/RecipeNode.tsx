@@ -1679,14 +1679,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           {!isCropFarmPlaceholder &&
           !isCustomRatePlaceholder &&
           (!calmMode || !isCustomRateNode) ? (
-            <GridBlock
-              minCells={3}
-              // Crop cards pull their settings UP against the port rails and
-              // let the rounding slack fall to the bottom; everyone else
-              // keeps the footer anchored to the card's bottom edge.
-              align={isCropProductionNode ? "start" : "end"}
-              className="min-w-0"
-            >
+            <GridBlock minCells={3} align="end" className="min-w-0">
               {/* A power card's knobs: fuel, tier, rotor, boost - written
                   through setPowerSetting so the owned recipe follows. */}
               {!calmMode && powerInfo ? (

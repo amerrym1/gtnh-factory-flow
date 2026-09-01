@@ -289,7 +289,7 @@ function CropSourceStatsContent({
                 <span style={{ color: BONUS_COLOR }}>
                   {formatNumber((roundMultiplier - 1) * 100, 0)}% more
                 </span>{" "}
-                than picking by hand, and spends{" "}
+                than bare crop sticks would drop, and spends{" "}
                 {formatNumber(cropsNhManagerEuPerHarvest(setup), 0)} EU on every crop it picks.
               </>
             ) : (
