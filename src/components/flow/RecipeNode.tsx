@@ -4395,11 +4395,29 @@ const CROP_UNIT_PIP_COLORS: Record<string, string> = {
   [CROP_IF_OVERCLOCK_CONTROL_ID]: "#e06060",
 };
 
+// The SEEDS cell's exact chrome, shared by every crop knob so the settings
+// speak the same beveled tile language as the footer under them.
+const CROP_TILE_CLASS =
+  "nodrag nowheel min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 pb-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]";
+const CROP_TILE_CAPTION_CLASS =
+  "flex items-center gap-1 truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]";
+const CROP_TILE_BUTTON_CLASS =
+  "nodrag flex h-5 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] enabled:hover:bg-[var(--mc-100)] enabled:active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)] disabled:opacity-35";
+
+/** The unit's tiny colour mark before its caption, echoing its slot pip. */
+function CropPipSwatch({ color }: { color?: string }) {
+  return color ? (
+    <span
+      aria-hidden
+      className="h-[6px] w-[6px] shrink-0 border border-black/40"
+      style={{ backgroundColor: color }}
+    />
+  ) : null;
+}
+
 /**
- * One stepper cell of the crop settings, in the power config panel's exact
- * language: a 10px tracking caption over an h-6 control row, no icon box, no
- * bevel chrome. The caption wears the unit's slot-pip colour where it has
- * one, which is what ties each knob to its pip without art.
+ * One knob of the crop settings as a SEEDS-style tile: the caption inside
+ * the bevel, h-5 stepper buttons around a recessed count well.
  */
 function CropStepperRow({
   label,
@@ -4420,7 +4438,7 @@ function CropStepperRow({
   max: number;
   /** Why the row cannot go up right now ("No free slot"). */
   lockedHint?: string;
-  /** The unit's slot-pip colour, worn by the caption. */
+  /** The unit's slot-pip colour, worn as a small swatch by the caption. */
   pipColor?: string;
   onStep: (next: number) => void;
   help?: ReactNode;
@@ -4431,11 +4449,9 @@ function CropStepperRow({
       onStep(next);
     }
   };
-  const buttonClass =
-    "nodrag flex h-6 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-71)] text-[12px] leading-none text-[var(--mc-ink)] enabled:hover:bg-[var(--mc-85)] disabled:opacity-35";
   const row = (
-    <label
-      className="nodrag nowheel flex min-w-0 flex-col gap-0.5"
+    <div
+      className={CROP_TILE_CLASS}
       title={[effect, value >= max && lockedHint ? lockedHint : undefined]
         .filter(Boolean)
         .join(" · ")}
@@ -4444,43 +4460,43 @@ function CropStepperRow({
         step(event.deltaY < 0 ? 1 : -1);
       }}
     >
-      <span
-        className="truncate text-[10px] uppercase tracking-wide"
-        style={{ color: pipColor ?? "var(--mc-ink-muted)" }}
-      >
-        {label}
-      </span>
-      <span className="flex items-center gap-0.5">
+      <div className={CROP_TILE_CAPTION_CLASS}>
+        <CropPipSwatch color={pipColor} />
+        <span className="min-w-0 truncate">{label}</span>
+      </div>
+      <div className="flex min-w-0 items-center gap-0.5">
         <button
           type="button"
-          className={buttonClass}
+          className={CROP_TILE_BUTTON_CLASS}
           disabled={value <= min}
           onClick={(event) => {
             event.stopPropagation();
             step(-1);
           }}
+          onPointerDown={(event) => event.stopPropagation()}
           aria-label={`Fewer ${label}`}
         >
-          −
+          <Minus className="h-3 w-3" />
         </button>
-        <span className="h-6 w-7 shrink-0 border border-[var(--mc-33)] bg-[var(--mc-93)] text-center text-[13px] leading-6 tabular-nums text-[var(--mc-ink)]">
+        <span className="h-[21px] w-0 min-w-0 flex-1 border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-center text-[14px] font-medium leading-[19px] tabular-nums text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)]">
           {value}
         </span>
         <button
           type="button"
-          className={buttonClass}
+          className={CROP_TILE_BUTTON_CLASS}
           disabled={value >= max}
           title={value >= max ? lockedHint : undefined}
           onClick={(event) => {
             event.stopPropagation();
             step(1);
           }}
+          onPointerDown={(event) => event.stopPropagation()}
           aria-label={`More ${label}`}
         >
-          +
+          <Plus className="h-3 w-3" />
         </button>
-      </span>
-    </label>
+      </div>
+    </div>
   );
   return help ? <MinecraftTooltip content={help}>{row}</MinecraftTooltip> : row;
 }
@@ -4513,50 +4529,50 @@ function CropCycleRow({
       onPick(next, options.indexOf(next));
     }
   };
-  const buttonClass =
-    "nodrag flex h-6 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-71)] text-[12px] leading-none text-[var(--mc-ink)] enabled:hover:bg-[var(--mc-85)] disabled:opacity-35";
   const row = (
-    <label
-      className="nodrag nowheel flex min-w-0 flex-col gap-0.5"
+    <div
+      className={CROP_TILE_CLASS}
       title={`${label}: ${current.label}`}
       onWheel={(event) => {
         event.stopPropagation();
         step(event.deltaY < 0 ? 1 : -1);
       }}
     >
-      <span className="truncate text-[10px] uppercase tracking-wide text-[var(--mc-ink-muted)]">
-        {label}
-      </span>
-      <span className="flex min-w-0 items-center gap-0.5">
+      <div className={CROP_TILE_CAPTION_CLASS}>
+        <span className="min-w-0 truncate">{label}</span>
+      </div>
+      <div className="flex min-w-0 items-center gap-0.5">
         <button
           type="button"
-          className={buttonClass}
+          className={CROP_TILE_BUTTON_CLASS}
           disabled={index <= 0}
           onClick={(event) => {
             event.stopPropagation();
             step(-1);
           }}
+          onPointerDown={(event) => event.stopPropagation()}
           aria-label={`Previous ${label}`}
         >
-          −
+          <Minus className="h-3 w-3" />
         </button>
-        <span className="h-6 min-w-0 flex-1 overflow-hidden whitespace-nowrap border border-[var(--mc-33)] bg-[var(--mc-93)] px-1 text-center text-[12px] leading-6 text-[var(--mc-ink)]">
+        <span className="h-[21px] w-0 min-w-0 flex-1 overflow-hidden whitespace-nowrap border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-center text-[12px] font-medium leading-[19px] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)]">
           {current.label}
         </span>
         <button
           type="button"
-          className={buttonClass}
+          className={CROP_TILE_BUTTON_CLASS}
           disabled={index >= options.length - 1}
           onClick={(event) => {
             event.stopPropagation();
             step(1);
           }}
+          onPointerDown={(event) => event.stopPropagation()}
           aria-label={`Next ${label}`}
         >
-          +
+          <Plus className="h-3 w-3" />
         </button>
-      </span>
-    </label>
+      </div>
+    </div>
   );
   return help ? <MinecraftTooltip content={help}>{row}</MinecraftTooltip> : row;
 }
@@ -4812,8 +4828,18 @@ function CropConfigPanel({
         );
     }
   });
-  // The pips echo each unit's colour in a stable order, so the budget reads
-  // as "which blocks fill my slices", not just how many.
+  // The knobs split into the card's two stories: what the CROP is, and what
+  // hardware the farm carries. The pips ride the UPGRADES section head, in a
+  // stable per-unit colour order, so the budget lives with what spends it.
+  const cellEntries = controls
+    .map((control, index) => ({ id: control.id, cell: rows[index] }))
+    .filter((entry) => Boolean(entry.cell));
+  const cropCells = cellEntries
+    .filter((entry) => !(entry.id in CROP_UNIT_PIP_COLORS))
+    .map((entry) => entry.cell);
+  const unitCells = cellEntries
+    .filter((entry) => entry.id in CROP_UNIT_PIP_COLORS)
+    .map((entry) => entry.cell);
   const pipFills = [
     ...Array.from({ length: setup.growthUnits }, () => CROP_UNIT_PIP_COLORS[CROP_IF_GROWTH_UNIT_CONTROL_ID]!),
     ...Array.from({ length: setup.fertilizerUnits }, () => CROP_UNIT_PIP_COLORS[CROP_IF_FERTILIZER_UNIT_CONTROL_ID]!),
@@ -4821,28 +4847,6 @@ function CropConfigPanel({
     ...Array.from({ length: setup.environmentUnits }, () => CROP_UNIT_PIP_COLORS[CROP_IF_ENVIRONMENT_UNIT_CONTROL_ID]!),
     ...(setup.overclocks > 0 ? [CROP_UNIT_PIP_COLORS[CROP_IF_OVERCLOCK_CONTROL_ID]!] : []),
   ];
-
-  const slotPips = isFarm ? (
-    <div key="crop-slot-pips" className="mt-1 flex h-[14px] items-center gap-1.5">
-      <span className="text-[10px] uppercase tracking-wide leading-[12px] text-[var(--mc-ink-muted)]">
-        Upgrade Slots
-      </span>
-      <span className="flex items-center gap-[3px]">
-        {Array.from({ length: slots }, (_unused, index) => (
-          <span
-            key={index}
-            className="h-2.5 w-2.5 border border-[var(--mc-33)]"
-            style={{
-              backgroundColor: pipFills[index] ?? "var(--mc-47)",
-            }}
-          />
-        ))}
-      </span>
-      <span className="ml-auto text-[10px] tabular-nums leading-[12px] text-[var(--mc-ink-muted)]">
-        {used}/{slots}
-      </span>
-    </div>
-  ) : null;
   const footer = handPicked ? null : (
     <div
       key="crop-machine-footer"
@@ -4858,14 +4862,20 @@ function CropConfigPanel({
     </div>
   );
 
-  const visibleRows = rows.filter(Boolean);
+  const sectionHead = (title: string, trailing?: ReactNode) => (
+    <div className="mb-0.5 flex h-[14px] items-center gap-1.5 text-[10px] uppercase tracking-wide leading-[12px] text-[var(--mc-ink-muted)]">
+      <span>{title}</span>
+      {trailing}
+    </div>
+  );
   const bodyPx =
     8 +
-    Math.ceil(visibleRows.length / 3) * (CROP_PANEL_ROW_PX + 4) +
-    (slotPips ? 18 : 0) +
+    (cropCells.length > 0 ? 16 + Math.ceil(cropCells.length / 3) * (CROP_PANEL_ROW_PX + 4) : 0) +
+    (unitCells.length > 0 ? 16 + Math.ceil(unitCells.length / 3) * (CROP_PANEL_ROW_PX + 4) : 0) +
     (footer ? 16 : 0);
-  // The power config panel's exact container: a hairline over flat cells on
-  // the card's own washed face - no box, no bevel, no ramp of its own.
+  // Two labeled sections over the card's washed face, each a grid of
+  // SEEDS-style tiles: the crop's own numbers, then the farm's hardware with
+  // its slot budget riding the section head.
   return (
     <GridBlock
       className={["nodrag min-w-0", className].join(" ")}
@@ -4873,10 +4883,38 @@ function CropConfigPanel({
       clearancePx={4}
     >
       <div className="min-w-0 border-t border-[var(--mc-56)] py-1">
-        <div className="grid min-w-0 grid-cols-[repeat(3,minmax(0,1fr))] gap-x-1.5 gap-y-1">
-          {visibleRows}
-        </div>
-        {slotPips}
+        {cropCells.length > 0 ? (
+          <>
+            {sectionHead("Crop")}
+            <div className="grid min-w-0 grid-cols-[repeat(3,minmax(0,1fr))] gap-x-1 gap-y-1">
+              {cropCells}
+            </div>
+          </>
+        ) : null}
+        {unitCells.length > 0 ? (
+          <div className={cropCells.length > 0 ? "mt-1.5" : ""}>
+            {sectionHead(
+              "Upgrades",
+              <>
+                <span className="flex items-center gap-[3px]">
+                  {Array.from({ length: slots }, (_unused, index) => (
+                    <span
+                      key={index}
+                      className="h-2.5 w-2.5 border border-[var(--mc-33)]"
+                      style={{ backgroundColor: pipFills[index] ?? "var(--mc-47)" }}
+                    />
+                  ))}
+                </span>
+                <span className="ml-auto tabular-nums">
+                  {used}/{slots} slots
+                </span>
+              </>,
+            )}
+            <div className="grid min-w-0 grid-cols-[repeat(3,minmax(0,1fr))] gap-x-1 gap-y-1">
+              {unitCells}
+            </div>
+          </div>
+        ) : null}
         {footer}
       </div>
     </GridBlock>
