@@ -2038,7 +2038,6 @@ function ResourceResultPage({
               }}
               {...rowBrowse.pressProps(resource)}
               aria-label={resourceLabel(resource)}
-              title={resourceLabel(resource)}
               className={[
                 "flex min-w-0 flex-col items-center overflow-hidden rounded-[4px] border px-0.5",
                 // The power tile's own whisper of amber; selection still wins.
