@@ -34,9 +34,11 @@ export const CROP_IF_OVERCLOCK_CONTROL_ID = "cropIfOverclocks";
 
 export const CROP_HARVESTER_MANAGER_ID = "crop-manager";
 export const CROP_HARVESTER_INDUSTRIAL_FARM_ID = "crop-industrial-farm";
-/** Manager tier key for sticks nobody automates: you walk over and pick them. */
+/**
+ * LEGACY manager tier key: plans saved while a by-hand rung existed carry
+ * "none", which now loads as the LV machine. The option is no longer offered.
+ */
 export const CROP_NO_MANAGER_KEY = "none";
-const NO_MANAGER_TIER_INDEX = -1;
 
 export const BEE_FRAME_SLOT_CONTROL_PREFIX = "beeFrameSlot";
 export const BEE_SPEED_GENE_CONTROL_ID = "beeSpeedGene";
@@ -373,7 +375,11 @@ export function cropsNhSquarePerTier(tierIndex: number): number {
   return side * side;
 }
 
-/** True when the crop grows on sticks with nothing automating the harvest. */
+/**
+ * True when the crop grows on sticks with nothing automating the harvest.
+ * The by-hand rung was removed from the manager ladder (legacy "none" loads
+ * as LV), so this survives only as dead-path safety for callers.
+ */
 export function cropsNhIsHandPicked(setup: CropHarvesterSetup): boolean {
   return setup.id === CROP_HARVESTER_MANAGER_ID && setup.tierIndex < 0;
 }
@@ -447,13 +453,13 @@ export function cropsNhHarvesterFromTiers(
     const parsed = Number.parseInt(tiers?.[controlId] ?? "", 10);
     return Number.isFinite(parsed) ? parsed : fallback;
   };
-  // An unset or "none" manager tier parses to nothing, which is exactly the
-  // hand-picked default every card starts on.
+  // There is no by-hand mode any more: an unset or legacy "none" manager
+  // tier parses to nothing and lands on the LV machine.
   const tierIndex =
     id === CROP_HARVESTER_MANAGER_ID
       ? clampInt(
-          read(CROP_MANAGER_TIER_CONTROL_ID, NO_MANAGER_TIER_INDEX),
-          NO_MANAGER_TIER_INDEX,
+          read(CROP_MANAGER_TIER_CONTROL_ID, CROP_MANAGER_MIN_TIER_INDEX),
+          CROP_MANAGER_MIN_TIER_INDEX,
           CROP_MANAGER_MAX_TIER_INDEX,
         )
       : clampInt(read(CROP_SEED_BED_TIER_CONTROL_ID, SEED_BED_MIN_TIER_INDEX), SEED_BED_MIN_TIER_INDEX, SEED_BED_MAX_TIER_INDEX);
@@ -1007,8 +1013,10 @@ function cropHarvesterHandlers(): MachineHandler[] {
           label: "Manager",
           minTierIndex: CROP_MANAGER_MIN_TIER_INDEX,
           maxTierIndex: CROP_MANAGER_MAX_TIER_INDEX,
-          defaultKey: CROP_NO_MANAGER_KEY,
-          noneLabel: "By Hand",
+          // No by-hand rung (Jack, 2026-09-01): a planned crop board is an
+          // automated one, so the ladder starts at the LV machine and a
+          // legacy stored "none" loads as LV.
+          defaultKey: String(CROP_MANAGER_MIN_TIER_INDEX),
           // The tiered machine names from the mod's own lang file, so the
           // config icon shows the actual machine ("Basic Crop Manager" is
           // the LV one).

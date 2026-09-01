@@ -114,11 +114,13 @@ describe("CropsNH analytic crop math", () => {
   it("matches the in-game growth formula at the reference environment", () => {
     const recipe = argentia();
     // score 55 -> supply 275 vs demand 70; rate = trunc(37 * 305 / 100) = 112;
-    // ceil(1400 / 112) = 13 cycles of 256 ticks -> multiplier 1 at defaults.
+    // ceil(1400 / 112) = 13 cycles of 256 ticks -> duration 1 at defaults.
+    // Output is the default LV Crop Manager's 1 + 0.05 harvest rounds - the
+    // by-hand rung is gone, so a bare card is an LV-managed one.
     expect(getMachineDurationMultiplier(recipe, { machineConfigTiers: {} })).toBe(1);
     expect(
       getMachineOutputMultiplier(recipe, { machineConfigTiers: {} }, recipe.outputs[0]!, "LV"),
-    ).toBe(1);
+    ).toBeCloseTo(1.05, 10);
   });
 
   it("slows down at low growth stats using integer cycle math", () => {
@@ -131,7 +133,9 @@ describe("CropsNH analytic crop math", () => {
   it("scales yield by 1.03^gain drop rounds plus the bonus roll", () => {
     const recipe = argentia();
     const node = { machineConfigTiers: { cropGainStat: "1" } };
-    const expected = (1.03 ** (1 - 31) * (1 + 0.02)) / (1 + 0.32);
+    // The default LV manager's 1.05 harvest rounds ride on top of the crop's
+    // own gain curve.
+    const expected = ((1.03 ** (1 - 31) * (1 + 0.02)) / (1 + 0.32)) * 1.05;
     expect(
       getMachineOutputMultiplier(recipe, node, recipe.outputs[0]!, "LV"),
     ).toBeCloseTo(expected, 10);
@@ -436,10 +440,11 @@ describe("CropsNH harvesters", () => {
   const WORLD_N27 = { cropWater: "100", cropFertilizer: "100", cropSky: "yes", cropBiome: "none" };
   const WORLD_N41 = { ...WORLD_N27, cropBiome: "one-tag" };
 
-  it("puts by hand at the bottom of the manager tiers, not in a tab of its own", () => {
+  it("starts the manager ladder at the LV machine, with no by-hand rung", () => {
     const recipe = oilBerry();
-    // Crop sticks and an Industrial Farm are the two places a crop can live.
-    // Picking by hand is the stick side with no manager on it.
+    // Crop sticks and an Industrial Farm are the two places a crop can live,
+    // and a planned crop board is an automated one: the by-hand rung was
+    // removed, so the ladder opens on the LV machine.
     expect(recipe.machineHandlers?.map((handler) => handler.id)).toEqual([
       "crop-manager",
       "crop-industrial-farm",
@@ -447,20 +452,23 @@ describe("CropsNH harvesters", () => {
     const manager = recipe.machineHandlers![0]!.machineConfigControls!.find(
       (control) => control.id === "cropManagerTier",
     )!;
-    expect(manager.defaultKey).toBe("none");
-    expect(manager.tiers[0]).toMatchObject({ key: "none", label: "By Hand" });
-    expect(manager.tiers[1]).toMatchObject({ key: "1", label: "LV" });
+    expect(manager.defaultKey).toBe("1");
+    expect(manager.tiers[0]).toMatchObject({ key: "1", label: "LV" });
+    expect(manager.tiers.map((tier) => tier.key)).not.toContain("none");
   });
 
-  it("treats no manager as picking by hand, and LV as the first real machine", () => {
+  it("loads a legacy by-hand plan as the LV machine", () => {
     const recipe = oilBerry();
     const output = recipe.outputs[0]!;
     const at = (key: string) => ({ machineConfigTiers: { cropManagerTier: key } });
-    expect(getMachineOutputMultiplier(recipe, at("none"), output, "LV")).toBe(1);
-    expect(cropsNhCropsPerMachine(cropsNhHarvesterFromTiers({ cropManagerTier: "none" }, "crop-manager"))).toBe(1);
-    // LV: 1 + 0.05 * 1 harvest rounds, and its full five-layer reach.
-    expect(getMachineOutputMultiplier(recipe, at("1"), output, "LV")).toBeCloseTo(1.05, 10);
-    expect(cropsNhCropsPerMachine(cropsNhHarvesterFromTiers({ cropManagerTier: "1" }, "crop-manager"))).toBe(605);
+    // LV: 1 + 0.05 * 1 harvest rounds, and its full five-layer reach - for a
+    // stored legacy "none" exactly as for an explicit LV pick.
+    for (const key of ["none", "1"]) {
+      expect(getMachineOutputMultiplier(recipe, at(key), output, "LV")).toBeCloseTo(1.05, 10);
+      expect(
+        cropsNhCropsPerMachine(cropsNhHarvesterFromTiers({ cropManagerTier: key }, "crop-manager")),
+      ).toBe(605);
+    }
   });
 
   it("hides water, fertilizer and sky on an Industrial Farm and shows them elsewhere", () => {
@@ -661,10 +669,14 @@ describe("CropsNH harvesters", () => {
     );
   });
 
-  it("keeps by-hand cards exactly where they were before harvesters existed", () => {
+  it("gives a bare card the LV manager's numbers, world pace included", () => {
     const bare = { machineConfigTiers: {} } as FactoryNode;
     const recipe = oilBerry();
+    // A manager never speeds the crop up; it only rolls more harvests.
     expect(getMachineDurationMultiplier(recipe, bare)).toBe(1);
-    expect(getMachineOutputMultiplier(recipe, bare, recipe.outputs[0]!, "LV")).toBe(1);
+    expect(getMachineOutputMultiplier(recipe, bare, recipe.outputs[0]!, "LV")).toBeCloseTo(
+      1.05,
+      10,
+    );
   });
 });

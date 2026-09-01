@@ -77,7 +77,6 @@ import {
   CROP_IF_HARVEST_UNIT_CONTROL_ID,
   CROP_IF_OVERCLOCK_CONTROL_ID,
   CROP_MANAGER_TIER_CONTROL_ID,
-  CROP_NO_MANAGER_KEY,
   CROP_SEED_BED_TIER_CONTROL_ID,
   cropsNhCropsPerMachine,
   cropsNhEnvironmentFromTiers,
@@ -1445,9 +1444,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             <CropTierChip
               control={cropTierControl}
               onPick={(key) => {
-                playBoardSound("dialPower", {
-                  step: key === CROP_NO_MANAGER_KEY ? 0 : Number.parseInt(key, 10) + 1,
-                });
+                playBoardSound("dialPower", { step: Number.parseInt(key, 10) + 1 });
                 suppressBoardSound("adjust", 150);
                 updateMachineConfigTier(cropTierControl.id, key);
               }}
@@ -4647,7 +4644,7 @@ function CropTierChip({
       title={`${control.label}: ${control.current.label}. Click for the next tier, right-click for the previous, wheel for both.`}
       aria-label={`${control.label} tier`}
     >
-      {control.current.key === CROP_NO_MANAGER_KEY ? "HAND" : control.current.label}
+      {control.current.label}
     </button>
   );
 }
