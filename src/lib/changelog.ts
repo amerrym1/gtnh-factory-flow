@@ -73,6 +73,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.50.1",
+    date: "2026-09-01",
+    headline: "The board toolbars stop crossing on narrow boards",
+    notes: [
+      "When the board is too narrow for both toolbar rows, the paint tools fold into one brush button.",
+      "Narrower still, the build tools fold into a hammer button and the paint row takes its own line.",
+      "The rows unfold on the line below, so nothing sits on top of anything else.",
+    ],
+  },
+  {
     version: "2.50.0",
     date: "2026-09-01",
     headline: "Farm numbers, checked against the community calculator",

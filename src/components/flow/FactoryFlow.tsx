@@ -265,6 +265,7 @@ import { rateSuffixForKind, rateUnitSuffix, type RateUnit } from "@/lib/model/ra
 import { GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
 import { GT_TIER_COLORS } from "./tier-colors";
 import { useIsCompactViewport } from "@/lib/compact-view";
+import { useToolbarFold } from "./toolbar-fold";
 import { browseHoveredPort } from "./port-browse";
 import { useBoardTouchGestures } from "./board-touch-gestures";
 import { useBoardCameraControls } from "./board-camera-controls";
@@ -2144,6 +2145,9 @@ export function FactoryFlow() {
   // A phone changes several things about the board: which cards can be dragged,
   // which toolbars are folded, where the centred banners sit.
   const isCompact = useIsCompactViewport();
+  // The two top toolbars fold into their triggers when the BOARD is too
+  // narrow for both rows, whatever the window: see toolbar-fold.ts.
+  const toolbarFold = useToolbarFold(boardRef, isCompact);
 
   // A board being resized publishes its frame here (board-resize.ts). The
   // frame's own node takes the new rect, and its members are shifted by the
@@ -6292,18 +6296,21 @@ export function FactoryFlow() {
         onViewChange={writeBoardView}
         dockToggleWarning={dockToggleWarning}
         onAutoArrange={handleAutoArrange}
-        compact={isCompact}
+        folded={toolbarFold.paint}
         openGroup={openToolGroup}
         onToggleGroup={handleToolGroupToggle}
-        shiftedDown={false}
+        shiftedDown={toolbarFold.paintBelow}
       />
       <SourceToolbar
-        compact={isCompact}
+        folded={toolbarFold.build}
         openGroup={openToolGroup}
         onToggleGroup={handleToolGroupToggle}
         shiftedDown={false}
+        secondLineTaken={toolbarFold.paintBelow}
       />
-      <BoardHelp compact={isCompact} />
+      {/* The help layer rings the toolbars; with the paint row folded away
+          there is nothing to ring, so it becomes the sheet, as on a phone. */}
+      <BoardHelp compact={isCompact || toolbarFold.paint} />
       {/* Toggled from the dev menu (shift-click the version chip). Sits above
           the help button; see PerfHud.tsx. */}
       <PerfHud />
@@ -6881,12 +6888,12 @@ const SelectionActionsBar = memo(function SelectionActionsBar({
   );
 });
 
-/** Which of the board's toolbars is unfolded on a compact window. */
+/** Which of the board's toolbars is unfolded while folded (see toolbar-fold.ts). */
 type ToolGroupId = "build" | "paint";
 
 interface ToolGroupProps {
   id: ToolGroupId;
-  compact: boolean;
+  folded: boolean;
   openGroup?: ToolGroupId;
   onToggle: (group: ToolGroupId | undefined) => void;
   /** The trigger's mark. */
@@ -6895,6 +6902,11 @@ interface ToolGroupProps {
   label: string;
   /** Which corner the toolbar lives in, and so which way it unfolds. */
   side: "left" | "right";
+  /**
+   * The unfolded row skips the second line: on a board too narrow for both
+   * folded rows the paint row has moved down onto it (toolbar-fold.ts).
+   */
+  secondLineTaken?: boolean;
   children: React.ReactNode;
 }
 
@@ -7007,20 +7019,23 @@ const TOOL_FACE_OFF =
  * units, and half of each row was unreachable. Folded, each row costs one
  * button, and the one the player opens unfolds over empty canvas.
  *
- * Off compact this is not a wrapper at all — it renders its children and
+ * Folding is decided per toolbar by the BOARD's width in toolbar-fold.ts (a
+ * desktop board between two open columns runs out of room long before the
+ * window turns compact). Unfolded this is not a wrapper at all — it renders its children and
  * nothing else, so the desktop toolbars keep exactly the DOM they had.
  */
 function ToolGroup({
   id,
-  compact,
+  folded,
   openGroup,
   onToggle,
   icon: Icon,
   label,
   side,
+  secondLineTaken = false,
   children,
 }: ToolGroupProps) {
-  if (!compact) {
+  if (!folded) {
     return <>{children}</>;
   }
 
@@ -7042,7 +7057,8 @@ function ToolGroup({
         // root it is positioned against — which folded is one 36px button, so
         // every row wrapped into a vertical column one button wide.
         // top-[3rem]: the plated trigger stands 44px tall now.
-        "absolute top-[3rem] flex w-max max-w-[calc(100vw-24px)] flex-wrap items-start gap-1 transition-[opacity,transform] duration-100",
+        "absolute flex w-max max-w-[calc(var(--board-width,100vw)-24px)] flex-wrap items-start gap-1 transition-[opacity,transform] duration-100",
+        secondLineTaken ? "top-[6rem]" : "top-[3rem]",
         side === "left" ? "left-0 justify-start" : "right-0 justify-end",
         isOpen ? "translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0",
       ].join(" ")}
@@ -7439,16 +7455,19 @@ const SetupRulesButton = memo(function SetupRulesButton({
 });
 
 const SourceToolbar = memo(function SourceToolbar({
-  compact,
+  folded,
   openGroup,
   onToggleGroup,
   shiftedDown,
+  secondLineTaken,
 }: {
-  compact: boolean;
+  folded: boolean;
   openGroup?: ToolGroupId;
   onToggleGroup: (group: ToolGroupId | undefined) => void;
   /** A banner has the top line: step down one. */
   shiftedDown: boolean;
+  /** The paint row sits on the second line, so the fold-out takes the third. */
+  secondLineTaken: boolean;
 }) {
   const addCustomRateNode = useFactoryStore((state) => state.addCustomRateNode);
   const addCropFarmNode = useFactoryStore((state) => state.addCropFarmNode);
@@ -7526,12 +7545,13 @@ const SourceToolbar = memo(function SourceToolbar({
           moment to go hunting through a fold-out. */}
       <ToolGroup
         id="build"
-        compact={compact}
+        folded={folded}
         openGroup={openGroup}
         onToggle={onToggleGroup}
         icon={Hammer}
         label="build tools"
         side="left"
+        secondLineTaken={secondLineTaken}
       >
       {/* How the numbers read: ONE key wearing the current unit, opening the
           four units as a named list. Four permanent keys spent three slots
@@ -8845,7 +8865,7 @@ const PaintToolbar = memo(function PaintToolbar({
   onViewChange,
   dockToggleWarning,
   onAutoArrange,
-  compact,
+  folded,
   openGroup,
   onToggleGroup,
   shiftedDown,
@@ -8865,7 +8885,7 @@ const PaintToolbar = memo(function PaintToolbar({
   dockToggleWarning?: string;
   /** Runs the arrange; the fold-out's setting rides along per press. */
   onAutoArrange: (options: { tidyBoardInteriors: boolean }) => void;
-  compact: boolean;
+  folded: boolean;
   openGroup?: ToolGroupId;
   onToggleGroup: (group: ToolGroupId | undefined) => void;
   shiftedDown: boolean;
@@ -8935,7 +8955,7 @@ const PaintToolbar = memo(function PaintToolbar({
     >
       <ToolGroup
         id="paint"
-        compact={compact}
+        folded={folded}
         openGroup={openGroup}
         onToggle={onToggleGroup}
         icon={Paintbrush}
@@ -8954,7 +8974,7 @@ const PaintToolbar = memo(function PaintToolbar({
           "absolute right-0 grid gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
           // On a phone it hangs two lines down — clear of the unfolded paint
           // row on the line between — six across and three down.
-          compact ? "top-[6rem] grid-cols-6" : "top-[3rem] w-[296px] grid-cols-9",
+          folded ? "top-[6rem] grid-cols-6" : "top-[3rem] w-[296px] grid-cols-9",
           isPaletteOpen
             ? "pointer-events-auto translate-y-0 opacity-100"
             : "pointer-events-none -translate-y-1 opacity-0",
