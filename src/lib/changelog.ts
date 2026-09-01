@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.46.0",
+    date: "2026-08-31",
+    headline: "Tier chips click, type and sing",
+    notes: [
+      "The hatch chip edits on click: type any hatch count, and the wheel walks every count then the exotic hatches.",
+      "The tier chip cycles on click and wheel, with no dropdown to open.",
+      "Every voltage tier has its own note: picking a tier sounds the same climb anywhere on the board.",
+      "Generator tier chips stop at the ends instead of looping around.",
+    ],
+  },
+  {
     version: "2.45.0",
     date: "2026-08-31",
     headline: "Power is a resource now",
