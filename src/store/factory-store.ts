@@ -9,7 +9,8 @@ import {
   findDuplicateEdge,
 } from "@/lib/model/edge-identity";
 import { normalizeLoadedProject } from "@/lib/model/project-normalize";
-import { quietBoardSoundsFor } from "@/lib/board-sounds";
+import { playBoardSound, quietBoardSoundsFor, suppressBoardSound } from "@/lib/board-sounds";
+import { GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
 import {
   setActivePowerDisplayUnit,
   setActiveRateUnit,
@@ -1328,6 +1329,15 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         return state;
       }
       const nextSettings = { ...(node.machineConfigTiers ?? {}), [settingId]: value };
+      // A generator setting whose VALUE is a voltage tier (the turbines'
+      // and singleblocks' tier knob) speaks the board's one tier voice -
+      // the power dial's ladder at that tier's rung. Any other setting
+      // keeps the watcher's ordinary adjust tap.
+      const tierRung = GT_VOLTAGE_TIERS.findIndex((entry) => entry.tier === value);
+      if (tierRung >= 0) {
+        playBoardSound("dialPower", { step: tierRung + 1 });
+        suppressBoardSound("adjust", 150);
+      }
       // A recipe another node still shares (a clone made before clones
       // reminted) must not be rewritten under that other card: this node
       // takes its own copy and the knob turns only here.

@@ -99,6 +99,22 @@ export function quietBoardSoundsFor(ms: number): void {
   quietUntil = Math.max(quietUntil, performance.now() + ms);
 }
 
+/**
+ * Mute ONE kind for a moment. The gesture hooks that play their own voice
+ * (the tier chips' dialPower) use this to keep the diff watcher's generic
+ * adjust tap from doubling them - muting everything instead silenced the
+ * very next wheel tick's own voice, which read as "fast scrolling is
+ * broken".
+ */
+const kindQuietUntil = new Map<BoardSoundKind, number>();
+
+export function suppressBoardSound(kind: BoardSoundKind, ms: number): void {
+  if (typeof performance === "undefined") {
+    return;
+  }
+  kindQuietUntil.set(kind, Math.max(kindQuietUntil.get(kind) ?? 0, performance.now() + ms));
+}
+
 export type BoardSoundKind =
   | "place" // a machine card lands: one flat thump
   | "placeProduct" // a drawer spawns to CATCH a product: thump stepping down
@@ -605,6 +621,9 @@ export function playBoardSound(
   }
   const now = performance.now();
   if (now < quietUntil) {
+    return;
+  }
+  if (now < (kindQuietUntil.get(kind) ?? 0)) {
     return;
   }
   const last = lastPlayedAt.get(kind);

@@ -179,7 +179,7 @@ import { useBoardView } from "./board-view";
 import { MotionNumberText, useBoardMotion, useMotionValues } from "./board-motion";
 import { getPaintBrushCursor } from "./paint-cursor";
 import { GT_TIER_COLORS } from "./tier-colors";
-import { playBoardSound, quietBoardSoundsFor } from "@/lib/board-sounds";
+import { playBoardSound, suppressBoardSound } from "@/lib/board-sounds";
 
 // Full width so the crop config panel and stat grid line up with the recipe
 // canvas edge instead of forcing their own wider box.
@@ -638,7 +638,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       playBoardSound("dialPower", { step: getVoltageTierIndex(nextTier) + 1 });
       // The write below also crosses the diff watcher; 150ms of quiet keeps
       // its generic adjust tap from doubling this voice.
-      quietBoardSoundsFor(150);
+      suppressBoardSound("adjust", 150);
       updateNode(projectNode.id, {
         overclockTier: nextTier,
         // A hatch family that does not exist at the new tier (a laser below
@@ -675,7 +675,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         step: getVoltageTierIndex(tierControl.current) + 1 + options.indexOf(next) * 0.25,
         gain: 0.6,
       });
-      quietBoardSoundsFor(150);
+      suppressBoardSound("adjust", 150);
       updateNode(projectNode.id, {
         energyHatchType: next.familyId === STANDARD_ENERGY_HATCH_ID ? undefined : next.familyId,
         energyHatches: next.hatches,
@@ -1515,7 +1515,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                       Math.max(0, supplyIndex) * 0.25,
                     gain: 0.6,
                   });
-                  quietBoardSoundsFor(150);
+                  suppressBoardSound("adjust", 150);
                   updateNode(projectNode.id, {
                     energyHatchType: familyId === STANDARD_ENERGY_HATCH_ID ? undefined : familyId,
                     energyHatches: hatches,
@@ -1539,7 +1539,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 minimumTier={powerReport?.minimumTier}
                 onPick={(tier) => {
                   playBoardSound("dialPower", { step: getVoltageTierIndex(tier) + 1 });
-                  quietBoardSoundsFor(150);
+                  suppressBoardSound("adjust", 150);
                   updateNode(projectNode.id, {
                     overclockTier: tier,
                     ...(energyHatchTypeExistsAtTier(projectNode.energyHatchType, tier)
@@ -2789,9 +2789,11 @@ function PowerTierChip({
   }
   const index = Math.max(0, setting.options.findIndex((option) => option.key === shownTier));
   const step = (delta: number) => {
-    const count = setting.options.length;
-    const next = setting.options[(index + delta + count) % count];
-    if (next) {
+    // Clamped, never wrapped: every tier ladder on the board stops at its
+    // ends (the machine chips, the power unit dial), and this one looping
+    // from MAX back to the floor read as broken.
+    const next = setting.options[Math.min(setting.options.length - 1, Math.max(0, index + delta))];
+    if (next && next.key !== shownTier) {
       setPowerSetting(nodeId, "tier", next.key);
     }
   };
