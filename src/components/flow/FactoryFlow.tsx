@@ -41,6 +41,7 @@ import {
   Focus,
   Tag,
   Gauge,
+  Sprout,
   Grid3x3,
   Grip,
   Hammer,
@@ -7450,6 +7451,7 @@ const SourceToolbar = memo(function SourceToolbar({
   shiftedDown: boolean;
 }) {
   const addCustomRateNode = useFactoryStore((state) => state.addCustomRateNode);
+  const addCropFarmNode = useFactoryStore((state) => state.addCropFarmNode);
   const openPowerMenu = useFactoryStore((state) => state.openPowerMenu);
   const boardView = useBoardView();
   const rateUnit = useFactoryStore((state) => state.rateUnit);
@@ -7733,9 +7735,10 @@ const SourceToolbar = memo(function SourceToolbar({
         </div>
       </ToolTray>
       {/* ...while the plate on the right is the one that puts new cards down.
-          The crop farm spawner left this row (2026-08-27): farms come from
-          the recipe book like everything else. The trash can spawner went
-          earlier (2026-08-23), to the drawer pill's third position. */}
+          The crop farm spawner left this row (2026-08-27) for the recipe
+          book, and came back (2026-09-01): nobody found it in the book. The
+          trash can spawner went earlier (2026-08-23), to the drawer pill's
+          third position. */}
       <ToolTray>
         {/* The generator catalog gets a plate that says so: power is a whole
             wing of the game, not a little icon to hunt for. The bolt's own
@@ -7758,6 +7761,17 @@ const SourceToolbar = memo(function SourceToolbar({
           aria-label="Add custom rate node"
         >
           <Gauge className="h-4 w-4" />
+        </button>
+        {/* The crop farm spawner, back on the tray (2026-09-01): farms DO
+            live in the recipe book, but nobody found them there. */}
+        <button
+          type="button"
+          onClick={addCropFarmNode}
+          className="pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+          title="Add crop farm"
+          aria-label="Add crop farm"
+        >
+          <Sprout className="h-4 w-4" />
         </button>
       </ToolTray>
       </ToolGroup>
