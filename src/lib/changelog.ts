@@ -79,7 +79,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     notes: [
       "Pick from every fuel rod in every size, The Core included, and every coolant cell.",
       "MOX-type rods scale with a core temperature setting, each by its own bonus.",
-      "The card says how many cells need recooling and how many freezers of your choice that takes.",
+      "Hot coolant cells leave the reactor as a port: wire a Vacuum Freezer to send them back cold.",
       "A coolant cell too small for the heat is called out before it bursts.",
     ],
   },

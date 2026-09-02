@@ -1,6 +1,104 @@
 {
  "datasetVersionId": "local-2.9.0-beta-2",
  "resources": {
+  "1080k Sp Coolant Cell": {
+   "kind": "item",
+   "id": "gregtech:gt.1080k_space_coolantcell",
+   "displayName": "1080k Sp Coolant Cell",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/1080k_sp_coolant_cell-75adab6c823f.png",
+   "dominantColor": "#1f2543"
+  },
+  "10k Coolant Cell": {
+   "kind": "item",
+   "id": "ic2:reactorcoolantsimple@1",
+   "displayName": "10k Coolant Cell",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/10k_coolant_cell-63b1b8353063.png",
+   "dominantColor": "#434343"
+  },
+  "180k He Coolant Cell": {
+   "kind": "item",
+   "id": "gregtech:gt.180k_helium_coolantcell",
+   "displayName": "180k He Coolant Cell",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/180k_he_coolant_cell-9da8d8216d51.png",
+   "dominantColor": "#bcbc00"
+  },
+  "180k NaK Coolant Cell": {
+   "kind": "item",
+   "id": "gregtech:gt.180k_nak_coolantcell",
+   "displayName": "180k NaK Coolant Cell",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/180k_nak_coolant_cell-154a59e1c3d6.png",
+   "dominantColor": "#43ad7b"
+  },
+  "180k Sp Coolant Cell": {
+   "kind": "item",
+   "id": "gregtech:gt.180k_space_coolantcell",
+   "displayName": "180k Sp Coolant Cell",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/180k_sp_coolant_cell-9c25fdb25802.png",
+   "dominantColor": "#1a1f36"
+  },
+  "1G Neutronium Heat Capacitor": {
+   "kind": "item",
+   "id": "gregtech:gt.neutroniumheatcapacitor",
+   "displayName": "1G Neutronium Heat Capacitor",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/1g_neutronium_heat_capacitor-26e0d8c726b2.png",
+   "dominantColor": "#c4c4c4"
+  },
+  "30k Coolant Cell": {
+   "kind": "item",
+   "id": "ic2:reactorcoolanttriple@1",
+   "displayName": "30k Coolant Cell",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/30k_coolant_cell-25d2b9c0eca5.png",
+   "dominantColor": "#717171"
+  },
+  "360k He Coolant Cell": {
+   "kind": "item",
+   "id": "gregtech:gt.360k_helium_coolantcell",
+   "displayName": "360k He Coolant Cell",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/360k_he_coolant_cell-d1c7ac2fd604.png",
+   "dominantColor": "#baba00"
+  },
+  "360k NaK Coolant Cell": {
+   "kind": "item",
+   "id": "gregtech:gt.360k_nak_coolantcell",
+   "displayName": "360k NaK Coolant Cell",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/360k_nak_coolant_cell-f290c748b308.png",
+   "dominantColor": "#42aa79"
+  },
+  "360k Sp Coolant Cell": {
+   "kind": "item",
+   "id": "gregtech:gt.360k_space_coolantcell",
+   "displayName": "360k Sp Coolant Cell",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/360k_sp_coolant_cell-63fd9412cbcf.png",
+   "dominantColor": "#1d223b"
+  },
+  "540k Sp Coolant Cell": {
+   "kind": "item",
+   "id": "gregtech:gt.540k_space_coolantcell",
+   "displayName": "540k Sp Coolant Cell",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/540k_sp_coolant_cell-b9f19c958ae8.png",
+   "dominantColor": "#202743"
+  },
+  "60k Coolant Cell": {
+   "kind": "item",
+   "id": "ic2:reactorcoolantsix@1",
+   "displayName": "60k Coolant Cell",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/60k_coolant_cell-82145717b4ba.png",
+   "dominantColor": "#4b4b4b"
+  },
+  "60k He Coolant Cell": {
+   "kind": "item",
+   "id": "gregtech:gt.60k_helium_coolantcell",
+   "displayName": "60k He Coolant Cell",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/60k_he_coolant_cell-4c352f9c8e2d.png",
+   "dominantColor": "#b3b300"
+  },
+  "60k NaK Coolant Cell": {
+   "kind": "item",
+   "id": "gregtech:gt.60k_nak_coolantcell",
+   "displayName": "60k NaK Coolant Cell",
+   "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/60k_nak_coolant_cell-de91c3e8c26c.png",
+   "dominantColor": "#3d9e71"
+  },
   "Acetic Acid": {
    "kind": "fluid",
    "id": "aceticacid",

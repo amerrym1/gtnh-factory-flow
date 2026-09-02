@@ -375,12 +375,15 @@ describe("reactors and endgame", () => {
     const model = compute("vacuum-reactor", { fuel: "uranium-4", coolant: "he-360k" });
     expect(model.euPerTick).toBe(43_600);
     // 40 quad rods over their 20,000 s lifespan, burned to depleted rods.
-    expect(model.inputs).toEqual([
-      { name: "Quad Fuel Rod (Uranium)", perSecond: 40 / 20_000, unit: "item" },
-    ]);
-    expect(model.outputs).toEqual([
-      { name: "Quad Fuel Rod (Depleted Uranium)", perSecond: 40 / 20_000, unit: "item" },
-    ]);
+    expect(model.inputs[0]).toEqual({ name: "Quad Fuel Rod (Uranium)", perSecond: 40 / 20_000, unit: "item" });
+    expect(model.outputs[0]).toEqual({
+      name: "Quad Fuel Rod (Depleted Uranium)",
+      perSecond: 40 / 20_000,
+      unit: "item",
+    });
+    expect(model.outputs[1]).toEqual(model.inputs[1]);
+    expect(resolvePowerResource("360k He Coolant Cell")?.kind).toBe("item");
+    expect(resolvePowerResource("10k Coolant Cell")?.kind).toBe("item");
     expect(resolvePowerResource("Quad Fuel Rod (Uranium)")?.kind).toBe("item");
     expect(resolvePowerResource("Fuel Rod (Depleted Tiberium)")?.kind).toBe("item");
     expect(resolvePowerResource("The Core (Depleted)")?.kind).toBe("item");
@@ -389,12 +392,10 @@ describe("reactors and endgame", () => {
     expect(model.stats.find((line) => line.label === "Coolant lifespan")?.value).toBe(
       "267.86 s min, 442.42 s avg",
     );
-    // Sheet W14/W18: 1.9 cells a minute to recool; one HV Vacuum Freezer
-    // does 6.67 a minute at 480 EU/t.
+    // Sheet W14: 1.9 cells a minute to recool, so the cells are real ports -
+    // hot out, cold in, one item id for both - for a placed freezer to close.
     expect(model.stats.find((line) => line.label === "Cells to recool")?.value).toBe("1.9 a minute");
-    expect(model.stats.find((line) => line.label === "Freezers")?.value).toBe(
-      "1 x Vacuum Freezer: 6.67 cells a minute, 480 EU/t each",
-    );
+    expect(model.inputs[1]).toEqual({ name: "360k He Coolant Cell", perSecond: expect.closeTo(14 / 442.42, 3), unit: "item" });
   });
 
   it("prices every Vacuum Reactor rod from the mod source, MOX by core temp", () => {
@@ -414,27 +415,16 @@ describe("reactors and endgame", () => {
     expect(compute("vacuum-reactor", { fuel: "uranium-4" }).warnings?.some((line) => line.includes("melts"))).toBe(false);
   });
 
-  it("sizes the Vacuum Reactor's freezer loop and flags cells that burst", () => {
+  it("flags a Vacuum Reactor coolant cell that bursts and pins the ports per second", () => {
     // Excited uranium on 10k cells: the hottest cell takes more heat a
     // second than it holds.
     const burst = compute("vacuum-reactor", { fuel: "excited-uranium-4", coolant: "coolant-10k" });
     expect(burst.warnings?.some((line) => line.includes("bursts"))).toBe(true);
-    // Sheet: Cryogenic Freezer on an EV hatch - 16 parallels at 1,728 EU/t
-    // leave no voltage for an overclock, 360 ticks a batch.
-    const cryo = compute("vacuum-reactor", {
-      fuel: "excited-uranium-4",
-      coolant: "sp-1080k",
-      freezer: "cryogenic",
-      freezerHatch: "EV",
-    });
-    expect(cryo.stats.find((line) => line.label === "Freezers")?.value).toBe(
-      "1 x Cryogenic Freezer: 53.33 cells a minute, 1,728 EU/t each",
-    );
-    expect(cryo.stats.find((line) => line.label === "Cryotheum")?.value).toBe("10 L/s per freezer");
-    // An LV hatch cannot start the 120 EU/t recipe at all.
-    const starved = compute("vacuum-reactor", { freezerHatch: "LV" });
-    expect(starved.stats.some((line) => line.label === "Freezers")).toBe(false);
-    expect(starved.warnings?.some((line) => line.includes("cannot run"))).toBe(true);
+    // The cell ports run at 14 cells per average lifespan; a quad uranium
+    // layout heats the average 360k cell out in 442.4 s.
+    const model = compute("vacuum-reactor", { fuel: "uranium-4", coolant: "he-360k" });
+    expect(model.inputs[1].perSecond).toBeCloseTo(14 / (360_000 / 813.7142857), 6);
+    expect(compute("vacuum-reactor", {}).stats.some((line) => line.label === "Freezers")).toBe(false);
   });
 
   it("multiplies the LNR by coolant and booster (5.85M EU/t)", () => {

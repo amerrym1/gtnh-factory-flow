@@ -196,20 +196,16 @@ every MOX-type rod, the game does `1 + heatBonus x heat%` per rod (MOX 1.5,
 HD Plutonium 6, Excited Plutonium 2, Naquadria 1.5) - the app follows the
 source, with core temp as a knob.
 
-Freezer sizing (the sheet's right-hand block): cells to recool a minute =
-`14 / (durability / avgHeat) x 60`; one freezer recools
-`parallels x 1200 x subtick / finalDuration` a minute with
-`parallels = MIN(FLOOR(maxInput / 120 / euMult), maxParallels)`,
-`basePower = CEILING(120 x parallels x euMult)`,
-`OC = FLOOR(LOG4(maxInput / MAX(basePower, 32)))`,
-`finalDuration = MAX(1, FLOOR(recipeTicks / speed / 2^OC))` and sub-tick
-speed banked as parallels (`CEILING(2^OC / baseDuration)` once OC covers
-the whole duration). Recipes are the dataset's: 120 EU/t, ticks = the
-cell's capacity / 1000 (1G capacitor 1,000,000 t). Freezers: Vacuum
-Freezer (1 parallel, x1), Cryogenic Freezer (16, x3, 90% EU, 10 L/s
-cryotheum), Endothermic Fridge (256, x1.5, 375 L/s cryotheum; the sheet
-doubles a one-amp hatch's voltage for it). The freezer loop is stats and
-warnings on the card, never flows.
+The sheet's right-hand block sizes a freezer (Vacuum Freezer / Cryogenic
+Freezer / Endothermic Fridge, hatch and amps) for the cells to recool a
+minute, `14 / (durability / avgHeat) x 60`. The app does NOT put that on
+the reactor card: the reactor's cells are real ports (hot cells out, cold
+cells in, at that rate, one item id for both), and the freezer is the
+dataset's own Vacuum Freezer recipe (120 EU/t, ticks = capacity / 1000)
+placed and wired back into the reactor, so the board counts the freezers
+and their EU like any other machine. A cell too small for the hottest
+position (`4 x heat(3)` above its capacity) is warned about, as the sheet
+does.
 
 ## DEHP (`4. DEHP`)
 
