@@ -72,7 +72,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-09-02",
     headline: "The recipe search has back and forward",
     notes: [
-      "Back and forward buttons step through the items you clicked, with Alt+Left and Alt+Right.",
+      "Back and forward buttons step through the items you clicked: Backspace or Alt+Left goes back, Alt+Right forward.",
       "Click a result's machine tile to hide that machine, or right click the card for hide, only and add.",
       "The tier filter now hides generators above the chosen tier too.",
       "The search has quiet sounds of its own, and names on a phone wrap instead of being cut short.",

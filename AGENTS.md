@@ -222,7 +222,8 @@ Working notes for future agents on GTNH Factory Flow.
   refactor press - files the page it replaces; a fresh browse drops the
   forward branch like a browser; asking for the page already open files
   nothing; closing the search clears both. Buttons sit by the name filter
-  (head row start on a phone), Alt+Left / Alt+Right walk them.
+  (head row start on a phone); Alt+Left / Alt+Right walk them, and a bare
+  Backspace outside a text box goes back too.
 - A result card's MACHINE TILE is a key: click hides that machine's recipes
   (the same toggle as darkening its chip; a generator card's tile hides the
   Generators chip). Right click the card - or hold the tile on a finger -

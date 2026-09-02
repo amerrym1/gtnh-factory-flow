@@ -309,13 +309,23 @@ export function RecipeSearchOverlay({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      // The browser's own history keys walk the search's pages.
-      if (event.altKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
-        const step = event.key === "ArrowLeft" ? onBack : onForward;
-        const allowed = event.key === "ArrowLeft" ? canGoBack : canGoForward;
+      // The browser's own history keys walk the search's pages, and so
+      // does a bare Backspace - the old web's back key - as long as it is
+      // not deleting text in a box.
+      const inTextField =
+        event.target instanceof HTMLElement &&
+        (event.target.tagName === "INPUT" ||
+          event.target.tagName === "TEXTAREA" ||
+          event.target.isContentEditable);
+      const backKey =
+        (event.altKey && event.key === "ArrowLeft") ||
+        (event.key === "Backspace" && !inTextField && !event.altKey && !event.ctrlKey && !event.metaKey);
+      const forwardKey = event.altKey && event.key === "ArrowRight";
+      if (backKey || forwardKey) {
+        const allowed = backKey ? canGoBack : canGoForward;
         if (allowed) {
           event.preventDefault();
-          step();
+          (backKey ? onBack : onForward)();
         }
         return;
       }
@@ -712,7 +722,7 @@ export function RecipeSearchOverlay({
         type="button"
         onClick={onBack}
         disabled={!canGoBack}
-        title="Back (Alt+Left)"
+        title="Back (Backspace or Alt+Left)"
         aria-label="Back to the previous search"
         className={[
           "flex shrink-0 items-center justify-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] text-[var(--mc-ink)]",
