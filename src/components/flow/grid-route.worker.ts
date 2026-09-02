@@ -2,7 +2,7 @@ import {
   decodeRouteSolveJob,
   runRouteSolveJob,
   type EncodedRouteSolveJob,
-} from "./grid-route-solve";
+} from "./grid-route-job";
 
 /**
  * The grid router, off the main thread. One job in, one result out; the
