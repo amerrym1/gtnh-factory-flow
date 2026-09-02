@@ -371,8 +371,8 @@ describe("reactors and endgame", () => {
     expect(model.outputs.some((flow) => flow.name === "Uranium-233")).toBe(true);
   });
 
-  it("runs the Vacuum Reactor uranium design at the wiki's 43,600 EU/t", () => {
-    const model = compute("vacuum-reactor", { design: "uranium" });
+  it("runs the Vacuum Reactor's quad uranium layout at the workbook's 43,600 EU/t", () => {
+    const model = compute("vacuum-reactor", { fuel: "uranium-4", coolant: "he-360k" });
     expect(model.euPerTick).toBe(43_600);
     // 40 quad rods over their 20,000 s lifespan, burned to depleted rods.
     expect(model.inputs).toEqual([
@@ -382,15 +382,59 @@ describe("reactors and endgame", () => {
       { name: "Quad Fuel Rod (Depleted Uranium)", perSecond: 40 / 20_000, unit: "item" },
     ]);
     expect(resolvePowerResource("Quad Fuel Rod (Uranium)")?.kind).toBe("item");
+    expect(resolvePowerResource("Fuel Rod (Depleted Tiberium)")?.kind).toBe("item");
     expect(resolvePowerResource("The Core (Depleted)")?.kind).toBe("item");
+    // Sheet: average cell decay 813.7 Hu/s, minimum coolant lifespan 267.9 s.
+    expect(model.stats.find((line) => line.label === "Cell heat")?.value).toBe("813.71/s avg, 1,344/s max");
+    expect(model.stats.find((line) => line.label === "Coolant lifespan")?.value).toBe(
+      "267.86 s min, 442.42 s avg",
+    );
+    // Sheet W14/W18: 1.9 cells a minute to recool; one HV Vacuum Freezer
+    // does 6.67 a minute at 480 EU/t.
+    expect(model.stats.find((line) => line.label === "Cells to recool")?.value).toBe("1.9 a minute");
+    expect(model.stats.find((line) => line.label === "Freezers")?.value).toBe(
+      "1 x Vacuum Freezer: 6.67 cells a minute, 480 EU/t each",
+    );
   });
 
-  it("flags the hot Vacuum Reactor designs and prices The Core at 4.98M EU/t", () => {
-    const mox = compute("vacuum-reactor", { design: "mox" });
-    expect(mox.warnings?.some((line) => line.includes("98% Core Temp"))).toBe(true);
-    const core = compute("vacuum-reactor", { design: "core-40" });
-    expect(core.euPerTick).toBe(4_979_200);
-    expect(core.inputs).toEqual([{ name: "The Core", perSecond: 40 / 100_000, unit: "item" }]);
+  it("prices every Vacuum Reactor rod from the mod source, MOX by core temp", () => {
+    expect(compute("vacuum-reactor", { fuel: "thorium-4" }).euPerTick).toBe(8_720);
+    expect(compute("vacuum-reactor", { fuel: "uranium-1" }).euPerTick).toBe(50 * (4 * 2 + 14 * 3 + 22 * 4));
+    // The Core: 32 cells, 17 pulses, 200 EU a pulse - 4,979,200 on the layout.
+    expect(compute("vacuum-reactor", { fuel: "the-core" }).euPerTick).toBe(4_979_200);
+    // MOX rods multiply by 1 + heatBonus x core temp: MOX 1.5, HD Plutonium 6.
+    const mox = compute("vacuum-reactor", { fuel: "mox-4", coreTemp: "98" });
+    expect(mox.euPerTick).toBeCloseTo(43_600 * (1 + 1.5 * 0.98), 6);
+    expect(mox.warnings?.some((line) => line.includes("melts at 100%"))).toBe(true);
+    expect(compute("vacuum-reactor", { fuel: "high-density-plutonium-4", coreTemp: "98" }).euPerTick).toBeCloseTo(
+      43_600 * (1 + 6 * 0.98),
+      6,
+    );
+    expect(compute("vacuum-reactor", { fuel: "mox-4", coreTemp: "0" }).euPerTick).toBe(43_600);
+    expect(compute("vacuum-reactor", { fuel: "uranium-4" }).warnings?.some((line) => line.includes("melts"))).toBe(false);
+  });
+
+  it("sizes the Vacuum Reactor's freezer loop and flags cells that burst", () => {
+    // Excited uranium on 10k cells: the hottest cell takes more heat a
+    // second than it holds.
+    const burst = compute("vacuum-reactor", { fuel: "excited-uranium-4", coolant: "coolant-10k" });
+    expect(burst.warnings?.some((line) => line.includes("bursts"))).toBe(true);
+    // Sheet: Cryogenic Freezer on an EV hatch - 16 parallels at 1,728 EU/t
+    // leave no voltage for an overclock, 360 ticks a batch.
+    const cryo = compute("vacuum-reactor", {
+      fuel: "excited-uranium-4",
+      coolant: "sp-1080k",
+      freezer: "cryogenic",
+      freezerHatch: "EV",
+    });
+    expect(cryo.stats.find((line) => line.label === "Freezers")?.value).toBe(
+      "1 x Cryogenic Freezer: 53.33 cells a minute, 1,728 EU/t each",
+    );
+    expect(cryo.stats.find((line) => line.label === "Cryotheum")?.value).toBe("10 L/s per freezer");
+    // An LV hatch cannot start the 120 EU/t recipe at all.
+    const starved = compute("vacuum-reactor", { freezerHatch: "LV" });
+    expect(starved.stats.some((line) => line.label === "Freezers")).toBe(false);
+    expect(starved.warnings?.some((line) => line.includes("cannot run"))).toBe(true);
   });
 
   it("multiplies the LNR by coolant and booster (5.85M EU/t)", () => {

@@ -179,6 +179,38 @@ coolant L/s per reactor (1150 / 1380 / 1340 / custom). Rod consumption is
 absent from the sheet entirely. Hot coolant -> LHE or EHE -> cascade.
 Banner: "Try Vacuum Reactors Instead".
 
+## Vacuum Reactor (`4. Vac Nuke`)
+
+An EU-mode IC2 reactor on ONE fixed layout - 40 rods and 14 coolant cells
+in the 6x9 chamber - whose cells are pulled and recooled in a freezer.
+Rods are grouped by rod neighbours: 4 with one, 14 with two, 22 with three.
+Per rod: pulses `p = 1 + cells/2` (single 1, dual 2, quad 3, The Core 17),
+`cells x (p + n)` pulses a second with `n` neighbours, each pulse
+`sEnergy x 25` EU (IC2's x5 times the pack's `nuclear = 5.0`); heat
+`(p+n)(p+n+1) x sHeat x cells / 2` a second, shed into the cells beside it.
+Coolant heat map: hottest cell `4 x heat(3)`, coolest
+`0.5 x heat(1) + heat(2)`, average `total / 14`; lifespans are durability
+over those. Rod stats come from GT5U `LoaderGTBlockFluid`, where the sheet
+matches the source everywhere but MOX: it flattens the bonus to x2.475 for
+every MOX-type rod, the game does `1 + heatBonus x heat%` per rod (MOX 1.5,
+HD Plutonium 6, Excited Plutonium 2, Naquadria 1.5) - the app follows the
+source, with core temp as a knob.
+
+Freezer sizing (the sheet's right-hand block): cells to recool a minute =
+`14 / (durability / avgHeat) x 60`; one freezer recools
+`parallels x 1200 x subtick / finalDuration` a minute with
+`parallels = MIN(FLOOR(maxInput / 120 / euMult), maxParallels)`,
+`basePower = CEILING(120 x parallels x euMult)`,
+`OC = FLOOR(LOG4(maxInput / MAX(basePower, 32)))`,
+`finalDuration = MAX(1, FLOOR(recipeTicks / speed / 2^OC))` and sub-tick
+speed banked as parallels (`CEILING(2^OC / baseDuration)` once OC covers
+the whole duration). Recipes are the dataset's: 120 EU/t, ticks = the
+cell's capacity / 1000 (1G capacitor 1,000,000 t). Freezers: Vacuum
+Freezer (1 parallel, x1), Cryogenic Freezer (16, x3, 90% EU, 10 L/s
+cryotheum), Endothermic Fridge (256, x1.5, 375 L/s cryotheum; the sheet
+doubles a one-amp hatch's voltage for it). The freezer loop is stats and
+warnings on the card, never flows.
+
 ## DEHP (`4. DEHP`)
 
 Parasitic -480 EU/t per pump; two modes: Direct Steam 25,600 L/t SH-grade

@@ -180,147 +180,340 @@ const ic2FluidReactor: PowerSourceDefinition = {
 };
 
 /**
- * The wiki's tested Vacuum Reactor designs (actively cooled IC2 reactor,
- * coolant cells recooled in a Vacuum Freezer). EU and lifespans are the
- * wiki's Reactor Planner figures; rods burn to their depleted forms at
- * count / lifespan per second. Coolant cells circulate through the
- * freezer instead of being consumed, so they are stat lines.
+ * The Vacuum Reactor: the workbook's `4. Vac Nuke` sheet, an EU-mode IC2
+ * reactor on its one fixed layout - 40 fuel rods and 14 coolant cells in
+ * the 6x9 chamber - whose cells are swapped out and recooled in a freezer
+ * instead of melting. Every rod stat below is transcribed from
+ * GT5U LoaderGTBlockFluid (ItemRadioactiveCellIC: cells, durability,
+ * sEnergy, sHeat, mox, heat bonus) and the maths from
+ * ItemRadioactiveCellIC.processChamber; the sheet agrees with the source on
+ * all of it except the MOX bonus, which it flattens to x2.475 for every
+ * MOX-type rod while the game multiplies by `1 + heatBonus x heat%` with a
+ * per-rod bonus (MOX 1.5, HD Plutonium 6, Excited Plutonium 2, Naquadria
+ * 1.5). The source wins there.
+ *
+ * Per rod: pulses p = 1 + cells/2 (single 1, dual 2, quad 3, Core 17).
+ * With n rod neighbours it pulses p + n times per cell, each pulse worth
+ * sEnergy x 25 EU (IC2's x5 times the pack's nuclear = 5.0), and sheds
+ * (p+n)(p+n+1) x sHeat x cells / 2 heat a second into the coolant cells
+ * beside it. The layout has 4 rods with one rod neighbour, 14 with two and
+ * 22 with three.
  */
-const VACUUM_DESIGNS = [
+const NUKE_EU_PER_ENERGY = 25;
+const LAYOUT_RODS_BY_NEIGHBOURS: ReadonlyArray<readonly [neighbours: number, rods: number]> = [
+  [1, 4],
+  [2, 14],
+  [3, 22],
+];
+const LAYOUT_ROD_COUNT = 40;
+const LAYOUT_CELL_COUNT = 14;
+
+interface RodFamily {
+  /** The dataset's name inside the parentheses. */
+  material: string;
+  /** Seconds a rod lasts (IC2 damages it once a second). */
+  durability: number;
+  /** ItemRadioactiveCellIC sEnergy. */
+  energy: number;
+  /** ItemRadioactiveCellIC sHeat. */
+  heat: number;
+  /** ItemRadioactiveCellIC heat bonus; MOX-type rods only. */
+  moxBonus?: number;
+}
+
+const ROD_FAMILIES: RodFamily[] = [
+  { material: "Thorium", durability: 50_000, energy: 0.4, heat: 1 },
+  { material: "Uranium", durability: 20_000, energy: 2, heat: 4 },
+  { material: "MOX", durability: 10_000, energy: 2, heat: 4, moxBonus: 1.5 },
+  { material: "High Density Uranium", durability: 70_000, energy: 4, heat: 4 },
+  { material: "High Density Plutonium", durability: 70_000, energy: 2, heat: 4, moxBonus: 6 },
+  { material: "Excited Uranium", durability: 6_000, energy: 48, heat: 64 },
+  { material: "Excited Plutonium", durability: 10_000, energy: 64, heat: 64, moxBonus: 2 },
+  { material: "Naquadah", durability: 100_000, energy: 4, heat: 4 },
+  { material: "Naquadria", durability: 100_000, energy: 4, heat: 4, moxBonus: 1.5 },
+  { material: "Tiberium", durability: 50_000, energy: 2, heat: 2 },
+];
+
+export interface VacuumFuel {
+  key: string;
+  label: string;
+  rod: string;
+  depleted: string;
+  cells: number;
+  durability: number;
+  energy: number;
+  heat: number;
+  moxBonus?: number;
+}
+
+const ROD_SIZES = [
+  { cells: 1, prefix: "", word: "Single" },
+  { cells: 2, prefix: "Dual ", word: "Dual" },
+  { cells: 4, prefix: "Quad ", word: "Quad" },
+];
+
+export const VACUUM_FUELS: VacuumFuel[] = [
+  ...ROD_FAMILIES.flatMap((family) =>
+    ROD_SIZES.map(({ cells, prefix, word }) => ({
+      key: `${family.material.toLowerCase().replace(/\s+/g, "-")}-${cells}`,
+      label: `${family.material} (${word})`,
+      rod: `${prefix}Fuel Rod (${family.material})`,
+      depleted: `${prefix}Fuel Rod (Depleted ${family.material})`,
+      cells,
+      durability: family.durability,
+      energy: family.energy,
+      heat: family.heat,
+      moxBonus: family.moxBonus,
+    })),
+  ),
   {
-    key: "thorium",
-    label: "Thorium (8,720 EU/t)",
-    euPerTick: 8720,
-    rod: "Quad Fuel Rod (Thorium)",
-    depleted: "Quad Fuel Rod (Depleted Thorium)",
-    rods: 40,
-    rodLife: 50_000,
-    coolant: "14 x 360k He Coolant Cell",
-    coolantLife: 1071,
-    freezer: "Vacuum Freezer (MV hatch)",
-  },
-  {
-    key: "uranium",
-    label: "Uranium (43,600 EU/t)",
-    euPerTick: 43_600,
-    rod: "Quad Fuel Rod (Uranium)",
-    depleted: "Quad Fuel Rod (Depleted Uranium)",
-    rods: 40,
-    rodLife: 20_000,
-    coolant: "14 x 360k He Coolant Cell",
-    coolantLife: 267,
-    freezer: "Vacuum Freezer (HV hatch)",
-  },
-  {
-    key: "mox",
-    label: "MOX (107,979 EU/t)",
-    euPerTick: 107_979,
-    rod: "Quad Fuel Rod (MOX)",
-    depleted: "Quad Fuel Rod (Depleted MOX)",
-    rods: 40,
-    rodLife: 10_000,
-    coolant: "14 x 360k He Coolant Cell",
-    coolantLife: 267,
-    freezer: "Vacuum Freezer (HV hatch)",
-    hot: true,
-  },
-  {
-    key: "hd-plutonium",
-    label: "High Density Plutonium (301,958 EU/t)",
-    euPerTick: 301_958,
-    rod: "Quad Fuel Rod (High Density Plutonium)",
-    depleted: "Quad Fuel Rod (Depleted High Density Plutonium)",
-    rods: 40,
-    rodLife: 70_000,
-    coolant: "14 x 540k Sp Coolant Cell",
-    coolantLife: 401,
-    freezer: "Vacuum Freezer (HV hatch)",
-    hot: true,
-  },
-  {
-    key: "excited-uranium",
-    label: "Excited Uranium (1.05M EU/t)",
-    euPerTick: 1_046_400,
-    rod: "Quad Fuel Rod (Excited Uranium)",
-    depleted: "Quad Fuel Rod (Depleted Excited Uranium)",
-    rods: 40,
-    rodLife: 6_000,
-    coolant: "14 x 1080k Sp Coolant Cell",
-    coolantLife: 50,
-    freezer: "Mega Vacuum Freezer (EV hatch)",
-  },
-  {
-    key: "core-25",
-    label: "The Core x25 (3.2M EU/t)",
-    euPerTick: 3_200_000,
+    key: "the-core",
+    label: "The Core",
     rod: "The Core",
     depleted: "The Core (Depleted)",
-    rods: 25,
-    rodLife: 100_000,
-    coolant: "16 x 1080k Sp Coolant Cell",
-    coolantLife: 11,
-    freezer: "Mega Vacuum Freezer (LuV hatch)",
+    cells: 32,
+    durability: 100_000,
+    energy: 8,
+    heat: 4,
   },
+  // The quad naquadah rod sheds a quarter of its siblings' heat (sHeat 1F
+  // in the loader where the single and dual say 4F); not a typo.
+].map((fuel) => (fuel.key === "naquadah-4" ? { ...fuel, heat: 1 } : fuel));
+
+/** Coolant cells and the Vacuum Freezer recipe that recools each (120 EU/t, ticks). */
+export const VACUUM_COOLANTS = [
+  { key: "coolant-10k", name: "10k Coolant Cell", durability: 10_000, freezeTicks: 10 },
+  { key: "coolant-30k", name: "30k Coolant Cell", durability: 30_000, freezeTicks: 30 },
+  { key: "coolant-60k", name: "60k Coolant Cell", durability: 60_000, freezeTicks: 60 },
+  { key: "he-60k", name: "60k He Coolant Cell", durability: 60_000, freezeTicks: 60 },
+  { key: "he-180k", name: "180k He Coolant Cell", durability: 180_000, freezeTicks: 180 },
+  { key: "he-360k", name: "360k He Coolant Cell", durability: 360_000, freezeTicks: 360 },
+  { key: "nak-60k", name: "60k NaK Coolant Cell", durability: 60_000, freezeTicks: 60 },
+  { key: "nak-180k", name: "180k NaK Coolant Cell", durability: 180_000, freezeTicks: 180 },
+  { key: "nak-360k", name: "360k NaK Coolant Cell", durability: 360_000, freezeTicks: 360 },
+  { key: "sp-180k", name: "180k Sp Coolant Cell", durability: 180_000, freezeTicks: 180 },
+  { key: "sp-360k", name: "360k Sp Coolant Cell", durability: 360_000, freezeTicks: 360 },
+  { key: "sp-540k", name: "540k Sp Coolant Cell", durability: 540_000, freezeTicks: 540 },
+  { key: "sp-1080k", name: "1080k Sp Coolant Cell", durability: 1_080_000, freezeTicks: 1080 },
   {
-    key: "core-40",
-    label: "The Core x40 (4.98M EU/t)",
-    euPerTick: 4_979_200,
-    rod: "The Core",
-    depleted: "The Core (Depleted)",
-    rods: 40,
-    rodLife: 100_000,
-    coolant: "14 x 1080k Sp Coolant Cell",
-    coolantLife: 11,
-    freezer: "Mega Vacuum Freezer (LuV hatch)",
-  },
-  {
-    key: "core-40-capacitor",
-    label: "The Core x40, heat capacitors (4.98M EU/t)",
-    euPerTick: 4_979_200,
-    rod: "The Core",
-    depleted: "The Core (Depleted)",
-    rods: 40,
-    rodLife: 100_000,
-    coolant: "14 x 1G Neutronium Heat Capacitor",
-    coolantLife: 9300,
-    freezer: "Mega Vacuum Freezer (UV hatch)",
+    key: "neutronium-1g",
+    name: "1G Neutronium Heat Capacitor",
+    durability: 1_000_000_000,
+    freezeTicks: 1_000_000,
   },
 ];
+const FREEZE_RECIPE_EUT = 120;
+
+/**
+ * The freezers that recool cells, from their multiblock classes: the plain
+ * Vacuum Freezer, the GT++ Cryogenic Freezer (MTECryogenicFreezer: 16
+ * parallels, x3 speed, 90% EU, 10 L/s Gelid Cryotheum) and the Endothermic
+ * Fridge (MTEEndothermicFridge: 256 parallels, a speed bonus that climbs to
+ * x1.5, 250 L/s cryotheum times that bonus). The workbook lets a one-amp
+ * hatch feed the Fridge at double voltage; kept as it is there.
+ */
+const VACUUM_FREEZERS = [
+  { key: "vacuum", name: "Vacuum Freezer", speed: 1, parallels: 1, euMultiplier: 1, cryotheum: 0 },
+  { key: "cryogenic", name: "Cryogenic Freezer", speed: 3, parallels: 16, euMultiplier: 0.9, cryotheum: 10 },
+  { key: "fridge", name: "Endothermic Fridge", speed: 1.5, parallels: 256, euMultiplier: 1, cryotheum: 375 },
+];
+
+const HATCH_TIERS = ["LV", "MV", "HV", "EV", "IV", "LuV", "ZPM", "UV", "UHV", "UEV", "UIV", "UMV", "UXV"];
+const hatchVoltage = (tier: string) => 32 * Math.pow(4, Math.max(0, HATCH_TIERS.indexOf(tier)));
+
+/**
+ * How many cells a minute one freezer recools and what it draws doing it:
+ * the workbook's parallels-then-overclock chain, sub-tick speed banked as
+ * extra parallels.
+ */
+export function freezerThroughput(
+  freezerKey: string,
+  hatchTier: string,
+  amps: number,
+  freezeTicks: number,
+): {
+  cellsPerMinute: number;
+  euPerTick: number;
+  parallels: number;
+  freezer: (typeof VACUUM_FREEZERS)[number];
+} {
+  const freezer = VACUUM_FREEZERS.find((entry) => entry.key === freezerKey) ?? VACUUM_FREEZERS[0];
+  const maxInput = hatchVoltage(hatchTier) * amps * (freezer.key === "fridge" && amps === 1 ? 2 : 1);
+  const parallels = Math.min(
+    Math.floor(maxInput / FREEZE_RECIPE_EUT / freezer.euMultiplier),
+    freezer.parallels,
+  );
+  if (parallels < 1) {
+    return { cellsPerMinute: 0, euPerTick: 0, parallels: 0, freezer };
+  }
+  const basePower = Math.ceil(FREEZE_RECIPE_EUT * parallels * freezer.euMultiplier);
+  const overclocks = Math.floor(Math.log(maxInput / Math.max(basePower, 32)) / Math.log(4));
+  const baseDuration = freezeTicks / freezer.speed;
+  const finalDuration = Math.max(1, Math.floor(baseDuration / Math.pow(2, overclocks)));
+  const neededOverclocks = Math.ceil(Math.log2(baseDuration));
+  const subtick = Math.ceil(
+    Math.pow(2, overclocks - neededOverclocks) *
+      (overclocks >= neededOverclocks ? Math.pow(2, neededOverclocks) / baseDuration : 1),
+  );
+  return {
+    cellsPerMinute: (parallels * 20 * 60 * subtick) / finalDuration,
+    euPerTick: Math.ceil(basePower * Math.pow(4, overclocks)),
+    parallels,
+    freezer,
+  };
+}
+
+/** The reactor's EU/t and the heat its cells take, on the fixed layout. */
+export function vacuumReactorRun(fuel: VacuumFuel, coreTempPercent: number) {
+  const pulses = 1 + Math.floor(fuel.cells / 2);
+  const euPerPulse = fuel.energy * NUKE_EU_PER_ENERGY;
+  const moxMultiplier = fuel.moxBonus ? 1 + fuel.moxBonus * (coreTempPercent / 100) : 1;
+  const baseHeat = (fuel.heat * fuel.cells) / 2;
+  const heatFor = (neighbours: number) =>
+    baseHeat * (pulses + neighbours) * (pulses + neighbours + 1);
+  let euPerTick = 0;
+  let totalHeat = 0;
+  for (const [neighbours, rods] of LAYOUT_RODS_BY_NEIGHBOURS) {
+    euPerTick += rods * fuel.cells * (pulses + neighbours) * euPerPulse;
+    totalHeat += rods * heatFor(neighbours);
+  }
+  return {
+    euPerTick: euPerTick * moxMultiplier,
+    moxMultiplier,
+    /**
+     * Heat a second into the average cell, the hottest (four three-neighbour
+     * rods pouring everything into it) and the coolest (half of a one-
+     * neighbour rod plus a two-neighbour rod), per the sheet's heat map.
+     */
+    cellHeat: {
+      average: totalHeat / LAYOUT_CELL_COUNT,
+      max: 4 * heatFor(3),
+      min: 0.5 * heatFor(1) + heatFor(2),
+    },
+  };
+}
 
 const vacuumReactor: PowerSourceDefinition = {
   id: "vacuum-reactor",
   name: "Vacuum Reactor",
   group: "reactors",
   unlock: "EV",
-  blurb: "Actively cooled nuke: coolant cells and a Vacuum Freezer.",
+  blurb: "Actively cooled nuke: coolant cells and a freezer.",
   settings: [
     {
       type: "select",
-      id: "design",
-      label: "Design",
-      options: VACUUM_DESIGNS.map(({ key, label }) => ({ key, label })),
-      defaultKey: "uranium",
+      id: "fuel",
+      label: "Fuel rod (x40)",
+      options: VACUUM_FUELS.map(({ key, label }) => ({ key, label })),
+      defaultKey: "uranium-4",
+    },
+    {
+      type: "select",
+      id: "coolant",
+      label: "Coolant cell (x14)",
+      options: VACUUM_COOLANTS.map(({ key, name }) => ({ key, label: name })),
+      defaultKey: "he-360k",
+    },
+    {
+      type: "number",
+      id: "coreTemp",
+      label: "Core temp",
+      min: 0,
+      max: 99,
+      step: 1,
+      defaultValue: 98,
+      unit: "%",
+    },
+    {
+      type: "select",
+      id: "freezer",
+      label: "Freezer",
+      options: VACUUM_FREEZERS.map(({ key, name }) => ({ key, label: name })),
+      defaultKey: "vacuum",
+    },
+    {
+      type: "select",
+      id: "freezerHatch",
+      label: "Freezer hatch",
+      options: HATCH_TIERS.map((tier) => ({ key: tier, label: tier })),
+      defaultKey: "HV",
+    },
+    {
+      type: "number",
+      id: "freezerAmps",
+      label: "Hatch amps",
+      min: 1,
+      max: 64,
+      step: 1,
+      defaultValue: 1,
     },
   ],
   compute(read): PowerModel {
-    const design =
-      VACUUM_DESIGNS.find((entry) => entry.key === read.select("design")) ?? VACUUM_DESIGNS[1];
-    const rodsPerSecond = design.rods / design.rodLife;
-    const warnings = [
-      `Coolant cells are recooled by a ${design.freezer}, not consumed. That loop and its power are not modeled.`,
+    const fuel = VACUUM_FUELS.find((entry) => entry.key === read.select("fuel")) ?? VACUUM_FUELS[0];
+    const coolant =
+      VACUUM_COOLANTS.find((entry) => entry.key === read.select("coolant")) ?? VACUUM_COOLANTS[0];
+    const coreTemp = read.number("coreTemp");
+    const run = vacuumReactorRun(fuel, coreTemp);
+    const rodsPerSecond = LAYOUT_ROD_COUNT / fuel.durability;
+    const freezing = freezerThroughput(
+      read.select("freezer"),
+      read.select("freezerHatch"),
+      read.number("freezerAmps"),
+      coolant.freezeTicks,
+    );
+    const cellLifeMin = coolant.durability / run.cellHeat.max;
+    const cellLifeAverage = coolant.durability / run.cellHeat.average;
+    const cellsPerMinute = (LAYOUT_CELL_COUNT / cellLifeAverage) * 60;
+    const freezersNeeded =
+      freezing.cellsPerMinute > 0 ? Math.ceil(cellsPerMinute / freezing.cellsPerMinute) : 0;
+
+    const warnings: string[] = [];
+    if (run.cellHeat.max > coolant.durability) {
+      warnings.push(
+        `${coolant.name} bursts: the hottest cell takes ${formatAmount(run.cellHeat.max)} heat a second and holds ${formatAmount(coolant.durability)}. Pick a bigger cell.`,
+      );
+    }
+    if (fuel.moxBonus) {
+      warnings.push(
+        `Core temp ${formatAmount(coreTemp)}% multiplies the output by ${formatAmount(run.moxMultiplier)}. The reactor melts at 100%.`,
+      );
+    }
+    if (freezing.parallels < 1) {
+      warnings.push(
+        `A ${read.select("freezerHatch")} hatch cannot run the ${freezing.freezer.name}'s 120 EU/t recipe.`,
+      );
+    }
+    warnings.push(
+      `Coolant cells are recooled by the ${freezing.freezer.name}, not consumed. That loop and its power are not modeled.`,
+    );
+    const stats = [
+      stat("Rod lifespan", lifespanHours(fuel.durability)),
+      stat(
+        "Cell heat",
+        `${formatAmount(run.cellHeat.average)}/s avg, ${formatAmount(run.cellHeat.max)}/s max`,
+      ),
+      stat(
+        "Coolant lifespan",
+        `${formatAmount(cellLifeMin)} s min, ${formatAmount(cellLifeAverage)} s avg`,
+      ),
+      stat("Cells to recool", `${formatAmount(cellsPerMinute)} a minute`),
     ];
-    if (design.hot) {
-      warnings.push("Runs at 98% Core Temp. The reactor melts down at 100%.");
+    if (freezing.parallels >= 1) {
+      stats.push(
+        stat(
+          "Freezers",
+          `${freezersNeeded} x ${freezing.freezer.name}: ${formatAmount(freezing.cellsPerMinute)} cells a minute, ${formatAmount(freezing.euPerTick)} EU/t each`,
+        ),
+      );
+      if (freezing.freezer.cryotheum > 0) {
+        stats.push(stat("Cryotheum", `${formatAmount(freezing.freezer.cryotheum)} L/s per freezer`));
+      }
     }
     return {
-      euPerTick: design.euPerTick,
-      inputs: [items(design.rod, rodsPerSecond)],
-      outputs: [items(design.depleted, rodsPerSecond)],
-      stats: [
-        stat("Coolant", design.coolant),
-        stat("Coolant lifespan", `${formatAmount(design.coolantLife)}s minimum`),
-        stat("Rod lifespan", lifespanHours(design.rodLife)),
-      ],
+      euPerTick: run.euPerTick,
+      inputs: [items(fuel.rod, rodsPerSecond)],
+      outputs: [items(fuel.depleted, rodsPerSecond)],
+      stats,
       warnings,
     };
   },

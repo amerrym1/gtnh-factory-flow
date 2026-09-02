@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.52.0",
+    date: "2026-09-02",
+    headline: "The Vacuum Reactor takes any fuel rod and any coolant cell",
+    notes: [
+      "Pick from every fuel rod in every size, The Core included, and every coolant cell.",
+      "MOX-type rods scale with a core temperature setting, each by its own bonus.",
+      "The card says how many cells need recooling and how many freezers of your choice that takes.",
+      "A coolant cell too small for the heat is called out before it bursts.",
+    ],
+  },
+  {
     version: "2.51.0",
     date: "2026-09-02",
     headline: "See what each item costs in EU, and big boards stop freezing",
