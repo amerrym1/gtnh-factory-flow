@@ -348,8 +348,9 @@ Working notes for future agents on GTNH Factory Flow.
   `CARD_W` wide and cards live in flex columns hung from one ring each
   (board-left under the build toolbar, board-right under the tool row and
   over the framing dock, the corner stack over the "?", the browser cards
-  inside the browser column, the legend cards - this plan, plan totals,
-  board windows, notices - over the inspector). Do not go back to per-card
+  inside the browser column, the legend cards - inputs and outputs, machines,
+  drawers, board windows, notices - over the inspector; the corner stack ends
+  in the plan card, arrowed down at the plan bar). Do not go back to per-card
   offsets. The glance layer only shows while the paint row is unfolded
   (`compact={isCompact || toolbarFold.paint}`), so with both columns open
   it needs a window about 1560px wide; narrower windows get the one-column

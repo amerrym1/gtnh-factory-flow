@@ -1,7 +1,5 @@
 import {
   Box,
-  Clapperboard,
-  Download,
   Eye,
   Factory,
   Focus,
@@ -13,6 +11,7 @@ import {
   RotateCcw,
   Search,
   Share2,
+  Store,
   Sigma,
   SlidersHorizontal,
   Sprout,
@@ -20,7 +19,6 @@ import {
   Trash2,
   TriangleAlert,
   Undo2,
-  Upload,
   Volume2,
   Zap,
 } from "lucide-react";
@@ -133,8 +131,7 @@ const TOOLS: HelpCard = {
     { icon: Sigma, text: "*Solve*: type amounts, get counts" },
     { icon: SlidersHorizontal, text: "*Rules*: free ports, loose cells" },
     { icon: Network, text: "*Arrange* the loose cards" },
-    { icon: Volume2, text: "Mute the sounds" },
-    { icon: Clapperboard, text: "*Watch it build*" },
+    { icon: Volume2, text: "Mute; and *watch it build*" },
     { icon: Eye, text: "*View*: paper, wires, motion" },
   ],
 };
@@ -210,24 +207,24 @@ const RECIPE_SEARCH: HelpCard = {
   ],
 };
 
-const THIS_PLAN: HelpCard = {
-  title: "This plan",
-  rows: [
-    { icon: Share2, text: "Share it with everyone" },
-    { icon: Upload, text: "Import a plan: JSON or image" },
-    { icon: Download, text: "*Export*: image, JSON, diagnostics" },
-  ],
-};
-
 const PLAN_TOTALS: HelpCard = {
-  title: "Plan totals",
+  title: "Inputs and outputs",
   rows: [
     { chip: "INPUTS", tone: "need", text: "Bring this in yourself" },
     { chip: "OUTPUTS", tone: "output", text: "Leaves the plan" },
     { chip: "INTERNAL", tone: "internal", text: "Made and used here" },
     { chip: "RAW/NET", text: "Raw, or the net balance" },
-    { chip: "PEAK/AVG", text: "EU at full, or as run" },
     { text: "Hover a row to light it" },
+  ],
+};
+
+const MACHINES: HelpCard = {
+  title: "Machines",
+  rows: [
+    { icon: Store, text: "What to build, by tier" },
+    { chip: "PEAK/AVG", text: "EU at full, or as run" },
+    { chip: "USED", text: "Ledger, with generators" },
+    { mouse: "left", text: "Click a row: go to it" },
   ],
 };
 
@@ -236,7 +233,7 @@ const PLAN_CARD: HelpCard = {
   rows: [
     { text: "This plan's *icon, name and blurb*" },
     { icon: Share2, text: "Sharing posts them as its face" },
-    { icon: RotateCcw, text: "An opened setup can *reset to the post*" },
+    { icon: RotateCcw, text: "A setup you opened can *reset*" },
   ],
 };
 
@@ -294,8 +291,8 @@ const LINEAR: HelpCard[] = [
   BOARDS,
   LEFT_COLUMN,
   RECIPE_SEARCH,
-  THIS_PLAN,
   PLAN_TOTALS,
+  MACHINES,
   PLAN_CARD,
   NOTICES,
 ];
@@ -373,11 +370,12 @@ type GlanceLayout = {
  * Where everything goes, from the measured rings.
  *
  * Board-left hangs under the build toolbar; the corner stack grows up from
- * the "?"; board-right hangs under the tool row and a second board-right
- * stack sits over the framing dock; the browser cards sit inside the browser
- * column; the legend cards sit over the inspector. A closed panel takes its
- * own cards with it (nothing to explain) and the legend column moves onto
- * the board's extra width.
+ * the "?" and its bottom card points down at the plan bar; board-right hangs
+ * under the tool row and a second board-right stack sits over the framing
+ * dock; the browser cards sit inside the browser column; the legend cards
+ * sit over the inspector. A closed panel takes its own cards with it
+ * (nothing to explain) and the legend column moves onto the board's extra
+ * width.
  */
 function layoutGlance({ rects, button, vw, vh }: Measured): GlanceLayout {
   const rings: HelpRect[] = [];
@@ -389,7 +387,7 @@ function layoutGlance({ rects, button, vw, vh }: Measured): GlanceLayout {
   const dock = rects.glance;
   const browser = rects.browser;
   const inspector = rects.inspector;
-  const planActions = rects["plan-actions"];
+  const planBar = rects["plan-card"];
 
   // The x the whole right side is hung from: the tool row's right edge,
   // which is also the framing dock's.
@@ -402,7 +400,7 @@ function layoutGlance({ rects, button, vw, vh }: Measured): GlanceLayout {
     columns.push({
       key: "board-left",
       style: { left: build.left, top, width: CARD_W },
-      cards: [BUILD, ON_A_CARD],
+      cards: [BUILD],
     });
     const x = clamp((ring.left + ring.right) / 2, build.left + 24, build.left + CARD_W - 24);
     arrows.push({ points: [{ x, y: top }, { x, y: ring.bottom }] });
@@ -416,7 +414,7 @@ function layoutGlance({ rects, button, vw, vh }: Measured): GlanceLayout {
     columns.push({
       key: "board-right",
       style: { left, top, width: CARD_W },
-      cards: [TOOLS, DRAWERS],
+      cards: [TOOLS, ON_A_CARD],
     });
     const x = clamp((ring.left + ring.right) / 2, left + 24, left + CARD_W - 24);
     arrows.push({ points: [{ x, y: top }, { x, y: ring.bottom }] });
@@ -437,11 +435,20 @@ function layoutGlance({ rects, button, vw, vh }: Measured): GlanceLayout {
   }
 
   if (button) {
+    const bottom = button.top - 10;
     columns.push({
       key: "corner",
-      style: { left: button.left, bottom: vh - button.top + 10, width: CARD_W },
-      cards: [MOVES],
+      style: { left: button.left, bottom: vh - bottom, width: CARD_W },
+      cards: [MOVES, PLAN_CARD],
     });
+    if (planBar && planBar.top > bottom + ARROW_HEAD) {
+      // The plan bar runs the whole width of the board's foot, so the arrow
+      // drops from the stack's bottom card wherever it clears the button.
+      const ring = padRect(planBar);
+      rings.push(planBar);
+      const x = clamp(button.right + 120, button.left + 24, button.left + CARD_W - 24);
+      arrows.push({ points: [{ x, y: bottom }, { x, y: ring.top }] });
+    }
   }
 
   if (browser) {
@@ -459,28 +466,11 @@ function layoutGlance({ rects, button, vw, vh }: Measured): GlanceLayout {
     ? inspector.left + Math.max(6, (inspector.right - inspector.left - CARD_W) / 2)
     : rightEdge - CARD_W - CARD_GAP - CARD_W;
   const legendCards = inspector
-    ? [THIS_PLAN, PLAN_TOTALS, BOARDS, NOTICES]
-    : [THIS_PLAN, BOARDS, NOTICES];
-  let legendTop = (toolRow ? padRect(toolRow).bottom : 80) + CALLOUT_GAP;
-  if (inspector && planActions) {
-    // Over the inspector the column starts right under the header, and the
-    // plan card's arrow climbs to the header's plan buttons and elbows
-    // across to them: the card cannot sit beside a 28px-tall ring.
-    const ring = padRect(planActions);
-    rings.push(planActions);
-    legendTop = ring.bottom + CALLOUT_GAP + 5;
-    const cy = (ring.top + ring.bottom) / 2;
-    const x = legendLeft + 28;
-    if (x > ring.right) {
-      arrows.push({
-        points: [
-          { x, y: legendTop },
-          { x, y: cy },
-          { x: ring.right, y: cy },
-        ],
-      });
-    }
-  }
+    ? [PLAN_TOTALS, MACHINES, DRAWERS, BOARDS, NOTICES]
+    : [DRAWERS, BOARDS, NOTICES];
+  const legendTop = inspector
+    ? inspector.top + 12
+    : (toolRow ? padRect(toolRow).bottom : 80) + CALLOUT_GAP;
   columns.push({
     key: "legend",
     style: { left: legendLeft, top: legendTop, width: CARD_W },
