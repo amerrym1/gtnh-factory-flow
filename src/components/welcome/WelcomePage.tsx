@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ArrowRight,
   Download,
   Factory,
   Plus,
@@ -46,7 +45,7 @@ import { WelcomeBackdrop } from "./WelcomeBackdrop";
  * arriving here.
  */
 
-const COMMUNITY_TILE_COUNT = 18;
+const COMMUNITY_TILE_COUNT = 15;
 /** How many of the pack's most-used items the backdrop gets to drift. */
 const BACKDROP_ICON_COUNT = 60;
 
@@ -182,16 +181,16 @@ export function WelcomePage() {
                 <button
                   type="button"
                   onClick={() => setChangelogOpen(true)}
-                  className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-bold text-cyan-300 hover:text-cyan-200"
+                  className="mt-2 inline-flex items-center gap-1 text-[11px] text-cyan-300 hover:text-cyan-200"
                 >
-                  <ScrollText className="h-3.5 w-3.5" aria-hidden />
+                  <ScrollText className="h-3 w-3" aria-hidden />
                   All release notes
                 </button>
               </div>
             </section>
           ) : null}
 
-          <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
+          <footer className="border-t border-line pt-3">
             <label className="flex w-fit cursor-pointer items-center gap-2 text-[12px] text-fg-muted hover:text-fg">
               <input
                 type="checkbox"
@@ -201,14 +200,6 @@ export function WelcomePage() {
               />
               Open on this tab when I arrive
             </label>
-            <button
-              type="button"
-              onClick={leaveWelcomeTab}
-              className="inline-flex items-center gap-1.5 text-[12px] font-bold text-fg-muted hover:text-fg"
-            >
-              To the board
-              <ArrowRight className="h-3.5 w-3.5" aria-hidden />
-            </button>
           </footer>
         </div>
       </div>
@@ -240,7 +231,7 @@ function PrimaryButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-9 items-center gap-2 border-2 border-cyan-300 bg-cyan-400 px-3.5 text-[13px] font-black text-[#062026] shadow-[4px_4px_0_rgba(0,0,0,0.45)] hover:bg-cyan-300 active:translate-x-px active:translate-y-px active:shadow-[2px_2px_0_rgba(0,0,0,0.45)]"
+      className="inline-flex h-9 items-center gap-2 border-2 border-cyan-300 bg-cyan-400 px-3.5 text-[13px] font-bold text-[#062026] shadow-[4px_4px_0_rgba(0,0,0,0.45)] hover:bg-cyan-300 active:translate-x-px active:translate-y-px active:shadow-[2px_2px_0_rgba(0,0,0,0.45)]"
     >
       <Icon className="h-4 w-4" aria-hidden />
       {children}
