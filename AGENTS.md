@@ -681,6 +681,12 @@ Working notes for future agents on GTNH Factory Flow.
   numbers live.
 - Routing must stay deterministic for the same graph state, independent of
   zoom and render order (edges are solved in routeIndex order).
+- Boards past `ASYNC_ROUTE_EDGE_LIMIT` wires solve in a Web Worker
+  (`grid-route-solve.ts`); the render serves the installed routes until
+  the answer lands. Same pure function, same routes; only the thread differs.
+  Small boards stay synchronous. Do not put a flat pop cap back in the A*:
+  the cap scales with the window, and a wire that fails is walled in
+  (`SEALED`), not out of budget. See the routing section of ARCHITECTURE.md.
 - Edge rate labels are a VIEW mode, off by default: the tag button in the
   board toolbar shows lean rate pills on the lines. No dragging, no popover.
 

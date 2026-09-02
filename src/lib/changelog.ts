@@ -73,6 +73,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.50.2",
+    date: "2026-09-01",
+    headline: "Big boards stop freezing when you move or edit a card",
+    notes: [
+      "Wires on a large board reroute many times faster.",
+      "On a big board the wires reroute in the background, so dragging and typing never wait for them.",
+      "Long wires between boards that used to be drawn straight through cards now find their way round.",
+    ],
+  },
+  {
     version: "2.50.1",
     date: "2026-09-01",
     headline: "The board toolbars stop crossing on narrow boards",

@@ -255,6 +255,13 @@ import {
   type GridRouteRequest,
 } from "./grid-edge-router";
 import {
+  ASYNC_ROUTE_EDGE_LIMIT,
+  routeWorkerAvailable,
+  scheduleRouteSolve,
+  setRouteSolveSink,
+  type RouteSolveResult,
+} from "./grid-route-solve";
+import {
   CUSTOM_RATE_ANY_RESOURCE_ID,
   getCustomRateSlot,
   isCustomRateNodeId,
@@ -1036,6 +1043,19 @@ let gridSolveSignature = "";
 let gridSolveInputsStamp = 0;
 let gridSolveCheckedStamp = -1;
 let gridSolveCheckedEpoch = -1;
+/**
+ * Every solve the board asks for gets the next number, and a worker answer
+ * installs only if it is newer than what is installed. A late answer to a
+ * superseded drag beat still lands (the wires catch up progressively) but
+ * never over a fresher one - including a synchronous solve that ran because
+ * the board shrank under the async limit while the worker was busy.
+ */
+let gridSolveRequestSeq = 0;
+let gridSolveInstalledSeq = 0;
+/** The signature most recently asked for, solved or still in the worker. */
+let gridSolveWantedSignature = "";
+/** How the board re-issues its edges when worker routes land. */
+let routeSolveRerender: (() => void) | undefined;
 
 function pointListsEqual(
   a: Array<{ x: number; y: number }> | undefined,
@@ -1346,10 +1366,12 @@ function ensureGridSolve() {
     .join(";");
 
   const signature = `${publishedGridFreeDock ? "free" : "ports"}::${sweep.hash}::${framesPart}::${parts.join(";")}`;
-  if (signature === gridSolveSignature) {
+  if (signature === gridSolveSignature || signature === gridSolveWantedSignature) {
     return;
   }
-  gridSolveSignature = signature;
+  gridSolveWantedSignature = signature;
+  gridSolveRequestSeq += 1;
+  const seq = gridSolveRequestSeq;
 
   // The signature actually moved: now pay for the free-dock perimeters.
   for (const input of deferredInputs) {
@@ -1375,6 +1397,17 @@ function ensureGridSolve() {
     ...sweep.bounds.map((entry) => ({ id: entry.id, ...entry.bounds })),
     ...frames.map((entry) => ({ id: entry.id, ...entry.bounds })),
   ];
+  // A big board routes in the worker (`grid-route-solve.ts`): this render
+  // keeps serving the routes already installed - `gridSolveSignature` does
+  // not move until the answer lands - and `installSolvedRoutes` re-issues
+  // the edges then. A small board still solves right here, synchronously,
+  // so its wires never lag a frame behind the card they are attached to.
+  if (requests.length > ASYNC_ROUTE_EDGE_LIMIT && routeWorkerAvailable()) {
+    scheduleRouteSolve({ signature, seq, obstacles, requests });
+    return;
+  }
+  gridSolveSignature = signature;
+  gridSolveInstalledSeq = seq;
   const solved = solveGridRoutes(obstacles, requests);
   for (const [edgeId, routed] of solved) {
     if (routed.points.length < 2) {
@@ -1393,6 +1426,35 @@ function ensureGridSolve() {
   routeCacheGrewThisPass = true;
 }
 
+/**
+ * Worker routes landing. Installed exactly as the synchronous path installs
+ * its own, then the board is asked to re-issue its edges, which read the
+ * fresh cache and morph onto the new lines. Stale answers (older than what
+ * is installed) are dropped; see `gridSolveRequestSeq`.
+ */
+function installSolvedRoutes(result: RouteSolveResult) {
+  if (result.seq <= gridSolveInstalledSeq) {
+    return;
+  }
+  gridSolveInstalledSeq = result.seq;
+  gridSolveSignature = result.signature;
+  for (const routed of result.routes) {
+    if (routed.points.length < 2) {
+      deleteDirectRoute(routed.edgeId);
+      continue;
+    }
+    setDirectRoute(routed.edgeId, {
+      signature: result.signature,
+      routeIndex: routed.order,
+      route: buildRoutedEdgePath(routed.points),
+      segments: getPolylineSegments(routed.points),
+    });
+  }
+  routeCacheGrewThisPass = true;
+  routeSolveRerender?.();
+}
+setRouteSolveSink(installSolvedRoutes);
+
 function clearDirectRoutes() {
   directRouteCache.clear();
   routeSegmentGrid.clear();
@@ -1400,6 +1462,7 @@ function clearDirectRoutes() {
   // The cache is the solve's output: with it gone, an unchanged signature
   // must not short-circuit the next ensureGridSolve into doing nothing.
   gridSolveSignature = "";
+  gridSolveWantedSignature = "";
   gridSolveCheckedStamp = -1;
 }
 
@@ -2106,6 +2169,13 @@ export function FactoryFlow() {
   const [annotationDraft, setAnnotationDraft] = useState<AnnotationDraft | undefined>(undefined);
   const annotationDraftRef = useRef<AnnotationDraft | undefined>(undefined);
   const [layoutVersion, setLayoutVersion] = useState(0);
+  // Worker routes land outside any render; this is how they reach the edges.
+  useEffect(() => {
+    routeSolveRerender = () => setLayoutVersion((version) => version + 1);
+    return () => {
+      routeSolveRerender = undefined;
+    };
+  }, []);
   // Bumped whenever a paste/wrap/blueprint-load hands the selection to
   // fresh cards. React Flow keeps its band-selection GROUP RECTANGLE up
   // through that handoff, parked over the new card and eating every click —
