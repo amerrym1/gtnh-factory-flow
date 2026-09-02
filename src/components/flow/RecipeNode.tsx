@@ -2133,7 +2133,7 @@ function GlanceMachineArt({
 
 /**
  * An energy reading as a number with a small grey tail: "200" and then
- * "EU/Item" a size down in the rate grey. The number carries the gold and
+ * "EU/Item" a size down in the same amber. The number carries the eye and
  * the eye; the unit only has to be there.
  */
 function EnergyReading({

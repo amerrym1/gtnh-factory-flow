@@ -1559,7 +1559,7 @@ const FlowResourceRow = memo(function FlowResourceRow({
               // cost drifting on its own.
               <>
                 {formatEnergyPerUnitParts(euEach, balance.kind).value}
-                <span className="ml-0.5 text-[10px] font-semibold text-fg-muted">
+                <span className="ml-0.5 text-[10px] font-medium text-[#8c7d4c]">
                   {formatEnergyPerUnitParts(euEach, balance.kind).unit}
                 </span>
               </>

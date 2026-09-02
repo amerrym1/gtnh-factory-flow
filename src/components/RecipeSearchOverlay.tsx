@@ -2146,10 +2146,10 @@ function ResourceChip({
         {amountText.unit ? (
           <span
             className={[
-              "ml-0.5 font-bold text-[var(--mc-ink-muted)]",
-              // The energy unit is a tail, not part of the number: a size
-              // down again, in the same grey as every other unit here.
-              amountText.energy ? "text-[10px] font-semibold" : "text-[11px]",
+              "ml-0.5 font-bold",
+              // The energy unit is a tail, not part of the number: a size down
+              // again, in the greyed gold that sits under the reading.
+              amountText.energy ? "text-[10px] font-medium text-[#8c7d4c]" : "text-[11px] text-[var(--mc-ink-muted)]",
             ].join(" ")}
           >
             {amountText.unit}

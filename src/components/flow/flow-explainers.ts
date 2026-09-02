@@ -1,7 +1,8 @@
 import type { EdgeThroughput, FactoryProject, ThroughputResult } from "@/lib/model/types";
 import { formatCompact, formatNumberWithThousands, formatRate, makeResourceKey } from "@/lib/model";
 import {
-  energyPerUnitSuffix,
+  energyPerUnitDisplaySuffix,
+  energyPerUnitDisplayValue,
   isEnergyRateUnit,
   rateMultiplierForKind,
   rateSuffixForKind,
@@ -91,25 +92,28 @@ export function formatSlotRateBare(value: number, kind = "item"): string {
  */
 export const ENERGY_READING_TEXT = "text-amber-300";
 
-/** "200 EU each" / "2.5 EU/L": the energy reading an output wears. */
+/** "200 EU/Item" / "2.5 EU/L" - or "6.25 A LV/Item" under the amps dial: a canvas energy reading. */
 export function formatEnergyPerUnit(euPerUnit: number, kind: string): string {
-  return `${formatCompact(euPerUnit)}${energyPerUnitSuffix(kind)}`;
+  return `${formatCompact(energyPerUnitDisplayValue(euPerUnit))}${energyPerUnitDisplaySuffix(kind)}`;
 }
 
 /**
  * The same reading in two pieces, for surfaces that draw the unit as a
- * smaller, greyer tail after the number: "200" and "EU each". The number
+ * smaller, greyer tail after the number: "200" and "EU/Item". The number
  * is the reading; the unit only has to be there.
  */
 export function formatEnergyPerUnitParts(
   euPerUnit: number,
   kind: string,
 ): { value: string; unit: string } {
-  return { value: formatCompact(euPerUnit), unit: energyPerUnitSuffix(kind).trim() };
+  return {
+    value: formatCompact(energyPerUnitDisplayValue(euPerUnit)),
+    unit: energyPerUnitDisplaySuffix(kind).trim(),
+  };
 }
 
-/** The tail's ink: the muted rate grey, a size down, whichever gold the number is. */
-export const ENERGY_UNIT_TEXT = "ml-0.5 font-semibold text-[var(--mc-ink-muted)]";
+/** The tail: a size down, in a greyed gold - the subtitle shade under the number's. */
+export const ENERGY_UNIT_TEXT = "ml-0.5 font-medium text-[#8c7d4c]";
 
 /**
  * This port reads as energy per unit right now: the EU unit is on and the

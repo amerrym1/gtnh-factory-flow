@@ -66,9 +66,30 @@ export function energyPerUnit(euPerTick: number, perSecond: number): number | un
   return (Math.max(0, euPerTick) * 20) / perSecond;
 }
 
-/** The label an energy reading wears: "EU/Item" for items, "EU/L" for fluids. */
+/**
+ * The label an energy reading wears in plain EU: "EU/Item" for items,
+ * "EU/L" for fluids. The recipe browser's reading, which is a reference and
+ * ignores every board dial.
+ */
 export function energyPerUnitSuffix(kind: string): string {
   return kind === "fluid" ? " EU/L" : " EU/Item";
+}
+
+/**
+ * The CANVAS reading follows the power dial (below): in EU/t mode it is EU
+ * per unit, in amps-of-a-tier mode it is that tier's amps per unit - the
+ * EU divided by the tier's voltage, "6.25 A LV/Item" for a 200 EU item.
+ * Jack asked for it in those words: if the board is being read in LV amps,
+ * the cost of an item is read in LV amps too. Cards and the panel take
+ * these two; the browser takes the plain pair above.
+ */
+export function energyPerUnitDisplayValue(euPerUnit: number): number {
+  return powerState.unit === "eu" ? euPerUnit : euPerUnit / getVoltageTierMaxEuT(powerState.unit);
+}
+
+export function energyPerUnitDisplaySuffix(kind: string): string {
+  const per = kind === "fluid" ? "L" : "Item";
+  return powerState.unit === "eu" ? ` EU/${per}` : ` A ${powerState.unit}/${per}`;
 }
 
 /** Multiply a per-second figure by this before display. */
