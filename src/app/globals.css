@@ -182,6 +182,34 @@
   animation: resource-row-expand 130ms ease-out;
 }
 
+/*
+ * The item search box, lit for a moment when something outside the column
+ * (the Welcome page's "Find a recipe") lands the cursor in it. Two beats of
+ * the app's cyan ring, then back to plain.
+ */
+.search-box-flash {
+  animation: search-box-flash 1.4s ease-out;
+}
+
+@keyframes search-box-flash {
+  0%,
+  45% {
+    border-color: #22d3ee;
+    box-shadow:
+      inset 1px 1px 0 rgba(255, 255, 255, 0.08),
+      0 0 0 3px rgba(34, 211, 238, 0.45);
+  }
+  22%,
+  70% {
+    border-color: #404040;
+    box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.08);
+  }
+  100% {
+    border-color: #404040;
+    box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.08);
+  }
+}
+
 @keyframes resource-row-expand {
   from {
     width: var(--row-start-width, 100%);

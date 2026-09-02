@@ -45,7 +45,11 @@ import type { RecipeInputPicks, TierFilter } from "@/store/factory-store";
 import type { Recipe, ResourceAmount } from "@/lib/model/types";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { OPEN_SETUPS_EVENT } from "@/lib/setups-tab";
-import { OPEN_SIDEBAR_TAB_EVENT, takePendingSidebarTab } from "@/lib/sidebar-tab";
+import {
+  OPEN_SIDEBAR_TAB_EVENT,
+  takePendingSearchFocus,
+  takePendingSidebarTab,
+} from "@/lib/sidebar-tab";
 import { writeWorkspaceView } from "@/lib/workspace-view";
 import { useIsCompactViewport } from "@/lib/compact-view";
 import { isEchoOfTouch } from "@/lib/pointer-kind";
@@ -138,7 +142,7 @@ const RESOURCE_FILTER_CHOICES: Array<{
   { mode: "item", label: "Items", title: "Items" },
   { mode: "fluid", label: "Fluids", title: "Fluids" },
   { mode: "board", label: "Placed", title: "On this board" },
-  { mode: "plants", label: "Plants", title: "Grown" },
+  { mode: "plants", label: "CropsNH", title: "Grown" },
   { mode: "bees", label: "Bees", title: "From bees" },
 ];
 
@@ -278,6 +282,42 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const [sidebarMode, setSidebarMode] = useState<"items" | "blueprints" | "setups">(
     () => takePendingSidebarTab() ?? "items",
   );
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  // A request that wanted the search box focused, collected on mount the way
+  // the tab is (the panel may have been closed when it was made).
+  const [pendingSearchFocus, setPendingSearchFocus] = useState(() => takePendingSearchFocus());
+  // The box lights up for a moment as well as taking the cursor: a caret
+  // alone is easy to miss, and "Find a recipe" has to visibly do something.
+  const [isSearchFlashing, setSearchFlashing] = useState(false);
+  useEffect(() => {
+    if (!pendingSearchFocus || sidebarMode !== "items") {
+      return;
+    }
+    setPendingSearchFocus(false);
+    setSearchFlashing(true);
+    // A freshly mounted column paints its search box a few frames in, so
+    // the focus keeps trying for up to a second rather than firing once
+    // into an empty ref. The loop is deliberately NOT cancelled by the
+    // cleanup: the setPendingSearchFocus above re-runs this effect at once,
+    // and a cleanup that cancelled the frame killed the focus before it
+    // could land. After an unmount the ref is empty and the loop just runs
+    // out.
+    let tries = 0;
+    const tryFocus = () => {
+      const input = searchInputRef.current;
+      if (input) {
+        input.focus();
+        input.select();
+        return;
+      }
+      if (tries++ < 60) {
+        window.requestAnimationFrame(tryFocus);
+      }
+    };
+    window.requestAnimationFrame(tryFocus);
+    // Same story for the flash: left to run out on its own.
+    window.setTimeout(() => setSearchFlashing(false), 1400);
+  }, [pendingSearchFocus, sidebarMode]);
   const [resourceMods, setResourceMods] = useState<Array<{ id: string; count: number }>>([]);
   const [resourceSearchOutcome, setResourceSearchOutcome] = useState<SearchOutcome>(EXACT_SEARCH);
   const [resourceQueryLoading, setResourceQueryLoading] = useState(false);
@@ -373,13 +413,16 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     return () => window.removeEventListener(OPEN_SETUPS_EVENT, openSetups);
   }, []);
 
-  // And the general form of the same thing: the guided tour walks all three
-  // tabs, so it needs to be able to name one.
+  // And the general form of the same thing: anything outside the column can
+  // ask for a tab by name, and for the cursor in the search box.
   useEffect(() => {
     const openTab = () => {
       const tab = takePendingSidebarTab();
       if (tab) {
         setSidebarMode(tab);
+      }
+      if (takePendingSearchFocus()) {
+        setPendingSearchFocus(true);
       }
     };
     window.addEventListener(OPEN_SIDEBAR_TAB_EVENT, openTab);
@@ -1211,9 +1254,15 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             {/* 16px text on a phone, deliberately: below that, iOS zooms the
                 whole page in the moment the field takes focus, and the way back
                 out is a pinch. */}
-            <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2 text-sm compact:text-base text-neutral-200 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]">
+            <label
+              className={[
+                "flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2 text-sm compact:text-base text-neutral-200 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]",
+                isSearchFlashing ? "search-box-flash" : "",
+              ].join(" ")}
+            >
               <Search className="h-4 w-4 text-neutral-500" />
               <input
+                ref={searchInputRef}
                 value={recipeSearch}
                 onChange={(event) => {
                   const value = event.target.value;

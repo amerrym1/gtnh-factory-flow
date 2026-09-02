@@ -150,7 +150,7 @@ export function WelcomePage() {
                 icon={Search}
                 onClick={() => {
                   writeWorkspaceView({ leftPanelOpen: true });
-                  openSidebarTab("items");
+                  openSidebarTab("items", { focusSearch: true });
                 }}
               >
                 Find a recipe
