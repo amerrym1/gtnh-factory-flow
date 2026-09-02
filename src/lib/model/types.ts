@@ -633,7 +633,7 @@ export interface PlanViewState {
   /** Historical: older plans carry it, nothing applies it. The smart view is
    * personal, and opening a setup always starts on the identity view. */
   glanceMode?: string;
-  rateUnit?: "tick" | "second" | "minute" | "hour";
+  rateUnit?: "tick" | "second" | "minute" | "hour" | "eu";
   leftPanelOpen?: boolean;
   rightPanelOpen?: boolean;
   showHiddenResources?: boolean;

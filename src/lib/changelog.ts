@@ -73,13 +73,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "2.50.2",
-    date: "2026-09-01",
-    headline: "Big boards stop freezing when you move or edit a card",
+    version: "2.51.0",
+    date: "2026-09-02",
+    headline: "See what each item costs in EU, and big boards stop freezing",
     notes: [
-      "Wires on a large board reroute many times faster.",
-      "On a big board the wires reroute in the background, so dragging and typing never wait for them.",
-      "Long wires between boards that used to be drawn straight through cards now find their way round.",
+      "The rate key and the recipe search have a gold EU setting: every output reads the EU it cost to make, per item or per litre.",
+      "In that setting the Outputs list reads what the whole board spent per unit of each product.",
+      "Wires on a large board reroute many times faster and in the background, so dragging never waits for them.",
       "Hold Shift or the Windows key to pause the moving wires for a screenshot.",
     ],
   },

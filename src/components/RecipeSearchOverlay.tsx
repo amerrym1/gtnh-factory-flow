@@ -20,7 +20,10 @@ import {
   resourceMatchesInput,
 } from "@/lib/model";
 import type { MachineTier, ResourceAmount } from "@/lib/model/types";
-import type { RateUnit } from "@/lib/model/rate-unit";
+import { energyPerUnitSuffix, type TimeRateUnit } from "@/lib/model/rate-unit";
+import { formatCompact } from "@/lib/model/resources";
+import { playBoardSound } from "@/lib/board-sounds";
+import { ENERGY_READING_TEXT } from "./flow/flow-explainers";
 import { GT_TIER_COLORS } from "./flow/tier-colors";
 import type { RecipeInputPicks, TierFilter } from "@/store/factory-store";
 import {
@@ -66,9 +69,14 @@ export interface StencilClause
  * craft), or as rates over the recipe's own duration - one machine, full
  * speed, no overclock, exactly the nameplate figures a card gets on the board.
  */
-type RateView = "recipe" | RateUnit | "ratio";
+// "eu" is the board's gold reading brought here: each OUTPUT chip reads the
+// EU one machine spends per unit of it at the recipe's own tier (no
+// overclock) - the number to compare two recipes for the same thing by.
+// Inputs read as written under it, exactly as the board keeps inputs per
+// second: energy per unit consumed answers nothing.
+type RateView = "recipe" | TimeRateUnit | "ratio" | "eu";
 
-const RATE_VIEW_UNITS: Record<RateUnit, { multiplier: number; per: string }> = {
+const RATE_VIEW_UNITS: Record<TimeRateUnit, { multiplier: number; per: string }> = {
   tick: { multiplier: 1 / 20, per: "t" },
   second: { multiplier: 1, per: "s" },
   minute: { multiplier: 60, per: "min" },
@@ -85,6 +93,11 @@ const RATE_VIEW_CHOICES: Array<{ view: RateView; label: string; title: string }>
     view: "ratio",
     label: "Ratio",
     title: "Amounts reduced to lowest terms; time plays no part",
+  },
+  {
+    view: "eu",
+    label: "EU",
+    title: "EU spent per unit of each output, one machine at the recipe's own tier",
   },
 ];
 
@@ -603,7 +616,13 @@ export function RecipeSearchOverlay({
           label={choice.label}
           title={choice.title}
           active={rateView === choice.view}
-          onClick={() => changeRateView(choice.view)}
+          gold={choice.view === "eu"}
+          onClick={() => {
+            if (choice.view === "eu" && rateView !== "eu") {
+              playBoardSound("dialEnergy");
+            }
+            changeRateView(choice.view);
+          }}
         />
       ))}
     </span>
@@ -1211,11 +1230,14 @@ function OpPill({
   label,
   title,
   active,
+  gold = false,
   onClick,
 }: {
   label: string;
   title: string;
   active: boolean;
+  /** The EU view's pill wears the board's gold, pressed or not. */
+  gold?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -1227,8 +1249,12 @@ function OpPill({
       className={[
         "h-5 shrink-0 whitespace-nowrap px-1.5 text-[10px] font-bold uppercase tracking-[0.1em] compact:px-1 compact:text-[9px] compact:tracking-normal",
         active
-          ? "bg-[var(--mc-85)] text-white shadow-[inset_1px_1px_0_var(--mc-100)]"
-          : "text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]",
+          ? gold
+            ? "bg-[#f5c542] text-black shadow-[inset_1px_1px_0_#fbe28a]"
+            : "bg-[var(--mc-85)] text-white shadow-[inset_1px_1px_0_var(--mc-100)]"
+          : gold
+            ? "text-[#c9a437] hover:text-[#f5c542]"
+            : "text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]",
       ].join(" ")}
     >
       {label}
@@ -1695,7 +1721,11 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
               key={`out-${index}`}
               resource={output}
               hit={makesClauses.some((clause) => clauseMatchesOutput(clause, output))}
-              amountText={formatChipAmount(output, rateView, durationTicks, ratioDivisor)}
+              amountText={
+                rateView === "eu"
+                  ? formatChipEnergy(output, eut, durationTicks)
+                  : formatChipAmount(output, rateView, durationTicks, ratioDivisor)
+              }
               chance={"chance" in output ? output.chance : undefined}
               onBrowseResource={onBrowseResource}
               onMenu={(event) => onChipMenu(event, { ...output, amount: 1 })}
@@ -1732,10 +1762,10 @@ function powerDialNote(
 /** Per-second power flows in the card's chosen reading; no craft, no ratio. */
 function formatPowerChipAmount(kind: string, perSecond: number, rateView: RateView): ChipAmount {
   const unit =
-    rateView === "recipe" || rateView === "ratio"
+    rateView === "recipe" || rateView === "ratio" || rateView === "eu"
       ? RATE_VIEW_UNITS.second
       : RATE_VIEW_UNITS[rateView];
-  const per = rateView === "recipe" || rateView === "ratio" ? "s" : unit.per;
+  const per = unit.per;
   const value = perSecond * unit.multiplier;
   const text = trimTrailingZeros(formatRate(value, value >= 100 ? 0 : value >= 10 ? 1 : 2));
   return kind === "fluid" ? { text, unit: `L/${per}` } : { text, unit: `/${per}` };
@@ -2104,10 +2134,20 @@ function ResourceChip({
       <span className="min-w-0 flex-1 truncate text-[15px] font-bold text-[var(--mc-ink)]">
         {resource.displayName ?? resource.id}
       </span>
-      <span className="shrink-0 text-[16px] font-bold text-[var(--mc-ink)] tabular-nums">
+      <span
+        className={[
+          "shrink-0 text-[16px] font-bold tabular-nums",
+          amountText.energy ? ENERGY_READING_TEXT : "text-[var(--mc-ink)]",
+        ].join(" ")}
+      >
         {amountText.text}
         {amountText.unit ? (
-          <span className="ml-0.5 text-[11px] font-bold text-[var(--mc-ink-muted)]">
+          <span
+            className={[
+              "ml-0.5 text-[11px] font-bold",
+              amountText.energy ? "opacity-80" : "text-[var(--mc-ink-muted)]",
+            ].join(" ")}
+          >
             {amountText.unit}
           </span>
         ) : null}
@@ -2194,6 +2234,24 @@ function clauseMatchesOutput(clause: StencilClause, output: ResourceAmount): boo
 interface ChipAmount {
   text: string;
   unit?: string;
+  /** An EU-per-unit reading: drawn in the board's gold. */
+  energy?: boolean;
+}
+
+/**
+ * The EU view's output chip: one craft's energy (EU/t x ticks) over the
+ * amount this output makes per craft. Chance is not applied - the recipe as
+ * written, like every other view here. A recipe with no power or no time
+ * reads 0, which is honest: a hand craft costs nothing.
+ */
+function formatChipEnergy(
+  resource: ResourceAmount,
+  eut: number,
+  durationTicks: number,
+): ChipAmount {
+  const perUnit =
+    resource.amount > 0 ? (Math.max(0, eut) * Math.max(0, durationTicks)) / resource.amount : 0;
+  return { text: formatCompact(perUnit), unit: energyPerUnitSuffix(resource.kind).trim(), energy: true };
 }
 
 /** "7.0" is 7 and "7.50" is 7.5: a trailing zero says nothing. */
@@ -2216,7 +2274,8 @@ function formatChipAmount(
       : { text: reduced.toLocaleString() };
   }
 
-  if (rateView === "recipe" || durationTicks <= 0) {
+  // The EU view reads INPUTS as written (see the RateView note).
+  if (rateView === "recipe" || rateView === "eu" || durationTicks <= 0) {
     if (resource.kind === "fluid") {
       return { text: resource.amount.toLocaleString(), unit: "L" };
     }

@@ -7266,7 +7266,19 @@ const RATE_UNIT_CHOICES: Array<{ unit: RateUnit; label: string; title: string }>
   { unit: "second", label: "/s", title: "Per second" },
   { unit: "minute", label: "/m", title: "Per minute" },
   { unit: "hour", label: "/h", title: "Per hour" },
+  // The odd one out, and dressed as such (gold face, its own sound): not a
+  // clock but the EU each output cost to make. See rate-unit.ts.
+  { unit: "eu", label: "EU", title: "EU per unit made" },
 ];
+
+/** The rate key's face while it reads energy: gold, like the readings. */
+const TOOL_FACE_ENERGY =
+  "bg-[#f5c542] text-black shadow-[inset_2px_2px_0_#fbe28a,inset_-2px_-2px_0_#a67c0e] hover:brightness-110";
+
+/** One tap of the rate dial, in the voice the chosen unit speaks. */
+function playRateDial(unit: RateUnit, step: number): void {
+  playBoardSound(unit === "eu" ? "dialEnergy" : "dialRate", { step });
+}
 
 /**
  * The setup's two rules, on a sliders icon beside the tidy-up button. Not a
@@ -7637,7 +7649,7 @@ const SourceToolbar = memo(function SourceToolbar({
                 Math.max(0, index + (event.deltaY < 0 ? 1 : -1)),
               );
               if (next !== index) {
-                playBoardSound("dialRate", { step: next });
+                playRateDial(RATE_UNIT_CHOICES[next]!.unit, next);
                 setRateUnit(RATE_UNIT_CHOICES[next]!.unit);
               }
             }}
@@ -7645,7 +7657,7 @@ const SourceToolbar = memo(function SourceToolbar({
             aria-label={`Rate unit: ${rateChoice.title.toLowerCase()}`}
             className={[
               "pointer-events-auto relative z-10 flex h-8 w-8 items-center justify-center border-2 border-[var(--mc-15)] font-mono text-[12px] font-black",
-              isRateMenuOpen ? TOOL_FACE_ON : TOOL_FACE_OFF,
+              isRateMenuOpen ? TOOL_FACE_ON : rateUnit === "eu" ? TOOL_FACE_ENERGY : TOOL_FACE_OFF,
             ].join(" ")}
           >
             {rateChoice.label}
@@ -7657,7 +7669,7 @@ const SourceToolbar = memo(function SourceToolbar({
                   key={choice.unit}
                   type="button"
                   onClick={() => {
-                    playBoardSound("dialRate", { step: index });
+                    playRateDial(choice.unit, index);
                     setRateUnit(choice.unit);
                     setRateMenuOpen(false);
                   }}
@@ -7665,8 +7677,12 @@ const SourceToolbar = memo(function SourceToolbar({
                   className={[
                     "pointer-events-auto flex items-center gap-2 border-2 p-1 pr-2 text-left",
                     rateUnit === choice.unit
-                      ? "border-white bg-[var(--mc-85)] text-[var(--mc-ink)] ring-2 ring-cyan-300"
-                      : "border-[var(--mc-15)] bg-[var(--mc-49)] text-white hover:bg-[var(--mc-61)]",
+                      ? choice.unit === "eu"
+                        ? "border-white bg-[#f5c542] text-black ring-2 ring-[#fbe28a]"
+                        : "border-white bg-[var(--mc-85)] text-[var(--mc-ink)] ring-2 ring-cyan-300"
+                      : choice.unit === "eu"
+                        ? "border-[#a67c0e] bg-[var(--mc-49)] text-[#f5c542] hover:bg-[var(--mc-61)]"
+                        : "border-[var(--mc-15)] bg-[var(--mc-49)] text-white hover:bg-[var(--mc-61)]",
                   ].join(" ")}
                 >
                   <span className="flex h-6 w-7 shrink-0 items-center justify-center font-mono text-[12px] font-black">

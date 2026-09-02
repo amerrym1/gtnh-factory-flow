@@ -15,6 +15,7 @@ import { collectTrashNodeIds } from "@/lib/model/trash";
 import { describeStorage, getStorageRole, getStorageRoles } from "@/lib/model/storage-role";
 import { makeResourceHandleId } from "./resource-handles";
 import { getSetupRules, type ResolvedSetupRules } from "@/lib/model/setup-rules";
+import { energyPerUnit } from "@/lib/model/rate-unit";
 
 type ProjectEdge = FactoryProject["edges"][number];
 
@@ -1240,6 +1241,12 @@ export interface RailPort {
   badge?: { kind: "short" | "asked"; perSecond: number };
   /** Render "current / nameplate" instead of the bare current rate. */
   showNameplate: boolean;
+  /**
+   * Outputs only: the EU this card spends per unit of this output it makes
+   * (its EU/t over this port's flow, both from the same books). The "EU"
+   * rate unit shows it in place of the rate; every other unit ignores it.
+   */
+  energyPerUnit?: number;
 }
 
 export function buildRailPorts(
@@ -1483,6 +1490,12 @@ export function buildRailPorts(
         plug,
         badge,
         showNameplate: isInput && isBinding,
+        // A flow-less port (no books yet) has no power to divide; a power
+        // output IS the EU, so it never reads as EU per EU.
+        energyPerUnit:
+          !isInput && kind !== "power" && flows && nodeResult
+            ? energyPerUnit(nodeResult.euT, nameplate)
+            : undefined,
       });
     };
 

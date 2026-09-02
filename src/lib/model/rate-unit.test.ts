@@ -1,7 +1,18 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { formatSlotRate, formatSlotRateOrNull } from "@/components/flow/flow-explainers";
-import { rateUnitMultiplier, rateUnitSuffix, setActiveRateUnit } from "./rate-unit";
+import {
+  formatPortRate,
+  formatSlotRate,
+  formatSlotRateOrNull,
+  portReadsEnergy,
+} from "@/components/flow/flow-explainers";
+import {
+  energyPerUnit,
+  isEnergyRateUnit,
+  rateUnitMultiplier,
+  rateUnitSuffix,
+  setActiveRateUnit,
+} from "./rate-unit";
 
 afterEach(() => {
   setActiveRateUnit("second");
@@ -24,5 +35,37 @@ describe("rate units", () => {
     expect(formatSlotRateOrNull(0.004, "item")).toBe("0.004/s");
     setActiveRateUnit("tick");
     expect(formatSlotRateOrNull(0.004, "item")).toBe("0.0002/t");
+  });
+});
+
+describe("EU per unit made", () => {
+  it("divides the card's power by what it makes, per second", () => {
+    // 100 EU/t is 2,000 EU/s; ten wood a second is 200 EU a piece.
+    expect(energyPerUnit(100, 10)).toBeCloseTo(200);
+    // The same ten wood at 10 EU/t is ten times cheaper.
+    expect(energyPerUnit(10, 10)).toBeCloseTo(20);
+    // Nothing made, nothing to divide by: no reading rather than infinity.
+    expect(energyPerUnit(100, 0)).toBeUndefined();
+    // Generators sit at zero here, never negative.
+    expect(energyPerUnit(-64, 10)).toBe(0);
+  });
+
+  it("only outputs with a figure read as energy, and only in the EU unit", () => {
+    const output = { kind: "item", energyPerUnit: 200 } as const;
+    const input = { kind: "item", energyPerUnit: undefined } as const;
+    setActiveRateUnit("second");
+    expect(isEnergyRateUnit()).toBe(false);
+    expect(formatPortRate(output, 10)).toBe("10/s");
+    setActiveRateUnit("eu");
+    expect(isEnergyRateUnit()).toBe(true);
+    expect(portReadsEnergy(output)).toBe(true);
+    expect(formatPortRate(output, 10)).toBe("200 EU each");
+    expect(formatPortRate({ kind: "fluid", energyPerUnit: 2.5 }, 1000)).toBe("2.5 EU/L");
+    // An input has no per-unit cost; it keeps reading per second.
+    expect(portReadsEnergy(input)).toBe(false);
+    expect(formatPortRate(input, 10)).toBe("10/s");
+    // Everything else on the board reads per second while the unit is on.
+    expect(rateUnitMultiplier()).toBe(1);
+    expect(rateUnitSuffix(true)).toBe(" L/s");
   });
 });

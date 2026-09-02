@@ -5,7 +5,10 @@
  * that flips it also recomputes the throughput result, which rebuilds every
  * surface, so nothing renders a stale unit.
  */
-export type RateUnit = "tick" | "second" | "minute" | "hour";
+export type RateUnit = "tick" | "second" | "minute" | "hour" | "eu";
+
+/** The four clocks; `eu` is the odd one out (see UNITS). */
+export type TimeRateUnit = Exclude<RateUnit, "eu">;
 
 import { getVoltageTierMaxEuT } from "./tiers";
 import type { MachineTier } from "./types";
@@ -17,6 +20,21 @@ const UNITS: Record<RateUnit, { multiplier: number; per: string }> = {
   second: { multiplier: 1, per: "s" },
   minute: { multiplier: 60, per: "min" },
   hour: { multiplier: 3600, per: "hr" },
+  // ENERGY PER UNIT MADE. Not a clock at all: an output reads the EU spent
+  // on each piece (or litre) it makes - the "bang for my buck" question two
+  // recipes making the same thing at different power leave open. It is
+  // scale-free (machine count, parallels and utilization all cancel) and
+  // it is NOT tier-free, which is the useful part: a regular overclock
+  // doubles it a step, a perfect one leaves it flat, a discount shows as a
+  // cheaper piece. Only OUTPUTS wear it - card output ports and the panel's
+  // Outputs list; inputs, wires and drawers read per second while it is on,
+  // because "EU per unit consumed" answers nothing. A card's figure is the
+  // cost of THAT STEP; the panel's divides the whole board's power by each
+  // product, so it is the embodied cost of the chain. Neither splits a
+  // run's energy between its outputs: the player reading a row wants that
+  // thing, the rest are free extras, and GTNH has no honest valuation to
+  // split by.
+  eu: { multiplier: 1, per: "s" },
 };
 
 const state: { unit: RateUnit } = { unit: "second" };
@@ -27,6 +45,30 @@ export function setActiveRateUnit(unit: RateUnit): void {
 
 export function getActiveRateUnit(): RateUnit {
   return state.unit;
+}
+
+/** The energy-per-unit reading is on: outputs read EU each, not a rate. */
+export function isEnergyRateUnit(): boolean {
+  return state.unit === "eu";
+}
+
+/**
+ * EU spent per unit made: a node's EU/t over one output's per-second flow.
+ * Both figures scale together (the books keep nameplate and actual in
+ * step), so the quotient is the per-unit cost whatever the machine is
+ * doing. Undefined when nothing is made, so a formatter shows nothing
+ * rather than infinity.
+ */
+export function energyPerUnit(euPerTick: number, perSecond: number): number | undefined {
+  if (!Number.isFinite(euPerTick) || !Number.isFinite(perSecond) || perSecond <= 1e-12) {
+    return undefined;
+  }
+  return (Math.max(0, euPerTick) * 20) / perSecond;
+}
+
+/** The label an energy reading wears: "EU each" for items, "EU/L" for fluids. */
+export function energyPerUnitSuffix(kind: string): string {
+  return kind === "fluid" ? " EU/L" : " EU each";
 }
 
 /** Multiply a per-second figure by this before display. */

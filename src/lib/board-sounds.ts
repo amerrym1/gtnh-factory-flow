@@ -140,6 +140,7 @@ export type BoardSoundKind =
   | "shuffleWire" // its wires brush in
   | "shuffleBoard" // a frame is drawn around finished cards
   | "dialRate" // the rate unit dial: one tap, pitched by the chosen step
+  | "dialEnergy" // the rate dial landing on EU per unit: a coin, not a tap
   | "dialPower"; // the power unit dial: a tap that grows with the tier
 
 let audioContext: AudioContext | undefined;
@@ -432,6 +433,18 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode, step 
       const rung = Math.max(0, Math.min(10, step));
       const frequency = 262 * Math.pow(1.26, rung);
       blip(ctx, out, { from: frequency, to: frequency, duration: 0.09, peak: 0.18 });
+      break;
+    }
+    case "dialEnergy": {
+      // GOLD. The dial has left the ladder of clocks for the one reading
+      // that is not a rate, so it does not get the next rung of the wood
+      // tap. It gets a small GLOW: the solve shimmer's pad, low and quiet,
+      // drifting up a major third and gone in under half a second, with a
+      // breath of air under it. No sparkle on top - the high notes tried
+      // here (a coin, a lone bell) all pierced - and no strike anywhere;
+      // it arrives and fades. Half the solve shimmer's level.
+      shimmerPad(ctx, out, { from: 330, to: 415, duration: 0.42, peak: 0.07 });
+      puff(ctx, out, { frequency: 2400, q: 0.5, duration: 0.25, peak: 0.02, delay: 0.05 });
       break;
     }
     case "dialPower": {

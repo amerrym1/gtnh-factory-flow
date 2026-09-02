@@ -181,9 +181,12 @@ import {
   explainPlug,
   explainPort,
   formatPct,
+  formatPortRate,
   formatSlotRate,
   formatSlotRateBare,
   formatSlotRateOrNull,
+  portReadsEnergy,
+  ENERGY_READING_TEXT,
   formatTimes,
   type PortStory,
 } from "./flow-explainers";
@@ -2156,8 +2159,13 @@ function GlanceIoRow({ port }: { port: RailPort }) {
         <span className="truncate text-[14px] font-bold leading-[17px] text-[var(--mc-ink)]">
           {port.displayName}
         </span>
-        <span className="truncate text-[13px] leading-4 tabular-nums text-[var(--mc-ink-muted)]">
-          {formatSlotRate(port.currentPerSecond, port.kind)}
+        <span
+          className={[
+            "truncate text-[13px] leading-4 tabular-nums",
+            portReadsEnergy(port) ? ENERGY_READING_TEXT : "text-[var(--mc-ink-muted)]",
+          ].join(" ")}
+        >
+          {formatPortRate(port, port.currentPerSecond)}
         </span>
       </span>
     </span>
@@ -3314,7 +3322,13 @@ export function PortChip({
   // shows the bare actual rate: no fraction, nothing to diagnose.
   // The numbers ease to a new solve (value motion, board-motion.tsx): the
   // leaf re-renders itself per frame while they move, never the row.
-  const rateText = (
+  // The EU unit swaps an output's line for the energy each unit cost. It is
+  // gold, and gold only here: the one reading on the board that is not a
+  // rate, dressed so it can never be mistaken for one.
+  const readsEnergy = portReadsEnergy(port);
+  const rateText = readsEnergy ? (
+    formatPortRate(port, port.currentPerSecond)
+  ) : (
     <MotionNumberText
       values={[port.currentPerSecond, port.nameplatePerSecond]}
       render={(shown) => {
@@ -3326,6 +3340,7 @@ export function PortChip({
       }}
     />
   );
+  const rateInk = readsEnergy ? ENERGY_READING_TEXT : "text-[var(--mc-ink-muted)]";
 
   // One bar, one ruler: 100% = full blast. Solid = now, hatch = would unlock
   // if fed. The caret/burst (the want) is an INPUT-side signal — on outputs
@@ -3458,7 +3473,9 @@ export function PortChip({
           /* Presentation: no bar, no want marks — the room they used goes to
              the number, which is the thing a viewer actually reads. Muted ink
              a step below the name, so the pair still reads name-first. */
-          <span className="block truncate text-[13px] font-bold leading-[15px] tabular-nums text-[var(--mc-ink-muted)]">
+          <span
+            className={`block truncate text-[13px] font-bold leading-[15px] tabular-nums ${rateInk}`}
+          >
             {rateText}
           </span>
         ) : (
@@ -3466,7 +3483,9 @@ export function PortChip({
             {/* Neutral, quieter ink: the chip's BAR carries the machine
                 story's color. Green text over a red bar told two stories at
                 once. */}
-            <span className="block truncate text-[10px] leading-[12px] tabular-nums text-[var(--mc-ink-muted)] opacity-80">
+            <span
+              className={`block truncate text-[10px] leading-[12px] tabular-nums ${rateInk} ${readsEnergy ? "font-bold" : "opacity-80"}`}
+            >
               {rateText}
             </span>
             {port.unsupplied ? (

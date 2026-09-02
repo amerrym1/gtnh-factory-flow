@@ -1,6 +1,8 @@
 import type { EdgeThroughput, FactoryProject, ThroughputResult } from "@/lib/model/types";
 import { formatCompact, formatNumberWithThousands, formatRate, makeResourceKey } from "@/lib/model";
 import {
+  energyPerUnitSuffix,
+  isEnergyRateUnit,
   rateMultiplierForKind,
   rateSuffixForKind,
   rateUnitMultiplier,
@@ -78,6 +80,38 @@ export function formatSlotRate(value: number, kind: string): string {
 
 export function formatSlotRateBare(value: number, kind = "item"): string {
   return formatCompact(value * rateMultiplierForKind(kind));
+}
+
+/**
+ * The ink of an energy reading, wherever one is drawn (card ports, the
+ * panel's Outputs, the unit key itself): GOLD, and gold means this one
+ * thing on the board. It is the only figure that is not a rate, so it is
+ * the only figure that does not wear the muted rate ink.
+ */
+export const ENERGY_READING_TEXT = "text-[#f5c542]";
+
+/** "200 EU each" / "2.5 EU/L": the energy reading an output wears. */
+export function formatEnergyPerUnit(euPerUnit: number, kind: string): string {
+  return `${formatCompact(euPerUnit)}${energyPerUnitSuffix(kind)}`;
+}
+
+/**
+ * This port reads as energy per unit right now: the EU unit is on and the
+ * port is an output with books behind it. Inputs and unsolved ports keep
+ * their per-second reading whatever the unit says.
+ */
+export function portReadsEnergy(port: Pick<RailPort, "energyPerUnit">): boolean {
+  return isEnergyRateUnit() && port.energyPerUnit !== undefined;
+}
+
+/** The one line under a port's name, in whichever unit the board is read in. */
+export function formatPortRate(
+  port: Pick<RailPort, "energyPerUnit" | "kind">,
+  currentPerSecond: number,
+): string {
+  return portReadsEnergy(port)
+    ? formatEnergyPerUnit(port.energyPerUnit!, port.kind)
+    : formatSlotRate(currentPerSecond, port.kind);
 }
 
 /**

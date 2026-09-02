@@ -476,7 +476,7 @@ export const planViewStateSchema = z.object({
   linePulseMode: z.boolean().optional(),
   calmMode: z.boolean().optional(),
   glanceMode: z.string().optional(),
-  rateUnit: z.enum(["tick", "second", "minute", "hour"]).optional(),
+  rateUnit: z.enum(["tick", "second", "minute", "hour", "eu"]).optional(),
   leftPanelOpen: z.boolean().optional(),
   rightPanelOpen: z.boolean().optional(),
   showHiddenResources: z.boolean().optional(),
