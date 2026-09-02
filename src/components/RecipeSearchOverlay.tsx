@@ -343,18 +343,34 @@ export function RecipeSearchOverlay({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [canGoBack, canGoForward, cardMenu, chipMenu, closeSearch, onBack, onForward]);
 
-  // Any press outside a menu dismisses it; the menu's own buttons stop the
-  // press from reaching this.
+  // Any press outside a menu dismisses it, and so does a wheel turn (the
+  // menu is pinned to the screen, and the card it came from scrolls away
+  // under it). CAPTURE phase, on purpose: the search's panels stop
+  // pointer events from bubbling (that is what keeps a press inside them
+  // from closing the search), and a bubbling window listener never heard
+  // a press that landed there - so the menu only went on Escape. Presses
+  // inside the menu itself are told apart by containment, not by the
+  // menu stopping propagation.
+  const menuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!chipMenu && !cardMenu) {
       return;
     }
-    const dismiss = () => {
+    const dismiss = (event: Event) => {
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) {
+        return;
+      }
       setChipMenu(undefined);
       setCardMenu(undefined);
     };
-    window.addEventListener("pointerdown", dismiss);
-    return () => window.removeEventListener("pointerdown", dismiss);
+    window.addEventListener("pointerdown", dismiss, true);
+    window.addEventListener("wheel", dismiss, true);
+    window.addEventListener("scroll", dismiss, true);
+    return () => {
+      window.removeEventListener("pointerdown", dismiss, true);
+      window.removeEventListener("wheel", dismiss, true);
+      window.removeEventListener("scroll", dismiss, true);
+    };
   }, [cardMenu, chipMenu]);
 
   const openCardMenu = useCallback((event: ReactMouseEvent, menu: Omit<CardMenu, "x" | "y">) => {
@@ -1189,6 +1205,7 @@ export function RecipeSearchOverlay({
           {/* ===== the chip's right-click menu: every way to use an item ===== */}
           {cardMenu ? (
             <div
+              ref={menuRef}
               className="fixed z-50 w-[300px] border-2 border-[var(--mc-15)] bg-[var(--mc-61)] p-1 font-mono shadow-[4px_4px_0_rgba(0,0,0,0.45)]"
               style={{ left: cardMenu.x, top: cardMenu.y }}
               onPointerDown={(event) => event.stopPropagation()}
@@ -1230,6 +1247,7 @@ export function RecipeSearchOverlay({
           ) : null}
           {chipMenu ? (
             <div
+              ref={menuRef}
               className="fixed z-50 w-[220px] border-2 border-[var(--mc-15)] bg-[var(--mc-61)] p-1 font-mono shadow-[4px_4px_0_rgba(0,0,0,0.45)]"
               style={{ left: chipMenu.x, top: chipMenu.y }}
               onPointerDown={(event) => event.stopPropagation()}
