@@ -1242,9 +1242,10 @@ export interface RailPort {
   /** Render "current / nameplate" instead of the bare current rate. */
   showNameplate: boolean;
   /**
-   * Outputs only: the EU this card spends per unit of this output it makes
-   * (its EU/t over this port's flow, both from the same books). The "EU"
-   * rate unit shows it in place of the rate; every other unit ignores it.
+   * The EU this card spends per unit crossing this port (its EU/t over the
+   * port's flow, both from the same books): per unit MADE on an output, per
+   * unit EATEN on an input. The "EU" rate unit shows it in place of the
+   * rate; every other unit ignores it.
    */
   energyPerUnit?: number;
 }
@@ -1491,9 +1492,10 @@ export function buildRailPorts(
         badge,
         showNameplate: isInput && isBinding,
         // A flow-less port (no books yet) has no power to divide; a power
-        // output IS the EU, so it never reads as EU per EU.
+        // port IS the EU, so it never reads as EU per EU. Inputs carry it
+        // too - the EU spent per unit eaten - drawn in a much quieter gold.
         energyPerUnit:
-          !isInput && kind !== "power" && flows && nodeResult
+          kind !== "power" && flows && nodeResult
             ? energyPerUnit(nodeResult.euT, nameplate)
             : undefined,
       });

@@ -22,7 +22,7 @@ import {
   rateMultiplierForKind,
   rateSuffixForKind,
 } from "@/lib/model/rate-unit";
-import { ENERGY_READING_TEXT, formatEnergyPerUnit } from "./flow/flow-explainers";
+import { energyReadingInk, formatEnergyPerUnit } from "./flow/flow-explainers";
 import type {
   FactoryProject,
   ResourceAmount,
@@ -1194,7 +1194,7 @@ function FlowVirtualList({
             isHidden={hidden.has(row.balance.key)}
             isFavourite={favourites.has(row.balance.key)}
             manageMode={manageMode}
-            energyEuT={row.section.id === "output" ? energyEuT : undefined}
+            energyEuT={row.section.id !== "internal" ? energyEuT : undefined}
             onHover={onHover}
             onExpand={setExpanded}
             onFocusBoard={onFocusBoard}
@@ -1255,7 +1255,7 @@ function FlowVirtualList({
             isHidden={hidden.has(expandedRow.balance.key)}
             isFavourite={favourites.has(expandedRow.balance.key)}
             manageMode={manageMode}
-            energyEuT={expandedRow.section.id === "output" ? energyEuT : undefined}
+            energyEuT={expandedRow.section.id !== "internal" ? energyEuT : undefined}
             expanded
             onHover={onHover}
             onExpand={setExpanded}
@@ -1412,9 +1412,9 @@ const FlowResourceRow = memo(function FlowResourceRow({
   isFavourite: boolean;
   manageMode: boolean;
   /**
-   * The scope's whole power draw while the EU unit is on, Outputs rows only:
-   * the row then reads the EU the entire chain spent per unit of this product
-   * instead of its rate. Undefined in every other unit and every other section.
+   * The scope's whole power draw while the EU unit is on, Inputs and Outputs rows:
+   * the row then reads the EU the entire chain spent per unit of this resource
+   * (made, or brought in) instead of its rate. Undefined otherwise and for Internal.
    */
   energyEuT?: number;
   /** The wide copy floating over the board: no truncation, opaque, raised. */
@@ -1547,7 +1547,7 @@ const FlowResourceRow = memo(function FlowResourceRow({
         <span
           className={[
             "ml-2 flex shrink-0 items-baseline",
-            euEach !== undefined ? ENERGY_READING_TEXT : toneStyle.value,
+            euEach !== undefined ? energyReadingInk(sectionId === "need" ? "input" : "output") : toneStyle.value,
           ].join(" ")}
         >
           <span className="text-base font-bold tabular-nums">

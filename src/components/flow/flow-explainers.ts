@@ -90,6 +90,18 @@ export function formatSlotRateBare(value: number, kind = "item"): string {
  */
 export const ENERGY_READING_TEXT = "text-[#f5c542]";
 
+/**
+ * The same reading on an INPUT - EU per unit eaten - in a gold so muted it
+ * is nearly the paper: the outputs are the headline, the inputs the
+ * supporting line, and both being bright read as two costs to add up.
+ */
+export const ENERGY_READING_TEXT_MUTED = "text-[#8a7b45]";
+
+/** The ink for an energy reading on this side of a card. */
+export function energyReadingInk(side: "input" | "output"): string {
+  return side === "output" ? ENERGY_READING_TEXT : ENERGY_READING_TEXT_MUTED;
+}
+
 /** "200 EU each" / "2.5 EU/L": the energy reading an output wears. */
 export function formatEnergyPerUnit(euPerUnit: number, kind: string): string {
   return `${formatCompact(euPerUnit)}${energyPerUnitSuffix(kind)}`;
@@ -97,8 +109,8 @@ export function formatEnergyPerUnit(euPerUnit: number, kind: string): string {
 
 /**
  * This port reads as energy per unit right now: the EU unit is on and the
- * port is an output with books behind it. Inputs and unsolved ports keep
- * their per-second reading whatever the unit says.
+ * port has books behind it. Unsolved ports and EU ports keep their
+ * per-second reading whatever the unit says.
  */
 export function portReadsEnergy(port: Pick<RailPort, "energyPerUnit">): boolean {
   return isEnergyRateUnit() && port.energyPerUnit !== undefined;

@@ -23,7 +23,7 @@ import type { MachineTier, ResourceAmount } from "@/lib/model/types";
 import { energyPerUnitSuffix, type TimeRateUnit } from "@/lib/model/rate-unit";
 import { formatCompact } from "@/lib/model/resources";
 import { playBoardSound } from "@/lib/board-sounds";
-import { ENERGY_READING_TEXT } from "./flow/flow-explainers";
+import { energyReadingInk } from "./flow/flow-explainers";
 import { GT_TIER_COLORS } from "./flow/tier-colors";
 import type { RecipeInputPicks, TierFilter } from "@/store/factory-store";
 import {
@@ -72,8 +72,8 @@ export interface StencilClause
 // "eu" is the board's gold reading brought here: each OUTPUT chip reads the
 // EU one machine spends per unit of it at the recipe's own tier (no
 // overclock) - the number to compare two recipes for the same thing by.
-// Inputs read as written under it, exactly as the board keeps inputs per
-// second: energy per unit consumed answers nothing.
+// Input chips read the same energy per unit EATEN, in the board's muted
+// gold, so the two sides never look like two costs to add up.
 type RateView = "recipe" | TimeRateUnit | "ratio" | "eu";
 
 const RATE_VIEW_UNITS: Record<TimeRateUnit, { multiplier: number; per: string }> = {
@@ -1690,7 +1690,9 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
                 amountText={
                   chip.raw.consumed === false
                     ? { text: "NC" }
-                    : formatChipAmount(chip.resource, rateView, durationTicks, ratioDivisor)
+                    : rateView === "eu"
+                      ? formatChipEnergy(chip.resource, "input", eut, durationTicks)
+                      : formatChipAmount(chip.resource, rateView, durationTicks, ratioDivisor)
                 }
                 hasAlternatives={chip.faces.length > 1}
                 onCycle={
@@ -1723,7 +1725,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
               hit={makesClauses.some((clause) => clauseMatchesOutput(clause, output))}
               amountText={
                 rateView === "eu"
-                  ? formatChipEnergy(output, eut, durationTicks)
+                  ? formatChipEnergy(output, "output", eut, durationTicks)
                   : formatChipAmount(output, rateView, durationTicks, ratioDivisor)
               }
               chance={"chance" in output ? output.chance : undefined}
@@ -2137,7 +2139,7 @@ function ResourceChip({
       <span
         className={[
           "shrink-0 text-[16px] font-bold tabular-nums",
-          amountText.energy ? ENERGY_READING_TEXT : "text-[var(--mc-ink)]",
+          amountText.energy ? energyReadingInk(amountText.energy) : "text-[var(--mc-ink)]",
         ].join(" ")}
       >
         {amountText.text}
@@ -2234,24 +2236,25 @@ function clauseMatchesOutput(clause: StencilClause, output: ResourceAmount): boo
 interface ChipAmount {
   text: string;
   unit?: string;
-  /** An EU-per-unit reading: drawn in the board's gold. */
-  energy?: boolean;
+  /** An EU-per-unit reading: the board's gold on an output, muted on an input. */
+  energy?: "input" | "output";
 }
 
 /**
- * The EU view's output chip: one craft's energy (EU/t x ticks) over the
- * amount this output makes per craft. Chance is not applied - the recipe as
- * written, like every other view here. A recipe with no power or no time
- * reads 0, which is honest: a hand craft costs nothing.
+ * The EU view's chip: one craft's energy (EU/t x ticks) over the amount
+ * this slot makes (or eats) per craft. Chance is not applied - the recipe
+ * as written, like every other view here. A recipe with no power or no
+ * time reads 0, which is honest: a hand craft costs nothing.
  */
 function formatChipEnergy(
   resource: ResourceAmount,
+  side: "input" | "output",
   eut: number,
   durationTicks: number,
 ): ChipAmount {
   const perUnit =
     resource.amount > 0 ? (Math.max(0, eut) * Math.max(0, durationTicks)) / resource.amount : 0;
-  return { text: formatCompact(perUnit), unit: energyPerUnitSuffix(resource.kind).trim(), energy: true };
+  return { text: formatCompact(perUnit), unit: energyPerUnitSuffix(resource.kind).trim(), energy: side };
 }
 
 /** "7.0" is 7 and "7.50" is 7.5: a trailing zero says nothing. */

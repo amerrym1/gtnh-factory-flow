@@ -186,7 +186,7 @@ import {
   formatSlotRateBare,
   formatSlotRateOrNull,
   portReadsEnergy,
-  ENERGY_READING_TEXT,
+  energyReadingInk,
   formatTimes,
   type PortStory,
 } from "./flow-explainers";
@@ -2162,7 +2162,7 @@ function GlanceIoRow({ port }: { port: RailPort }) {
         <span
           className={[
             "truncate text-[13px] leading-4 tabular-nums",
-            portReadsEnergy(port) ? ENERGY_READING_TEXT : "text-[var(--mc-ink-muted)]",
+            portReadsEnergy(port) ? energyReadingInk(port.side) : "text-[var(--mc-ink-muted)]",
           ].join(" ")}
         >
           {formatPortRate(port, port.currentPerSecond)}
@@ -3340,7 +3340,7 @@ export function PortChip({
       }}
     />
   );
-  const rateInk = readsEnergy ? ENERGY_READING_TEXT : "text-[var(--mc-ink-muted)]";
+  const rateInk = readsEnergy ? energyReadingInk(port.side) : "text-[var(--mc-ink-muted)]";
 
   // One bar, one ruler: 100% = full blast. Solid = now, hatch = would unlock
   // if fed. The caret/burst (the want) is an INPUT-side signal — on outputs

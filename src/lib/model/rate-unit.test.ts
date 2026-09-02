@@ -52,7 +52,10 @@ describe("EU per unit made", () => {
 
   it("only outputs with a figure read as energy, and only in the EU unit", () => {
     const output = { kind: "item", energyPerUnit: 200 } as const;
+    // An input with books behind it carries the EU per unit eaten; one with
+    // no books (nothing solved yet) carries nothing and reads per second.
     const input = { kind: "item", energyPerUnit: undefined } as const;
+    const fedInput = { kind: "item", energyPerUnit: 800 } as const;
     setActiveRateUnit("second");
     expect(isEnergyRateUnit()).toBe(false);
     expect(formatPortRate(output, 10)).toBe("10/s");
@@ -61,7 +64,7 @@ describe("EU per unit made", () => {
     expect(portReadsEnergy(output)).toBe(true);
     expect(formatPortRate(output, 10)).toBe("200 EU each");
     expect(formatPortRate({ kind: "fluid", energyPerUnit: 2.5 }, 1000)).toBe("2.5 EU/L");
-    // An input has no per-unit cost; it keeps reading per second.
+    expect(formatPortRate(fedInput, 2.5)).toBe("800 EU each");
     expect(portReadsEnergy(input)).toBe(false);
     expect(formatPortRate(input, 10)).toBe("10/s");
     // Everything else on the board reads per second while the unit is on.
