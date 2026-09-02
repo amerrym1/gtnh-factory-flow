@@ -216,6 +216,29 @@ Working notes for future agents on GTNH Factory Flow.
   beside the anchor, upstream when the click asked who makes, and WIRED on
   the clicked resource alone (`buildResourceEdgesBetweenNodes`) - never on
   byproducts, and not at all when the pick no longer touches that resource.
+- HISTORY (Jack, 2026-09-02): the search keeps BACK and FORWARD stacks in
+  the store (`recipeBrowserBack` / `recipeBrowserForward`, `browseBack` /
+  `browseForward`). Every page change while it is open - a chip click, a
+  refactor press - files the page it replaces; a fresh browse drops the
+  forward branch like a browser; asking for the page already open files
+  nothing; closing the search clears both. Buttons sit by the name filter
+  (head row start on a phone), Alt+Left / Alt+Right walk them.
+- A result card's MACHINE TILE is a key: click hides that machine's recipes
+  (the same toggle as darkening its chip; a generator card's tile hides the
+  Generators chip). Right click the card - or hold the tile on a finger -
+  for the card menu: add to board, hide these, only these
+  (`onSelectOnlyRecipeMap`, an include-selection of one map), show every
+  machine. `useLongPress` in the overlay is the one held-press rule, shared
+  with the chips.
+- The tier ceiling filters GENERATOR cards too, by their `unlock` chip
+  (`powerUnlockWithinTier`); a source with no tier chip is never filtered.
+- The search SOUNDS, the one screen off the canvas that does (Jack asked,
+  2026-09-02; the "canvas only" rule in the sounds memory stands everywhere
+  else): `pageOpen` on mount, `pageTurn` on every browse-key change (chip,
+  refactor, back, forward), `pageClose` only on the close paths (an add
+  closes silently - the card landing is its sound), `tick` for every switch
+  (machine chips, All, rate pills, any/all/only, tier select, swap),
+  `stencilAdd` / `stencilRemove` for conditions. All brush-first and quiet.
 - REFACTOR: the card header's refresh button (`beginRecipeRefactor`) reopens
   the search seeded with every consumed input and every output of that card,
   and the add REPLACES the card in place (`refactorNodeWithRecipe`): wires

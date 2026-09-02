@@ -240,6 +240,10 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const setHighlightSearch = useFactoryStore((state) => state.setHighlightSearch);
   const setMaxTier = useFactoryStore((state) => state.setMaxTierFilter);
   const browseResource = useFactoryStore((state) => state.browseResource);
+  const browseBack = useFactoryStore((state) => state.browseBack);
+  const browseForward = useFactoryStore((state) => state.browseForward);
+  const canBrowseBack = useFactoryStore((state) => state.recipeBrowserBack.length > 0);
+  const canBrowseForward = useFactoryStore((state) => state.recipeBrowserForward.length > 0);
   const clearResourceBrowser = useFactoryStore((state) => state.clearResourceBrowser);
   const selectRecipe = useFactoryStore((state) => state.selectRecipe);
   const addNodeForRecipe = useFactoryStore((state) => state.addNodeForRecipeObject);
@@ -660,6 +664,15 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       changeMapSelection(toggledMapSelection(mapSelection, recipeMap, recipeMaps));
     },
     [changeMapSelection, mapSelection, recipeMaps],
+  );
+
+  // "Only this machine": the selection becomes that one map, and every
+  // other chip goes dark until All or a chip brings it back.
+  const selectOnlyRecipeMap = useCallback(
+    (recipeMap: string) => {
+      changeMapSelection({ mode: "include", maps: [recipeMap] });
+    },
+    [changeMapSelection],
   );
 
   // The All chip is select-all / select-none: lit, a click clears the board;
@@ -1424,6 +1437,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           recipeMapChips={recipeMapChips}
           allRecipeMapsSelected={allRecipeMapsSelected}
           onToggleRecipeMap={toggleRecipeMap}
+          onSelectOnlyRecipeMap={selectOnlyRecipeMap}
           onToggleAllRecipeMaps={toggleAllRecipeMaps}
           onRecipeMapHover={prefetchRecipeMapToggle}
           recipes={filteredRecipes}
@@ -1462,6 +1476,11 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             }
           }}
           onClose={clearResourceBrowser}
+          browseKey={browseKey}
+          canGoBack={canBrowseBack}
+          canGoForward={canBrowseForward}
+          onBack={browseBack}
+          onForward={browseForward}
           contextResource={activeResource}
           searchPickerResources={searchPickerResources}
         />

@@ -1652,6 +1652,60 @@ describe("recipe search wiring and refactor", () => {
     expect(useFactoryStore.getState().recipeBrowserRefactorNodeId).toBeUndefined();
     expect(useFactoryStore.getState().recipeBrowserSeed).toBeUndefined();
   });
+
+  it("walks back and forward through the pages the search has shown", () => {
+    const store = useFactoryStore.getState();
+    store.clearResourceBrowser();
+    store.browseResource({ kind: "item", id: "ingot" }, "recipes");
+    store.browseResource({ kind: "item", id: "dust" }, "uses");
+    store.browseResource({ kind: "item", id: "ore" }, "recipes");
+    // The page already open is not filed again.
+    store.browseResource({ kind: "item", id: "ore" }, "recipes");
+    expect(useFactoryStore.getState().recipeBrowserBack).toHaveLength(2);
+    expect(useFactoryStore.getState().recipeBrowserForward).toHaveLength(0);
+
+    store.browseBack();
+    expect(useFactoryStore.getState().recipeBrowserResource?.id).toBe("dust");
+    expect(useFactoryStore.getState().recipeBrowserMode).toBe("uses");
+    expect(useFactoryStore.getState().recipeBrowserForward).toHaveLength(1);
+
+    store.browseBack();
+    expect(useFactoryStore.getState().recipeBrowserResource?.id).toBe("ingot");
+    expect(useFactoryStore.getState().recipeBrowserBack).toHaveLength(0);
+    // Nothing further back: a no-op, not a crash.
+    store.browseBack();
+    expect(useFactoryStore.getState().recipeBrowserResource?.id).toBe("ingot");
+
+    store.browseForward();
+    expect(useFactoryStore.getState().recipeBrowserResource?.id).toBe("dust");
+    expect(useFactoryStore.getState().recipeBrowserMode).toBe("uses");
+
+    // A fresh browse from the middle drops the forward branch, like a browser.
+    store.browseResource({ kind: "fluid", id: "steam" }, "recipes");
+    expect(useFactoryStore.getState().recipeBrowserForward).toHaveLength(0);
+    expect(useFactoryStore.getState().recipeBrowserBack.map((page) => page.resource.id)).toEqual([
+      "ingot",
+      "dust",
+    ]);
+
+    // Closing the search forgets both stacks.
+    store.clearResourceBrowser();
+    expect(useFactoryStore.getState().recipeBrowserBack).toHaveLength(0);
+    expect(useFactoryStore.getState().recipeBrowserForward).toHaveLength(0);
+  });
+
+  it("files the search a refactor press replaces, and back restores the refactor", () => {
+    const store = useFactoryStore.getState();
+    store.clearResourceBrowser();
+    store.setProject(REFACTOR_PROJECT());
+    store.beginRecipeRefactor("mid");
+    expect(useFactoryStore.getState().recipeBrowserRefactorNodeId).toBe("mid");
+    store.browseResource({ kind: "item", id: "ore" }, "recipes");
+    expect(useFactoryStore.getState().recipeBrowserRefactorNodeId).toBeUndefined();
+    store.browseBack();
+    expect(useFactoryStore.getState().recipeBrowserRefactorNodeId).toBe("mid");
+    expect(useFactoryStore.getState().recipeBrowserSeed?.length).toBeGreaterThan(0);
+  });
 });
 
 describe("factory machine count optimization", () => {

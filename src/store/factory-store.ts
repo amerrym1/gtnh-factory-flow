@@ -172,6 +172,14 @@ interface FactoryStore {
    * keyed to the previous press must not resurrect over the new seed.
    */
   recipeBrowserSeedNonce: number;
+  /**
+   * The search's own back and forward stacks: every browse made while it is
+   * open (a chip click, a refactor press) files the one it replaces here,
+   * so a click can be undone and redone like a page in a browser. Cleared
+   * when the search closes; the recent strip is the long memory.
+   */
+  recipeBrowserBack: RecipeBrowserHistoryEntry[];
+  recipeBrowserForward: RecipeBrowserHistoryEntry[];
   recipeResourceHistory: RecipeBrowserResource[];
   /**
    * Recipes the plus button promised to the board whose full bodies are still
@@ -230,6 +238,8 @@ interface FactoryStore {
   hydrateResourceHistory: (history: RecipeBrowserResource[]) => void;
   clearResourceHistory: () => void;
   browseResource: (resource: RecipeBrowserResource, mode?: RecipeBrowserMode) => void;
+  browseBack: () => void;
+  browseForward: () => void;
   clearResourceBrowser: () => void;
   beginRecipeAdd: (label: string) => number;
   resolveRecipeAdd: (id: number) => void;
@@ -695,6 +705,73 @@ export interface RecipeBrowserResource {
   anchorNodeId?: string;
 }
 
+/** One page of the recipe search, as the back and forward stacks hold it. */
+export interface RecipeBrowserHistoryEntry {
+  resource: RecipeBrowserResource;
+  mode: RecipeBrowserMode;
+  seed?: RecipeSeedClause[];
+  refactorNodeId?: string;
+  seedNonce: number;
+}
+
+/** Deeper than anyone clicks; the stacks live only while the search is open. */
+const RECIPE_BROWSER_HISTORY_LIMIT = 60;
+
+/** The open search as one history entry, or undefined when it is closed. */
+function currentBrowserPage(state: {
+  recipeBrowserResource?: RecipeBrowserResource;
+  recipeBrowserMode: RecipeBrowserMode;
+  recipeBrowserSeed?: RecipeSeedClause[];
+  recipeBrowserRefactorNodeId?: string;
+  recipeBrowserSeedNonce: number;
+}): RecipeBrowserHistoryEntry | undefined {
+  if (!state.recipeBrowserResource) {
+    return undefined;
+  }
+  return {
+    resource: state.recipeBrowserResource,
+    mode: state.recipeBrowserMode,
+    seed: state.recipeBrowserSeed,
+    refactorNodeId: state.recipeBrowserRefactorNodeId,
+    seedNonce: state.recipeBrowserSeedNonce,
+  };
+}
+
+/** The same page asked twice (a chip clicked again) is not a step. */
+function sameBrowserPage(a: RecipeBrowserHistoryEntry | undefined, b: RecipeBrowserHistoryEntry) {
+  return (
+    a !== undefined &&
+    a.resource.kind === b.resource.kind &&
+    a.resource.id === b.resource.id &&
+    a.mode === b.mode &&
+    a.refactorNodeId === b.refactorNodeId &&
+    a.seedNonce === b.seedNonce
+  );
+}
+
+/** The stack with the open page filed on top, or unchanged when nothing is open. */
+function pushBrowserPage(
+  stack: RecipeBrowserHistoryEntry[],
+  page: RecipeBrowserHistoryEntry | undefined,
+): RecipeBrowserHistoryEntry[] {
+  if (!page) {
+    return stack;
+  }
+  return [...stack, page].slice(-RECIPE_BROWSER_HISTORY_LIMIT);
+}
+
+/** The store fields one history entry sets when it becomes the open page. */
+function browserPageState(page: RecipeBrowserHistoryEntry) {
+  return {
+    recipeBrowserResource: page.resource,
+    recipeBrowserMode: page.mode,
+    recipeBrowserSeed: page.seed,
+    recipeBrowserRefactorNodeId: page.refactorNodeId,
+    recipeBrowserSeedNonce: page.seedNonce,
+    selectedNodeId: page.resource.anchorNodeId,
+  };
+}
+
 /** One pre-filled condition of the recipe search's stencil. */
 export interface RecipeSeedClause {
   role: "makes" | "takes";
@@ -749,6 +826,8 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   recipeBrowserSeed: undefined,
   recipeBrowserRefactorNodeId: undefined,
   recipeBrowserSeedNonce: 0,
+  recipeBrowserBack: [],
+  recipeBrowserForward: [],
   recipeResourceHistory: [],
   powerMenuOpen: false,
   pendingRecipeAdds: [],
@@ -959,6 +1038,15 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       const recipeResourceHistory = updateResourceHistory(state.recipeResourceHistory, resource);
       nextHistory = recipeResourceHistory;
 
+      // The page being left goes on the back stack, and a fresh browse is
+      // a new branch: whatever forward steps there were are gone, as in a
+      // browser. Asking for the page already open files nothing.
+      const leaving = currentBrowserPage(state);
+      const repeat = sameBrowserPage(leaving, {
+        resource,
+        mode,
+        seedNonce: state.recipeBrowserSeedNonce,
+      });
       return {
         recipeBrowserResource: resource,
         recipeBrowserMode: mode,
@@ -966,6 +1054,10 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         // resource and an add places a new card.
         recipeBrowserSeed: undefined,
         recipeBrowserRefactorNodeId: undefined,
+        recipeBrowserBack: repeat
+          ? state.recipeBrowserBack
+          : pushBrowserPage(state.recipeBrowserBack, leaving),
+        recipeBrowserForward: repeat ? state.recipeBrowserForward : [],
         recipeResourceHistory,
         selectedNodeId: resource.anchorNodeId,
       };
@@ -976,11 +1068,39 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       scheduleIdleBrowserWork(() => saveResourceHistory(historyToSave));
     }
   },
+  browseBack: () => {
+    set((state) => {
+      const page = state.recipeBrowserBack[state.recipeBrowserBack.length - 1];
+      if (!page) {
+        return state;
+      }
+      return {
+        ...browserPageState(page),
+        recipeBrowserBack: state.recipeBrowserBack.slice(0, -1),
+        recipeBrowserForward: pushBrowserPage(state.recipeBrowserForward, currentBrowserPage(state)),
+      };
+    });
+  },
+  browseForward: () => {
+    set((state) => {
+      const page = state.recipeBrowserForward[state.recipeBrowserForward.length - 1];
+      if (!page) {
+        return state;
+      }
+      return {
+        ...browserPageState(page),
+        recipeBrowserForward: state.recipeBrowserForward.slice(0, -1),
+        recipeBrowserBack: pushBrowserPage(state.recipeBrowserBack, currentBrowserPage(state)),
+      };
+    });
+  },
   clearResourceBrowser: () => {
     set({
       recipeBrowserResource: undefined,
       recipeBrowserSeed: undefined,
       recipeBrowserRefactorNodeId: undefined,
+      recipeBrowserBack: [],
+      recipeBrowserForward: [],
       recipeSearch: "",
       highlightSearch: "",
     });
@@ -1059,6 +1179,10 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         recipeBrowserSeed: seed,
         recipeBrowserRefactorNodeId: nodeId,
         recipeBrowserSeedNonce: state.recipeBrowserSeedNonce + 1,
+        // A refactor press is a page too: the search it replaces (if one
+        // was open) is one step back.
+        recipeBrowserBack: pushBrowserPage(state.recipeBrowserBack, currentBrowserPage(state)),
+        recipeBrowserForward: [],
         selectedNodeId: nodeId,
       };
     });

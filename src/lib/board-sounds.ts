@@ -141,7 +141,16 @@ export type BoardSoundKind =
   | "shuffleBoard" // a frame is drawn around finished cards
   | "dialRate" // the rate unit dial: one tap, pitched by the chosen step
   | "dialEnergy" // the rate dial landing on EU per unit: a coin, not a tap
-  | "dialPower"; // the power unit dial: a tap that grows with the tier
+  | "dialPower" // the power unit dial: a tap that grows with the tier
+  // The recipe search's family (Jack, 2026-09-02): the one place off the
+  // canvas that sounds, because it is a screen of its own with pages to
+  // turn. All quiet, all brush-first, none of them a thump.
+  | "pageOpen" // the search opens: a leaf lifted
+  | "pageClose" // and closes: the leaf laid down
+  | "pageTurn" // a new page while open: a chip clicked, back, forward
+  | "tick" // a switch on the page: machine chip, rate pill, any/all/only
+  | "stencilAdd" // a condition joins the stencil
+  | "stencilRemove"; // a condition leaves it
 
 let audioContext: AudioContext | undefined;
 let masterGain: GainNode | undefined;
@@ -599,6 +608,40 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode, step 
       // rise - the open sound's shape in the shuffle material.
       puff(ctx, out, { frequency: 600, q: 0.8, duration: 0.18, peak: 0.2 });
       blip(ctx, out, { from: 233, to: 294, duration: 0.16, peak: 0.1, delay: 0.02 });
+      break;
+    case "pageOpen":
+      // A leaf lifted: one soft brush with a small rise under it, the open
+      // sound's motion at a third of its voice.
+      puff(ctx, out, { frequency: 900, q: 0.9, duration: 0.12, peak: 0.14 });
+      blip(ctx, out, { from: 392, to: 494, duration: 0.12, peak: 0.08, delay: 0.01 });
+      break;
+    case "pageClose":
+      // The leaf laid down: the same brush a shade lower, settling (the
+      // close family's glide, nothing like the delete step).
+      puff(ctx, out, { frequency: 700, q: 0.9, duration: 0.12, peak: 0.12 });
+      blip(ctx, out, { from: 494, to: 392, duration: 0.12, peak: 0.08, delay: 0.01 });
+      break;
+    case "pageTurn":
+      // A page turned: two quick brushes, the second lighter, over a
+      // barely-there flat tick. No pitch motion - a turn is neither an
+      // arrival nor a loss.
+      puff(ctx, out, { frequency: 1100, q: 1.2, duration: 0.07, peak: 0.12 });
+      puff(ctx, out, { frequency: 1600, q: 1.6, duration: 0.04, peak: 0.06, delay: 0.03 });
+      blip(ctx, out, { from: 587, to: 587, duration: 0.05, peak: 0.06, delay: 0.01 });
+      break;
+    case "tick":
+      // A switch thrown: the adjust tap's little sibling, half its voice,
+      // with a grain of air so it reads as a key and not a note.
+      blip(ctx, out, { from: 659, to: 659, duration: 0.05, peak: 0.09 });
+      puff(ctx, out, { frequency: 2000, q: 3, duration: 0.02, peak: 0.04 });
+      break;
+    case "stencilAdd":
+      // A condition joins: one small step up.
+      blip(ctx, out, { from: 523, to: 587, duration: 0.09, peak: 0.12 });
+      break;
+    case "stencilRemove":
+      // And leaves: the same step back down - a removal, so down is right.
+      blip(ctx, out, { from: 587, to: 523, duration: 0.09, peak: 0.1 });
       break;
   }
 }
