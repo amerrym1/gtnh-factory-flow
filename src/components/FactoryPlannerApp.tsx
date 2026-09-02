@@ -19,7 +19,9 @@ import { downloadCommunityPlan, tagPlanWithCommunityId } from "@/lib/community/c
 import { forgetSharedPlanId, readSharedPlanId } from "@/lib/community/shared-link";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { useIsCompactViewport } from "@/lib/compact-view";
+import { useWelcomeTab } from "@/lib/welcome/welcome-tab";
 import { AppHeader } from "./AppHeader";
+import { WelcomePage } from "./welcome/WelcomePage";
 import { PlanIdentityDrawer } from "./PlanIdentityDrawer";
 import { SharedAddressSync } from "./SharedAddressSync";
 import { planContentFingerprint } from "@/lib/community/plan-fingerprint";
@@ -329,6 +331,8 @@ function PlacementRevealer() {
 
 /** The board with the tab strip over it: the same on any window. */
 function BoardColumn() {
+  const welcome = useWelcomeTab();
+
   return (
     /*
       The tab strip belongs to the canvas, not the window: designs switch
@@ -337,16 +341,35 @@ function BoardColumn() {
     */
     <div className="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto]">
       <DesignTabs />
+      {/*
+        Welcome COVERS the board rather than replacing it. Unmounting the board
+        would throw away the camera, the routed wires and the solve, and put
+        them all back a moment later for a page that is only ever a click from
+        being stepped off.
+      */}
       <div className="relative min-h-0">
         <FactoryFlow />
+        {welcome.active ? (
+          <div className="absolute inset-0 z-40">
+            <WelcomePage />
+          </div>
+        ) : null}
       </div>
-      <PlanIdentityDrawer />
+      {/* The plan card describes the board it sits under; while Welcome
+          covers that board, the card goes with it. */}
+      {welcome.active ? null : <PlanIdentityDrawer />}
     </div>
   );
 }
 
 function ColumnWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
-  const rightPanelShown = workspace.rightPanelOpen;
+  // The resource column reads the board's solve, and while Welcome covers the
+  // board those figures belong to whichever tab is hidden underneath — numbers
+  // about a plan you are not looking at. It folds to a blank strip for the
+  // duration, WITHOUT writing the workspace view, so stepping off Welcome
+  // brings it back exactly as it was left.
+  const welcome = useWelcomeTab();
+  const rightPanelShown = workspace.rightPanelOpen && !welcome.active;
 
   return (
     <>
@@ -378,6 +401,8 @@ function ColumnWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
         <BoardColumn />
         {rightPanelShown ? (
           <InspectorPanel />
+        ) : welcome.active ? (
+          <div className="h-full border-l border-line bg-surface" />
         ) : (
           <PanelRail side="right" label="Resources" />
         )}

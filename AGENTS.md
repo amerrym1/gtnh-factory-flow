@@ -339,11 +339,19 @@ Working notes for future agents on GTNH Factory Flow.
 
 ## Tabs, Cameras And Where A Plan Lands
 
-- The Welcome tab and the guided tours were REMOVED (Jack, 2026-09-02) to
-  make room for a new tutorial; nothing under `src/lib/tour` or
-  `src/components/tour` survives. The board's "?" help corner stays, built
-  from `src/components/help/card-parts.tsx`, and it finds what it rings by
-  the `data-help-anchor` attribute (formerly `data-tour-anchor`).
+- The guided tours were REMOVED (Jack, 2026-09-02) to make room for a new
+  tutorial; nothing under `src/lib/tour` or `src/components/tour`
+  survives. The board's "?" help corner stays, built from
+  `src/components/help/card-parts.tsx`, and it finds what it rings by the
+  `data-help-anchor` attribute (formerly `data-tour-anchor`).
+- The Welcome tab was REBUILT the same day (`src/components/welcome/`):
+  a hero with the three ways to start, the three moves, your designs, the
+  community's top six setups (opened into a fresh tab) and the latest
+  changelog entry, over `WelcomeBackdrop` - a canvas of ghost cards and
+  wires with packets riding them, paused while hidden, still under reduced
+  motion. Its state is `src/lib/welcome/welcome-tab.ts`, same storage keys
+  as before: `active` is per browser SESSION (a reload leaves you on the tab
+  you were on), `open` and `showOnStartup` are permanent.
 - The help sheet (`BoardHelp.tsx`) is a COMPUTED layout: every card is
   `CARD_W` wide and cards live in flex columns hung from one ring each
   (board-left under the build toolbar, board-right under the tool row and

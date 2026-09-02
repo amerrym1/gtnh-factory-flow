@@ -70,12 +70,12 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "2.53.0",
     date: "2026-09-02",
-    headline: "The Welcome tab and the guided tours are gone",
+    headline: "A new Welcome tab, and help that covers the whole board",
     notes: [
-      "The planner opens straight onto your designs.",
-      "The compass button and the Welcome menu row are gone with it.",
+      "The Welcome tab is rebuilt: your designs, the community's top setups and what changed, over a live board.",
       "The ? corner's help now covers cards, drawers, board windows, the search and every key.",
-      "A new tutorial is on the way.",
+      "The guided tours are gone. A new tutorial is on the way.",
+      "The compass in the header brings the Welcome tab back once you close it.",
     ],
   },
   {

@@ -42,6 +42,7 @@ import {
   extractProjectJsonFromPng,
   extractProjectJsonFromSvg,
 } from "@/lib/import-export/plan-image";
+import { useWelcomeTab } from "@/lib/welcome/welcome-tab";
 import { isPowerRecipe } from "@/lib/power/power-recipe";
 import { useFactoryStore } from "@/store/factory-store";
 
@@ -99,8 +100,16 @@ export function BoardActions({
   const lastResult = useFactoryStore((state) => state.lastResult);
   const selectedBoardIds = useFactoryStore((state) => state.selectedBoardIds);
   const [diagnosticsState, setDiagnosticsState] = useState<"idle" | "copied" | "failed">("idle");
-  const canShare = project.nodes.length > 0;
-  const shareTitle = canShare ? "Share" : "Share: build something first";
+  // Welcome COVERS the board, so the design underneath still has content and
+  // Share would happily post it. But sharing a board you cannot see is a
+  // trap, so the button waits until you are looking at the thing it posts.
+  const isWelcomeCoveringBoard = useWelcomeTab().active;
+  const canShare = !isWelcomeCoveringBoard && project.nodes.length > 0;
+  const shareTitle = isWelcomeCoveringBoard
+    ? "Share: open a design tab first"
+    : project.nodes.length === 0
+      ? "Share: build something first"
+      : "Share";
 
   const selectedCardCount = selectedBoardIds.length;
   const diagnosticsLabel =

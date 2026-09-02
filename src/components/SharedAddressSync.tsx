@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { planContentFingerprint } from "@/lib/community/plan-fingerprint";
 import { syncSharedPlanAddress } from "@/lib/community/shared-link";
+import { useWelcomeTab } from "@/lib/welcome/welcome-tab";
 import { useFactoryStore } from "@/store/factory-store";
 
 /**
@@ -15,24 +16,27 @@ import { useFactoryStore } from "@/store/factory-store";
  * what the sender is looking at is worse than no link. Reset the board, or
  * share it so the post catches up, and the id returns on its own.
  *
- * Also empty for a copy that predates fingerprints (unchanged cannot be
- * proven), and for a post found deleted (see noteSharedPlanGone).
+ * Also empty while Welcome covers the board (the address should say where you
+ * ARE), for a copy that predates fingerprints (unchanged cannot be proven),
+ * and for a post found deleted (see noteSharedPlanGone).
  *
  * Arrival is not read from the live address - shared-link.ts captured it at
  * load - so this sync can never race the import out of its parameter.
  */
 export function SharedAddressSync() {
   const project = useFactoryStore((state) => state.project);
+  const isWelcomeCoveringBoard = useWelcomeTab().active;
 
   useEffect(() => {
     const linkedPlanId = project.metadata?.communityPlanId;
     const baseline = project.metadata?.communityFingerprint;
     const isShareable =
+      !isWelcomeCoveringBoard &&
       Boolean(linkedPlanId) &&
       Boolean(baseline) &&
       planContentFingerprint(project) === baseline;
     syncSharedPlanAddress(isShareable ? linkedPlanId : undefined);
-  }, [project]);
+  }, [project, isWelcomeCoveringBoard]);
 
   return null;
 }

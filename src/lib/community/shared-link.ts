@@ -4,10 +4,11 @@
  * The link you send someone: `/?plan=<community id>`, which opens that setup in
  * a tab of its own.
  *
- * One module because several places care about it: the Share buttons that
- * write the link, the import that runs on arrival, and the address-bar sync
- * that keeps the link IN the address while the open board still matches its
- * post - see SharedAddressSync.
+ * One module because five places care about it: the Share buttons that write
+ * the link, the import that runs on arrival, the Welcome tab (which has to
+ * know that this page load already has somewhere to be), and the address-bar
+ * sync that keeps the link IN the address while the open board still matches
+ * its post - see SharedAddressSync.
  */
 const SHARED_PLAN_PARAM = "plan";
 

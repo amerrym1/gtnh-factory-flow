@@ -5,6 +5,12 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { EntryIcon } from "@/lib/model/types";
 import { FLUID_ICON_SCALE, ResourceIcon } from "./nei/ResourceIcon";
+import {
+  closeWelcomeTab,
+  leaveWelcomeTab,
+  openWelcomeTab,
+  useWelcomeTab,
+} from "@/lib/welcome/welcome-tab";
 import { useDesignStore } from "@/store/design-store";
 import { useSolvingBooks } from "@/components/flow/use-solving-books";
 
@@ -39,6 +45,7 @@ export function DesignTabs() {
   const removeDesign = useDesignStore((state) => state.removeDesign);
   const removeDesigns = useDesignStore((state) => state.removeDesigns);
   const reorderDesigns = useDesignStore((state) => state.reorderDesigns);
+  const welcome = useWelcomeTab();
 
   const [renamingId, setRenamingId] = useState<string>();
   const [openMenu, setOpenMenu] = useState<OpenMenu>();
@@ -278,7 +285,7 @@ export function DesignTabs() {
 
       // Clamped inside the strip: past the last slot the pill has nowhere
       // truer to go, and pinning it there says so better than letting it
-      // sail off over the + button.
+      // sail off over the Welcome tab or the + button.
       const dx = Math.max(
         -(dragged.mid - reach),
         Math.min(trackWidth - (dragged.mid + reach), trackX(lastClientX) - startTrackX),
@@ -436,6 +443,43 @@ export function DesignTabs() {
         className="flex h-8 min-w-0 shrink-0 items-center gap-1 border-b border-line bg-surface px-2"
       >
         {/*
+          Welcome rides at the head of the strip and outside the scroller, so it
+          never scrolls out of reach. It is not a design: it covers the board
+          rather than switching what is on it, which is why the design tabs read
+          their active state off `welcome.active` too - exactly one tab in this
+          row can look current.
+        */}
+        {welcome.open ? (
+          <div
+            className={[
+              "group flex h-6 shrink-0 items-center rounded-t border-b-2 pl-2 pr-1",
+              welcome.active
+                ? "border-cyan-500 bg-surface-raised text-fg"
+                : "border-transparent text-fg-muted hover:bg-surface-sunken hover:text-fg",
+            ].join(" ")}
+          >
+            <button
+              type="button"
+              onClick={openWelcomeTab}
+              title="Welcome"
+              className="flex items-center gap-1 text-xs font-medium"
+            >
+              <Compass className="h-3 w-3" aria-hidden />
+              Welcome
+            </button>
+            <button
+              type="button"
+              onClick={closeWelcomeTab}
+              aria-label="Close the Welcome tab"
+              title="Close tab"
+              className="ml-1 rounded px-1 text-xs text-fg-muted opacity-0 hover:bg-surface hover:text-fg focus:opacity-100 group-hover:opacity-100"
+            >
+              ✕
+            </button>
+          </div>
+        ) : null}
+
+        {/*
           Sized to its tabs (`shrink`), not to the whole bar (`flex-1`): with a
           couple of designs the strip is only as wide as they are, so the `+`
           sits against the last tab instead of being stranded at the far right.
@@ -460,7 +504,7 @@ export function DesignTabs() {
             className="flex w-max select-none items-center gap-1"
           >
             {designs.map((design, index) => {
-              const isActive = design.id === activeDesignId;
+              const isActive = design.id === activeDesignId && !welcome.active;
 
               return (
                 <Fragment key={design.id}>
@@ -504,6 +548,9 @@ export function DesignTabs() {
                         if (suppressClickRef.current) {
                           return;
                         }
+                        // Clicking a design is also how you step off Welcome,
+                        // including when it is the design already loaded.
+                        leaveWelcomeTab();
                         void switchToDesign(design.id);
                       }}
                       onDoubleClick={() => setRenamingId(design.id)}
@@ -571,6 +618,7 @@ export function DesignTabs() {
         <button
           type="button"
           onClick={() => {
+            leaveWelcomeTab();
             void addDesign();
           }}
           title="New design"
