@@ -7864,6 +7864,9 @@ const SourceToolbar = memo(function SourceToolbar({
   );
 });
 
+/** How long the wires stay parked after the still key is released. */
+const STILL_KEY_RELEASE_MS = 1000;
+
 /**
  * True while Shift or the Windows (Meta) key is held anywhere on the page.
  *
@@ -7874,8 +7877,34 @@ const SourceToolbar = memo(function SourceToolbar({
  * in the search box must not blink every wire on the board.
  */
 function useStillKeyHeld(): boolean {
-  const [held, setHeld] = useState(false);
+  const [held, setHeldNow] = useState(false);
   useEffect(() => {
+    // The pause starts the instant the key goes down and lets go a second
+    // AFTER it comes up: Win+Shift+S is tapped, not held, and the shot is
+    // taken a beat later, so the dashes must stay parked past the release.
+    let releaseTimer: ReturnType<typeof setTimeout> | undefined;
+    let down = false;
+    const setHeld = (next: boolean) => {
+      if (next) {
+        down = true;
+        if (releaseTimer !== undefined) {
+          clearTimeout(releaseTimer);
+          releaseTimer = undefined;
+        }
+        setHeldNow(true);
+        return;
+      }
+      if (!down) {
+        return;
+      }
+      down = false;
+      if (releaseTimer === undefined) {
+        releaseTimer = setTimeout(() => {
+          releaseTimer = undefined;
+          setHeldNow(false);
+        }, STILL_KEY_RELEASE_MS);
+      }
+    };
     const isStillKey = (key: string) => key === "Shift" || key === "Meta" || key === "OS";
     const isEditable = (target: EventTarget | null) => {
       const element = target instanceof HTMLElement ? target : null;
@@ -7927,6 +7956,9 @@ function useStillKeyHeld(): boolean {
       window.removeEventListener("mousedown", onPointer, true);
       window.removeEventListener("blur", release);
       document.removeEventListener("visibilitychange", onVisibility);
+      if (releaseTimer !== undefined) {
+        clearTimeout(releaseTimer);
+      }
     };
   }, []);
   return held;
