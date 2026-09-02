@@ -288,9 +288,8 @@ import {
   reuseObjectIdentity,
 } from "./edge-detail";
 import { compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
-import { describeDeathSpiral, findDeathSpirals, type DeathSpiral } from "./death-spiral";
-import { describeClogLock, findClogLocks, type ClogLock } from "./clog-lock";
-import { useTourLoopNoticeExample } from "@/lib/tour/tour-mock-notice";
+import { describeDeathSpiral, findDeathSpirals } from "./death-spiral";
+import { describeClogLock, findClogLocks } from "./clog-lock";
 import { findUnwiredNodeIds } from "./node-verdict";
 import { useBoardPulseSync } from "./animation-phase";
 import { getDockTabsRight, getDockTopInset } from "./dock-insets";
@@ -6134,7 +6133,7 @@ export function FactoryFlow() {
       // controller and the glance CSS can read the mode in force without any
       // React subscription.
       data-glance-mode={boardView.glanceMode}
-      data-tour-anchor="board"
+      data-help-anchor="board"
       className={[
         // The 480px floor keeps a desktop board usable, and clears the shortest
         // window that is not compact (560px) with the two bars above it. A phone
@@ -6280,7 +6279,7 @@ export function FactoryFlow() {
         // the board has been put back where the tab was left, which it then
         // stamped over with a fit of the whole plan. The app frames for itself
         // on every path that puts cards on the board (the design store, plan
-        // import, blueprint paste, the tours), so nothing was relying on it.
+        // import, blueprint paste), so nothing was relying on it.
         // Culling pauses while an export photographs the whole plan.
         onlyRenderVisibleElements={!isExportRendering}
         // Double-click PINS AND UNPINS waypoint dots now, so the gesture can
@@ -6449,7 +6448,6 @@ export function FactoryFlow() {
           recipeSearchOpen ? "opacity-20 grayscale [&_*]:pointer-events-none" : "",
         ].join(" ")}
       >
-        <TourLoopNoticeExample />
         <UnwiredNotice onShow={handleShowNodes} />
         <LooseWiresOffNotice onShow={handleShowNodes} />
         <DeathSpiralNotice onShow={handleShowNodes} />
@@ -6693,84 +6691,6 @@ const ClogLockNotice = memo(function ClogLockNotice({
       >
         ×
       </button>
-    </div>
-  );
-});
-
-/**
- * The tour's specimen shelf: both loop notices, conjured as EXAMPLES while
- * the "When a line feeds itself" step is up (`tour-mock-notice.ts` is the
- * switch). The lesson describes two diseases the tour board does not have,
- * and a notice the reader has never seen is a shape they will not recognise
- * when it is real - so the step shows the banners themselves, without
- * touching the plan. The copy comes through the same describe functions the
- * real notices use, over fixed specimen rings, so the examples can never
- * drift out of the product's own voice. Marked EXAMPLE and fully inert: the
- * wrapper swallows no clicks, and there is nothing for Show me to fly to.
- */
-const TOUR_EXAMPLE_SPIRAL: DeathSpiral = {
-  id: "tour-example-dead-loop",
-  nodeIds: ["tour-a", "tour-b", "tour-c", "tour-d"],
-  machineIds: ["tour-a", "tour-b", "tour-c", "tour-d"],
-  edgeIds: [],
-  resourceNames: ["Sulfuric Acid"],
-  hasExternalSource: false,
-  externalSourceDry: false,
-  deadFeeders: [],
-};
-
-const TOUR_EXAMPLE_LOCK: ClogLock = {
-  id: "tour-example-clog-lock",
-  nodeIds: ["tour-a", "tour-b", "tour-c", "tour-d", "tour-e"],
-  machineIds: ["tour-a", "tour-b", "tour-c", "tour-d", "tour-e"],
-  ventNodeIds: ["tour-a"],
-  edgeIds: [],
-  vents: [
-    {
-      nodeId: "tour-a",
-      machineName: "Distillation Tower",
-      resourceKey: makeResourceKey("fluid", "dilutedsulfuricacid"),
-      resourceName: "Diluted Sulfuric Acid",
-      perSecond: 2.5,
-    },
-  ],
-};
-
-const TourLoopNoticeExample = memo(function TourLoopNoticeExample() {
-  const shown = useTourLoopNoticeExample();
-  if (!shown) {
-    return null;
-  }
-  const spiral = describeDeathSpiral(TOUR_EXAMPLE_SPIRAL);
-  const lock = describeClogLock(TOUR_EXAMPLE_LOCK);
-  return (
-    <div data-tour-anchor="loop-notice" className="pointer-events-none flex flex-col items-center gap-2">
-      <div className="flex max-w-[min(92vw,560px)] flex-wrap items-center justify-center gap-x-2 gap-y-1.5 border-2 border-[#c34c4c] bg-[#2b1c1c] px-2 py-1.5 font-mono text-[12px] text-[#f2e4e4] shadow-[inset_2px_2px_0_#7a3636,inset_-2px_-2px_0_#1a1010,4px_4px_0_rgba(0,0,0,0.35)]">
-        <span className="shrink-0 font-bold tracking-[0.5px] text-[#ff9c9c]">DEAD LOOP</span>
-        <span className="shrink-0 border border-[#7a3636] px-1 text-[10px] font-bold tracking-[0.5px] text-[#b89a9a]">
-          EXAMPLE
-        </span>
-        <span className="text-[#e6d2d2]">{spiral.short}</span>
-        <span
-          aria-hidden
-          className="shrink-0 border border-[#c34c4c] bg-[#4a2424] px-2 py-0.5 font-bold text-[#ffd0d0]"
-        >
-          Show me
-        </span>
-      </div>
-      <div className="flex max-w-[min(92vw,560px)] flex-wrap items-center justify-center gap-x-2 gap-y-1.5 border-2 border-[#4c7ec3] bg-[#1a222b] px-2 py-1.5 font-mono text-[12px] text-[#e4ecf2] shadow-[inset_2px_2px_0_#365d7a,inset_-2px_-2px_0_#10161a,4px_4px_0_rgba(0,0,0,0.35)]">
-        <span className="shrink-0 font-bold tracking-[0.5px] text-[#9cc9ff]">CLOG LOCK</span>
-        <span className="shrink-0 border border-[#365d7a] px-1 text-[10px] font-bold tracking-[0.5px] text-[#9aaab8]">
-          EXAMPLE
-        </span>
-        <span className="text-[#d2e0e6]">{lock.short}</span>
-        <span
-          aria-hidden
-          className="shrink-0 border border-[#4c7ec3] bg-[#24384a] px-2 py-0.5 font-bold text-[#d0e6ff]"
-        >
-          Show me
-        </span>
-      </div>
     </div>
   );
 });
@@ -7142,11 +7062,10 @@ function ToolGroup({
       <button
         type="button"
         onClick={() => onToggle(id)}
-        // Folded, the trigger IS the toolbar as far as a guided tour is
-        // concerned: the row above is still in the DOM, invisible, and the tour
-        // skips invisible anchors, so a phone gets a ring around this button
-        // instead of one around empty board.
-        data-tour-anchor={id}
+        // Folded, the trigger IS the toolbar as far as the help sheet is
+        // concerned: the row above is still in the DOM, invisible, so a phone
+        // gets a ring around this button instead of one around empty board.
+        data-help-anchor={id}
         aria-expanded={isOpen}
         aria-label={isOpen ? `Hide ${label}` : `Show ${label}`}
         title={isOpen ? `Hide ${label}` : label}
@@ -7467,7 +7386,7 @@ const SetupRulesButton = memo(function SetupRulesButton({
     <div ref={rootRef} className="pointer-events-auto flex">
       <button
         type="button"
-        data-tour-anchor="setup-rules"
+        data-help-anchor="setup-rules"
         onClick={() => onOpenChange(!open)}
         aria-expanded={open}
         className={[

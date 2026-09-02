@@ -339,10 +339,11 @@ Working notes for future agents on GTNH Factory Flow.
 
 ## Tabs, Cameras And Where A Plan Lands
 
-- The Welcome tab's `active` flag is per browser SESSION
-  (`sessionStorage`, `src/lib/tour/welcome-tab.ts`). A reload is not a fresh
-  visit: it must leave you on the tab you were on. `open` and `showOnStartup`
-  are permanent.
+- The Welcome tab and the guided tours were REMOVED (Jack, 2026-09-02) to
+  make room for a new tutorial; nothing under `src/lib/tour` or
+  `src/components/tour` survives. The board's "?" help corner stays, built
+  from `src/components/help/card-parts.tsx`, and it finds what it rings by
+  the `data-help-anchor` attribute (formerly `data-tour-anchor`).
 - Each design tab remembers its own camera:
   `src/lib/designs/design-camera.ts`, localStorage keyed by design id. It is
   deliberately NOT part of the plan - a shared setup carries positions and view
@@ -354,8 +355,8 @@ Working notes for future agents on GTNH Factory Flow.
 - The board has NO `fitView` prop, on purpose. React Flow's fit-on-init waits
   for cards to be measured, so on a page load it fires after the plan arrives
   and stamps over the restored camera. The app frames for itself on every path
-  that puts cards on the board (design store, plan import, blueprint paste,
-  tours); do not add the prop back.
+  that puts cards on the board (design store, plan import, blueprint paste);
+  do not add the prop back.
 
 ## Boards (And Their Minimized State, Formerly Pockets)
 

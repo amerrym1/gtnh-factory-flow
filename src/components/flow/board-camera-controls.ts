@@ -28,7 +28,7 @@ import { BOARD_MAX_ZOOM, BOARD_MIN_ZOOM } from "./board-camera";
  * PageUp/PageDown and +/- zoom on the board's centre. Held keys ease up to
  * cruise and released ones bleed off through the same glide the mouse gets,
  * so the keyboard and the hand speak one dialect. Keys never fire while
- * typing, never while an overlay (the welcome page, a dialog) is over the
+ * typing, never while an overlay (a dialog) is over the
  * board, and the arrows yield to a focused card — React Flow moves the card.
  *
  * All of it runs through instance.setViewport, the same door the touch
@@ -255,7 +255,7 @@ export function useBoardCameraControls({
 
     /**
      * Whether the keys belong to this board right now: it has size and its
-     * centre pixel is its own — not the welcome page's, not a dialog's.
+     * centre pixel is its own — not a dialog's.
      */
     const boardOwnsKeys = () => {
       const rect = board.getBoundingClientRect();

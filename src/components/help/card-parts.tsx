@@ -4,18 +4,18 @@ import { Fragment, useId } from "react";
 import type { LucideIcon } from "lucide-react";
 
 /**
- * The look shared by the guided tour and the board's "?" corner.
+ * The glance card the board's "?" corner is built from.
  *
- * Both are the same idea - dim the screen, ring a thing, put a card beside it
- * saying what it is - so they are the same card. A row leads with the mark the
- * SCREEN uses: the button's own icon, a key chip, or a little mouse with the
- * right button lit, and the words that matter are lit rather than spelled out
- * at length. That is what stops either surface reading as a wall of text.
+ * The idea: dim the screen, ring a thing, put a card beside it saying what it
+ * is. A row leads with the mark the SCREEN uses: the button's own icon, a key
+ * chip, or a little mouse with the right button lit, and the words that matter
+ * are lit rather than spelled out at length. That is what stops the surface
+ * reading as a wall of text.
  *
- * The two differ in one thing only. The tour shows one card at a time and can
- * afford to shout, so its marks are cyan; the help sheet lays eight cards over
- * the whole window at once, where eight cyan cards would be a fairground, so it
- * passes a calmer accent in and keeps cyan for the one card you can click.
+ * The help sheet lays eight cards over the whole window at once, where eight
+ * cyan cards would be a fairground, so it passes a calmer accent in and keeps
+ * cyan (GLANCE_ACCENT) for anything that can be clicked. A future guided
+ * walkthrough can reuse the same card.
  */
 
 export type GlanceTone =

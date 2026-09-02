@@ -107,9 +107,9 @@ const PROJECT_HISTORY_LIMIT = 100;
  * the caller.
  *
  * The board's own framing is deliberately timid: it never magnifies past 1:1,
- * because arriving at a plan blown up reads as a bug. A guided tour wants the
- * opposite - "look at THIS card" has to actually fill the eye - so it says so
- * rather than every caller inheriting one compromise.
+ * because arriving at a plan blown up reads as a bug. A caller that wants
+ * "look at THIS card" to actually fill the eye says so rather than every
+ * caller inheriting one compromise.
  */
 export interface BoardFraming {
   /** How far in the fit may zoom. Defaults to BOARD_CAMERA_MAX_ZOOM. */
@@ -118,9 +118,8 @@ export interface BoardFraming {
   padding?: number;
   /**
    * Screen pixels down the right-hand side to leave clear, and to frame
-   * AROUND: the cards land centred in what is left, not behind the panel or
-   * the tour card sitting there. Clamped so a phone cannot inset itself to
-   * nothing.
+   * AROUND: the cards land centred in what is left, not behind whatever
+   * panel is sitting there. Clamped so a phone cannot inset itself to nothing.
    */
   insetRight?: number;
 }

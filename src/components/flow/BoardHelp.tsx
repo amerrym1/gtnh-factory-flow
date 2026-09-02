@@ -8,7 +8,6 @@ import {
   Grid3x3,
   Magnet,
   Paintbrush,
-  Play,
   RotateCcw,
   Search,
   Share2,
@@ -29,22 +28,16 @@ import {
   GlanceRows,
   GlanceTitle,
   type GlanceRow,
-} from "@/components/tour/card-parts";
-import { TOUR_LESSONS } from "@/lib/tour/lessons";
-import { startLesson } from "@/lib/tour/tour-state";
+} from "@/components/help/card-parts";
 
 /**
  * The board's help corner: a "?" where the zoom buttons used to live.
  *
  * Hovering it lays a glance sheet over the whole window: every toolbar and
- * panel gets a dashed ring, a solid arrow, and a card naming what is in it,
- * using the same card the guided tour uses (see `card-parts.tsx`) so the two
- * ways of being shown around read as one thing. Beside the button sit the
- * guided tours themselves, because "what does this do" and "show me" are the
- * same question asked twice, and this corner is where people ask it.
+ * panel gets a dashed ring, a solid arrow, and a card naming what is in it
+ * (see `card-parts.tsx`).
  *
- * Pure glance layer with one exception: pointer events stay off everywhere
- * except the tours card, which you can actually press. Moving away folds the
+ * Pure glance layer: pointer events stay off everywhere. Moving away folds the
  * whole thing up again.
  *
  * The sheet portals to <body>: the board, the browser and the inspector each
@@ -74,7 +67,7 @@ type CalloutAlign = "start" | "center" | "end";
 const CALLOUT_GAP = 18;
 const RING_PAD = 5;
 const ARROW_HEAD = 12;
-/** Long enough to cross the gap from the button to the tours card. */
+/** Long enough to cross the gap from the button to the cards over it. */
 const HIDE_GRACE_MS = 160;
 /**
  * The smallest window the spread-out glance layout fits: below either of
@@ -90,10 +83,8 @@ const GLANCE_MIN_VH = 920;
 /**
  * The sheet's own accent: one soft blue-grey.
  *
- * Not the tour's cyan. The tour rings ONE thing at a time and can afford to
- * shout; this draws seven rings and eight cards over the whole window at once,
- * and in cyan that reads as an alarm going off. Cyan is kept for the single
- * card down here you can actually click.
+ * Not cyan: this draws seven rings and eight cards over the whole window at
+ * once, and in cyan that reads as an alarm going off.
  */
 const ACCENT = GLANCE_QUIET;
 const ACCENT_DIM = "rgba(147, 164, 187, 0.5)";
@@ -108,7 +99,7 @@ const CALLOUTS: Array<{
   shift?: number;
   /**
    * Skipped by the spread-out glance layer. The bottom-left corner already
-   * holds the moves-and-tours stack, and a card whose anchor lives under
+   * holds the moves card, and a card whose anchor lives under
    * that stack has nowhere to point from; the sheet and the panel list it
    * like any other.
    */
@@ -123,8 +114,8 @@ const CALLOUTS: Array<{
     side: "right",
     align: "center",
     // Lifted off centre into the one clear band on this side: the build tools
-    // card takes the top of the board and the moves-and-tours stack takes the
-    // bottom, so dead centre would land on the stack. (-75, not -120: the
+    // card takes the top of the board and the moves card takes the
+    // bottom, so dead centre would land on it. (-75, not -120: the
     // build tools card grew an auto-arrange row, and at the minimum window
     // height the band between its tail and the stack is only just a card.)
     shift: -60,
@@ -449,39 +440,6 @@ function GlanceCard({
   );
 }
 
-/**
- * The one thing down here you can press: the guided tours, offered where people
- * already come looking for help. Cyan, because everything else on this sheet is
- * only there to be read.
- */
-function ToursCard({ onStart }: { onStart: (lessonId: string) => void }) {
-  return (
-    <div
-      className={`${GLANCE_CARD_CLASS} pointer-events-auto px-3 py-2.5`}
-      style={{ border: "2px solid #1c4a56" }}
-    >
-      <GlanceTitle dense>Guided tours</GlanceTitle>
-      <div className="mt-2 flex flex-col gap-1">
-        {TOUR_LESSONS.map((lesson) => (
-          <button
-            key={lesson.id}
-            type="button"
-            onClick={() => onStart(lesson.id)}
-            className="flex items-center gap-2 border border-transparent px-1.5 py-1 text-left text-[12px] leading-tight text-[#a5f3fc] hover:border-cyan-800 hover:bg-cyan-500/10"
-          >
-            <Play className="h-3 w-3 shrink-0" aria-hidden />
-            <span className="flex-1">{lesson.title}</span>
-            <span className="shrink-0 text-[10px] text-[#5e7183]">{lesson.steps.length}</span>
-          </button>
-        ))}
-      </div>
-      <p className="mt-1.5 px-1.5 text-[10px] leading-snug text-[#5e7183]">
-        Press Esc to leave a tour at any point.
-      </p>
-    </div>
-  );
-}
-
 const HELP_BUTTON_CLASS =
   "pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] font-mono text-[16px] font-black text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110";
 
@@ -494,13 +452,7 @@ const HELP_BUTTON_CLASS =
  * windows get the content and drop the pointing: every card in a column, over a
  * full-screen sheet with one way out.
  */
-function HelpSheet({
-  onClose,
-  onStart,
-}: {
-  onClose: () => void;
-  onStart: (lessonId: string) => void;
-}) {
+function HelpSheet({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[120] flex flex-col bg-[#101419] font-mono text-[#dbe3ec]">
       <div
@@ -521,7 +473,6 @@ function HelpSheet({
         </button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-        <ToursCard onStart={onStart} />
         <GlanceCard title="Touch moves" rows={TOUCH_MOVES} />
         {CALLOUTS.map((callout) => (
           <GlanceCard key={callout.anchor} title={callout.title} rows={callout.rows} />
@@ -546,12 +497,10 @@ function HelpHoverPanel({
   measured,
   onEnter,
   onLeave,
-  onStart,
 }: {
   measured: Measured;
   onEnter: () => void;
   onLeave: () => void;
-  onStart: (lessonId: string) => void;
 }) {
   const { button, vw, vh } = measured;
   const anchorTop = button ? button.top : vh - 12;
@@ -572,7 +521,6 @@ function HelpHoverPanel({
           maxHeight: anchorTop - 22,
         }}
       >
-        <ToursCard onStart={onStart} />
         <GlanceCard title="Mouse and keys" rows={MOVES} />
         {CALLOUTS.map((callout) => (
           <GlanceCard key={callout.anchor} title={callout.title} rows={callout.rows} />
@@ -587,12 +535,10 @@ function HelpGlanceSheet({
   measured,
   onEnter,
   onLeave,
-  onStart,
 }: {
   measured: Measured;
   onEnter: () => void;
   onLeave: () => void;
-  onStart: (lessonId: string) => void;
 }) {
   const { rects, button, vw, vh } = measured;
   return (
@@ -649,17 +595,15 @@ function HelpGlanceSheet({
           >
             ?
           </div>
-          {/* Stacked over the button: the moves you cannot see, then the tours
-              you can press, nearest to the hand that opened this. The notices
-              and plan-card cards stay off this stack - it shares its corner
-              with the plan card's own callout space, and three cards deep it
-              buried the left column's card too. */}
+          {/* Over the button: the moves you cannot see. The notices and
+              plan-card cards stay off this stack - it shares its corner with
+              the plan card's own callout space, and deeper stacks buried the
+              left column's card too. */}
           <div
             className="absolute flex w-[360px] flex-col gap-2"
             style={{ left: button.left, bottom: vh - button.top + 10 }}
           >
             <GlanceCard title="Mouse and keys" rows={MOVES} />
-            <ToursCard onStart={onStart} />
           </div>
         </Fragment>
       ) : null}
@@ -689,23 +633,13 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
   }, []);
   useEffect(() => () => window.clearTimeout(hideTimerRef.current), []);
 
-  // Starting a tour takes the sheet down with it: the tour is about to dim the
-  // same screen and ring things on it, and two glance layers at once is one too
-  // many. It also cannot be hovered away, since the tour blocks the pointer.
-  const startTour = useCallback((lessonId: string) => {
-    window.clearTimeout(hideTimerRef.current);
-    setMeasured(undefined);
-    setSheetOpen(false);
-    startLesson(lessonId);
-  }, []);
-
   if (compact) {
     return (
       <div className="absolute bottom-3 left-3 z-30">
         <button
           type="button"
           onClick={() => setSheetOpen(true)}
-          data-tour-anchor="help"
+          data-help-anchor="help"
           className={HELP_BUTTON_CLASS}
           title="Board help"
           aria-label="Show board help"
@@ -714,7 +648,7 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
         </button>
         {isSheetOpen && typeof document !== "undefined"
           ? createPortal(
-              <HelpSheet onClose={() => setSheetOpen(false)} onStart={startTour} />,
+              <HelpSheet onClose={() => setSheetOpen(false)} />,
               document.body,
             )
           : null}
@@ -743,7 +677,7 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
         onClick={show}
         onFocus={show}
         onBlur={scheduleHide}
-        data-tour-anchor="help"
+        data-help-anchor="help"
         className={HELP_BUTTON_CLASS}
         title="Board help"
         aria-label="Show board help"
@@ -753,19 +687,9 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
       {measured
         ? createPortal(
             fitsGlance ? (
-              <HelpGlanceSheet
-                measured={measured}
-                onEnter={show}
-                onLeave={scheduleHide}
-                onStart={startTour}
-              />
+              <HelpGlanceSheet measured={measured} onEnter={show} onLeave={scheduleHide} />
             ) : (
-              <HelpHoverPanel
-                measured={measured}
-                onEnter={show}
-                onLeave={scheduleHide}
-                onStart={startTour}
-              />
+              <HelpHoverPanel measured={measured} onEnter={show} onLeave={scheduleHide} />
             ),
             document.body,
           )

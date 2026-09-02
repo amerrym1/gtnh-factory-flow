@@ -40,7 +40,6 @@ import {
 import { useFactoryStore } from "@/store/factory-store";
 import { POWER_EU_CLAUSE_ID } from "@/lib/power/power-search";
 import { useDesignStore } from "@/store/design-store";
-import { leaveWelcomeTab, readWelcomeTabState } from "@/lib/tour/welcome-tab";
 import type { RecipeInputPicks, TierFilter } from "@/store/factory-store";
 import type { Recipe, ResourceAmount } from "@/lib/model/types";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
@@ -373,8 +372,8 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     return () => window.removeEventListener(OPEN_SETUPS_EVENT, openSetups);
   }, []);
 
-  // And the general form of the same thing: the guided tour walks all three
-  // tabs, so it needs to be able to name one.
+  // And the general form of the same thing: anything outside the column can
+  // ask for a tab by name.
   useEffect(() => {
     const openTab = () => {
       const tab = takePendingSidebarTab();
@@ -751,21 +750,8 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       const currentMode = currentState.recipeBrowserResource
         ? currentState.recipeBrowserMode
         : browserMode;
-      // A pick made while Welcome covers the board would land on whatever tab
-      // is hidden underneath it, unseen. It gets a fresh blank tab instead, so
-      // the card arrives on a board the player is actually looking at. Anchor
-      // and refactor targets are cards of the covered plan, so they are
-      // dropped along with it - on a blank board there is nothing to wire to
-      // or replace.
-      const welcomeCovered = readWelcomeTabState().active;
-      if (welcomeCovered) {
-        await useDesignStore.getState().addDesign();
-        leaveWelcomeTab();
-      }
-      const currentRefactorNodeId = welcomeCovered
-        ? undefined
-        : currentState.recipeBrowserRefactorNodeId;
-      const anchorNodeId = welcomeCovered ? undefined : currentResource?.anchorNodeId;
+      const currentRefactorNodeId = currentState.recipeBrowserRefactorNodeId;
+      const anchorNodeId = currentResource?.anchorNodeId;
       const contextResource = getRecipeAddContextResource(
         currentResource,
         currentMode,
@@ -1154,7 +1140,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           <button
             type="button"
             onClick={() => setSidebarMode("blueprints")}
-            data-tour-anchor="pockets-tab"
+            data-help-anchor="pockets-tab"
             className={[
               "flex h-7 flex-1 items-center justify-center gap-1 border-b-2 text-[11px] font-medium",
               sidebarMode === "blueprints"

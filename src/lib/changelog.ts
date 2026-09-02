@@ -19,17 +19,12 @@
  * prune it back to a handful again; that only moved the wall from the archive
  * into the popup for anyone returning after a long break.
  *
- * An entry can also carry ACTIONS. A release that adds something you have to
- * DO to understand - a tour, a demo board - should offer it as a button rather
- * than describing it and hoping, because the reader is already right here with
- * the app open.
+ * An entry can also carry ACTIONS: links for anything that lives outside the
+ * app, offered as a button because the reader is already right here.
  */
 export interface ChangelogAction {
   label: string;
-  /** Starts this tour lesson and closes the dialog. */
-  lessonId?: string;
-  /** Or opens a link, for anything that lives outside the app. */
-  href?: string;
+  href: string;
 }
 
 export interface ChangelogEntry {
@@ -72,6 +67,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "2.53.0",
+    date: "2026-09-02",
+    headline: "The Welcome tab and the guided tours are gone",
+    notes: [
+      "The planner opens straight onto your designs.",
+      "The compass button and the Welcome menu row are gone with it.",
+      "The ? corner still explains every toolbar and panel.",
+      "A new tutorial is on the way.",
+    ],
+  },
   {
     version: "2.52.0",
     date: "2026-09-02",
@@ -573,7 +579,6 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Board help fits small windows, opens on a click, and names today's buttons.",
       "On a phone the help teaches touch moves instead of mouse clicks.",
     ],
-    actions: [{ label: "Take the tour", lessonId: "read-the-board" }],
   },
   {
     version: "2.20.2",
@@ -844,7 +849,6 @@ export const CHANGELOG: ChangelogEntry[] = [
       "The Read the board tour now explains what a full input bar means on a slowed machine.",
       "The first tour now covers the calm colours button and uses the panel's real headings.",
     ],
-    actions: [{ label: "Walk the board tour", lessonId: "read-the-board" }],
   },
   {
     version: "2.9.0",
@@ -919,7 +923,6 @@ export const CHANGELOG: ChangelogEntry[] = [
       "New drawer shapes: *products are squares, byproducts shields, buffers hexagons*, so the product and byproduct swap keeps its buttons still. A catching buffer wears a *dashed ring*; a strict one is solid.",
       "Every grey browser tooltip is now the planner's own: same words, proper panel, no delay.",
     ],
-    actions: [{ label: "Take the tour", lessonId: "read-the-board" }],
   },
   {
     version: "2.3.0",
@@ -993,7 +996,6 @@ export const CHANGELOG: ChangelogEntry[] = [
     // The release that introduced the version stamp, so no browser alive has
     // one to compare against. Without this, nobody sees these notes at all.
     showToEveryone: true,
-    actions: [{ label: "Take the tour", lessonId: "read-the-board" }],
   },
   {
     version: "1.42.1",

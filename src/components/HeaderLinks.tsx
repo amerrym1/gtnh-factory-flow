@@ -1,8 +1,7 @@
 "use client";
 
-import { Bug, Compass, Heart, Sparkles } from "lucide-react";
+import { Bug, Heart, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
-import { openWelcomeTab } from "@/lib/tour/welcome-tab";
 import {
   markVersionSeenAndNotify,
   subscribeToVersionSeen,
@@ -45,17 +44,6 @@ const BUG_REPORT_URL = `${GITHUB_URL}/issues/new?template=bug_report.yml&version
 export function HeaderLinks() {
   return (
     <div className="flex shrink-0 items-center gap-1">
-      {/* The way back to the Welcome tab once it has been closed, which is the
-          only way back to the guided tours. */}
-      <button
-        type="button"
-        onClick={openWelcomeTab}
-        title="Welcome"
-        aria-label="Open the Welcome tab"
-        className="inline-flex h-7 w-7 items-center justify-center rounded border border-line-strong bg-surface text-fg-subtle hover:bg-surface-raised hover:text-fg"
-      >
-        <Compass className="h-3.5 w-3.5" />
-      </button>
       <HeaderLink href={GITHUB_URL} label="Source on GitHub">
         <GithubMark />
       </HeaderLink>
@@ -181,19 +169,6 @@ export function SupportButton() {
 export function MenuLinks({ onAction }: { onAction?: () => void }) {
   return (
     <div className="flex flex-col">
-      <button
-        type="button"
-        onClick={() => {
-          openWelcomeTab();
-          onAction?.();
-        }}
-        className="flex h-10 items-center gap-2.5 rounded px-2 text-left text-sm text-fg-subtle hover:bg-surface-sunken"
-      >
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-          <Compass className="h-3.5 w-3.5" aria-hidden />
-        </span>
-        <span className="truncate">Welcome and tours</span>
-      </button>
       <MenuLink href={GITHUB_URL} label="Source on GitHub">
         <GithubMark />
       </MenuLink>
