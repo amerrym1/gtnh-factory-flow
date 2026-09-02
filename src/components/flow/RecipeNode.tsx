@@ -186,7 +186,9 @@ import {
   formatSlotRateBare,
   formatSlotRateOrNull,
   portReadsEnergy,
-  energyReadingInk,
+  ENERGY_READING_TEXT,
+  formatEnergyPerUnitParts,
+  ENERGY_UNIT_TEXT,
   formatTimes,
   type PortStory,
 } from "./flow-explainers";
@@ -2129,6 +2131,32 @@ function GlanceMachineArt({
   );
 }
 
+/**
+ * An energy reading as a number with a small grey tail: "200" and then
+ * "EU/Item" a size down in the rate grey. The number carries the gold and
+ * the eye; the unit only has to be there.
+ */
+function EnergyReading({
+  euPerUnit,
+  kind,
+  unitSize,
+}: {
+  euPerUnit: number;
+  kind: string;
+  /** The tail's font size in px, two down from the number's. */
+  unitSize: number;
+}) {
+  const parts = formatEnergyPerUnitParts(euPerUnit, kind);
+  return (
+    <>
+      {parts.value}
+      <span className={ENERGY_UNIT_TEXT} style={{ fontSize: unitSize }}>
+        {parts.unit}
+      </span>
+    </>
+  );
+}
+
 /** One chip of the hover reveal, in the card's own chip clothes. */
 function GlanceIoRow({ port }: { port: RailPort }) {
   return (
@@ -2162,10 +2190,14 @@ function GlanceIoRow({ port }: { port: RailPort }) {
         <span
           className={[
             "truncate text-[13px] leading-4 tabular-nums",
-            portReadsEnergy(port) ? energyReadingInk(port.side) : "text-[var(--mc-ink-muted)]",
+            portReadsEnergy(port) ? ENERGY_READING_TEXT : "text-[var(--mc-ink-muted)]",
           ].join(" ")}
         >
-          {formatPortRate(port, port.currentPerSecond)}
+          {portReadsEnergy(port) ? (
+            <EnergyReading euPerUnit={port.energyPerUnit!} kind={port.kind} unitSize={10} />
+          ) : (
+            formatPortRate(port, port.currentPerSecond)
+          )}
         </span>
       </span>
     </span>
@@ -3327,7 +3359,7 @@ export function PortChip({
   // rate, dressed so it can never be mistaken for one.
   const readsEnergy = portReadsEnergy(port);
   const rateText = readsEnergy ? (
-    formatPortRate(port, port.currentPerSecond)
+    <EnergyReading euPerUnit={port.energyPerUnit!} kind={port.kind} unitSize={calmMode ? 10 : 8} />
   ) : (
     <MotionNumberText
       values={[port.currentPerSecond, port.nameplatePerSecond]}
@@ -3340,7 +3372,7 @@ export function PortChip({
       }}
     />
   );
-  const rateInk = readsEnergy ? energyReadingInk(port.side) : "text-[var(--mc-ink-muted)]";
+  const rateInk = readsEnergy ? ENERGY_READING_TEXT : "text-[var(--mc-ink-muted)]";
 
   // One bar, one ruler: 100% = full blast. Solid = now, hatch = would unlock
   // if fed. The caret/burst (the want) is an INPUT-side signal — on outputs

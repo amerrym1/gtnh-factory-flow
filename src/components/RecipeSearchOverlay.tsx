@@ -23,7 +23,7 @@ import type { MachineTier, ResourceAmount } from "@/lib/model/types";
 import { energyPerUnitSuffix, type TimeRateUnit } from "@/lib/model/rate-unit";
 import { formatCompact } from "@/lib/model/resources";
 import { playBoardSound } from "@/lib/board-sounds";
-import { energyReadingInk } from "./flow/flow-explainers";
+import { ENERGY_READING_TEXT } from "./flow/flow-explainers";
 import { GT_TIER_COLORS } from "./flow/tier-colors";
 import type { RecipeInputPicks, TierFilter } from "@/store/factory-store";
 import {
@@ -1250,10 +1250,10 @@ function OpPill({
         "h-5 shrink-0 whitespace-nowrap px-1.5 text-[10px] font-bold uppercase tracking-[0.1em] compact:px-1 compact:text-[9px] compact:tracking-normal",
         active
           ? gold
-            ? "bg-[#f5c542] text-black shadow-[inset_1px_1px_0_#fbe28a]"
+            ? "bg-amber-300 text-black shadow-[inset_1px_1px_0_#fde68a]"
             : "bg-[var(--mc-85)] text-white shadow-[inset_1px_1px_0_var(--mc-100)]"
           : gold
-            ? "text-[#c9a437] hover:text-[#f5c542]"
+            ? "text-amber-400/80 hover:text-amber-300"
             : "text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]",
       ].join(" ")}
     >
@@ -2139,15 +2139,17 @@ function ResourceChip({
       <span
         className={[
           "shrink-0 text-[16px] font-bold tabular-nums",
-          amountText.energy ? energyReadingInk(amountText.energy) : "text-[var(--mc-ink)]",
+          amountText.energy ? ENERGY_READING_TEXT : "text-[var(--mc-ink)]",
         ].join(" ")}
       >
         {amountText.text}
         {amountText.unit ? (
           <span
             className={[
-              "ml-0.5 text-[11px] font-bold",
-              amountText.energy ? "opacity-80" : "text-[var(--mc-ink-muted)]",
+              "ml-0.5 font-bold text-[var(--mc-ink-muted)]",
+              // The energy unit is a tail, not part of the number: a size
+              // down again, in the same grey as every other unit here.
+              amountText.energy ? "text-[10px] font-semibold" : "text-[11px]",
             ].join(" ")}
           >
             {amountText.unit}
@@ -2236,7 +2238,7 @@ function clauseMatchesOutput(clause: StencilClause, output: ResourceAmount): boo
 interface ChipAmount {
   text: string;
   unit?: string;
-  /** An EU-per-unit reading: the board's gold on an output, muted on an input. */
+  /** An EU-per-unit reading, drawn in the board's gold on either side. */
   energy?: "input" | "output";
 }
 

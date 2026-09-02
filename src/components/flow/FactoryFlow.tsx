@@ -7273,7 +7273,7 @@ const RATE_UNIT_CHOICES: Array<{ unit: RateUnit; label: string; title: string }>
 
 /** The rate key's face while it reads energy: gold, like the readings. */
 const TOOL_FACE_ENERGY =
-  "bg-[#f5c542] text-black shadow-[inset_2px_2px_0_#fbe28a,inset_-2px_-2px_0_#a67c0e] hover:brightness-110";
+  "bg-amber-300 text-black shadow-[inset_2px_2px_0_#fde68a,inset_-2px_-2px_0_#b45309] hover:brightness-110";
 
 /** One tap of the rate dial, in the voice the chosen unit speaks. */
 function playRateDial(unit: RateUnit, step: number): void {
@@ -7678,10 +7678,10 @@ const SourceToolbar = memo(function SourceToolbar({
                     "pointer-events-auto flex items-center gap-2 border-2 p-1 pr-2 text-left",
                     rateUnit === choice.unit
                       ? choice.unit === "eu"
-                        ? "border-white bg-[#f5c542] text-black ring-2 ring-[#fbe28a]"
+                        ? "border-white bg-amber-300 text-black ring-2 ring-amber-200"
                         : "border-white bg-[var(--mc-85)] text-[var(--mc-ink)] ring-2 ring-cyan-300"
                       : choice.unit === "eu"
-                        ? "border-[#a67c0e] bg-[var(--mc-49)] text-[#f5c542] hover:bg-[var(--mc-61)]"
+                        ? "border-amber-700 bg-[var(--mc-49)] text-amber-300 hover:bg-[var(--mc-61)]"
                         : "border-[var(--mc-15)] bg-[var(--mc-49)] text-white hover:bg-[var(--mc-61)]",
                   ].join(" ")}
                 >

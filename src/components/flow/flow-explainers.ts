@@ -83,29 +83,33 @@ export function formatSlotRateBare(value: number, kind = "item"): string {
 }
 
 /**
- * The ink of an energy reading, wherever one is drawn (card ports, the
- * panel's Outputs, the unit key itself): GOLD, and gold means this one
- * thing on the board. It is the only figure that is not a rate, so it is
- * the only figure that does not wear the muted rate ink.
+ * The ink of an energy reading, wherever one is drawn (card ports on both
+ * sides, the panel's Inputs and Outputs, the search chips): the accent
+ * amber, sibling of the panel's red-300 and emerald-300, and it means this
+ * one thing. It is the only figure that is not a rate, so it is the only
+ * figure that does not wear the muted rate ink.
  */
-export const ENERGY_READING_TEXT = "text-[#f5c542]";
-
-/**
- * The same reading on an INPUT - EU per unit eaten - in a gold so muted it
- * is nearly the paper: the outputs are the headline, the inputs the
- * supporting line, and both being bright read as two costs to add up.
- */
-export const ENERGY_READING_TEXT_MUTED = "text-[#8a7b45]";
-
-/** The ink for an energy reading on this side of a card. */
-export function energyReadingInk(side: "input" | "output"): string {
-  return side === "output" ? ENERGY_READING_TEXT : ENERGY_READING_TEXT_MUTED;
-}
+export const ENERGY_READING_TEXT = "text-amber-300";
 
 /** "200 EU each" / "2.5 EU/L": the energy reading an output wears. */
 export function formatEnergyPerUnit(euPerUnit: number, kind: string): string {
   return `${formatCompact(euPerUnit)}${energyPerUnitSuffix(kind)}`;
 }
+
+/**
+ * The same reading in two pieces, for surfaces that draw the unit as a
+ * smaller, greyer tail after the number: "200" and "EU each". The number
+ * is the reading; the unit only has to be there.
+ */
+export function formatEnergyPerUnitParts(
+  euPerUnit: number,
+  kind: string,
+): { value: string; unit: string } {
+  return { value: formatCompact(euPerUnit), unit: energyPerUnitSuffix(kind).trim() };
+}
+
+/** The tail's ink: the muted rate grey, a size down, whichever gold the number is. */
+export const ENERGY_UNIT_TEXT = "ml-0.5 font-semibold text-[var(--mc-ink-muted)]";
 
 /**
  * This port reads as energy per unit right now: the EU unit is on and the

@@ -62,9 +62,9 @@ describe("EU per unit made", () => {
     setActiveRateUnit("eu");
     expect(isEnergyRateUnit()).toBe(true);
     expect(portReadsEnergy(output)).toBe(true);
-    expect(formatPortRate(output, 10)).toBe("200 EU each");
+    expect(formatPortRate(output, 10)).toBe("200 EU/Item");
     expect(formatPortRate({ kind: "fluid", energyPerUnit: 2.5 }, 1000)).toBe("2.5 EU/L");
-    expect(formatPortRate(fedInput, 2.5)).toBe("800 EU each");
+    expect(formatPortRate(fedInput, 2.5)).toBe("800 EU/Item");
     expect(portReadsEnergy(input)).toBe(false);
     expect(formatPortRate(input, 10)).toBe("10/s");
     // Everything else on the board reads per second while the unit is on.

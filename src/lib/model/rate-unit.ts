@@ -26,14 +26,14 @@ const UNITS: Record<RateUnit, { multiplier: number; per: string }> = {
   // scale-free (machine count, parallels and utilization all cancel) and
   // it is NOT tier-free, which is the useful part: a regular overclock
   // doubles it a step, a perfect one leaves it flat, a discount shows as a
-  // cheaper piece. Only OUTPUTS wear it - card output ports and the panel's
-  // Outputs list; inputs, wires and drawers read per second while it is on,
-  // because "EU per unit consumed" answers nothing. A card's figure is the
-  // cost of THAT STEP; the panel's divides the whole board's power by each
-  // product, so it is the embodied cost of the chain. Neither splits a
-  // run's energy between its outputs: the player reading a row wants that
-  // thing, the rest are free extras, and GTNH has no honest valuation to
-  // split by.
+  // cheaper piece. Card ports on both sides wear it (per unit made, per
+  // unit eaten), so do the panel's Inputs and Outputs lists and the search
+  // chips; wires and drawers read per second while it is on. A card's
+  // figure is the cost of THAT STEP; the panel's divides the whole board's
+  // power by each resource crossing its border, so it is the embodied cost
+  // of the chain. Neither splits a run's energy between its outputs: the
+  // player reading a row wants that thing, the rest are free extras, and
+  // GTNH has no honest valuation to split by.
   eu: { multiplier: 1, per: "s" },
 };
 
@@ -66,9 +66,9 @@ export function energyPerUnit(euPerTick: number, perSecond: number): number | un
   return (Math.max(0, euPerTick) * 20) / perSecond;
 }
 
-/** The label an energy reading wears: "EU each" for items, "EU/L" for fluids. */
+/** The label an energy reading wears: "EU/Item" for items, "EU/L" for fluids. */
 export function energyPerUnitSuffix(kind: string): string {
-  return kind === "fluid" ? " EU/L" : " EU each";
+  return kind === "fluid" ? " EU/L" : " EU/Item";
 }
 
 /** Multiply a per-second figure by this before display. */

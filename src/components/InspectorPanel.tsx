@@ -22,7 +22,7 @@ import {
   rateMultiplierForKind,
   rateSuffixForKind,
 } from "@/lib/model/rate-unit";
-import { energyReadingInk, formatEnergyPerUnit } from "./flow/flow-explainers";
+import { ENERGY_READING_TEXT, formatEnergyPerUnitParts } from "./flow/flow-explainers";
 import type {
   FactoryProject,
   ResourceAmount,
@@ -1547,16 +1547,22 @@ const FlowResourceRow = memo(function FlowResourceRow({
         <span
           className={[
             "ml-2 flex shrink-0 items-baseline",
-            euEach !== undefined ? energyReadingInk(sectionId === "need" ? "input" : "output") : toneStyle.value,
+            euEach !== undefined ? ENERGY_READING_TEXT : toneStyle.value,
           ].join(" ")}
         >
           <span className="text-base font-bold tabular-nums">
             {prefix}
             {euEach !== undefined ? (
               // The chain's cost per unit, in the gold every energy reading
-              // wears. Not eased: it is a quotient of two moving figures and
-              // tweening it read as the cost drifting on its own.
-              formatEnergyPerUnit(euEach, balance.kind)
+              // wears, the unit a small grey tail. Not eased: it is a
+              // quotient of two moving figures and tweening it read as the
+              // cost drifting on its own.
+              <>
+                {formatEnergyPerUnitParts(euEach, balance.kind).value}
+                <span className="ml-0.5 text-[10px] font-semibold text-fg-muted">
+                  {formatEnergyPerUnitParts(euEach, balance.kind).unit}
+                </span>
+              </>
             ) : (
               <>
                 {/* Eases to a new solve on the board's value-motion clock; the
