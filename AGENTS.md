@@ -344,6 +344,17 @@ Working notes for future agents on GTNH Factory Flow.
   `src/components/tour` survives. The board's "?" help corner stays, built
   from `src/components/help/card-parts.tsx`, and it finds what it rings by
   the `data-help-anchor` attribute (formerly `data-tour-anchor`).
+- The help sheet (`BoardHelp.tsx`) is a COMPUTED layout: every card is
+  `CARD_W` wide and cards live in flex columns hung from one ring each
+  (board-left under the build toolbar, board-right under the tool row and
+  over the framing dock, the corner stack over the "?", the browser cards
+  inside the browser column, the legend cards - this plan, plan totals,
+  board windows, notices - over the inspector). Do not go back to per-card
+  offsets. The glance layer only shows while the paint row is unfolded
+  (`compact={isCompact || toolbarFold.paint}`), so with both columns open
+  it needs a window about 1560px wide; narrower windows get the one-column
+  hover panel, phones the full-screen sheet. `help-probe.local.mjs`
+  (size, output, which panel to close) screenshots it.
 - Each design tab remembers its own camera:
   `src/lib/designs/design-camera.ts`, localStorage keyed by design id. It is
   deliberately NOT part of the plan - a shared setup carries positions and view

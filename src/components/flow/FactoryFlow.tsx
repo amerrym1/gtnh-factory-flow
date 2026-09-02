@@ -6912,9 +6912,19 @@ interface ToolGroupProps {
  * the same drop-shadow the cards do (.react-flow__node in globals.css), so
  * the chrome sits at the same height over the paper as everything on it.
  */
-function ToolTray({ children }: { children: React.ReactNode }) {
+function ToolTray({
+  children,
+  helpAnchor,
+}: {
+  children: React.ReactNode;
+  /** Names the tray to the board's help sheet, which rings it. */
+  helpAnchor?: string;
+}) {
   return (
-    <div className="pointer-events-auto flex items-start gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] [filter:drop-shadow(6px_8px_7px_rgba(0,0,0,0.45))]">
+    <div
+      data-help-anchor={helpAnchor}
+      className="pointer-events-auto flex items-start gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] [filter:drop-shadow(6px_8px_7px_rgba(0,0,0,0.45))]"
+    >
       {children}
     </div>
   );
@@ -7386,7 +7396,6 @@ const SetupRulesButton = memo(function SetupRulesButton({
     <div ref={rootRef} className="pointer-events-auto flex">
       <button
         type="button"
-        data-help-anchor="setup-rules"
         onClick={() => onOpenChange(!open)}
         aria-expanded={open}
         className={[
@@ -8846,7 +8855,7 @@ const BoardViewMenu = memo(function BoardViewMenu({
   ];
 
   return (
-    <div ref={rootRef} data-help-anchor="view" className="pointer-events-auto relative flex">
+    <div ref={rootRef} className="pointer-events-auto relative flex">
       <button
         type="button"
         onClick={() => onOpenChange(!open)}
@@ -9049,7 +9058,7 @@ const PaintToolbar = memo(function PaintToolbar({
      is too narrow even for the folded row, when they fold in with the rest. */
   const wholeBoardTrays = (
     <>
-        <ToolTray>
+        <ToolTray helpAnchor="rules">
           <SolveModeButton />
           <SetupRulesButton open={isRulesOpen} onOpenChange={setRulesOpen} />
           {/* Auto-arrange opens a small sheet, like the rules beside it: one
@@ -9131,7 +9140,7 @@ const PaintToolbar = memo(function PaintToolbar({
             width, reachable while the paint row is folded away on a phone. The
             timelapse door lives beside it: also a way of looking, not a tool
             that changes the plan. */}
-        <ToolTray>
+        <ToolTray helpAnchor="view">
           <BoardTimelapseMenu />
           <BoardViewMenu
             view={view}

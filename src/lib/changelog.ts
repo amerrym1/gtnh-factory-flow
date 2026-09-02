@@ -74,7 +74,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     notes: [
       "The planner opens straight onto your designs.",
       "The compass button and the Welcome menu row are gone with it.",
-      "The ? corner still explains every toolbar and panel.",
+      "The ? corner's help now covers cards, drawers, board windows, the search and every key.",
       "A new tutorial is on the way.",
     ],
   },
