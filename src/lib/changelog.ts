@@ -68,6 +68,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.53.2",
+    date: "2026-09-02",
+    headline: "Crop Managers count real layers",
+    notes: [
+      "A Crop Manager holds three layers of crop sticks in its reach, not five: an LV one works 362 sticks, an MV one 674.",
+      "A crop that needs a block under its soil fits two layers, so its cards build more managers.",
+      "The machine's own block is no longer counted as a crop stick.",
+    ],
+  },
+  {
     version: "2.53.1",
     date: "2026-09-02",
     headline: "One vote per person",

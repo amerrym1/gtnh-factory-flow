@@ -626,6 +626,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       projectNode.machineConfigTiers,
       projectNode.machineHandlerId,
       stats?.minSeedBedTier,
+      stats?.subSoil !== undefined,
     );
     if (cropsNhIsHandPicked(setup)) {
       return 0;
@@ -4774,7 +4775,8 @@ function CropConfigPanel({
     return null;
   }
 
-  const setup = cropsNhHarvesterFromTiers(machineConfigTiers, handlerId, minSeedBedTier);
+  const subSoil = cropStats?.subSoil !== undefined;
+  const setup = cropsNhHarvesterFromTiers(machineConfigTiers, handlerId, minSeedBedTier, subSoil);
   const isFarm = setup.id === CROP_HARVESTER_INDUSTRIAL_FARM_ID;
   const handPicked = cropsNhIsHandPicked(setup);
   const slots = cropsNhUpgradeSlots(setup.tierIndex);
@@ -4796,6 +4798,7 @@ function CropConfigPanel({
       { ...(machineConfigTiers ?? {}), [controlId]: String(next) },
       handlerId,
       minSeedBedTier,
+      subSoil,
     );
     playBoardSound("dialRate", { step: Math.max(0, Math.min(10, next)) });
     suppressBoardSound("adjust", 150);

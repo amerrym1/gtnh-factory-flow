@@ -16,6 +16,7 @@ import {
   cropsNhHarvesterTierName,
   cropsNhIsHandPicked,
   cropsNhManagerEuPerHarvest,
+  cropsNhManagerLayers,
   cropsNhSquarePerTier,
   cropsNhNutrientScore,
   cropsNhUpgradeSlots,
@@ -109,6 +110,7 @@ function CropSourceStatsContent({
     node?.machineConfigTiers,
     handler?.id,
     stats.minSeedBedTier,
+    stats.subSoil !== undefined,
   );
   const speedMultiplier = cropsNhGrowthSpeedMultiplier(setup);
   const roundMultiplier = cropsNhHarvestRoundMultiplier(setup);
@@ -284,8 +286,13 @@ function CropSourceStatsContent({
             {setup.id === "crop-manager" ? (
               <>
                 A <span className="text-white">{cropsNhHarvesterTierName(setup.tierIndex)} Crop
-                Manager</span> reaches {managerSide}x{managerSide} sticks on each of the five
-                layers it covers:{" "}
+                Manager</span> reaches {managerSide}x{managerSide} sticks on each of the{" "}
+                {cropsNhManagerLayers(setup.subSoil) === 2 ? "two" : "three"} layers that fit in
+                its five-block reach
+                {setup.subSoil
+                  ? ", two instead of three because this crop needs a block under its soil"
+                  : ""}
+                , less the block it stands on:{" "}
                 <span style={{ color: BONUS_COLOR }}>
                   {formatNumber(cropsPerMachine, 0)} crop sticks per machine
                 </span>

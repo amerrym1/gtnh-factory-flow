@@ -167,6 +167,7 @@ export function MachineShoppingList() {
             node.machineConfigTiers,
             node.machineHandlerId,
             cropStats.minSeedBedTier,
+            cropStats.subSoil !== undefined,
           )
         : undefined;
       if (crop ? cropsNhIsHandPicked(crop) : isCropProductionRecipe(recipe)) {
