@@ -72,7 +72,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-09-02",
     headline: "A new Welcome tab, and help that covers the whole board",
     notes: [
-      "The Welcome tab is rebuilt: your designs, the community's top setups and what changed, over a live board.",
+      "The Welcome tab is rebuilt: your designs, the community's newest setups and what changed.",
       "The ? corner's help now covers cards, drawers, board windows, the search and every key.",
       "The guided tours are gone. A new tutorial is on the way.",
       "The compass in the header brings the Welcome tab back once you close it.",

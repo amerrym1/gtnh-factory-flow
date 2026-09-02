@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { ChangelogDialog } from "@/components/ChangelogDialog";
-import { GlanceRows, type GlanceRow } from "@/components/help/card-parts";
 import { FLUID_ICON_SCALE, ResourceIcon } from "@/components/nei/ResourceIcon";
 import { CHANGELOG } from "@/lib/changelog";
 import {
@@ -37,19 +36,14 @@ import { WelcomeBackdrop } from "./WelcomeBackdrop";
  * comes back to for their designs and the community's.
  *
  * It COVERS the board (see FactoryPlannerApp) rather than replacing it, over
- * a living backdrop of ghost cards and wires. The content is one column:
- * the name and the two ways to start, then your designs, then the community
- * shelf, then what changed last release. Every pick steps off the tab, and
- * the checkbox at the foot is how a regular stops arriving here.
+ * a quiet ASCII backdrop that keeps to the corners. The content is one
+ * column, kept short: the name and the three ways to start, your designs,
+ * the community's newest setups, then what changed last release. Every pick
+ * steps off the tab, and the checkbox at the foot is how a regular stops
+ * arriving here.
  */
 
-const THREE_MOVES: GlanceRow[] = [
-  { mouse: "left", text: "Click any item for *what makes it*, right click for *what uses it*" },
-  { mouse: "left", text: "Drag a slot on a card to *wire it* to another" },
-  { mouse: "left", text: "Drop the wire on empty board for *a drawer*" },
-];
-
-const COMMUNITY_TILE_COUNT = 6;
+const COMMUNITY_TILE_COUNT = 18;
 
 export function WelcomePage() {
   const welcome = useWelcomeTab();
@@ -72,22 +66,22 @@ export function WelcomePage() {
         }}
       />
       <div className="relative min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[880px] flex-col gap-10 px-6 pb-10 pt-12 compact:px-4 compact:pt-8">
-          <header className="flex flex-col items-start gap-5">
+        <div className="mx-auto flex w-full max-w-[880px] flex-col gap-6 px-6 pb-8 pt-8 compact:px-4 compact:pt-6">
+          <header className="flex flex-col items-start gap-3">
             <div className="flex items-baseline gap-3">
-              <h1 className="text-[40px] font-black leading-none tracking-tight text-white compact:text-[30px]">
+              <h1 className="text-[32px] font-black leading-none tracking-tight text-white compact:text-[26px]">
                 <span className="text-cyan-300">GTNH</span> Planner
               </h1>
               <span className="rounded border border-line-strong px-1.5 py-0.5 text-[11px] text-fg-muted">
                 v{APP_VERSION}
               </span>
             </div>
-            <p className="max-w-[560px] text-[15px] leading-relaxed text-fg-subtle">
+            <p className="max-w-[600px] text-[13px] leading-relaxed text-fg-subtle">
               Draw a GregTech: New Horizons factory as a flowchart. Every card is a
               real recipe, every wire carries a real rate, and the board tells you
               what starves, what clogs and what to build.
             </p>
-            <div className="flex flex-wrap gap-3">
+            <div className="mt-1 flex flex-wrap gap-2">
               <PrimaryButton
                 icon={Plus}
                 onClick={() => {
@@ -116,15 +110,10 @@ export function WelcomePage() {
                   openSidebarTab("items");
                 }}
               >
-                Find an item
+                Find a recipe
               </SecondaryButton>
             </div>
           </header>
-
-          <section className="grid gap-3 rounded border border-line bg-[#151a21]/80 px-4 py-3">
-            <SectionTitle>Three moves and you know the board</SectionTitle>
-            <GlanceRows rows={THREE_MOVES} />
-          </section>
 
           <YourDesigns />
 
@@ -139,7 +128,7 @@ export function WelcomePage() {
               <div className="rounded border border-line bg-[#151a21]/80 px-4 py-3">
                 <p className="text-[14px] font-bold text-white">{latest.headline}</p>
                 <ul className="mt-2 flex flex-col gap-1">
-                  {latest.notes.slice(0, 3).map((note) => (
+                  {latest.notes.slice(0, 2).map((note) => (
                     <li key={note} className="flex gap-2 text-[13px] leading-relaxed text-fg-muted">
                       <span aria-hidden className="mt-2 h-1 w-1 shrink-0 rounded-full bg-cyan-400" />
                       <span>{note.replace(/\*/g, "")}</span>
@@ -158,7 +147,7 @@ export function WelcomePage() {
             </section>
           ) : null}
 
-          <footer className="mt-2 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+          <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
             <label className="flex w-fit cursor-pointer items-center gap-2 text-[12px] text-fg-muted hover:text-fg">
               <input
                 type="checkbox"
@@ -207,7 +196,7 @@ function PrimaryButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-10 items-center gap-2 border-2 border-cyan-300 bg-cyan-400 px-4 text-[13px] font-black text-[#062026] shadow-[4px_4px_0_rgba(0,0,0,0.45)] hover:bg-cyan-300 active:translate-x-px active:translate-y-px active:shadow-[2px_2px_0_rgba(0,0,0,0.45)]"
+      className="inline-flex h-9 items-center gap-2 border-2 border-cyan-300 bg-cyan-400 px-3.5 text-[13px] font-black text-[#062026] shadow-[4px_4px_0_rgba(0,0,0,0.45)] hover:bg-cyan-300 active:translate-x-px active:translate-y-px active:shadow-[2px_2px_0_rgba(0,0,0,0.45)]"
     >
       <Icon className="h-4 w-4" aria-hidden />
       {children}
@@ -228,7 +217,7 @@ function SecondaryButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-10 items-center gap-2 border-2 border-line-strong bg-[#151a21]/85 px-4 text-[13px] font-bold text-fg-subtle shadow-[4px_4px_0_rgba(0,0,0,0.45)] hover:border-cyan-500/60 hover:text-white active:translate-x-px active:translate-y-px active:shadow-[2px_2px_0_rgba(0,0,0,0.45)]"
+      className="inline-flex h-9 items-center gap-2 border-2 border-line-strong bg-[#151a21]/85 px-3.5 text-[13px] font-bold text-fg-subtle shadow-[4px_4px_0_rgba(0,0,0,0.45)] hover:border-cyan-500/60 hover:text-white active:translate-x-px active:translate-y-px active:shadow-[2px_2px_0_rgba(0,0,0,0.45)]"
     >
       <Icon className="h-4 w-4" aria-hidden />
       {children}
@@ -271,24 +260,6 @@ function Face({ icon, size }: { icon: EntryIcon | undefined; size: number }) {
   );
 }
 
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) {
-    return "";
-  }
-  const seconds = Math.max(0, (Date.now() - then) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = seconds / 60;
-  if (minutes < 60) return `${Math.floor(minutes)} min ago`;
-  const hours = minutes / 60;
-  if (hours < 24) return `${Math.floor(hours)}h ago`;
-  const days = hours / 24;
-  if (days < 30) return `${Math.floor(days)}d ago`;
-  const months = days / 30;
-  if (months < 12) return `${Math.floor(months)}mo ago`;
-  return `${Math.floor(days / 365)}y ago`;
-}
-
 /** The designs already on this device, newest edit first. */
 function YourDesigns() {
   const designs = useDesignStore((state) => state.designs);
@@ -298,11 +269,11 @@ function YourDesigns() {
   }
   const recent = [...designs]
     .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
-    .slice(0, 8);
+    .slice(0, 12);
   return (
     <section className="flex flex-col gap-2">
       <SectionTitle>Your designs</SectionTitle>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
         {recent.map((design) => (
           <button
             key={design.id}
@@ -311,16 +282,11 @@ function YourDesigns() {
               leaveWelcomeTab();
               void switchToDesign(design.id);
             }}
-            className="group flex items-center gap-2.5 border border-line bg-[#151a21]/80 px-2.5 py-2 text-left hover:border-cyan-500/60 hover:bg-[#182029]"
+            className="group flex items-center gap-2 border border-line bg-[#151a21]/80 px-2 py-1.5 text-left hover:border-cyan-500/60 hover:bg-[#182029]"
           >
-            <Face icon={design.icon} size={36} />
-            <span className="min-w-0">
-              <span className="block truncate text-[13px] font-bold text-fg group-hover:text-white">
-                {design.name}
-              </span>
-              <span className="block text-[11px] text-fg-muted">
-                {relativeTime(design.updatedAt)}
-              </span>
+            <Face icon={design.icon} size={28} />
+            <span className="min-w-0 truncate text-[12px] font-bold text-fg group-hover:text-white">
+              {design.name}
             </span>
           </button>
         ))}
@@ -329,7 +295,7 @@ function YourDesigns() {
   );
 }
 
-/** The community's top setups, six of them, opening in a tab of their own. */
+/** The community's newest setups, opening in a tab of their own. */
 function CommunityShelf() {
   const [plans, setPlans] = useState<CommunityPlanSummary[] | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -337,7 +303,7 @@ function CommunityShelf() {
 
   useEffect(() => {
     let cancelled = false;
-    listCommunityPlans({ sort: "top", pageSize: COMMUNITY_TILE_COUNT })
+    listCommunityPlans({ sort: "new", pageSize: COMMUNITY_TILE_COUNT })
       .then((response) => {
         if (!cancelled) {
           setPlans(response.plans.slice(0, COMMUNITY_TILE_COUNT));
@@ -374,10 +340,10 @@ function CommunityShelf() {
     <section className="flex flex-col gap-2">
       <SectionTitle>
         <Factory className="h-3.5 w-3.5 text-cyan-300" aria-hidden />
-        From the community
+        New from the community
       </SectionTitle>
       {error ? <p className="text-[12px] text-amber-300">{error}</p> : null}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
         {(plans ?? Array.from({ length: COMMUNITY_TILE_COUNT }, () => undefined)).map(
           (plan, index) =>
             plan ? (
@@ -387,26 +353,25 @@ function CommunityShelf() {
                 disabled={busyId !== undefined}
                 onClick={() => void open(plan)}
                 className={[
-                  "group flex items-start gap-3 border border-line bg-[#151a21]/80 px-3 py-2.5 text-left hover:border-cyan-500/60 hover:bg-[#182029] disabled:opacity-60",
+                  "group flex items-center gap-2 border border-line bg-[#151a21]/80 px-2 py-1.5 text-left hover:border-cyan-500/60 hover:bg-[#182029] disabled:opacity-60",
                   busyId === plan.id ? "animate-pulse" : "",
                 ].join(" ")}
               >
-                <Face icon={plan.icon} size={44} />
-                <span className="flex min-w-0 flex-1 flex-col gap-1">
-                  <span className="truncate text-[13px] font-bold text-fg group-hover:text-white">
+                <Face icon={plan.icon} size={32} />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-[12px] font-bold text-fg group-hover:text-white">
                     {plan.name}
                   </span>
-                  <span className="truncate text-[11px] text-fg-muted">
-                    {plan.authorName ? `by ${plan.authorName}` : "anonymous"}
-                    {plan.highestTier ? ` · ${plan.highestTier}` : ""}
-                    {` · ${plan.machineCount} machines`}
-                  </span>
-                  <span className="flex items-center gap-3 text-[11px] text-fg-muted">
-                    <span className="inline-flex items-center gap-1">
+                  <span className="flex items-center gap-2 truncate text-[11px] text-fg-muted">
+                    <span className="truncate">
+                      {plan.authorName ? plan.authorName : "anonymous"}
+                      {plan.highestTier ? ` · ${plan.highestTier}` : ""}
+                    </span>
+                    <span className="inline-flex shrink-0 items-center gap-0.5">
                       <ThumbsUp className="h-3 w-3" aria-hidden />
                       {plan.score}
                     </span>
-                    <span className="inline-flex items-center gap-1">
+                    <span className="inline-flex shrink-0 items-center gap-0.5">
                       <Download className="h-3 w-3" aria-hidden />
                       {plan.downloads}
                     </span>
@@ -417,7 +382,7 @@ function CommunityShelf() {
               <div
                 key={index}
                 aria-hidden
-                className="h-[76px] animate-pulse border border-line bg-[#151a21]/60"
+                className="h-[48px] animate-pulse border border-line bg-[#151a21]/60"
               />
             ),
         )}
