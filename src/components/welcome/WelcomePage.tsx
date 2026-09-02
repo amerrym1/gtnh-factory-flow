@@ -128,6 +128,9 @@ export function WelcomePage() {
               <PrimaryButton
                 icon={Plus}
                 onClick={() => {
+                  // Step off first: adding a design does not, and the new
+                  // tab would otherwise sit under this page unseen.
+                  leaveWelcomeTab();
                   void addDesign();
                 }}
               >
