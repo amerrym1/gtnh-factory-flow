@@ -1908,8 +1908,14 @@ export function FactoryFlow() {
   const nodeColorPaintMode = useFactoryStore((state) => state.nodeColorPaintMode);
   const setNodeColorPaintMode = useFactoryStore((state) => state.setNodeColorPaintMode);
   const boardView = useBoardView();
-  const { freeDockMode, lineLabelsMode, lineThicknessMode, linePulseMode, calmMode } =
-    boardView;
+  const { freeDockMode, lineLabelsMode, lineThicknessMode, calmMode } = boardView;
+  // Holding Shift or the Windows key parks the marching dashes and shows the
+  // direction chevrons instead, for as long as the key is down. Screenshots
+  // are the reason: Win+Shift+S is the snipping tool, and a frame of moving
+  // dashes photographs as a broken line. The view's own setting is untouched;
+  // the toolbar keeps showing it, and the wires resume when the key lifts.
+  const stillKeyHeld = useStillKeyHeld();
+  const linePulseMode = boardView.linePulseMode && !stillKeyHeld;
   // Device taste, not plan state: never captured into plan-view snapshots.
   const boardMotion = useBoardMotion();
   const canvasTheme = getCanvasTheme(boardView.canvasTheme);
@@ -7857,6 +7863,74 @@ const SourceToolbar = memo(function SourceToolbar({
     </div>
   );
 });
+
+/**
+ * True while Shift or the Windows (Meta) key is held anywhere on the page.
+ *
+ * Keyup is not to be trusted: Win+Shift+S hands focus to the snipping tool
+ * and the release never reaches the page, so a window blur or a hidden tab
+ * lets go too, and any later key or pointer event without the modifier
+ * resyncs. Keys pressed inside a text field are ignored - a capital letter
+ * in the search box must not blink every wire on the board.
+ */
+function useStillKeyHeld(): boolean {
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    const isStillKey = (key: string) => key === "Shift" || key === "Meta" || key === "OS";
+    const isEditable = (target: EventTarget | null) => {
+      const element = target instanceof HTMLElement ? target : null;
+      return Boolean(
+        element &&
+          (element.isContentEditable ||
+            element.tagName === "INPUT" ||
+            element.tagName === "TEXTAREA" ||
+            element.tagName === "SELECT"),
+      );
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isStillKey(event.key)) {
+        if (!isEditable(event.target)) {
+          setHeld(true);
+        }
+        return;
+      }
+      if (!event.shiftKey && !event.metaKey) {
+        setHeld(false);
+      }
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (isStillKey(event.key) || (!event.shiftKey && !event.metaKey)) {
+        setHeld(false);
+      }
+    };
+    const onPointer = (event: MouseEvent) => {
+      if (!event.shiftKey && !event.metaKey) {
+        setHeld(false);
+      }
+    };
+    const release = () => setHeld(false);
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        release();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("mousemove", onPointer, true);
+    window.addEventListener("mousedown", onPointer, true);
+    window.addEventListener("blur", release);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", onKeyUp, true);
+      window.removeEventListener("mousemove", onPointer, true);
+      window.removeEventListener("mousedown", onPointer, true);
+      window.removeEventListener("blur", release);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+  return held;
+}
 
 /**
  * The board's marching dashes, on one canvas.

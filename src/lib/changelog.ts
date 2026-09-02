@@ -80,6 +80,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Wires on a large board reroute many times faster.",
       "On a big board the wires reroute in the background, so dragging and typing never wait for them.",
       "Long wires between boards that used to be drawn straight through cards now find their way round.",
+      "Hold Shift or the Windows key to pause the moving wires for a screenshot.",
     ],
   },
   {
