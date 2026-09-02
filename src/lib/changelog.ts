@@ -68,6 +68,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.53.1",
+    date: "2026-09-02",
+    headline: "One vote per person",
+    notes: [
+      "A setup can no longer be upvoted again after your connection changes address.",
+      "Signed in, your vote follows your account between browsers.",
+      "The Welcome tab's design and setup tiles show bigger, bare icons.",
+    ],
+  },
+  {
     version: "2.53.0",
     date: "2026-09-02",
     headline: "A new Welcome tab, and help that covers the whole board",

@@ -21,6 +21,7 @@ import {
   isAdminRequest,
   isCommunityConfigured,
   makeActorKey,
+  makeVoterKey,
   parseEntryIcon,
   PLAN_SUMMARY_COLUMNS,
   rowToPlanSummary,
@@ -80,7 +81,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ plan
     );
     await refreshStaleStats(db, planId, plan);
     if (deviceId) {
-      await attachMyVotes([plan], makeActorKey(request, deviceId));
+      await attachMyVotes([plan], await makeVoterKey(request, deviceId));
     }
 
     return NextResponse.json({ plan }, { headers: { "Cache-Control": "no-store" } });

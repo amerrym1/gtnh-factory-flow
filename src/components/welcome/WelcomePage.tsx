@@ -266,7 +266,7 @@ function Face({ icon, size }: { icon: EntryIcon | undefined; size: number }) {
   return (
     <span
       aria-hidden
-      className="flex shrink-0 items-center justify-center overflow-hidden border border-line-strong bg-[#0f1318]"
+      className="flex shrink-0 items-center justify-center overflow-hidden"
       style={{ width: size, height: size }}
     >
       {drawable && icon ? (
@@ -317,9 +317,9 @@ function YourDesigns() {
               leaveWelcomeTab();
               void switchToDesign(design.id);
             }}
-            className="group flex items-center gap-2 border border-line bg-[#151a21]/80 px-2 py-1.5 text-left hover:border-cyan-500/60 hover:bg-[#182029]"
+            className="group flex items-center gap-2 border border-line bg-[#151a21]/80 px-2 py-1 text-left hover:border-cyan-500/60 hover:bg-[#182029]"
           >
-            <Face icon={design.icon} size={28} />
+            <Face icon={design.icon} size={40} />
             <span className="min-w-0 truncate text-[12px] font-bold text-fg group-hover:text-white">
               {design.name}
             </span>
@@ -388,11 +388,11 @@ function CommunityShelf() {
                 disabled={busyId !== undefined}
                 onClick={() => void open(plan)}
                 className={[
-                  "group flex items-center gap-2 border border-line bg-[#151a21]/80 px-2 py-1.5 text-left hover:border-cyan-500/60 hover:bg-[#182029] disabled:opacity-60",
+                  "group flex items-center gap-2 border border-line bg-[#151a21]/80 px-2 py-1 text-left hover:border-cyan-500/60 hover:bg-[#182029] disabled:opacity-60",
                   busyId === plan.id ? "animate-pulse" : "",
                 ].join(" ")}
               >
-                <Face icon={plan.icon} size={32} />
+                <Face icon={plan.icon} size={44} />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-[12px] font-bold text-fg group-hover:text-white">
                     {plan.name}
@@ -417,7 +417,7 @@ function CommunityShelf() {
               <div
                 key={index}
                 aria-hidden
-                className="h-[48px] animate-pulse border border-line bg-[#151a21]/60"
+                className="h-[54px] animate-pulse border border-line bg-[#151a21]/60"
               />
             ),
         )}

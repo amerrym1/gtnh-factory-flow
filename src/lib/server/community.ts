@@ -47,6 +47,24 @@ export function makeActorKey(request: Request, deviceId?: string): string {
     .slice(0, 32);
 }
 
+/**
+ * Who a VOTE belongs to: the signed-in user, else the browser's device id.
+ *
+ * Not the actor key above. That one folds the client IP in, which is right
+ * for a rate limit and wrong for a vote: IPv6 privacy addresses and carrier
+ * NAT hand the same browser a new address every few minutes, and every new
+ * address was a new voter, so a player could upvote their own setup again
+ * after a short wait. The device id is a random UUID the browser keeps in
+ * localStorage; a signed-in account beats it so one person's vote follows
+ * them between browsers.
+ */
+export async function makeVoterKey(request: Request, deviceId: string): Promise<string> {
+  const user = await getSessionUser(request);
+  const salt = process.env.COMMUNITY_HASH_SALT ?? "gtnh-factory-hub";
+  const identity = user ? `user:${user.id}` : `device:${deviceId}`;
+  return createHash("sha256").update(`${salt}:${identity}`).digest("hex").slice(0, 32);
+}
+
 // ---------------------------------------------------------------------------
 // Dead-simple accounts: username + password, scrypt-hashed, with an HMAC-signed
 // session cookie. No email, no reset flow — this is a hobby community site.

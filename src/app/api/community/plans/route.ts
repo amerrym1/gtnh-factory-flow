@@ -19,6 +19,7 @@ import {
   getSessionUser,
   isCommunityConfigured,
   makeActorKey,
+  makeVoterKey,
   parseEntryIcon,
   PLAN_SUMMARY_COLUMNS,
   rowToPlanSummary,
@@ -109,7 +110,7 @@ export async function GET(request: Request) {
 
     const plans = (data ?? []).map((row) => rowToPlanSummary(row, sessionUser?.id));
     if (deviceId) {
-      await attachMyVotes(plans, makeActorKey(request, deviceId));
+      await attachMyVotes(plans, await makeVoterKey(request, deviceId));
     }
 
     // Distinct versions across the whole hub feed the filter dropdown.
