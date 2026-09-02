@@ -10,10 +10,12 @@ import {
   Sparkles,
   ThumbsUp,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChangelogDialog } from "@/components/ChangelogDialog";
 import { FLUID_ICON_SCALE, ResourceIcon } from "@/components/nei/ResourceIcon";
 import { CHANGELOG } from "@/lib/changelog";
+import { DEFAULT_DATASET_MANIFEST_URL } from "@/lib/datasets";
+import { queryRecipeDatasetResources } from "@/lib/datasets/browser-loader";
 import {
   downloadCommunityPlan,
   listCommunityPlans,
@@ -29,6 +31,7 @@ import { APP_VERSION } from "@/lib/version";
 import { leaveWelcomeTab, setWelcomeOnStartup, useWelcomeTab } from "@/lib/welcome/welcome-tab";
 import { writeWorkspaceView } from "@/lib/workspace-view";
 import { useDesignStore } from "@/store/design-store";
+import { useFactoryStore } from "@/store/factory-store";
 import { WelcomeBackdrop } from "./WelcomeBackdrop";
 
 /**
@@ -44,16 +47,57 @@ import { WelcomeBackdrop } from "./WelcomeBackdrop";
  */
 
 const COMMUNITY_TILE_COUNT = 18;
+/** How many of the pack's most-used items the backdrop gets to drift. */
+const BACKDROP_ICON_COUNT = 60;
+
+/**
+ * The most-used items in the loaded pack, as sprite URLs for the backdrop.
+ * Empty until the dataset is known; the backdrop runs without them.
+ */
+function useBackdropIcons(): string[] {
+  const manifest = useFactoryStore((state) => state.datasetManifest);
+  const manifestUrl = useFactoryStore((state) => state.datasetManifestUrl);
+  const versionId = useFactoryStore((state) => state.selectedDatasetVersionId);
+  const version = useMemo(
+    () => manifest?.versions.find((entry) => entry.id === versionId),
+    [manifest?.versions, versionId],
+  );
+  const [icons, setIcons] = useState<string[]>([]);
+  useEffect(() => {
+    if (!version) {
+      return;
+    }
+    const controller = new AbortController();
+    queryRecipeDatasetResources(
+      manifestUrl ?? DEFAULT_DATASET_MANIFEST_URL,
+      version,
+      { query: "", offset: 0, limit: BACKDROP_ICON_COUNT, kind: "item", sort: "popular" },
+      { signal: controller.signal },
+    )
+      .then((result) => {
+        const paths = result.resources
+          .map((entry) => entry.iconPath)
+          .filter((path): path is string => Boolean(path));
+        setIcons(paths);
+      })
+      .catch(() => {
+        // The backdrop is decoration; a failed list leaves it as glyphs.
+      });
+    return () => controller.abort();
+  }, [manifestUrl, version]);
+  return icons;
+}
 
 export function WelcomePage() {
   const welcome = useWelcomeTab();
   const addDesign = useDesignStore((state) => state.addDesign);
   const [isChangelogOpen, setChangelogOpen] = useState(false);
   const latest = CHANGELOG[0];
+  const backdropIcons = useBackdropIcons();
 
   return (
     <div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-canvas text-fg">
-      <WelcomeBackdrop />
+      <WelcomeBackdrop icons={backdropIcons} />
       {/* A dark wash under the words so the backdrop stays a backdrop; the
           edges are left clear so the animation shows through on both sides
           of the column. */}
@@ -62,7 +106,7 @@ export function WelcomePage() {
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse 60% 70% at 50% 40%, rgba(16,20,25,0.92) 0%, rgba(16,20,25,0.7) 55%, rgba(16,20,25,0.15) 100%)",
+            "radial-gradient(ellipse 60% 70% at 50% 40%, rgba(16,20,25,0.92) 0%, rgba(16,20,25,0.7) 55%, rgba(16,20,25,0.05) 100%)",
         }}
       />
       <div className="relative min-h-0 flex-1 overflow-y-auto">
