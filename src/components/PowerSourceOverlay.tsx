@@ -89,6 +89,21 @@ export function PowerSourceOverlay() {
     addPowerSourceNode(hit.source.id, hitPlacementSettings(hit));
   };
 
+  const closeButton = (
+    <button
+      type="button"
+      title="Close (Esc)"
+      aria-label="Close power sources"
+      onClick={closePowerMenu}
+      className={[
+        "flex shrink-0 cursor-pointer items-center justify-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] hover:bg-[var(--mc-85)]",
+        compact ? "ml-auto h-10 w-10" : "h-9 w-9",
+      ].join(" ")}
+    >
+      <X className={compact ? "h-5 w-5" : "h-4 w-4"} />
+    </button>
+  );
+
   return createPortal(
     <div
       className={[
@@ -118,56 +133,69 @@ export function PowerSourceOverlay() {
           className="relative flex min-h-0 flex-1 flex-col overflow-hidden border-4 border-[#23262d] bg-[#101215] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_rgba(255,255,255,0.05),inset_-2px_-2px_0_rgba(0,0,0,0.6)]"
           onPointerDown={(event) => event.stopPropagation()}
         >
-          <div className="flex items-center gap-2 border-b-2 border-[#23262d] p-2 pl-3">
-            <Zap className="h-4 w-4 shrink-0 text-amber-300" aria-hidden />
-            <span className="shrink-0 text-sm uppercase tracking-wide">Power sources</span>
-            <label className="relative ml-auto flex min-w-0 flex-1 items-center sm:max-w-[340px]">
-              <Search className="pointer-events-none absolute left-2 h-3.5 w-3.5 opacity-60" aria-hidden />
-              <input
-                autoFocus={!compact}
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Machine, fuel, or product..."
-                className="h-9 w-full border-2 border-[var(--mc-33)] bg-[var(--mc-61)] pl-7 pr-2 text-sm text-[var(--mc-ink)] placeholder:text-[var(--mc-ink)]/50 focus:outline-none"
-              />
-            </label>
-            <select
-              value={groupFilter}
-              onChange={(event) => setGroupFilter(event.target.value as PowerGroupId | "all")}
-              title="Power type"
-              aria-label="Power type"
-              className="h-9 w-36 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1.5 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607] outline-none"
-            >
-              <option value="all">All types</option>
-              {POWER_GROUPS.map((group) => (
-                <option key={group.id} value={group.id}>
-                  {group.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={tierFilter}
-              onChange={(event) => setTierFilter(event.target.value)}
-              title="Unlock tier"
-              aria-label="Unlock tier"
-              className="h-9 w-24 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1.5 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607] outline-none"
-            >
-              <option value="all">All tiers</option>
-              {TIER_FILTER_OPTIONS.map((tier) => (
-                <option key={tier} value={tier}>
-                  {tier}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              title="Close (Esc)"
-              aria-label="Close power sources"
-              onClick={closePowerMenu}
-              className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] hover:bg-[var(--mc-85)]"
-            >
-              <X className="h-4 w-4" />
-            </button>
+          {/* One row on a desktop. On a phone the title takes the first line
+              with the close button at its end, and the search and its two
+              filters take the second: the single row used to push the close
+              button past the right edge of the screen, and a phone has no
+              Escape key to fall back on. */}
+          <div
+            className={[
+              "flex gap-2 border-b-2 border-[#23262d] p-2 pl-3",
+              compact ? "flex-col" : "items-center",
+            ].join(" ")}
+          >
+            <div className={compact ? "flex items-center gap-2" : "contents"}>
+              <Zap className="h-4 w-4 shrink-0 text-amber-300" aria-hidden />
+              <span className="shrink-0 text-sm uppercase tracking-wide">Power sources</span>
+              {compact ? closeButton : null}
+            </div>
+            <div className={compact ? "flex items-center gap-2" : "contents"}>
+              <label className="relative ml-auto flex min-w-0 flex-1 items-center sm:max-w-[340px]">
+                <Search className="pointer-events-none absolute left-2 h-3.5 w-3.5 opacity-60" aria-hidden />
+                <input
+                  autoFocus={!compact}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Machine, fuel, or product..."
+                  className="h-9 w-full border-2 border-[var(--mc-33)] bg-[var(--mc-61)] pl-7 pr-2 text-sm text-[var(--mc-ink)] placeholder:text-[var(--mc-ink)]/50 focus:outline-none"
+                />
+              </label>
+              <select
+                value={groupFilter}
+                onChange={(event) => setGroupFilter(event.target.value as PowerGroupId | "all")}
+                title="Power type"
+                aria-label="Power type"
+                className={[
+                  "h-9 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1.5 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607] outline-none",
+                  compact ? "w-28" : "w-36",
+                ].join(" ")}
+              >
+                <option value="all">All types</option>
+                {POWER_GROUPS.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={tierFilter}
+                onChange={(event) => setTierFilter(event.target.value)}
+                title="Unlock tier"
+                aria-label="Unlock tier"
+                className={[
+                  "h-9 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1.5 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607] outline-none",
+                  compact ? "w-20" : "w-24",
+                ].join(" ")}
+              >
+                <option value="all">All tiers</option>
+                {TIER_FILTER_OPTIONS.map((tier) => (
+                  <option key={tier} value={tier}>
+                    {tier}
+                  </option>
+                ))}
+              </select>
+              {compact ? null : closeButton}
+            </div>
           </div>
 
           <div className="recipe-search-scroll min-h-0 flex-1 overflow-y-auto p-3">

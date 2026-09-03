@@ -68,6 +68,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.54.2",
+    date: "2026-09-02",
+    headline: "The power picker can be closed on a phone",
+    notes: ["The close button sits on the title line instead of off the right edge of the screen."],
+  },
+  {
     version: "2.54.1",
     date: "2026-09-02",
     headline: "An unfinished machine no longer sets off clog lock and dead loop alarms",
