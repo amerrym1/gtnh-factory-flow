@@ -70,8 +70,12 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "2.54.2",
     date: "2026-09-02",
-    headline: "The power picker can be closed on a phone",
-    notes: ["The close button sits on the title line instead of off the right edge of the screen."],
+    headline: "Recipe search cards are darker and sit three across",
+    notes: [
+      "Recipe cards have a dark ground so the item slots and machine tile stand out on them.",
+      "Results run three columns wide instead of two.",
+      "The power picker's close button stays on screen on a phone.",
+    ],
   },
   {
     version: "2.54.1",
