@@ -973,7 +973,7 @@ export function RecipeSearchOverlay({
                       style={{
                         gridTemplateColumns: sheet
                           ? "minmax(0, 1fr)"
-                          : "repeat(auto-fill, minmax(480px, 1fr))",
+                          : "repeat(auto-fill, minmax(400px, 1fr))",
                       }}
                     >
                       {powerHits.map((hit) => (
@@ -1006,7 +1006,7 @@ export function RecipeSearchOverlay({
                 style={{
                   gridTemplateColumns: sheet
                     ? "minmax(0, 1fr)"
-                    : "repeat(auto-fill, minmax(480px, 1fr))",
+                    : "repeat(auto-fill, minmax(400px, 1fr))",
                 }}
                 role="status"
                 aria-label="Loading recipes"
@@ -1045,7 +1045,7 @@ export function RecipeSearchOverlay({
                   style={{
                     gridTemplateColumns: sheet
                       ? "minmax(0, 1fr)"
-                      : "repeat(auto-fill, minmax(480px, 1fr))",
+                      : "repeat(auto-fill, minmax(400px, 1fr))",
                   }}
                 >
                   {recipes.map((recipe) => (
@@ -1081,7 +1081,7 @@ export function RecipeSearchOverlay({
                     style={{
                       gridTemplateColumns: sheet
                         ? "minmax(0, 1fr)"
-                        : "repeat(auto-fill, minmax(480px, 1fr))",
+                        : "repeat(auto-fill, minmax(400px, 1fr))",
                     }}
                     role="status"
                     aria-label="Loading more recipes"
@@ -1307,7 +1307,7 @@ export function RecipeSearchOverlay({
                           face.id === chipMenu.picker?.currentId ? "bg-[var(--mc-71)]" : "",
                         ].join(" ")}
                       >
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-100)]">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-47)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-93)]">
                           <ResourceIcon
                             resource={{ ...face, amount: 1 }}
                             size="sm"
@@ -1870,7 +1870,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
       onPointerEnter={armPrefetch}
       onPointerLeave={cancelPrefetch}
       className={[
-        "cursor-pointer border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-2 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]",
+        "cursor-pointer border-2 border-[var(--mc-47)] bg-[var(--mc-33)] p-2 shadow-[inset_1px_1px_0_var(--mc-56),inset_-1px_-1px_0_var(--mc-25)]",
         selected ? "ring-1 ring-cyan-400" : "",
       ].join(" ")}
       style={{ contentVisibility: "auto", containIntrinsicSize: "auto 196px" }}
@@ -1891,7 +1891,7 @@ const CompactRecipeCard = memo(function CompactRecipeCard({
             }
             onHideMachine(recipe.recipeMap);
           }}
-          className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)] hover:shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100),0_0_0_2px_#22d3ee_inset]"
+          className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-61)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)] hover:shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100),0_0_0_2px_#22d3ee_inset]"
         >
           {machineIcon ? (
             <ResourceIcon
@@ -2107,9 +2107,9 @@ function PowerHitCard({
       return (
         <span
           key={`${direction}:${flow.name}`}
-          className="flex w-full items-center gap-1.5 border border-[var(--mc-47)] bg-[var(--mc-61)] py-0.5 pl-0.5 pr-1.5"
+          className="flex w-full items-center gap-1.5 border border-[var(--mc-85)] bg-[var(--mc-71)] py-0.5 pl-0.5 pr-1.5"
         >
-          <span className="h-9 w-9 shrink-0 bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-100)]" />
+          <span className="h-9 w-9 shrink-0 bg-[var(--mc-47)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-93)]" />
           <span className="min-w-0 flex-1 truncate text-[13px] font-bold">{flow.name}</span>
         </span>
       );
@@ -2131,7 +2131,7 @@ function PowerHitCard({
     <article
       onDoubleClick={onPlace}
       onContextMenu={onCardMenu}
-      className="cursor-pointer border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-2 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
+      className="cursor-pointer border-2 border-[var(--mc-47)] bg-[var(--mc-33)] p-2 shadow-[inset_1px_1px_0_var(--mc-56),inset_-1px_-1px_0_var(--mc-25)]"
       style={{ contentVisibility: "auto", containIntrinsicSize: "auto 196px" }}
     >
       <div className="flex items-center gap-2">
@@ -2147,7 +2147,7 @@ function PowerHitCard({
             }
             onHideMachine();
           }}
-          className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)] hover:shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100),0_0_0_2px_#22d3ee_inset]"
+          className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-61)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)] hover:shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100),0_0_0_2px_#22d3ee_inset]"
         >
           {icon?.iconPath ? (
             <ResourceIcon
@@ -2223,7 +2223,7 @@ function PowerHitCard({
                   : "border-[var(--mc-47)] bg-[var(--mc-61)]",
               ].join(" ")}
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-100)]">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--mc-47)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-93)]">
                 <Zap className="h-4 w-4 fill-current text-amber-400" aria-hidden />
               </span>
               <span className="min-w-0 flex-1 truncate text-[13px] font-bold">EU</span>
@@ -2250,20 +2250,20 @@ function SkeletonResultCard({ delay }: { delay: number }) {
   const ghostChip = (nameWidth: string, key: number) => (
     <span
       key={key}
-      className="flex w-full items-center gap-1.5 border border-[var(--mc-47)] bg-[var(--mc-61)] py-0.5 pl-0.5 pr-1.5"
+      className="flex w-full items-center gap-1.5 border border-[var(--mc-85)] bg-[var(--mc-71)] py-0.5 pl-0.5 pr-1.5"
     >
-      <span className="h-9 w-9 shrink-0 bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-100)]" />
+      <span className="h-9 w-9 shrink-0 bg-[var(--mc-47)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-93)]" />
       <span className={`block h-4 ${nameWidth} bg-[var(--mc-71)]`} />
     </span>
   );
 
   return (
     <div
-      className="recipe-search-skeleton border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-2 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
+      className="recipe-search-skeleton border-2 border-[var(--mc-47)] bg-[var(--mc-33)] p-2 shadow-[inset_1px_1px_0_var(--mc-56),inset_-1px_-1px_0_var(--mc-25)]"
       style={delayStyle}
     >
       <div className="flex items-center gap-2">
-        <span className="h-9 w-9 shrink-0 bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]" />
+        <span className="h-9 w-9 shrink-0 bg-[var(--mc-61)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]" />
         <span className="flex min-w-0 flex-1 flex-col gap-1.5">
           <span className="block h-3.5 w-36 bg-[var(--mc-61)]" />
           <span className="block h-2.5 w-24 bg-[var(--mc-61)]" />
@@ -2370,11 +2370,11 @@ function ResourceChip({
         // A slot the stencil asked for says so quietly: the same chip on a
         // faintly blue ground with a faintly blue edge, not a highlighter.
         hit
-          ? "border-[#3a525e] bg-[#283239]"
-          : "border-[var(--mc-47)] bg-[var(--mc-61)] hover:border-[var(--mc-33)]",
+          ? "border-[#4a6674] bg-[#30404a]"
+          : "border-[var(--mc-85)] bg-[var(--mc-71)] hover:border-[var(--mc-100)]",
       ].join(" ")}
     >
-      <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-100)]">
+      <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden bg-[var(--mc-47)] shadow-[inset_1px_1px_0_var(--mc-25),inset_-1px_-1px_0_var(--mc-93)]">
         <ResourceIcon
           resource={{ ...resource, amount: 1, chance: undefined }}
           size="sm"
