@@ -68,12 +68,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "2.54.2",
-    date: "2026-09-02",
-    headline: "Recipe search cards are darker and sit three across",
+    version: "2.55.0",
+    date: "2026-09-03",
+    headline: "The recipe search is grouped by machine",
     notes: [
-      "Recipe cards have a dark ground so the item slots and machine tile stand out on them.",
-      "Results run three columns wide instead of two.",
+      "Results sit under one title per machine; click a title to fold that machine away and click again to bring it back.",
+      "Cards are darker with plain item rows, no hover tooltips, and the machine name only in the title above.",
+      "Drag any item row from a result down into Takes or Makes to add it to the search.",
       "The power picker's close button stays on screen on a phone.",
     ],
   },
