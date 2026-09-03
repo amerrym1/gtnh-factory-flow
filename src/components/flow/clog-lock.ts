@@ -123,14 +123,104 @@ function build(project: FactoryProject, result: ThroughputResult | undefined): C
 
   // Revived: frozen in the books, running once surplus may leave. Stopped by
   // nothing but the jam.
-  const revived = new Set<string>();
-  for (const id of frozen) {
-    if ((vented.utilization.get(id) ?? 0) > REVIVED_EPSILON) {
-      revived.add(id);
+  const reviveFrom = (world: typeof vented): Set<string> => {
+    const alive = new Set<string>();
+    for (const id of frozen) {
+      if ((world.utilization.get(id) ?? 0) > REVIVED_EPSILON) {
+        alive.add(id);
+      }
     }
-  }
+    return alive;
+  };
+  let revived = reviveFrom(vented);
   if (revived.size === 0) {
     return EMPTY_INDEX;
+  }
+
+  // A surplus is only "spare" when its takers are RUNNING and still cannot
+  // swallow it. A port whose every taker is dead even in the vented world -
+  // where nothing is ever clogged, so a zero can only mean no power, a bare
+  // slot, or starvation through a chain of the same - is not choking on a
+  // surplus: it is waiting on a machine the player has not finished. Those
+  // vents are withdrawn and the world re-solved, and since withdrawing one
+  // can kill the machine behind it (its only outlet was the dead taker),
+  // the sweep repeats until nothing more falls. What survives is a jam the
+  // running machines hold on each other, the only thing a drawer fixes.
+  const storageIds = new Set((project.storages ?? []).map((storage) => storage.id));
+  const outgoingBy = new Map<string, FactoryProject["edges"]>();
+  for (const edge of project.edges) {
+    outgoingBy.set(edge.source, [...(outgoingBy.get(edge.source) ?? []), edge]);
+  }
+  const machineTakers = (nodeId: string, resourceKey: ResourceKey): Set<string> => {
+    const takers = new Set<string>();
+    const seen = new Set<string>();
+    const walk = (id: string, key: ResourceKey | undefined) => {
+      for (const edge of outgoingBy.get(id) ?? []) {
+        if (key !== undefined && `${edge.resourceKind}:${edge.resourceId}` !== key) {
+          continue;
+        }
+        if (storageIds.has(edge.target)) {
+          // A drawer passes the question on to whoever draws from it.
+          if (!seen.has(edge.target)) {
+            seen.add(edge.target);
+            walk(edge.target, undefined);
+          }
+        } else {
+          takers.add(edge.target);
+        }
+      }
+    };
+    walk(nodeId, resourceKey);
+    return takers;
+  };
+  let ventable: Set<string> | undefined;
+  for (let sweep = 0; sweep < 64; sweep += 1) {
+    const withdrawn: string[] = [];
+    for (const [nodeId, byKey] of vented.ventPerSecond ?? []) {
+      for (const key of byKey.keys()) {
+        const takers = machineTakers(nodeId, key);
+        if (takers.size === 0) {
+          continue;
+        }
+        let anyAlive = false;
+        for (const taker of takers) {
+          if ((vented.utilization.get(taker) ?? 0) > REVIVED_EPSILON) {
+            anyAlive = true;
+            break;
+          }
+        }
+        if (!anyAlive) {
+          withdrawn.push(`${nodeId}|${key}`);
+        }
+      }
+    }
+    if (withdrawn.length === 0) {
+      break;
+    }
+    if (ventable === undefined) {
+      ventable = new Set<string>();
+      for (const node of project.nodes) {
+        const report = result.nodes[node.id];
+        for (const key of Object.keys(report?.outputs ?? {})) {
+          ventable.add(`${node.id}|${key}`);
+        }
+      }
+    }
+    for (const port of withdrawn) {
+      ventable.delete(port);
+    }
+    const narrowed = solveEquationsCore(project, result.nodes, undefined, undefined, {
+      ventOutputs: true,
+      ventPorts: ventable,
+    });
+    if (narrowed.status !== "optimal") {
+      return EMPTY_INDEX;
+    }
+    vented = narrowed;
+    revived = reviveFrom(vented);
+    if (revived.size === 0) {
+      return EMPTY_INDEX;
+    }
   }
 
   // The full-throttle solve vents EVERY ratio mismatch on the line, but most
@@ -178,7 +268,6 @@ function build(project: FactoryProject, result: ThroughputResult | undefined): C
 
   // One lock per connected group of revived machines, drawers riding along
   // as pass-through hops, exactly as the death spiral walks its rings.
-  const storageIds = new Set((project.storages ?? []).map((storage) => storage.id));
   const adjacency = new Map<string, Set<string>>();
   const link = (a: string, b: string) => {
     let bucket = adjacency.get(a);

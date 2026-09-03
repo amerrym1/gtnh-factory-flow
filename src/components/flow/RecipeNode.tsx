@@ -2572,6 +2572,9 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
         return undefined;
       }
       const spare = formatSlotRate(clog.surplusPerSecond, clog.kind);
+      if (clog.stoppedTakerName) {
+        return `Nothing takes the ${clog.displayName}: ${clog.stoppedTakerName} has stopped. Its own card says why.`;
+      }
       if (clog.takenPerSecond <= 0.0005) {
         return `Nothing takes the ${clog.displayName}. A machine cannot run with a full output.`;
       }

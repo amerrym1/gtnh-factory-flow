@@ -814,6 +814,18 @@ Working notes for future agents on GTNH Factory Flow.
   builder and its HiGHS adapter were deleted with the `highs` dependency
   once the production core existed. Scratch harnesses belong in
   `*.local.test.*` files, which the vitest config excludes from the suite.
+- The two ring DIAGNOSES (`death-spiral.ts`, `clog-lock.ts`) stand down
+  for an UNFINISHED SETUP (Jack, 2026-09-02): a member with no power or a
+  bare slot (`findBareSlots` in `bare-slots.ts`, rules-aware) is what stops
+  a ring, so it is never a dead loop; and a clog-lock vent whose every
+  machine taker (through drawers) is dead even in the vented world is
+  withdrawn and the world re-solved until nothing more falls, so a machine
+  feeding a stopped card is never "choking on its surplus". The verdict
+  then reads the neighbours honestly: a card at 0% whose takers have all
+  stopped is CLOGGED with `clog.stoppedTakerName` ("X has stopped. Its own
+  card says why."), a stopped-by-setup taker's ask is never a deficit
+  (no BOTTLENECK at 0%), and the sole-outlet supply uplift is refused for
+  a feeder that cannot ramp, so the fed card reads STARVED and names it.
 - Power stalls are pinned to act 0 INSIDE the LP so the outage propagates by
   conservation. Balance dust snaps at 1e-5 relative (`balances.ts`) because
   LP flows carry solver-precision dust proportional to board scale.

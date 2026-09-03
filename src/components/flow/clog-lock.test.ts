@@ -219,4 +219,72 @@ describe("findClogLocks", () => {
     expect(result.nodes["a"]!.utilization).toBeCloseTo(0, 4);
     expect(findClogLocks(proj, result).locks).toHaveLength(0);
   });
+  it("stays quiet when the taker is stopped by an unwired slot of its own", () => {
+    // A mine feeds a smelter whose flux slot is still bare, and a press
+    // waits behind the smelter. The mine sits at 0% with its ore wire full,
+    // exactly what a clog lock looks like from the outside - but the ore
+    // has a taker, and that taker has simply not been finished. No lock:
+    // the mine says who stopped, the press says who starved it, and the
+    // smelter's own card marks the slot. Unwiring one slot on a working
+    // line must never light the rest of it up as a jam.
+    const proj = project({
+      recipes: [
+        recipe("mine", [], [["ore", 1]]),
+        recipe("smelt", [["ore", 1], ["flux", 1]], [["ingot", 1]]),
+        recipe("press", [["ingot", 1]], [["plate", 1]]),
+      ],
+      nodes: [node("a", "mine"), node("b", "smelt"), node("c", "press")],
+      storages: [drawer("out", "plate")],
+      edges: [wire("a", "b", "ore"), wire("b", "c", "ingot"), wire("c", "out", "plate")],
+    });
+    const result = calculateThroughput(proj, { generatedAt: "fixed" });
+
+    expect(result.nodes["a"]!.utilization).toBeCloseTo(0, 4);
+    expect(findClogLocks(proj, result).locks).toHaveLength(0);
+    expect(findDeathSpirals(proj, result).spirals).toHaveLength(0);
+
+    const mine = deriveNodeVerdict(proj, result, "a");
+    expect(mine.kind).toBe("clogged");
+    expect(mine.clog?.stoppedTakerName).toBe("Lab Machine");
+    expect(mine.clog?.takenPerSecond).toBe(0);
+    expect(deriveNodeVerdict(proj, result, "b").kind).toBe("unwired");
+    const press = deriveNodeVerdict(proj, result, "c");
+    expect(press.kind).toBe("starved");
+    expect(press.binding?.upstream?.pct).toBe(0);
+  });
+
+  it("stays quiet on a source feeding a ring whose member is unwired", () => {
+    // The loop that used to breed thread, with a dye slot left bare on the
+    // weaver and a thread source wired in. Every card reads 0%: the source
+    // once wore CLOG LOCK and the unraveller DEAD LOOP, two alarms for one
+    // missing wire. Now the weaver alone says unwired, the source says it
+    // is waiting on the weaver, and the unraveller says who starved it.
+    const proj = project({
+      recipes: [
+        recipe("weave", [["thread", 1], ["dye", 1]], [["cloth", 2]]),
+        recipe("unravel", [["cloth", 2]], [["thread", 1]]),
+        recipe("spin", [], [["thread", 1]]),
+      ],
+      nodes: [node("m1", "weave"), node("m2", "unravel"), node("s", "spin")],
+      edges: [wire("m1", "m2", "cloth"), wire("m2", "m1", "thread"), wire("s", "m1", "thread")],
+    });
+    const result = calculateThroughput(proj, { generatedAt: "fixed" });
+
+    expect(findClogLocks(proj, result).locks).toHaveLength(0);
+    expect(findDeathSpirals(proj, result).spirals).toHaveLength(0);
+    expect(deriveNodeVerdict(proj, result, "m1").kind).toBe("unwired");
+    expect(deriveNodeVerdict(proj, result, "m2").kind).toBe("starved");
+    const source = deriveNodeVerdict(proj, result, "s");
+    expect(source.kind).toBe("clogged");
+    expect(source.clog?.stoppedTakerName).toBe("Lab Machine");
+  });
+
+  it("still names the lock when the surplus's taker is a jammed member", () => {
+    // The plain thread loop: the sweep that withdraws vents on dead takers
+    // must keep a vent whose taker the vent itself revives - that IS the
+    // lock, and the sweep must never talk itself out of it.
+    const proj = loopProject();
+    const result = calculateThroughput(proj, { generatedAt: "fixed" });
+    expect(findClogLocks(proj, result).locks).toHaveLength(1);
+  });
 });

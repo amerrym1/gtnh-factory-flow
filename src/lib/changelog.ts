@@ -68,6 +68,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.54.1",
+    date: "2026-09-02",
+    headline: "An unfinished machine no longer sets off clog lock and dead loop alarms",
+    notes: [
+      "A card stopped by an unwired slot or missing power is the only card that says so; its neighbours point at it instead of raising their own alarm.",
+      "A machine whose only taker has stopped now reads that it is waiting on that machine, not that it needs more machines or a drawer.",
+      "A machine fed by a stopped machine reads starved and names it.",
+    ],
+  },
+  {
     version: "2.54.0",
     date: "2026-09-02",
     headline: "The recipe search has back and forward",
