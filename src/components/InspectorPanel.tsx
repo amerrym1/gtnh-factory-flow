@@ -530,10 +530,12 @@ function FlowIOPanel() {
         // The ring wraps the WHOLE panel, not just the strip: the point is
         // that everything below is about the selection, so the mode has to be
         // readable from anywhere in the list rather than only at the top.
-        "flex min-h-0 flex-1 flex-col rounded border bg-[#2a2d33]",
+        // Like the items column: only the controls sit on a card; the list
+        // sits on the column itself.
+        "flex min-h-0 flex-1 flex-col rounded border",
         selection
           ? "border-[var(--selection)] ring-1 ring-[var(--selection-soft)]"
-          : "border-neutral-800",
+          : "border-transparent",
       ].join(" ")}
     >
       {selection ? (
@@ -543,7 +545,7 @@ function FlowIOPanel() {
         />
       ) : null}
 
-      <div className="shrink-0 border-b border-neutral-800 p-1">
+      <div className="mx-2 mt-2 shrink-0 rounded-[6px] border border-neutral-700 bg-[#2a2d33] p-2">
         <div className="mb-1 flex items-center gap-1">
           <ToolbarToggle
             on={workspace.showHiddenResources}
@@ -1101,7 +1103,7 @@ function FlowVirtualList({
     <div
       ref={scrollRef}
       onScroll={handleScroll}
-      className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+      className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pt-2"
     >
       {stickyHeader?.type === "header" ? (
         <FlowSectionHeader
