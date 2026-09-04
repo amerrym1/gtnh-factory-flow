@@ -29,7 +29,7 @@ vi.mock("@/lib/designs/design-camera", () => ({
   endDesignHandover: vi.fn(),
 }));
 
-import { readShelfTabState } from "@/lib/shelf/shelf-tab";
+import { readLibraryTabState } from "@/lib/library/library-tab";
 import { createEmptyProject } from "@/examples";
 import { useDesignStore } from "./design-store";
 
@@ -122,7 +122,7 @@ describe("opening the design library", () => {
     const state = useDesignStore.getState();
     expect(state.activeDesignId).toBeUndefined();
     expect(state.designs).toHaveLength(2);
-    expect(readShelfTabState().active).toBe(true);
+    expect(readLibraryTabState().active).toBe(true);
   });
 
   it("opens the first open design when the remembered one is gone", async () => {
@@ -158,7 +158,7 @@ describe("closing tabs", () => {
     await useDesignStore.getState().closeDesign("a");
 
     expect(useDesignStore.getState().activeDesignId).toBeUndefined();
-    expect(readShelfTabState().active).toBe(true);
+    expect(readLibraryTabState().active).toBe(true);
     expect(storage.deleteDesign).not.toHaveBeenCalled();
   });
 
@@ -171,7 +171,7 @@ describe("closing tabs", () => {
 
     expect(useDesignStore.getState().activeDesignId).toBe("b");
     expect(records.get("b")?.closed).toBeUndefined();
-    expect(readShelfTabState().active).toBe(false);
+    expect(readLibraryTabState().active).toBe(false);
   });
 
   it("closes a run of tabs and keeps the one the menu came from", async () => {

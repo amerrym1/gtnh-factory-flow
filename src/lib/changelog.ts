@@ -70,11 +70,11 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "2.56.0",
     date: "2026-09-04",
-    headline: "The shelf: all your designs, in folders",
+    headline: "The library: your designs, boards and shared setups in one place",
     notes: [
-      "The square at the head of the tab strip opens the shelf: every design you have, with folders, search and sort.",
-      "Closing a tab keeps the design on the shelf; delete lives there, and your posted setups are its Shared view.",
-      "A posted design you have edited since wears a mark, and Update post refreshes it from the shelf.",
+      "The square at the head of the tab strip opens the library: every design you have, in folders, with search and sort.",
+      "Closing a tab keeps the design in the library; the Boards and Setups tabs moved there too, so the left column is just Items.",
+      "A posted design you have edited since wears a mark, and Update post refreshes it from the library.",
       "Imported plans find each card's exact recipe again, big plans no longer freeze on every edit, and one broken design no longer hides the rest.",
     ],
   },

@@ -15,7 +15,8 @@ import { sharedPlanLink } from "@/lib/community/shared-link";
 import type { CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
 import { serializeFactoryProject } from "@/lib/import-export";
 import { capturePlanView } from "@/lib/plan-view";
-import { notifySetupsChanged, openSetupsTab } from "@/lib/setups-tab";
+import { openLibrary } from "@/lib/library/library-tab";
+import { notifySetupsChanged } from "@/lib/setups-tab";
 import { useFactoryStore } from "@/store/factory-store";
 import { useDesignStore } from "@/store/design-store";
 import { EntryIconSlot, IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
@@ -229,11 +230,11 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
               type="button"
               onClick={() => {
                 onClose();
-                openSetupsTab();
+                openLibrary({ kind: "shared" });
               }}
               className="inline-flex rounded border border-cyan-700 bg-cyan-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-cyan-500"
             >
-              See it on the Setups shelf
+              See it in your library
             </button>
           </div>
         ) : isUserLoading ? (

@@ -26,7 +26,7 @@ function visit(localStorage: Storage, sessionStorage: Storage) {
     location: { search: "" },
   };
   vi.resetModules();
-  return import("./shelf-tab");
+  return import("./library-tab");
 }
 
 beforeEach(() => {
@@ -41,14 +41,14 @@ afterEach(() => {
 describe("shelf tab", () => {
   it("starts closed, on everything", async () => {
     const shelf = await visit(local, session);
-    expect(shelf.readShelfTabState()).toEqual({ active: false, view: { kind: "all" } });
+    expect(shelf.readLibraryTabState()).toEqual({ active: false, view: { kind: "all" } });
   });
 
   it("comes back after a reload, in the same view", async () => {
     const first = await visit(local, session);
-    first.openShelf({ kind: "folder", folderId: "f1" });
+    first.openLibrary({ kind: "folder", folderId: "f1" });
     const reload = await visit(local, session);
-    expect(reload.readShelfTabState()).toEqual({
+    expect(reload.readLibraryTabState()).toEqual({
       active: true,
       view: { kind: "folder", folderId: "f1" },
     });
@@ -56,26 +56,26 @@ describe("shelf tab", () => {
 
   it("is off on a new visit", async () => {
     const first = await visit(local, session);
-    first.openShelf({ kind: "shared" });
+    first.openLibrary({ kind: "shared" });
     const later = await visit(local, makeStorage());
-    expect(later.readShelfTabState().active).toBe(false);
+    expect(later.readLibraryTabState().active).toBe(false);
   });
 
   it("steps Welcome down when it opens", async () => {
     const shelf = await visit(local, session);
     const welcome = await import("@/lib/welcome/welcome-tab");
     welcome.openWelcomeTab();
-    shelf.openShelf();
+    shelf.openLibrary();
     expect(welcome.readWelcomeTabState().active).toBe(false);
-    expect(shelf.readShelfTabState().active).toBe(true);
+    expect(shelf.readLibraryTabState().active).toBe(true);
   });
 
   it("keeps the view when opened without one", async () => {
     const shelf = await visit(local, session);
-    shelf.setShelfView({ kind: "open" });
-    shelf.openShelf();
-    expect(shelf.readShelfTabState().view).toEqual({ kind: "open" });
-    shelf.leaveShelf();
-    expect(shelf.readShelfTabState()).toEqual({ active: false, view: { kind: "open" } });
+    shelf.setLibraryView({ kind: "open" });
+    shelf.openLibrary();
+    expect(shelf.readLibraryTabState().view).toEqual({ kind: "open" });
+    shelf.leaveLibrary();
+    expect(shelf.readLibraryTabState()).toEqual({ active: false, view: { kind: "open" } });
   });
 });

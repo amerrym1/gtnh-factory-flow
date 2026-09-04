@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { openDesigns, type DesignFolder } from "@/lib/designs/design-library";
 import type { EntryIcon } from "@/lib/model/types";
 import { FLUID_ICON_SCALE, ResourceIcon } from "./nei/ResourceIcon";
-import { leaveShelf, openShelf, useShelfTab } from "@/lib/shelf/shelf-tab";
+import { leaveLibrary, openLibrary, useLibraryTab } from "@/lib/library/library-tab";
 import {
   closeWelcomeTab,
   leaveWelcomeTab,
@@ -41,6 +41,7 @@ export function DesignTabs() {
   const activeDesignId = useDesignStore((state) => state.activeDesignId);
   const isHydrated = useDesignStore((state) => state.isHydrated);
   const saveState = useDesignStore((state) => state.saveState);
+  const libraryError = useDesignStore((state) => state.error);
   const switchToDesign = useDesignStore((state) => state.switchToDesign);
   const addDesign = useDesignStore((state) => state.addDesign);
   const copyDesign = useDesignStore((state) => state.copyDesign);
@@ -51,7 +52,7 @@ export function DesignTabs() {
   const reorderDesigns = useDesignStore((state) => state.reorderDesigns);
   const moveDesignToFolder = useDesignStore((state) => state.moveDesignToFolder);
   const welcome = useWelcomeTab();
-  const shelf = useShelfTab();
+  const shelf = useLibraryTab();
   // The strip is the OPEN designs. The rest live on the shelf.
   const designs = openDesigns(allDesigns);
   // Neither page is a design, and exactly one thing in this row looks current.
@@ -467,19 +468,20 @@ export function DesignTabs() {
         */}
         <button
           type="button"
-          onClick={() => openShelf()}
-          title="Shelf: all your designs"
-          aria-label="Open the shelf"
+          onClick={() => openLibrary()}
+          title="Library: your designs, boards and shared setups"
+          aria-label="Open the library"
           aria-pressed={shelf.active}
-          data-help-anchor="shelf"
+          data-help-anchor="library"
           className={[
-            "flex h-6 w-7 shrink-0 items-center justify-center rounded-t border-b-2",
+            "flex h-6 shrink-0 items-center gap-1 rounded-t border-b-2 px-2 text-xs font-medium",
             shelf.active
               ? "border-cyan-500 bg-surface-raised text-fg"
               : "border-transparent text-fg-muted hover:bg-surface-sunken hover:text-fg",
           ].join(" ")}
         >
-          <Library className="h-3.5 w-3.5" aria-hidden />
+          <Library className="h-3 w-3" aria-hidden />
+          Library
         </button>
         <span aria-hidden className="h-3.5 w-px shrink-0 bg-line" />
 
@@ -495,7 +497,7 @@ export function DesignTabs() {
             <button
               type="button"
               onClick={() => {
-                leaveShelf();
+                leaveLibrary();
                 openWelcomeTab();
               }}
               title="Welcome"
@@ -640,7 +642,7 @@ export function DesignTabs() {
                   <button
                     type="button"
                     aria-label={`Close ${design.name}`}
-                    title="Close tab (stays on the shelf)"
+                    title="Close tab (stays in the library)"
                     onClick={() => void closeDesign(design.id)}
                     className="rounded px-1 text-xs text-fg-muted opacity-0 hover:bg-surface hover:text-fg focus:opacity-100 group-hover:opacity-100"
                   >
@@ -685,8 +687,22 @@ export function DesignTabs() {
         </button>
 
         {/* Everything from here is pinned to the right edge. */}
-        <span className="ml-auto shrink-0 pl-1 text-[11px] text-fg-muted">
-          {saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved"}
+        {/* A library that failed to load or save says so here, in red, rather
+            than leaving an empty strip to explain itself. */}
+        <span
+          title={libraryError}
+          className={[
+            "ml-auto max-w-[360px] shrink-0 truncate pl-1 text-[11px]",
+            libraryError ? "text-red-400" : "text-fg-muted",
+          ].join(" ")}
+        >
+          {libraryError
+            ? libraryError
+            : saveState === "saving"
+              ? "Saving…"
+              : saveState === "error"
+                ? "Save failed"
+                : "Saved"}
         </span>
       </div>
 

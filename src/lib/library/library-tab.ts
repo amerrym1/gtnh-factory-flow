@@ -18,34 +18,40 @@ import { leaveWelcomeTab } from "@/lib/welcome/welcome-tab";
  * shelf lands you back on it, in the same folder, and a new visit starts on
  * whatever design was open. Same scope Welcome uses for the same reason.
  */
-export type ShelfView =
+export type LibraryView =
+  /* MINE: your designs. */
   | { kind: "all" }
   | { kind: "open" }
   | { kind: "shared" }
   | { kind: "unfiled" }
-  | { kind: "folder"; folderId: string };
+  | { kind: "folder"; folderId: string }
+  /* NETWORK: everyone's public setups. */
+  | { kind: "public" }
+  /* BOARDS: saved chunks to place, yours and everyone's. */
+  | { kind: "boards" }
+  | { kind: "public-boards" };
 
-export interface ShelfTabState {
+export interface LibraryTabState {
   /** It is the thing being shown, covering the board. */
   active: boolean;
-  view: ShelfView;
+  view: LibraryView;
 }
 
-const SHELF_SESSION_KEY = "gtnh-factory-flow-shelf";
+const SHELF_SESSION_KEY = "gtnh-factory-flow-library";
 
-const CLOSED: ShelfTabState = { active: false, view: { kind: "all" } };
+const CLOSED: LibraryTabState = { active: false, view: { kind: "all" } };
 
-let state: ShelfTabState = CLOSED;
+let state: LibraryTabState = CLOSED;
 let loaded = false;
 const listeners = new Set<() => void>();
 
-function readStored(): ShelfTabState {
+function readStored(): LibraryTabState {
   try {
     const raw = window.sessionStorage.getItem(SHELF_SESSION_KEY);
     if (!raw) {
       return CLOSED;
     }
-    const parsed = JSON.parse(raw) as Partial<ShelfTabState>;
+    const parsed = JSON.parse(raw) as Partial<LibraryTabState>;
     return {
       active: parsed.active === true,
       view: isShelfView(parsed.view) ? parsed.view : { kind: "all" },
@@ -55,7 +61,7 @@ function readStored(): ShelfTabState {
   }
 }
 
-function isShelfView(value: unknown): value is ShelfView {
+function isShelfView(value: unknown): value is LibraryView {
   if (typeof value !== "object" || value === null) {
     return false;
   }
@@ -63,10 +69,18 @@ function isShelfView(value: unknown): value is ShelfView {
   if (kind === "folder") {
     return typeof (value as { folderId?: unknown }).folderId === "string";
   }
-  return kind === "all" || kind === "open" || kind === "shared" || kind === "unfiled";
+  return (
+    kind === "all" ||
+    kind === "open" ||
+    kind === "shared" ||
+    kind === "unfiled" ||
+    kind === "public" ||
+    kind === "boards" ||
+    kind === "public-boards"
+  );
 }
 
-function getSnapshot(): ShelfTabState {
+function getSnapshot(): LibraryTabState {
   if (!loaded) {
     loaded = true;
     state = readStored();
@@ -74,7 +88,7 @@ function getSnapshot(): ShelfTabState {
   return state;
 }
 
-function getServerSnapshot(): ShelfTabState {
+function getServerSnapshot(): LibraryTabState {
   return CLOSED;
 }
 
@@ -85,7 +99,7 @@ function subscribe(listener: () => void) {
   };
 }
 
-function write(patch: Partial<ShelfTabState>) {
+function write(patch: Partial<LibraryTabState>) {
   state = { ...getSnapshot(), ...patch };
   try {
     window.sessionStorage.setItem(SHELF_SESSION_KEY, JSON.stringify(state));
@@ -97,12 +111,12 @@ function write(patch: Partial<ShelfTabState>) {
   }
 }
 
-export function useShelfTab(): ShelfTabState {
+export function useLibraryTab(): LibraryTabState {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
 /** The current state without subscribing. For tests and one-shot reads. */
-export function readShelfTabState(): ShelfTabState {
+export function readLibraryTabState(): LibraryTabState {
   return getSnapshot();
 }
 
@@ -110,27 +124,20 @@ export function readShelfTabState(): ShelfTabState {
  * Show the shelf, on `view` if given and otherwise wherever it was last.
  * Exactly one of Welcome and the shelf can be up, so Welcome steps down.
  */
-export function openShelf(view?: ShelfView) {
+export function openLibrary(view?: LibraryView) {
   leaveWelcomeTab();
   write({ active: true, ...(view ? { view } : {}) });
 }
 
 /** Change what the open shelf is looking at. */
-export function setShelfView(view: ShelfView) {
+export function setLibraryView(view: LibraryView) {
   write({ view });
 }
 
 /** Step off the shelf onto whatever design is active. */
-export function leaveShelf() {
+export function leaveLibrary() {
   if (!getSnapshot().active) {
     return;
   }
   write({ active: false });
-}
-
-export function sameShelfView(left: ShelfView, right: ShelfView): boolean {
-  if (left.kind !== right.kind) {
-    return false;
-  }
-  return left.kind !== "folder" || left.folderId === (right as { folderId: string }).folderId;
 }

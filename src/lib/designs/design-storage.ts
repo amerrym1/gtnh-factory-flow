@@ -228,7 +228,34 @@ function openDesignDb(): Promise<IDBDatabase> {
         db.createObjectStore(FOLDER_STORE, { keyPath: "id" });
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    let gaveUp = false;
+    request.onsuccess = () => {
+      const db = request.result;
+      if (gaveUp) {
+        // The blocked open settled after all; nobody is waiting for it.
+        db.close();
+        return;
+      }
+      // Another tab of the app wanting a NEWER schema asks this connection
+      // to step aside. Every operation here closes its own connection
+      // anyway, but a long transaction should not be the thing that blocks
+      // the other tab's upgrade forever.
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
+    // The mirror case: THIS open wants a newer schema than a connection some
+    // other tab is holding. Without this the open just never settles, the
+    // library never hydrates, and the strip sits empty with a dead plus. A
+    // clear failure is better than a silent hang; a reload once the other
+    // tab has let go clears it.
+    request.onblocked = () => {
+      gaveUp = true;
+      reject(
+        new Error(
+          "The design library is open in another tab. Close or reload that tab, then reload this one.",
+        ),
+      );
+    };
     request.onerror = () => reject(request.error ?? new Error("Could not open IndexedDB."));
   });
 }

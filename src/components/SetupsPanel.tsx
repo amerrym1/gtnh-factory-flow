@@ -34,15 +34,8 @@ import type { CommunityPlanSort, CommunityPlanSummary, EntryIcon } from "@/lib/c
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { parseFactoryProjectJson, serializeFactoryProject } from "@/lib/import-export";
 import { applyPlanView, capturePlanView } from "@/lib/plan-view";
-import {
-  OPEN_SETUPS_EVENT,
-  SETUPS_CHANGED_EVENT,
-  takePendingSetupsScope,
-  type SetupsScope,
-} from "@/lib/setups-tab";
-import { openShelf } from "@/lib/shelf/shelf-tab";
+import { SETUPS_CHANGED_EVENT, type SetupsScope } from "@/lib/setups-tab";
 import { useCommunityUser } from "@/components/community/auth";
-import { SharePlanDialog } from "@/components/community/SharePlanDialog";
 import { EntryIconSlot, IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
 import { ControlsCard } from "@/components/ControlsCard";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
@@ -84,15 +77,8 @@ interface SetupShelf {
  * the open board). NETWORK is the whole hub; MINE is the account's own
  * posts, where take-down lives.
  */
-export function SetupsPanel({ scope: fixedScope }: { scope?: SetupsScope } = {}) {
+export function SetupsPanel({ scope = "network" }: { scope?: SetupsScope } = {}) {
   const { user, isLoading: isAuthLoading } = useCommunityUser();
-  // The column browses the NETWORK; Mine moved to the shelf, which embeds
-  // this same panel pinned to that scope (`fixedScope`).
-  const [ownScope, setScope] = useState<SetupsScope>(() => {
-    const requested = takePendingSetupsScope();
-    return requested === "network" ? requested : "network";
-  });
-  const scope = fixedScope ?? ownScope;
   const [sort, setSort] = useState<CommunityPlanSort>("new");
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 250);
@@ -101,32 +87,15 @@ export function SetupsPanel({ scope: fixedScope }: { scope?: SetupsScope } = {})
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState<{ id: string; kind: "open" | "pocket" }>();
   const [copiedId, setCopiedId] = useState<string>();
-  const [isShareOpen, setShareOpen] = useState(false);
   // The row whose icon is being picked; the picker itself is one modal.
   const [iconEditId, setIconEditId] = useState<string>();
   // Bumped when a share lands or a post is overwritten, so a fresh post
   // shows up without a manual refresh.
   const [refreshTick, setRefreshTick] = useState(0);
-  const hasBoardContent = useFactoryStore((state) => state.project.nodes.length > 0);
   const activeTabName = useDesignStore(
     (state) =>
       state.designs.find((design) => design.id === state.activeDesignId)?.name ?? "this board",
   );
-
-  // A request to open the panel on Mine lands on the shelf's Shared view
-  // instead: that is where your posts live now.
-  useEffect(() => {
-    const applyScope = () => {
-      const requested = takePendingSetupsScope();
-      if (requested === "mine") {
-        openShelf({ kind: "shared" });
-      } else if (requested) {
-        setScope(requested);
-      }
-    };
-    window.addEventListener(OPEN_SETUPS_EVENT, applyScope);
-    return () => window.removeEventListener(OPEN_SETUPS_EVENT, applyScope);
-  }, []);
 
   // A share posted anywhere (this panel's dialog or the top bar's) refetches
   // the shelf, so the new post is already here when the dialog closes.
@@ -425,54 +394,10 @@ export function SetupsPanel({ scope: fixedScope }: { scope?: SetupsScope } = {})
   return (
     <>
       <ControlsCard>
-        {/* Share on the left, then Mine | Public: the same row shape as the
-            board shelf. The panel still OPENS on Public: browsing is
-            the point. Mine is a door to the shelf's Shared view, where the
-            same list lives beside your other designs. Embedded on the shelf
-            the row is redundant and goes. */}
-        <div className={fixedScope ? "hidden" : "flex gap-1"}>
-          <MinecraftTooltip
-            label={
-              hasBoardContent
-                ? "Share this design\nPuts the board you have open on the Public shelf"
-                : "Share this design\nBuild something on the board first"
-            }
-          >
-            <button
-              type="button"
-              disabled={!hasBoardContent}
-              onClick={() => setShareOpen(true)}
-              aria-label="Share the open design as a setup"
-              data-help-anchor="share-setup"
-              className="flex h-7 w-9 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-600 enabled:hover:text-emerald-300 disabled:opacity-50"
-            >
-              <Share2 className="h-3.5 w-3.5" />
-            </button>
-          </MinecraftTooltip>
-          <button
-            type="button"
-            onClick={() => openShelf({ kind: "shared" })}
-            title="Your posts, on the shelf"
-            className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-[4px] border border-neutral-700 bg-[#17191d] text-xs font-medium text-neutral-400 hover:text-neutral-200"
-          >
-            <User className="h-3.5 w-3.5" />
-            Mine
-          </button>
-          <button
-            type="button"
-            onClick={() => setScope("network")}
-            className={[
-              "flex h-7 flex-1 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
-              scope === "network"
-                ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
-                : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
-            ].join(" ")}
-          >
-            <Globe className="h-3.5 w-3.5" />
-            Public
-          </button>
-        </div>
-        <label className="mt-2 flex h-9 items-center gap-2 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2 text-sm text-neutral-200 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]">
+        {/* No Mine | Public row any more: the library's rail is the scope
+            switch, and Share lives in the header. Search, tags and sort are
+            all the card carries. */}
+        <label className="flex h-9 items-center gap-2 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2 text-sm text-neutral-200 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]">
           <Search className="h-4 w-4 text-neutral-500" />
           <input
             value={query}
@@ -588,7 +513,6 @@ export function SetupsPanel({ scope: fixedScope }: { scope?: SetupsScope } = {})
           </>
         )}
       </div>
-      {isShareOpen ? <SharePlanDialog onClose={() => setShareOpen(false)} /> : null}
       {iconEditId ? (
         <IconPicker
           title="Pick an icon"

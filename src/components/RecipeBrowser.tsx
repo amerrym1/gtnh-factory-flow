@@ -5,7 +5,6 @@ import {
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
-  Factory,
   Search,
   X,
   Zap,
@@ -44,7 +43,6 @@ import { leaveWelcomeTab, readWelcomeTabState } from "@/lib/welcome/welcome-tab"
 import type { RecipeInputPicks, TierFilter } from "@/store/factory-store";
 import type { Recipe, ResourceAmount } from "@/lib/model/types";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
-import { OPEN_SETUPS_EVENT } from "@/lib/setups-tab";
 import {
   OPEN_SIDEBAR_TAB_EVENT,
   takePendingSearchFocus,
@@ -56,8 +54,6 @@ import { isEchoOfTouch } from "@/lib/pointer-kind";
 import { isFromBrowseMenu, useBrowseMenu } from "./browse-menu";
 import { ControlsCard } from "./ControlsCard";
 import { ChevronIcon } from "./PanelDrawer";
-import { BlueprintPanel } from "./BlueprintPanel";
-import { SetupsPanel } from "./SetupsPanel";
 import { MinecraftTooltip } from "./nei/MinecraftTooltip";
 import { isSwatchFluid, ResourceIcon, spriteArtPixels } from "./nei/ResourceIcon";
 import {
@@ -283,7 +279,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   // A request that arrived before this column was mounted (a phone's drawer is
   // unmounted while closed) is waiting in module state, so the tab it asked for
   // is collected here as well as by the listener below.
-  const [sidebarMode, setSidebarMode] = useState<"items" | "blueprints" | "setups">(
+  const [sidebarMode, setSidebarMode] = useState<"items">(
     () => takePendingSidebarTab() ?? "items",
   );
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -408,14 +404,6 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     },
     [resourcePageCount],
   );
-
-  // Buttons far from this column ("My setups" in the account menu, the share
-  // dialog's shelf link) can land the sidebar on the Setups shelf.
-  useEffect(() => {
-    const openSetups = () => setSidebarMode("setups");
-    window.addEventListener(OPEN_SETUPS_EVENT, openSetups);
-    return () => window.removeEventListener(OPEN_SETUPS_EVENT, openSetups);
-  }, []);
 
   // And the general form of the same thing: anything outside the column can
   // ask for a tab by name, and for the cursor in the search box.
@@ -1171,7 +1159,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             type="button"
             onClick={() => writeWorkspaceView({ leftPanelOpen: false })}
             title="Hide this column"
-            aria-label="Hide the items, boards and setups column"
+            aria-label="Hide the items column"
             className="flex h-7 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 text-neutral-400 hover:border-cyan-600 hover:text-cyan-400"
           >
             <svg
@@ -1207,54 +1195,21 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             <Search className="h-3 w-3" />
             Items
           </button>
-          <button
-            type="button"
-            onClick={() => setSidebarMode("blueprints")}
-            data-tour-anchor="pockets-tab"
-            className={[
-              "flex h-7 flex-1 items-center justify-center gap-1 border-b-2 text-[11px] font-medium",
-              sidebarMode === "blueprints"
-                ? "border-[#8d6fd1] text-[#c9b8ec]"
-                : "border-transparent text-neutral-400 hover:text-neutral-200",
-            ].join(" ")}
-          >
-            {/* The board star, the same mark a folded board wears in its
-                name row and at a glance. A stack icon said "some other kind
-                of thing"; every row on this shelf is a board. */}
-            <span aria-hidden className="text-[12px] leading-none">
-              ✦
-            </span>
-            Boards
-          </button>
-          <button
-            type="button"
-            onClick={() => setSidebarMode("setups")}
-            className={[
-              "flex h-7 flex-1 items-center justify-center gap-1 border-b-2 text-[11px] font-medium",
-              sidebarMode === "setups"
-                ? "border-emerald-400 text-emerald-300"
-                : "border-transparent text-neutral-400 hover:text-neutral-200",
-            ].join(" ")}
-          >
-            <Factory className="h-3 w-3" />
-            Setups
-          </button>
+          {/* Boards and Setups used to be two more tabs here. Both live in
+              the library now (the square at the head of the tab strip), so
+              this column is the recipe book and nothing else. */}
           {/* The drawer's own way out, on the tab row, since the head row that
               used to carry it is folded away on a phone. */}
           <button
             type="button"
             onClick={() => writeWorkspaceView({ leftPanelOpen: false })}
-            aria-label="Close the items, boards and setups panel"
+            aria-label="Close the items panel"
             className="hidden h-7 w-8 shrink-0 items-center justify-center border-b-2 border-transparent text-neutral-400 compact:flex"
           >
             <ChevronIcon direction="left" />
           </button>
         </div>
-        {sidebarMode === "blueprints" ? (
-          <BlueprintPanel />
-        ) : sidebarMode === "setups" ? (
-          <SetupsPanel />
-        ) : (
+        {(
           // The wheel pages the list from anywhere in the column, including over
           // the controls and the recent shelf: nothing here scrolls, so a wheel
           // that did nothing was just a panel that felt broken.

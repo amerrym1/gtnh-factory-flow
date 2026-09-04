@@ -12,7 +12,8 @@
  */
 export const OPEN_SIDEBAR_TAB_EVENT = "gtnh:open-sidebar-tab";
 
-export type SidebarTab = "items" | "blueprints" | "setups";
+/** Only Items is left in the column; Boards and Setups moved to the library. */
+export type SidebarTab = "items";
 
 let pendingTab: SidebarTab | undefined;
 let pendingFocusSearch = false;

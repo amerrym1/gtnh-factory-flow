@@ -1,7 +1,6 @@
 import {
   Box,
   Eye,
-  Factory,
   Focus,
   Gauge,
   ImagePlus,
@@ -12,6 +11,7 @@ import {
   Search,
   Share2,
   Store,
+  Library,
   Sigma,
   SlidersHorizontal,
   Sprout,
@@ -189,9 +189,8 @@ const LEFT_COLUMN: HelpCard = {
   title: "The left column",
   rows: [
     { icon: Search, text: "*Items*: search, filters, sorts" },
-    { chip: "✦", text: "*Boards*: saved chunks to place" },
-    { icon: Factory, text: "*Setups*: shared factories" },
     { text: "Left click makes, right uses" },
+    { icon: Library, text: "*Library* (tab strip): designs, boards, setups" },
   ],
 };
 

@@ -40,7 +40,7 @@ import {
 } from "@/lib/designs/design-camera";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { applyPlanView, capturePlanView } from "@/lib/plan-view";
-import { leaveShelf, openShelf } from "@/lib/shelf/shelf-tab";
+import { leaveLibrary, openLibrary } from "@/lib/library/library-tab";
 import { leaveWelcomeTab } from "@/lib/welcome/welcome-tab";
 import type { FactoryProject } from "@/lib/model/types";
 import { LOCAL_STORAGE_KEY, useFactoryStore } from "./factory-store";
@@ -149,7 +149,7 @@ function landOnDesign(
 function landOnNothing(set: (partial: Partial<DesignStore>) => void, rest?: Partial<DesignStore>) {
   writeActiveDesignId(undefined);
   set({ ...rest, activeDesignId: undefined });
-  openShelf();
+  openLibrary();
 }
 
 function currentProject(): FactoryProject {
@@ -279,7 +279,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     const { activeDesignId, designs } = get();
     if (id === activeDesignId) {
       // Already on the canvas; the only thing left to do is show it.
-      leaveShelf();
+      leaveLibrary();
       return;
     }
 
@@ -300,7 +300,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     // the store still names the old design is exactly the pairing that would
     // save one design's work into another.
     landOnDesign(set, id, target.project);
-    leaveShelf();
+    leaveLibrary();
     set(await listLibrary());
   },
 
@@ -311,7 +311,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     const record = createDesignRecord(createEmptyProject(), UNTITLED_DESIGN_NAME);
     await writeDesign(record);
     landOnDesign(set, record.id, record.project);
-    leaveShelf();
+    leaveLibrary();
     set(await listLibrary());
   },
 
@@ -327,7 +327,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     // Leaving the greeting up would put it over the board it just landed on,
     // with the strip still naming Welcome as the tab you are on.
     leaveWelcomeTab();
-    leaveShelf();
+    leaveLibrary();
     set(await listLibrary());
   },
 
@@ -353,7 +353,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     };
     await writeDesign(copy);
     landOnDesign(set, copy.id, copy.project);
-    leaveShelf();
+    leaveLibrary();
     set(await listLibrary());
   },
 

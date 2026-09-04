@@ -2,7 +2,7 @@
 
 import { Bug, Compass, Heart, Library, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
-import { leaveShelf, openShelf } from "@/lib/shelf/shelf-tab";
+import { leaveLibrary, openLibrary } from "@/lib/library/library-tab";
 import { openWelcomeTab } from "@/lib/welcome/welcome-tab";
 import {
   markVersionSeenAndNotify,
@@ -50,7 +50,7 @@ export function HeaderLinks() {
       <button
         type="button"
         onClick={() => {
-          leaveShelf();
+          leaveLibrary();
           openWelcomeTab();
         }}
         title="Welcome"
@@ -187,7 +187,7 @@ export function MenuLinks({ onAction }: { onAction?: () => void }) {
       <button
         type="button"
         onClick={() => {
-          leaveShelf();
+          leaveLibrary();
           openWelcomeTab();
           onAction?.();
         }}
@@ -201,7 +201,7 @@ export function MenuLinks({ onAction }: { onAction?: () => void }) {
       <button
         type="button"
         onClick={() => {
-          openShelf();
+          openLibrary();
           onAction?.();
         }}
         className="flex h-10 items-center gap-2.5 rounded px-2 text-left text-sm text-fg-subtle hover:bg-surface-sunken"
@@ -209,7 +209,7 @@ export function MenuLinks({ onAction }: { onAction?: () => void }) {
         <span className="flex h-4 w-4 shrink-0 items-center justify-center">
           <Library className="h-3.5 w-3.5" aria-hidden />
         </span>
-        <span className="truncate">Shelf</span>
+        <span className="truncate">Library</span>
       </button>
       <MenuLink href={GITHUB_URL} label="Source on GitHub">
         <GithubMark />

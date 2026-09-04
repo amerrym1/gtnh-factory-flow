@@ -28,6 +28,7 @@ import {
   type PublicBlueprintSort,
 } from "@/lib/blueprints/types";
 import { snapPositionToGrid } from "@/lib/board-grid";
+import { leaveLibrary } from "@/lib/library/library-tab";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useCommunityUser } from "@/components/community/auth";
 import { ControlsCard } from "@/components/ControlsCard";
@@ -70,11 +71,19 @@ function blueprintHoverCard(blueprint: BlueprintSummary): ReactNode {
  * what it needs from outside and what it makes, the same reading the
  * zoomed-out board gives a hovered machine.
  */
-export function BlueprintPanel() {
+/**
+ * The Boards lists, embedded in the library: `scope` pins one list, and the
+ * Mine | Public row and the share-a-pocket button go with it. The library's
+ * rail is the switch, and a pocket is saved to the library from the board
+ * itself (its card's save button), since a page covering the board cannot
+ * pick one.
+ */
+export function BlueprintPanel({ scope: fixedScope }: { scope?: "mine" | "public" } = {}) {
   const { user } = useCommunityUser();
   const refresh = useBlueprintStore((state) => state.refresh);
   const reset = useBlueprintStore((state) => state.reset);
-  const [scope, setScope] = useState<"mine" | "public">("mine");
+  const [ownScope, setScope] = useState<"mine" | "public">("mine");
+  const scope = fixedScope ?? ownScope;
 
   // Exactly one pocket selected on the board arms the pocket flows: the
   // selection IS the picker, whichever way round the gesture starts. Lives
@@ -237,7 +246,7 @@ export function BlueprintPanel() {
     return unsubscribe;
   }, [isShareArmed, commitShare]);
 
-  const scopeTabs = (
+  const scopeTabs = fixedScope ? null : (
     <div className="flex gap-1">
       <MinecraftTooltip
         label={
@@ -330,6 +339,9 @@ export function placePayload(payload: BoardClipboardPayload): string[] {
   });
   const pastedIds = state.pasteBoardItems(payload, offset);
   if (pastedIds.length > 0) {
+    // Placed from the library, the library steps aside so what arrived is
+    // the thing on screen.
+    leaveLibrary();
     // Arrives selected, ready to drag into place — same handoff as paste.
     state.setPendingBoardSelection(pastedIds);
     // And the camera closes in on it. It lands centred on the view, but a

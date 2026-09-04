@@ -25,8 +25,7 @@ import type { CommunityPlanSummary } from "@/lib/community/types";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import type { EntryIcon } from "@/lib/model/types";
 import { applyPlanView } from "@/lib/plan-view";
-import { openSetupsTab } from "@/lib/setups-tab";
-import { openShelf } from "@/lib/shelf/shelf-tab";
+import { openLibrary } from "@/lib/library/library-tab";
 import { openSidebarTab } from "@/lib/sidebar-tab";
 import { APP_VERSION } from "@/lib/version";
 import { leaveWelcomeTab, setWelcomeOnStartup, useWelcomeTab } from "@/lib/welcome/welcome-tab";
@@ -140,14 +139,7 @@ export function WelcomePage() {
               </PrimaryButton>
               <SecondaryButton
                 icon={Factory}
-                onClick={() => {
-                  // The shelf lives in the left column, beside this page, so
-                  // this stays on the tab: both calls survive the column being
-                  // shut, and the second lands the shelf on Public.
-                  writeWorkspaceView({ leftPanelOpen: true });
-                  openSidebarTab("setups");
-                  openSetupsTab("network");
-                }}
+                onClick={() => openLibrary({ kind: "public" })}
               >
                 Browse shared setups
               </SecondaryButton>
@@ -161,8 +153,8 @@ export function WelcomePage() {
                 Find a recipe
               </SecondaryButton>
               {/* Your own designs live on the shelf now, not on this page. */}
-              <SecondaryButton icon={Library} onClick={() => openShelf()}>
-                Your shelf
+              <SecondaryButton icon={Library} onClick={() => openLibrary()}>
+                Your library
               </SecondaryButton>
             </div>
           </header>

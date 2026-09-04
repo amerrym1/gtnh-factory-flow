@@ -19,10 +19,10 @@ import { downloadCommunityPlan, tagPlanWithCommunityId } from "@/lib/community/c
 import { forgetSharedPlanId, readSharedPlanId } from "@/lib/community/shared-link";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { useIsCompactViewport } from "@/lib/compact-view";
-import { useShelfTab } from "@/lib/shelf/shelf-tab";
+import { useLibraryTab } from "@/lib/library/library-tab";
 import { useWelcomeTab } from "@/lib/welcome/welcome-tab";
 import { AppHeader } from "./AppHeader";
-import { ShelfPage } from "./shelf/ShelfPage";
+import { LibraryPage } from "./library/LibraryPage";
 import { WelcomePage } from "./welcome/WelcomePage";
 import { PlanIdentityDrawer } from "./PlanIdentityDrawer";
 import { SharedAddressSync } from "./SharedAddressSync";
@@ -357,7 +357,7 @@ function BoardColumn() {
           </div>
         ) : covering === "shelf" ? (
           <div className="absolute inset-0 z-40">
-            <ShelfPage />
+            <LibraryPage />
           </div>
         ) : null}
       </div>
@@ -377,7 +377,7 @@ function BoardColumn() {
  */
 function useCoveringPage(): "welcome" | "shelf" | undefined {
   const welcome = useWelcomeTab();
-  const shelf = useShelfTab();
+  const shelf = useLibraryTab();
   const isHydrated = useDesignStore((state) => state.isHydrated);
   const hasActiveDesign = useDesignStore((state) => state.activeDesignId !== undefined);
   if (welcome.active) {
@@ -423,7 +423,7 @@ function ColumnWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
         {workspace.leftPanelOpen ? (
           <RecipeBrowser onLoadDatasetVersion={onLoadDatasetVersion} />
         ) : (
-          <PanelRail side="left" label="Items, pockets and setups" />
+          <PanelRail side="left" label="Items" />
         )}
         <BoardColumn />
         {rightPanelShown ? (
@@ -453,7 +453,7 @@ function CompactWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
       <BoardColumn />
       <PanelDrawer
         side="left"
-        label="items, pockets and setups"
+        label="items"
         open={workspace.leftPanelOpen}
         onOpen={openLeft}
         onClose={() => writeWorkspaceView({ leftPanelOpen: false })}
