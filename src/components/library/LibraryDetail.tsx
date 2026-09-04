@@ -222,7 +222,14 @@ export function LibraryDetail({
             </div>
 
             {/* THE KEYS. Icons, one job each, read by their label. */}
-            <div className="flex shrink-0 flex-col items-end gap-2">
+            <div className="flex shrink-0 flex-col items-end gap-1.5">
+              <button
+                type="button"
+                onClick={entry.primary.onClick}
+                className="flex h-7 items-center rounded border border-cyan-500/60 bg-cyan-500/20 px-3 text-[12px] font-bold text-cyan-100 hover:bg-cyan-500/30"
+              >
+                {entry.primary.label}
+              </button>
               <div className="flex items-center gap-1">
                 {entry.keys?.map((key) => (
                   <IconKey
@@ -235,20 +242,13 @@ export function LibraryDetail({
                     onClick={() => pressKey(key)}
                   >
                     {flashKey === key.label ? (
-                      <Check className="h-3.5 w-3.5 text-emerald-300" aria-hidden />
+                      <Check className="h-3 w-3 text-emerald-300" aria-hidden />
                     ) : (
                       keyIcon(key.icon)
                     )}
                   </IconKey>
                 ))}
               </div>
-              <button
-                type="button"
-                onClick={entry.primary.onClick}
-                className="flex h-8 items-center gap-1.5 rounded border border-cyan-500/60 bg-cyan-500/20 px-4 text-[13px] font-bold text-cyan-100 hover:bg-cyan-500/30"
-              >
-                {entry.primary.label}
-              </button>
             </div>
           </div>
 
@@ -292,19 +292,19 @@ export function LibraryDetail({
 function keyIcon(icon: DetailKey["icon"]): ReactNode {
   switch (icon) {
     case "vote":
-      return <ArrowBigUp className="h-3.5 w-3.5" aria-hidden />;
+      return <ArrowBigUp className="h-3 w-3" aria-hidden />;
     case "link":
-      return <Link2 className="h-3.5 w-3.5" aria-hidden />;
+      return <Link2 className="h-3 w-3" aria-hidden />;
     case "public":
-      return <Globe className="h-3.5 w-3.5" aria-hidden />;
+      return <Globe className="h-3 w-3" aria-hidden />;
     case "private":
-      return <EyeOff className="h-3.5 w-3.5" aria-hidden />;
+      return <EyeOff className="h-3 w-3" aria-hidden />;
     case "post":
-      return <Upload className="h-3.5 w-3.5" aria-hidden />;
+      return <Upload className="h-3 w-3" aria-hidden />;
     case "close":
-      return <X className="h-3.5 w-3.5" aria-hidden />;
+      return <X className="h-3 w-3" aria-hidden />;
     case "delete":
-      return <X className="h-3.5 w-3.5" aria-hidden />;
+      return <X className="h-3 w-3" aria-hidden />;
   }
 }
 
@@ -331,7 +331,7 @@ function IconKey({
       onClick={onClick}
       aria-label={label}
       className={[
-        "flex h-7 min-w-7 items-center justify-center gap-1 rounded border px-1.5 text-[11px] font-medium",
+        "flex h-6 min-w-6 items-center justify-center gap-1 rounded border px-1.5 text-[10px] font-medium",
         armed
           ? "border-red-500 bg-red-950 text-red-200"
           : active
