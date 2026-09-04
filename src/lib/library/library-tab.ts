@@ -4,28 +4,23 @@ import { useSyncExternalStore } from "react";
 import { leaveWelcomeTab } from "@/lib/welcome/welcome-tab";
 
 /**
- * The Shelf: every design you have, open or not, in folders.
+ * The Library: everything you have, and everything the network has.
  *
- * It is not a tab and not a design. It sits at the head of the tab strip as
- * a fixed square, and like Welcome it COVERS the board rather than replacing
- * it, so nothing about the plan underneath is unmounted while it is up.
+ * It is not a tab and not a design. It sits at the head of the tab strip
+ * as a "Library" pill, and like Welcome it COVERS the board rather than
+ * replacing it, so nothing about the plan underneath is unmounted while it
+ * is up.
  *
- * The strip shows OPEN designs; the shelf shows all of them. Closing a tab
- * puts the design back on the shelf, opening one from the shelf puts it on
- * the strip. Nothing here is ever deleted by closing.
+ * ALL is every design you have, one grid; a FOLDER is the same grid held to
+ * one folder; PUBLIC is the network's setups.
  *
  * `active` and `view` live in sessionStorage: a reload while you are on the
- * shelf lands you back on it, in the same folder, and a new visit starts on
+ * library lands you back on it, on the same view, and a new visit starts on
  * whatever design was open. Same scope Welcome uses for the same reason.
  */
 export type LibraryView =
-  /* MINE: your designs. */
   | { kind: "all" }
-  | { kind: "open" }
-  | { kind: "shared" }
-  | { kind: "unfiled" }
   | { kind: "folder"; folderId: string }
-  /* NETWORK: everyone's public setups, saved boards included. */
   | { kind: "public" };
 
 export interface LibraryTabState {
@@ -42,6 +37,17 @@ let state: LibraryTabState = CLOSED;
 let loaded = false;
 const listeners = new Set<() => void>();
 
+function isLibraryView(value: unknown): value is LibraryView {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const kind = (value as { kind?: unknown }).kind;
+  if (kind === "folder") {
+    return typeof (value as { folderId?: unknown }).folderId === "string";
+  }
+  return kind === "all" || kind === "public";
+}
+
 function readStored(): LibraryTabState {
   try {
     const raw = window.sessionStorage.getItem(SHELF_SESSION_KEY);
@@ -51,28 +57,11 @@ function readStored(): LibraryTabState {
     const parsed = JSON.parse(raw) as Partial<LibraryTabState>;
     return {
       active: parsed.active === true,
-      view: isShelfView(parsed.view) ? parsed.view : { kind: "all" },
+      view: isLibraryView(parsed.view) ? parsed.view : { kind: "all" },
     };
   } catch {
     return CLOSED;
   }
-}
-
-function isShelfView(value: unknown): value is LibraryView {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const kind = (value as { kind?: unknown }).kind;
-  if (kind === "folder") {
-    return typeof (value as { folderId?: unknown }).folderId === "string";
-  }
-  return (
-    kind === "all" ||
-    kind === "open" ||
-    kind === "shared" ||
-    kind === "unfiled" ||
-    kind === "public"
-  );
 }
 
 function getSnapshot(): LibraryTabState {
@@ -116,20 +105,20 @@ export function readLibraryTabState(): LibraryTabState {
 }
 
 /**
- * Show the shelf, on `view` if given and otherwise wherever it was last.
- * Exactly one of Welcome and the shelf can be up, so Welcome steps down.
+ * Show the library, on `view` if given and otherwise wherever it was last.
+ * Exactly one of Welcome and the library can be up, so Welcome steps down.
  */
 export function openLibrary(view?: LibraryView) {
   leaveWelcomeTab();
   write({ active: true, ...(view ? { view } : {}) });
 }
 
-/** Change what the open shelf is looking at. */
+/** Change what the open library is looking at. */
 export function setLibraryView(view: LibraryView) {
   write({ view });
 }
 
-/** Step off the shelf onto whatever design is active. */
+/** Step off the library onto whatever design is active. */
 export function leaveLibrary() {
   if (!getSnapshot().active) {
     return;

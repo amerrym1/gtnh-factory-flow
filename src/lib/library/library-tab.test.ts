@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * The shelf across reloads: a reload while on it lands back on it, in the
+ * The library across reloads: a reload while on it lands back on it, in the
  * same view; a new visit (fresh sessionStorage) starts off it.
  */
 
@@ -38,17 +38,16 @@ afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
 });
 
-describe("shelf tab", () => {
+describe("library tab", () => {
   it("starts closed, on everything", async () => {
-    const shelf = await visit(local, session);
-    expect(shelf.readLibraryTabState()).toEqual({ active: false, view: { kind: "all" } });
+    const library = await visit(local, session);
+    expect(library.readLibraryTabState()).toEqual({ active: false, view: { kind: "all" } });
   });
 
   it("comes back after a reload, in the same view", async () => {
     const first = await visit(local, session);
     first.openLibrary({ kind: "folder", folderId: "f1" });
-    const reload = await visit(local, session);
-    expect(reload.readLibraryTabState()).toEqual({
+    expect((await visit(local, session)).readLibraryTabState()).toEqual({
       active: true,
       view: { kind: "folder", folderId: "f1" },
     });
@@ -56,26 +55,26 @@ describe("shelf tab", () => {
 
   it("is off on a new visit", async () => {
     const first = await visit(local, session);
-    first.openLibrary({ kind: "shared" });
+    first.openLibrary({ kind: "public" });
     const later = await visit(local, makeStorage());
     expect(later.readLibraryTabState().active).toBe(false);
   });
 
   it("steps Welcome down when it opens", async () => {
-    const shelf = await visit(local, session);
+    const library = await visit(local, session);
     const welcome = await import("@/lib/welcome/welcome-tab");
     welcome.openWelcomeTab();
-    shelf.openLibrary();
+    library.openLibrary();
     expect(welcome.readWelcomeTabState().active).toBe(false);
-    expect(shelf.readLibraryTabState().active).toBe(true);
+    expect(library.readLibraryTabState().active).toBe(true);
   });
 
-  it("keeps the view when opened without one", async () => {
-    const shelf = await visit(local, session);
-    shelf.setLibraryView({ kind: "open" });
-    shelf.openLibrary();
-    expect(shelf.readLibraryTabState().view).toEqual({ kind: "open" });
-    shelf.leaveLibrary();
-    expect(shelf.readLibraryTabState()).toEqual({ active: false, view: { kind: "open" } });
+  it("keeps the view when opened without one, and leaves cleanly", async () => {
+    const library = await visit(local, session);
+    library.setLibraryView({ kind: "public" });
+    library.openLibrary();
+    expect(library.readLibraryTabState().view).toEqual({ kind: "public" });
+    library.leaveLibrary();
+    expect(library.readLibraryTabState()).toEqual({ active: false, view: { kind: "public" } });
   });
 });

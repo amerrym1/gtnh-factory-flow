@@ -230,7 +230,7 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
               type="button"
               onClick={() => {
                 onClose();
-                openLibrary({ kind: "shared" });
+                openLibrary({ kind: "all" });
               }}
               className="inline-flex rounded border border-cyan-700 bg-cyan-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-cyan-500"
             >

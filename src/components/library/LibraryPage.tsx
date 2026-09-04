@@ -1,51 +1,36 @@
 "use client";
 
-import {
-  Factory,
-  Folder,
-  FolderPlus,
-  Globe,
-  LayoutGrid,
-  PanelsTopLeft,
-  Plus,
-  Search,
-  X,
-} from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type DragEvent,
-  type ReactNode,
-} from "react";
+import { Factory, Folder, FolderPlus, LayoutGrid, Plus, Search, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 import { useCommunityUser } from "@/components/community/auth";
 import { formatRelativeDate } from "@/components/shelf-cards";
-import { listCommunityPlans } from "@/lib/community/client";
-import type { DesignFolder, DesignSummary } from "@/lib/designs/design-library";
-import { openDesigns } from "@/lib/designs/design-library";
+import { deleteCommunityPlan, listCommunityPlans, patchCommunityPlan } from "@/lib/community/client";
+import { sharedPlanLink } from "@/lib/community/shared-link";
+import type { CommunityPlanSummary } from "@/lib/community/types";
+import type { DesignSummary } from "@/lib/designs/design-library";
 import { GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
-import { SETUPS_CHANGED_EVENT, requestShareDialog } from "@/lib/setups-tab";
-import { setLibraryView, useLibraryTab, type LibraryView } from "@/lib/library/library-tab";
+import { SETUPS_CHANGED_EVENT, notifySetupsChanged, requestShareDialog } from "@/lib/setups-tab";
+import { setLibraryView, useLibraryTab } from "@/lib/library/library-tab";
 import { useDesignStore } from "@/store/design-store";
-import { ArmedMenuItem, LibraryMenu, MenuHeading, MenuItem } from "./library-menu";
+import { ArmedMenuItem, LibraryMenu, MenuHeading, MenuItem, MenuRule } from "./library-menu";
 import { DESIGN_DRAG_TYPE, InlineName, LibraryTile } from "./LibraryTile";
 import { SetupsGrid } from "./SetupsGrid";
 
 /**
  * The Library: everything you have and everything the network has, as one
- * kind of tile (see LibraryTile) under one rail.
+ * kind of tile (see LibraryTile).
  *
- * MINE is your designs: Everything (grouped by folder, your saved boards
- * at the foot), Open tabs, Shared (your posts, with the owner tools), the
- * folders, Unfiled. NETWORK is Public setups, everyone's posts with their
- * boards under them. Click a tile to open it (place it, for a board), right
- * click or the dots for its menu, drag a design onto a rail folder to file
- * it. Closing a tab never deletes; delete lives here, armed.
+ * YOUR designs are ONE GRID, no sections: the OPEN chip says what is on
+ * the strip and the globe says what is posted. The rail on the left is
+ * All, then your folders: a folder holds the grid to itself, a tile
+ * dragged onto one is filed there (or Move to in its menu, like adding to
+ * a playlist). Search, tier and sort at the top apply to whatever is
+ * showing. Below a rule sits the one other page, Public setups.
  *
- * One framed panel with the rail INSIDE it, so it reads as this page's
- * tree rather than another column bolted onto the recipe book. No title:
- * the tab strip already says where you are.
+ * Click a tile to open it, right click or the dots for its menu. The globe
+ * is green when the design is posted and dim when it is not; clicking the
+ * dim one posts it. Posted tiles carry a link button. Closing a tab never
+ * deletes; delete lives here, armed.
  */
 
 const POSTS_PAGE_SIZE = 48;
@@ -63,7 +48,6 @@ export function LibraryPage() {
   const library = useLibraryTab();
   const designs = useDesignStore((state) => state.designs);
   const folders = useDesignStore((state) => state.folders);
-  const activeDesignId = useDesignStore((state) => state.activeDesignId);
   const switchToDesign = useDesignStore((state) => state.switchToDesign);
   const addDesign = useDesignStore((state) => state.addDesign);
   const copyDesign = useDesignStore((state) => state.copyDesign);
@@ -81,18 +65,20 @@ export function LibraryPage() {
   const [maxTier, setMaxTier] = useState("");
   const [tileMenu, setTileMenu] = useState<{ designId: string; left: number; top: number }>();
   const [folderMenu, setFolderMenu] = useState<{ folderId: string; left: number; top: number }>();
-  const [armedDeleteId, setArmedDeleteId] = useState<string>();
+  const [armed, setArmed] = useState<{ id: string; what: "delete" | "takedown" }>();
   const [renamingId, setRenamingId] = useState<string>();
   const [renamingFolderId, setRenamingFolderId] = useState<string>();
   const [namingFolder, setNamingFolder] = useState(false);
-  /** The rail entry a dragged tile is over, by view key. */
-  const [dropKey, setDropKey] = useState<string>();
-  const myPosts = useMyPostIds();
+  const [copiedId, setCopiedId] = useState<string>();
+  const [error, setError] = useState<string>();
+  /** The rail folder a dragged tile is over. */
+  const [dropId, setDropId] = useState<string>();
+  const { posts: myPosts, signedIn } = useMyPosts();
 
   const closeMenus = useCallback(() => {
     setTileMenu(undefined);
     setFolderMenu(undefined);
-    setArmedDeleteId(undefined);
+    setArmed(undefined);
   }, []);
 
   // A view naming a folder that has since gone falls back to everything.
@@ -105,64 +91,90 @@ export function LibraryPage() {
     }
   }, [folders, library.view]);
 
+  const viewFolderId = library.view.kind === "folder" ? library.view.folderId : undefined;
   const search = query.trim().toLowerCase();
-  const matches = useMemo(() => {
+  const shown = useMemo(() => {
     const tierLimit = maxTier === "" ? undefined : Number(maxTier);
-    return designs.filter(
-      (design) =>
-        (!search || design.name.toLowerCase().includes(search)) &&
-        // A design with no stat row yet cannot answer the tier question, so
-        // it shows under "any" and hides under a limit.
-        (tierLimit === undefined ||
-          (design.stats !== undefined && design.stats.tierIndex <= tierLimit)),
+    return sortDesignsBy(
+      designs.filter(
+        (design) =>
+          (!viewFolderId || design.folderId === viewFolderId) &&
+          (!search || design.name.toLowerCase().includes(search)) &&
+          // A design with no stat row yet cannot answer the tier question,
+          // so it shows under "any" and hides under a limit.
+          (tierLimit === undefined ||
+            (design.stats !== undefined && design.stats.tierIndex <= tierLimit)),
+      ),
+      sort,
     );
-  }, [designs, search, maxTier]);
-  const sorted = useMemo(() => sortDesignsBy(matches, sort), [matches, sort]);
+  }, [designs, viewFolderId, search, maxTier, sort]);
 
-  const counts = useMemo(() => {
-    const perFolder = new Map<string, number>();
-    let unfiled = 0;
-    let shared = 0;
-    for (const design of designs) {
-      if (design.folderId) {
-        perFolder.set(design.folderId, (perFolder.get(design.folderId) ?? 0) + 1);
-      } else {
-        unfiled += 1;
-      }
-      if (design.communityPlanId) {
-        shared += 1;
-      }
-    }
-    return { perFolder, unfiled, shared, open: openDesigns(designs).length };
-  }, [designs]);
-
-  const sections = useMemo(
-    () => sectionsFor(library.view, sorted, folders),
-    [library.view, sorted, folders],
+  const perFolder = useMemo(
+    () =>
+      new Map(
+        folders.map((folder) => [
+          folder.id,
+          designs.filter((design) => design.folderId === folder.id).length,
+        ]),
+      ),
+    [designs, folders],
   );
-  const folderName = (id: string | undefined) =>
-    id ? folders.find((folder) => folder.id === id)?.name : undefined;
 
   const open = (id: string) => void switchToDesign(id);
-  const updatePost = async (id: string) => {
+  const postDesign = async (id: string) => {
     await switchToDesign(id);
     requestShareDialog();
   };
+  const copyLink = async (design: DesignSummary) => {
+    if (!design.communityPlanId) {
+      return;
+    }
+    const url = sharedPlanLink(design.communityPlanId);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedId(design.id);
+      window.setTimeout(() => setCopiedId((c) => (c === design.id ? undefined : c)), 1500);
+    } catch {
+      window.prompt("Copy this link:", url);
+    }
+  };
+  const setPostVisibility = async (design: DesignSummary, isPublic: boolean) => {
+    if (!design.communityPlanId) {
+      return;
+    }
+    try {
+      await patchCommunityPlan(design.communityPlanId, { isPublic });
+      notifySetupsChanged();
+    } catch (thrown) {
+      setError(thrown instanceof Error ? thrown.message : "Changing visibility failed.");
+    }
+  };
+  const takeDown = async (design: DesignSummary) => {
+    if (!design.communityPlanId) {
+      return;
+    }
+    try {
+      await deleteCommunityPlan(design.communityPlanId);
+      notifySetupsChanged();
+    } catch (thrown) {
+      setError(thrown instanceof Error ? thrown.message : "Taking the post down failed.");
+    }
+  };
 
-  const railDropProps = (key: string, folderId: string | undefined) => ({
+  const railDropProps = (folderId: string) => ({
     onDragOver: (event: DragEvent) => {
       if (event.dataTransfer.types.includes(DESIGN_DRAG_TYPE)) {
         event.preventDefault();
         event.dataTransfer.dropEffect = "move";
-        if (dropKey !== key) {
-          setDropKey(key);
+        if (dropId !== folderId) {
+          setDropId(folderId);
         }
       }
     },
-    onDragLeave: () => setDropKey((current) => (current === key ? undefined : current)),
+    onDragLeave: () => setDropId((current) => (current === folderId ? undefined : current)),
     onDrop: (event: DragEvent) => {
       event.preventDefault();
-      setDropKey(undefined);
+      setDropId(undefined);
       const id = event.dataTransfer.getData(DESIGN_DRAG_TYPE);
       if (id) {
         void moveDesignToFolder(id, folderId);
@@ -173,48 +185,34 @@ export function LibraryPage() {
   const menuDesign = tileMenu
     ? designs.find((design) => design.id === tileMenu.designId)
     : undefined;
+  const menuPost = menuDesign?.communityPlanId
+    ? myPosts?.get(menuDesign.communityPlanId)
+    : undefined;
   const menuFolder = folderMenu
     ? folders.find((folder) => folder.id === folderMenu.folderId)
     : undefined;
-  const title = viewTitle(library.view, folders);
-  const isSetupsView = library.view.kind === "shared" || library.view.kind === "public";
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-canvas text-fg">
       <div className="min-h-0 flex-1 p-4 compact:p-2">
         <div className="flex h-full min-h-0 overflow-hidden rounded border border-line bg-[#12161b] compact:flex-col">
-          {/* THE RAIL. On a phone it turns into one scrolling row of chips. */}
+          {/* THE RAIL: all, then folders. On a phone, one row of chips. */}
           <aside className="flex w-[210px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-line bg-surface/70 px-2 py-2 compact:w-full compact:flex-row compact:items-center compact:overflow-x-auto compact:overflow-y-hidden compact:border-b compact:border-r-0 compact:py-1.5">
-            <RailGroup label="Mine" />
             <RailItem
               icon={LayoutGrid}
-              label="Everything"
+              label="All"
               count={designs.length}
               selected={library.view.kind === "all"}
               onClick={() => setLibraryView({ kind: "all" })}
-            />
-            <RailItem
-              icon={PanelsTopLeft}
-              label="Open tabs"
-              count={counts.open}
-              selected={library.view.kind === "open"}
-              onClick={() => setLibraryView({ kind: "open" })}
-            />
-            <RailItem
-              icon={Globe}
-              label="Shared"
-              count={counts.shared}
-              selected={library.view.kind === "shared"}
-              onClick={() => setLibraryView({ kind: "shared" })}
             />
             {folders.map((folder) => (
               <RailItem
                 key={folder.id}
                 icon={Folder}
                 label={folder.name}
-                count={counts.perFolder.get(folder.id) ?? 0}
-                selected={library.view.kind === "folder" && library.view.folderId === folder.id}
-                highlighted={dropKey === `folder:${folder.id}`}
+                count={perFolder.get(folder.id) ?? 0}
+                selected={viewFolderId === folder.id}
+                highlighted={dropId === folder.id}
                 renaming={renamingFolderId === folder.id}
                 onRename={(name) => {
                   setRenamingFolderId(undefined);
@@ -227,7 +225,7 @@ export function LibraryPage() {
                   closeMenus();
                   setFolderMenu({ folderId: folder.id, left, top });
                 }}
-                {...railDropProps(`folder:${folder.id}`, folder.id)}
+                {...railDropProps(folder.id)}
               />
             ))}
             {namingFolder ? (
@@ -248,18 +246,6 @@ export function LibraryPage() {
                 />
               </div>
             ) : null}
-            {folders.length > 0 ? (
-              <RailItem
-                icon={Folder}
-                label="Unfiled"
-                count={counts.unfiled}
-                muted
-                selected={library.view.kind === "unfiled"}
-                highlighted={dropKey === "unfiled"}
-                onClick={() => setLibraryView({ kind: "unfiled" })}
-                {...railDropProps("unfiled", undefined)}
-              />
-            ) : null}
             <button
               type="button"
               onClick={() => setNamingFolder(true)}
@@ -269,7 +255,7 @@ export function LibraryPage() {
               <span className="text-xs">New folder</span>
             </button>
 
-            <RailGroup label="Network" />
+            <div className="mx-1 my-2 border-t border-line compact:mx-2 compact:my-0 compact:h-4 compact:border-l compact:border-t-0" />
             <RailItem
               icon={Factory}
               label="Public setups"
@@ -278,19 +264,13 @@ export function LibraryPage() {
             />
           </aside>
 
-          {/* THE CONTENT. */}
+          {/* THE PAGE. */}
           <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {isSetupsView ? (
-              <SetupsGrid
-                key={library.view.kind}
-                scope={library.view.kind === "shared" ? "mine" : "network"}
-              />
+            {library.view.kind === "public" ? (
+              <SetupsGrid scope="network" />
             ) : (
               <>
                 <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-4 compact:gap-1.5 compact:px-2">
-                  <h2 className="mr-2 shrink-0 text-[12px] font-black uppercase tracking-[0.12em] text-fg compact:hidden">
-                    {title}
-                  </h2>
                   <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded border border-line-strong bg-surface px-2 text-xs text-fg">
                     <Search className="h-3.5 w-3.5 shrink-0 text-fg-muted" aria-hidden />
                     <input
@@ -340,7 +320,7 @@ export function LibraryPage() {
                     type="button"
                     onClick={() => void addDesign()}
                     aria-label="New design"
-                    className="ml-auto flex h-7 shrink-0 items-center gap-1 rounded border border-cyan-500/60 bg-cyan-500/15 px-2.5 text-xs font-bold text-cyan-200 hover:bg-cyan-500/25"
+                    className="flex h-7 shrink-0 items-center gap-1 rounded border border-cyan-500/60 bg-cyan-500/15 px-2.5 text-xs font-bold text-cyan-200 hover:bg-cyan-500/25"
                   >
                     <Plus className="h-3.5 w-3.5" aria-hidden />
                     <span className="compact:hidden">New design</span>
@@ -348,81 +328,82 @@ export function LibraryPage() {
                 </header>
 
                 <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 compact:px-2">
-                  <div className="flex flex-col gap-5">
-                    {sections.length === 0 ? (
-                      <EmptyNote>
-                        {search
-                          ? "No designs match."
-                          : library.view.kind === "open"
-                            ? "No design is open. Click one in the library to open it."
-                            : library.view.kind === "all"
-                              ? "Nothing here yet. Press New design to start one."
-                              : "Nothing here yet. Drag a design onto this folder to file it."}
-                      </EmptyNote>
-                    ) : null}
-                    {sections.map((section) => (
-                      <div key={section.key} className="flex flex-col gap-2">
-                        {section.title ? (
-                          <h3 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-[#aebccd]">
-                            {section.folderId ? (
-                              <Folder className="h-3.5 w-3.5 text-fg-muted" aria-hidden />
-                            ) : null}
-                            {section.title}
-                            <span className="font-medium text-fg-muted">
-                              {section.designs.length}
-                            </span>
-                          </h3>
-                        ) : null}
-                        <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-2">
-                          {section.designs.map((design) => {
-                            const post = postMark(design, myPosts);
-                            return (
-                              <LibraryTile
-                                key={design.id}
-                                dragId={design.id}
-                                icon={design.icon}
-                                name={design.name}
-                                creator={folderName(design.folderId)}
-                                when={formatRelativeDate(design.updatedAt)}
-                                tier={design.stats?.tier}
-                                onTier={
-                                  design.stats && design.stats.tierIndex >= 0
-                                    ? () => setMaxTier(String(design.stats?.tierIndex))
-                                    : undefined
-                                }
-                                machines={design.stats?.machines}
-                                euT={design.stats?.euT}
-                                marks={{
-                                  open: !design.closed,
-                                  active: design.id === activeDesignId,
-                                  posted: post === "mine",
-                                  fromNetwork: post === "theirs",
-                                  linked: post === "linked",
-                                  behind: Boolean(design.communityBehind),
-                                }}
-                                menuOpen={tileMenu?.designId === design.id}
-                                onOpen={() => open(design.id)}
-                                onMenu={(left, top) => {
-                                  closeMenus();
-                                  setTileMenu({ designId: design.id, left, top });
-                                }}
-                                renaming={
-                                  renamingId === design.id
-                                    ? {
-                                        onCommit: (name) => {
-                                          setRenamingId(undefined);
-                                          void renameDesign(design.id, name);
-                                        },
-                                        onCancel: () => setRenamingId(undefined),
-                                      }
-                                    : undefined
-                                }
-                              />
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}                  </div>
+                  {error ? <p className="mb-2 text-[11px] text-red-400">{error}</p> : null}
+                  {shown.length === 0 ? (
+                    <p className="px-0.5 pt-1 text-[12px] leading-relaxed text-fg-muted">
+                      {search || maxTier
+                        ? "No designs match."
+                        : viewFolderId
+                          ? "Nothing here yet. Drag a design onto this folder, or use Move to in a design's menu."
+                          : "Nothing here yet. Press New design to start one."}
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-2">
+                      {shown.map((design) => {
+                        const post = design.communityPlanId
+                          ? myPosts?.get(design.communityPlanId)
+                          : undefined;
+                        const linkedElsewhere = Boolean(design.communityPlanId && myPosts && !post);
+                        return (
+                          <LibraryTile
+                            key={design.id}
+                            dragId={design.id}
+                            icon={design.icon}
+                            name={design.name}
+                            creator={
+                              viewFolderId
+                                ? undefined
+                                : folders.find((folder) => folder.id === design.folderId)?.name
+                            }
+                            when={
+                              copiedId === design.id
+                                ? "link copied"
+                                : formatRelativeDate(design.updatedAt)
+                            }
+                            tier={design.stats?.tier}
+                            onTier={
+                              design.stats && design.stats.tierIndex >= 0
+                                ? () => setMaxTier(String(design.stats?.tierIndex))
+                                : undefined
+                            }
+                            machines={design.stats?.machines}
+                            euT={design.stats?.euT}
+                            marks={{
+                              open: !design.closed,
+                              posted: Boolean(post),
+                              privatePost: post ? !post.isPublic : false,
+                              fromNetwork: linkedElsewhere,
+                              linked: Boolean(design.communityPlanId && !myPosts),
+                              behind: Boolean(post && design.communityBehind),
+                            }}
+                            onPost={
+                              !post && !linkedElsewhere && signedIn
+                                ? () => void postDesign(design.id)
+                                : undefined
+                            }
+                            onCopyLink={post ? () => void copyLink(design) : undefined}
+                            menuOpen={tileMenu?.designId === design.id}
+                            onOpen={() => open(design.id)}
+                            onMenu={(left, top) => {
+                              closeMenus();
+                              setTileMenu({ designId: design.id, left, top });
+                            }}
+                            renaming={
+                              renamingId === design.id
+                                ? {
+                                    onCommit: (name) => {
+                                      setRenamingId(undefined);
+                                      void renameDesign(design.id, name);
+                                    },
+                                    onCancel: () => setRenamingId(undefined),
+                                  }
+                                : undefined
+                            }
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -467,18 +448,9 @@ export function LibraryPage() {
               void copyDesign(menuDesign.id);
             }}
           />
-          {menuDesign.communityBehind && postMark(menuDesign, myPosts) !== "theirs" ? (
-            <MenuItem
-              label="Update post"
-              onClick={() => {
-                closeMenus();
-                void updatePost(menuDesign.id);
-              }}
-            />
-          ) : null}
           {folders.length > 0 ? (
             <>
-              <MenuHeading>Move to</MenuHeading>
+              <MenuHeading>Add to folder</MenuHeading>
               {folders.map((folder) => (
                 <MenuItem
                   key={folder.id}
@@ -487,28 +459,66 @@ export function LibraryPage() {
                   checked={menuDesign.folderId === folder.id}
                   onClick={() => {
                     closeMenus();
-                    void moveDesignToFolder(menuDesign.id, folder.id);
+                    void moveDesignToFolder(
+                      menuDesign.id,
+                      menuDesign.folderId === folder.id ? undefined : folder.id,
+                    );
                   }}
                 />
               ))}
+            </>
+          ) : null}
+          <MenuRule />
+          {menuPost ? (
+            <>
+              {menuDesign.communityBehind ? (
+                <MenuItem
+                  label="Update post"
+                  onClick={() => {
+                    closeMenus();
+                    void postDesign(menuDesign.id);
+                  }}
+                />
+              ) : null}
               <MenuItem
-                label="No folder"
-                indent
-                checked={!menuDesign.folderId}
+                label="Copy link"
                 onClick={() => {
                   closeMenus();
-                  void moveDesignToFolder(menuDesign.id, undefined);
+                  void copyLink(menuDesign);
+                }}
+              />
+              <MenuItem
+                label={menuPost.isPublic ? "Make private" : "Make public"}
+                onClick={() => {
+                  closeMenus();
+                  void setPostVisibility(menuDesign, !menuPost.isPublic);
+                }}
+              />
+              <ArmedMenuItem
+                label="Take down"
+                armedLabel="Confirm: take it down for everyone"
+                armed={armed?.id === menuDesign.id && armed.what === "takedown"}
+                onArm={() => setArmed({ id: menuDesign.id, what: "takedown" })}
+                onFire={() => {
+                  closeMenus();
+                  void takeDown(menuDesign);
                 }}
               />
             </>
+          ) : signedIn && !menuDesign.communityPlanId ? (
+            <MenuItem
+              label="Post to the network"
+              onClick={() => {
+                closeMenus();
+                void postDesign(menuDesign.id);
+              }}
+            />
           ) : null}
           <ArmedMenuItem
             label="Delete"
-            armedLabel={
-              menuDesign.communityPlanId ? "Confirm delete (the post stays up)" : "Confirm delete"
-            }
-            armed={armedDeleteId === menuDesign.id}
-            onArm={() => setArmedDeleteId(menuDesign.id)}
+            armedLabel={menuPost ? "Confirm delete (the post stays up)" : "Confirm delete"}
+            armed={armed?.id === menuDesign.id && armed.what === "delete"}
+            onArm={() => setArmed({ id: menuDesign.id, what: "delete" })}
             onFire={() => {
               closeMenus();
               void removeDesign(menuDesign.id);
@@ -533,9 +543,9 @@ export function LibraryPage() {
           />
           <ArmedMenuItem
             label="Delete folder"
-            armedLabel="Confirm delete (designs stay, unfiled)"
-            armed={armedDeleteId === menuFolder.id}
-            onArm={() => setArmedDeleteId(menuFolder.id)}
+            armedLabel="Confirm delete (designs stay)"
+            armed={armed?.id === menuFolder.id && armed.what === "delete"}
+            onArm={() => setArmed({ id: menuFolder.id, what: "delete" })}
             onFire={() => {
               closeMenus();
               void deleteFolder(menuFolder.id);
@@ -548,59 +558,6 @@ export function LibraryPage() {
 }
 
 /* ------------------------------------------------------------------ */
-
-interface Section {
-  key: string;
-  title?: string;
-  folderId?: string;
-  designs: DesignSummary[];
-}
-
-function sectionsFor(
-  view: LibraryView,
-  designs: DesignSummary[],
-  folders: DesignFolder[],
-): Section[] {
-  switch (view.kind) {
-    case "open": {
-      const open = openDesigns(designs);
-      return open.length > 0 ? [{ key: "open", designs: open }] : [];
-    }
-    case "unfiled": {
-      const unfiled = designs.filter((design) => !design.folderId);
-      return unfiled.length > 0 ? [{ key: "unfiled", designs: unfiled }] : [];
-    }
-    case "folder": {
-      const inside = designs.filter((design) => design.folderId === view.folderId);
-      return inside.length > 0 ? [{ key: view.folderId, designs: inside }] : [];
-    }
-    case "shared":
-    case "public":
-      return [];
-    case "all": {
-      const sections: Section[] = [];
-      for (const folder of folders) {
-        const inside = designs.filter((design) => design.folderId === folder.id);
-        if (inside.length > 0) {
-          sections.push({ key: folder.id, title: folder.name, folderId: folder.id, designs: inside });
-        }
-      }
-      const unfiled = designs.filter(
-        (design) => !design.folderId || !folders.some((folder) => folder.id === design.folderId),
-      );
-      if (unfiled.length > 0) {
-        // The title only earns its place once there is something to tell
-        // it apart from.
-        sections.push({
-          key: "unfiled",
-          title: folders.length > 0 ? "Unfiled" : undefined,
-          designs: unfiled,
-        });
-      }
-      return sections;
-    }
-  }
-}
 
 function sortDesignsBy(designs: DesignSummary[], sort: SortKey): DesignSummary[] {
   const sorted = [...designs];
@@ -618,49 +575,18 @@ function sortDesignsBy(designs: DesignSummary[], sort: SortKey): DesignSummary[]
   return sorted;
 }
 
-function viewTitle(view: LibraryView, folders: DesignFolder[]): string {
-  switch (view.kind) {
-    case "all":
-      return "Everything";
-    case "open":
-      return "Open tabs";
-    case "shared":
-      return "Shared";
-    case "public":
-      return "Public setups";
-    case "unfiled":
-      return "Unfiled";
-    case "folder":
-      return folders.find((folder) => folder.id === view.folderId)?.name ?? "Folder";
-  }
-}
-
 /**
- * Whose post a design is linked to. Known only while signed in: the
- * network says which posts are yours. Signed out, a link is just a link.
+ * The signed-in account's posts by id, or undefined while signed out or
+ * still loading. Read once per sign-in and again whenever a share lands or
+ * a post is changed from here.
  */
-type PostMark = "mine" | "theirs" | "linked" | undefined;
-
-function postMark(design: DesignSummary, myPosts: Set<string> | undefined): PostMark {
-  if (!design.communityPlanId) {
-    return undefined;
-  }
-  if (!myPosts) {
-    return "linked";
-  }
-  return myPosts.has(design.communityPlanId) ? "mine" : "theirs";
-}
-
-/**
- * The ids of the signed-in account's posts, or undefined while signed out
- * or still loading. Read once per sign-in and again whenever a share lands.
- */
-function useMyPostIds(): Set<string> | undefined {
+function useMyPosts(): { posts: Map<string, CommunityPlanSummary> | undefined; signedIn: boolean } {
   const { user } = useCommunityUser();
   const username = user?.username;
-  // Keyed by who was signed in when they were read, so signing out (or in
-  // as someone else) drops them without a reset of its own.
-  const [loaded, setLoaded] = useState<{ username: string; ids: Set<string> }>();
+  const [loaded, setLoaded] = useState<{
+    username: string;
+    posts: Map<string, CommunityPlanSummary>;
+  }>();
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -675,7 +601,7 @@ function useMyPostIds(): Set<string> | undefined {
     }
     let cancelled = false;
     (async () => {
-      const found = new Set<string>();
+      const found = new Map<string, CommunityPlanSummary>();
       for (let page = 1; page <= POSTS_MAX_PAGES; page += 1) {
         const response = await listCommunityPlans({
           mine: true,
@@ -684,14 +610,14 @@ function useMyPostIds(): Set<string> | undefined {
           pageSize: POSTS_PAGE_SIZE,
         });
         for (const plan of response.plans) {
-          found.add(plan.id);
+          found.set(plan.id, plan);
         }
         if (response.plans.length < POSTS_PAGE_SIZE || found.size >= response.total) {
           break;
         }
       }
       if (!cancelled) {
-        setLoaded({ username, ids: found });
+        setLoaded({ username, posts: found });
       }
     })().catch(() => {
       // The marks fall back to "linked"; nothing else depends on this.
@@ -701,19 +627,13 @@ function useMyPostIds(): Set<string> | undefined {
     };
   }, [username, tick]);
 
-  return loaded && loaded.username === username ? loaded.ids : undefined;
+  return {
+    posts: loaded && loaded.username === username ? loaded.posts : undefined,
+    signedIn: Boolean(username),
+  };
 }
 
 /* ------------------------------------------------------------------ */
-
-/** A group heading in the rail. Hidden on a phone, where the rail is a row. */
-function RailGroup({ label }: { label: string }) {
-  return (
-    <div className="mx-1 mt-3 mb-1 text-[10px] font-black uppercase tracking-[0.14em] text-fg-muted first:mt-1 compact:hidden">
-      {label}
-    </div>
-  );
-}
 
 function RailItem({
   icon: Icon,
@@ -721,7 +641,6 @@ function RailItem({
   count,
   selected,
   highlighted,
-  muted,
   renaming,
   onRename,
   onCancelRename,
@@ -737,7 +656,6 @@ function RailItem({
   count?: number;
   selected: boolean;
   highlighted?: boolean;
-  muted?: boolean;
   renaming?: boolean;
   onRename?: (name: string) => void;
   onCancelRename?: () => void;
@@ -765,9 +683,7 @@ function RailItem({
         "group flex h-7 shrink-0 items-center gap-1.5 rounded px-2 text-xs compact:h-8",
         selected
           ? "bg-cyan-500/15 text-cyan-200"
-          : muted
-            ? "text-fg-muted hover:bg-surface-raised hover:text-fg"
-            : "text-fg-subtle hover:bg-surface-raised hover:text-fg",
+          : "text-fg-subtle hover:bg-surface-raised hover:text-fg",
         highlighted ? "outline outline-2 outline-cyan-400" : "",
       ].join(" ")}
     >
@@ -779,14 +695,13 @@ function RailItem({
           type="button"
           onClick={onClick}
           onDoubleClick={onDoubleClick}
-
           className="min-w-0 flex-1 truncate text-left text-xs font-medium"
         >
           {label}
         </button>
       )}
       {count !== undefined ? (
-        <span className="shrink-0 tabular-nums text-[11px] text-fg-muted">{count}</span>
+        <span className="shrink-0 tabular-nums text-[10px] text-fg-muted/60">{count}</span>
       ) : null}
       {onMenu ? (
         <button
@@ -803,8 +718,4 @@ function RailItem({
       ) : null}
     </div>
   );
-}
-
-function EmptyNote({ children }: { children: ReactNode }) {
-  return <p className="px-0.5 pt-2 text-[12px] leading-relaxed text-fg-muted">{children}</p>;
 }

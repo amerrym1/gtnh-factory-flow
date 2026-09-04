@@ -39,8 +39,6 @@ export const DESIGN_DRAG_TYPE = "application/x-gtnh-design";
 export interface TileMarks {
   /** On the tab strip. */
   open?: boolean;
-  /** On the canvas right now. */
-  active?: boolean;
   /** Your own post on the network. */
   posted?: boolean;
   /** Edited since it last matched that post. */
@@ -77,6 +75,10 @@ export interface LibraryTileProps {
   euT?: number;
   social?: TileSocial;
   marks?: TileMarks;
+  /** Not posted yet: the dim globe posts it. */
+  onPost?: () => void;
+  /** Posted: the link button copies the share link. */
+  onCopyLink?: () => void;
   busy?: boolean;
   menuOpen?: boolean;
   onOpen: () => void;
@@ -98,6 +100,8 @@ export function LibraryTile({
   euT,
   social,
   marks = {},
+  onPost,
+  onCopyLink,
   busy,
   menuOpen,
   onOpen,
@@ -135,9 +139,7 @@ export function LibraryTile({
       }}
       className={[
         "group relative flex h-[84px] cursor-pointer select-none flex-col justify-between rounded border px-2.5 py-2 text-left",
-        marks.active
-          ? "border-cyan-500/70 bg-[#182029]"
-          : "border-line bg-[#151a21] hover:border-line-strong hover:bg-[#182029]",
+        "border-line bg-[#151a21] hover:border-line-strong hover:bg-[#182029]",
         menuOpen ? "border-line-strong" : "",
         busy ? "opacity-60" : "",
       ].join(" ")}
@@ -214,10 +216,7 @@ export function LibraryTile({
           {busy ? <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden /> : null}
           {marks.open ? (
             <span
-              className={[
-                "rounded px-1 text-[9px] font-black uppercase tracking-wide",
-                marks.active ? "bg-cyan-500/25 text-cyan-200" : "bg-surface-raised text-fg-subtle",
-              ].join(" ")}
+              className="rounded bg-surface-raised px-1 text-[9px] font-black uppercase tracking-wide text-fg-subtle"
             >
               open
             </span>
@@ -227,7 +226,7 @@ export function LibraryTile({
               <EyeOff className="h-3 w-3" aria-hidden />
             </span>
           ) : null}
-          <PostGlyph marks={marks} />
+          <PostGlyph marks={marks} onPost={onPost} onCopyLink={onCopyLink} />
           {social ? (
             <>
               <button
@@ -268,35 +267,76 @@ function Stat({ icon: Icon, value, tone }: { icon: typeof Factory; value: string
   );
 }
 
-function PostGlyph({ marks }: { marks: TileMarks }) {
-  if (!marks.posted && !marks.fromNetwork && !marks.linked) {
-    return null;
+/**
+ * The globe, always in the same place: green when this is your post (with
+ * an amber dot once the board has moved on from it), dim and clickable when
+ * it is not posted yet, a download arrow when it came from someone else's
+ * setup. A posted tile also carries the link button beside it.
+ */
+function PostGlyph({
+  marks,
+  onPost,
+  onCopyLink,
+}: {
+  marks: TileMarks;
+  onPost?: () => void;
+  onCopyLink?: () => void;
+}) {
+  if (marks.fromNetwork) {
+    return (
+      <span aria-label="Opened from a shared setup" className="text-fg-muted">
+        <Download className="h-3 w-3" aria-hidden />
+      </span>
+    );
   }
-  const Icon = marks.posted ? Globe : marks.fromNetwork ? Download : Link2;
-  const label = marks.fromNetwork
-    ? "Opened from a shared setup"
-    : marks.behind
-      ? "Posted, edited since"
-      : marks.posted
-        ? "Posted"
-        : "Linked to a post";
-  return (
-    <span
-      aria-label={label}
-      className={[
-        "relative inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center",
-        marks.posted ? "text-emerald-400" : "text-fg-muted",
-      ].join(" ")}
-    >
-      <Icon className="h-3 w-3" aria-hidden />
-      {marks.behind && !marks.fromNetwork ? (
+  if (marks.posted) {
+    return (
+      <>
         <span
-          aria-hidden
-          className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-amber-400 ring-2 ring-[#151a21]"
-        />
-      ) : null}
-    </span>
-  );
+          aria-label={marks.behind ? "Posted, edited since" : "Posted"}
+          className="relative inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-emerald-400"
+        >
+          <Globe className="h-3 w-3" aria-hidden />
+          {marks.behind ? (
+            <span
+              aria-hidden
+              className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-amber-400 ring-2 ring-[#151a21]"
+            />
+          ) : null}
+        </span>
+        {onCopyLink ? (
+          <button
+            type="button"
+            onClick={onCopyLink}
+            aria-label="Copy the share link"
+            className="rounded p-0.5 text-fg-muted hover:bg-surface-raised hover:text-cyan-200"
+          >
+            <Link2 className="h-3 w-3" aria-hidden />
+          </button>
+        ) : null}
+      </>
+    );
+  }
+  if (marks.linked) {
+    return (
+      <span aria-label="Linked to a post" className="text-fg-muted">
+        <Link2 className="h-3 w-3" aria-hidden />
+      </span>
+    );
+  }
+  if (onPost) {
+    return (
+      <button
+        type="button"
+        onClick={onPost}
+        aria-label="Post this design to the network"
+        className="rounded p-0.5 text-fg-muted/60 hover:bg-surface-raised hover:text-emerald-300"
+      >
+        <Globe className="h-3 w-3" aria-hidden />
+      </button>
+    );
+  }
+  return null;
 }
 
 export function formatEuT(value: number): string {
