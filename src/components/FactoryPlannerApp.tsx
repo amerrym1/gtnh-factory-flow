@@ -34,7 +34,7 @@ import { DesignTabs } from "./DesignTabs";
 import { FactoryFlow } from "./flow/FactoryFlow";
 import { useBoardSoundEffects } from "./flow/use-board-sound-effects";
 import { InspectorPanel } from "./InspectorPanel";
-import { ChevronIcon, PanelDrawer } from "./PanelDrawer";
+import { PanelDrawer } from "./PanelDrawer";
 import { RecipeBrowser } from "./RecipeBrowser";
 
 export function FactoryPlannerApp() {
