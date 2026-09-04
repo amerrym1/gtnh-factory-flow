@@ -292,7 +292,7 @@ export function InspectorPanel() {
   return (
     <aside
       data-help-anchor="inspector"
-      className="flex h-full min-h-[360px] compact:min-h-0 flex-col bg-surface"
+      className="flex h-full min-h-[360px] compact:min-h-0 flex-col bg-[#25272c]"
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2">
         <FlowIOPanel />
@@ -530,10 +530,10 @@ function FlowIOPanel() {
         // The ring wraps the WHOLE panel, not just the strip: the point is
         // that everything below is about the selection, so the mode has to be
         // readable from anywhere in the list rather than only at the top.
-        "flex min-h-0 flex-1 flex-col rounded border bg-surface-raised",
+        "flex min-h-0 flex-1 flex-col rounded border bg-[#2a2d33]",
         selection
           ? "border-[var(--selection)] ring-1 ring-[var(--selection-soft)]"
-          : "border-line",
+          : "border-neutral-800",
       ].join(" ")}
     >
       {selection ? (
@@ -543,7 +543,7 @@ function FlowIOPanel() {
         />
       ) : null}
 
-      <div className="shrink-0 border-b border-line p-1">
+      <div className="shrink-0 border-b border-neutral-800 p-1">
         <div className="mb-1 flex items-center gap-1">
           <ToolbarToggle
             on={workspace.showHiddenResources}
@@ -600,7 +600,7 @@ function FlowIOPanel() {
           <div
             role="group"
             aria-label="Rate display"
-            className="flex h-6 shrink-0 overflow-hidden rounded border border-line-strong"
+            className="flex h-6 shrink-0 overflow-hidden rounded border border-neutral-700"
           >
             <button
               type="button"
@@ -611,7 +611,7 @@ function FlowIOPanel() {
               className={[
                 "px-1.5 text-[9px] font-black leading-none tracking-tight",
                 workspace.netFlowRates
-                  ? "text-fg-muted hover:text-fg"
+                  ? "text-neutral-400 hover:text-neutral-100"
                   : "bg-cyan-500/20 text-cyan-200",
               ].join(" ")}
             >
@@ -624,10 +624,10 @@ function FlowIOPanel() {
               aria-label="Show net rates"
               aria-pressed={workspace.netFlowRates}
               className={[
-                "border-l border-line-strong px-1.5 text-[9px] font-black leading-none tracking-tight",
+                "border-l border-neutral-700 px-1.5 text-[9px] font-black leading-none tracking-tight",
                 workspace.netFlowRates
                   ? "bg-emerald-500/20 text-emerald-200"
-                  : "text-fg-muted hover:text-fg",
+                  : "text-neutral-400 hover:text-neutral-100",
               ].join(" ")}
             >
               NET
@@ -636,7 +636,7 @@ function FlowIOPanel() {
 
           {hiddenCount > 0 ? (
             <span
-              className="ml-auto shrink-0 text-[11px] tabular-nums text-fg-muted"
+              className="ml-auto shrink-0 text-[11px] tabular-nums text-neutral-400"
               title={`${hiddenCount} resource${hiddenCount === 1 ? "" : "s"} hidden`}
             >
               {hiddenCount} hidden
@@ -649,7 +649,7 @@ function FlowIOPanel() {
             title="Hide"
             aria-label="Hide the resources column"
             className={[
-              "flex h-6 w-6 shrink-0 items-center justify-center rounded border border-line-strong text-fg-muted hover:border-cyan-600 hover:text-cyan-400",
+              "flex h-6 w-6 shrink-0 items-center justify-center rounded border border-neutral-700 text-neutral-400 hover:border-cyan-600 hover:text-cyan-400",
               hiddenCount > 0 ? "" : "ml-auto",
             ].join(" ")}
           >
@@ -673,14 +673,14 @@ function FlowIOPanel() {
             onChange={(event) => setFilter(event.target.value)}
             placeholder="Filter resources…"
             aria-label="Filter flow resources"
-            className="h-9 w-full rounded border border-line-strong bg-surface pl-2 pr-14 text-base text-fg outline-none placeholder:text-fg-muted focus:border-cyan-600 focus:ring-1 focus:ring-cyan-300"
+            className="h-9 w-full rounded-[4px] border border-neutral-700 bg-[#17191d] pl-2 pr-14 text-base shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)] text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-cyan-600 focus:ring-1 focus:ring-cyan-300"
           />
           {filter ? (
             <button
               type="button"
               onClick={() => setFilter("")}
               aria-label="Clear filter"
-              className="absolute right-1 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-fg-muted hover:bg-surface-sunken hover:text-fg"
+              className="absolute right-1 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-400 hover:bg-[#1b1d21] hover:text-neutral-100"
             >
               {matchCount} ✕
             </button>
@@ -739,7 +739,7 @@ function ToolbarToggle({
       aria-pressed={on}
       className={[
         "flex h-6 w-7 shrink-0 items-center justify-center rounded border",
-        on ? onStyle : "border-line-strong text-fg-muted hover:border-line-strong hover:text-fg",
+        on ? onStyle : "border-neutral-700 text-neutral-400 hover:border-neutral-700 hover:text-neutral-100",
       ].join(" ")}
     >
       {children}
@@ -1155,7 +1155,7 @@ function FlowVirtualList({
             <p
               style={{ height: ROW_HEIGHTS.empty }}
               className={[
-                "flex items-center px-3 text-xs text-fg-muted",
+                "flex items-center px-3 text-xs text-neutral-400",
                 TONE_STYLES[row.section.tone].tint,
               ].join(" ")}
             >
@@ -1243,7 +1243,7 @@ function FlowVirtualList({
           // mark buttons opt back into the pointer (pointer-events-auto on
           // themselves). Hover and dismissal are the underlying rows' and the
           // document watcher's job now, not this element's.
-          className="resource-row-expand pointer-events-none fixed z-[60] overflow-hidden rounded bg-surface-raised shadow-xl ring-1 ring-cyan-500/60"
+          className="resource-row-expand pointer-events-none fixed z-[60] overflow-hidden rounded bg-[#2a2d33] shadow-xl ring-1 ring-cyan-500/60"
         >
           <FlowResourceRow
             balance={expandedRow.balance}
@@ -1337,7 +1337,7 @@ const FlowChartRow = memo(function FlowChartRow({
       <div
         className={[
           "h-full rounded px-1",
-          expanded ? "" : "border border-line bg-surface-sunken/40",
+          expanded ? "" : "border border-neutral-800 bg-[#1b1d21]/40",
         ].join(" ")}
       >
         <TrendSparkline
@@ -1541,7 +1541,7 @@ const FlowResourceRow = memo(function FlowResourceRow({
             full, which is the point, but a name longer than even that has to
             end in an ellipsis rather than run under the rate. */}
         <span className="ml-2 flex min-w-0 items-center gap-1.5">
-          <span className="min-w-0 truncate text-base font-medium text-fg">{name}</span>
+          <span className="min-w-0 truncate text-base font-medium text-neutral-100">{name}</span>
         </span>
 
         <span
@@ -1703,8 +1703,8 @@ function RowMarkButton({
       // The bar around these is pointer-events-none so it can never swallow a
       // click meant for the rate behind it; the buttons opt back in.
       className={[
-        "pointer-events-auto flex h-5 w-5 shrink-0 items-center justify-center rounded text-[13px] leading-none hover:bg-surface-sunken",
-        on ? onClass : "text-fg-muted hover:text-fg",
+        "pointer-events-auto flex h-5 w-5 shrink-0 items-center justify-center rounded text-[13px] leading-none hover:bg-[#1b1d21]",
+        on ? onClass : "text-neutral-400 hover:text-neutral-100",
       ].join(" ")}
     >
       {children}
@@ -1741,9 +1741,9 @@ const TONE_STYLES: Record<
   },
   internal: {
     header:
-      "border-line bg-surface-sunken/90 text-fg-subtle hover:bg-surface",
-    badge: "bg-fg-muted/20 text-fg-subtle",
-    value: "text-fg-subtle",
+      "border-neutral-800 bg-[#1b1d21]/90 text-neutral-300 hover:bg-[#25272c]",
+    badge: "bg-fg-muted/20 text-neutral-300",
+    value: "text-neutral-300",
     // No tint. Internal is the long tail and the one group that means "nothing
     // to see"; painting it too would make the panel a stack of colours with no
     // quiet ground to read the others against.
