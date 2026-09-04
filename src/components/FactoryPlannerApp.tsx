@@ -417,7 +417,9 @@ function ColumnWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
           gridTemplateColumns: [
             workspace.leftPanelOpen ? "344px" : `${RAIL_WIDTH}px`,
             "minmax(0,1fr)",
-            rightPanelShown ? "332px" : `${RAIL_WIDTH}px`,
+            // With a page over the board the resource column is not folded, it is
+            // GONE: nothing to open, no rail to hint that there is.
+            rightPanelShown ? "332px" : covering ? "0px" : `${RAIL_WIDTH}px`,
           ].join(" "),
         }}
       >
@@ -433,9 +435,7 @@ function ColumnWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
         <BoardColumn />
         {rightPanelShown ? (
           <InspectorPanel />
-        ) : covering ? (
-          <div className="h-full border-l border-line bg-surface" />
-        ) : (
+        ) : covering ? null : (
           <PanelRail side="right" label="Resources" />
         )}
       </main>
@@ -450,6 +450,9 @@ function ColumnWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
  * panels with no board left to point at — so opening either closes the other.
  */
 function CompactWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
+  // The resource drawer reads the board's books; under a covering page it
+  // is not there at all, handle included.
+  const covering = useCoveringPage();
   const openLeft = () => writeWorkspaceView({ leftPanelOpen: true, rightPanelOpen: false });
   const openRight = () => writeWorkspaceView({ leftPanelOpen: false, rightPanelOpen: true });
 
@@ -465,15 +468,17 @@ function CompactWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
       >
         <RecipeBrowser onLoadDatasetVersion={onLoadDatasetVersion} />
       </PanelDrawer>
-      <PanelDrawer
-        side="right"
-        label="resources"
-        open={workspace.rightPanelOpen}
-        onOpen={openRight}
-        onClose={() => writeWorkspaceView({ rightPanelOpen: false })}
-      >
-        <InspectorPanel />
-      </PanelDrawer>
+      {covering ? null : (
+        <PanelDrawer
+          side="right"
+          label="resources"
+          open={workspace.rightPanelOpen}
+          onOpen={openRight}
+          onClose={() => writeWorkspaceView({ rightPanelOpen: false })}
+        >
+          <InspectorPanel />
+        </PanelDrawer>
+      )}
     </main>
   );
 }

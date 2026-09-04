@@ -72,7 +72,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-09-04",
     headline: "The library: your designs, boards and shared setups in one place",
     notes: [
-      "The square at the head of the tab strip opens the library: every design you have, in folders, with search and sort.",
+      "The square at the head of the tab strip opens the library: every design you have, in collections, with search and sort.",
       "Closing a tab keeps the design in the library; the Boards and Setups tabs moved there too, so the left column is just Items.",
       "A posted design you have edited since wears a mark, and Update post refreshes it from the library.",
       "Imported plans find each card's exact recipe again, big plans no longer freeze on every edit, and one broken design no longer hides the rest.",

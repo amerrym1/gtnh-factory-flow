@@ -311,7 +311,7 @@ export function LibraryPage() {
             an accent by contrast rather than colour, flush to the board. */}
         <div className="flex h-full min-h-0 overflow-hidden border-4 border-[#23262d] bg-[#101215] shadow-[inset_2px_2px_0_rgba(255,255,255,0.05),inset_-2px_-2px_0_rgba(0,0,0,0.6)] compact:flex-col">
           {/* THE RAIL: all, then folders. On a phone, one row of chips. */}
-          <aside className="flex w-[210px] shrink-0 flex-col gap-1 overflow-y-auto border-r-4 border-[#23262d] bg-[#101215] px-2 py-2 compact:w-full compact:flex-row compact:items-center compact:overflow-x-auto compact:overflow-y-hidden compact:border-b compact:border-r-0 compact:py-1.5">
+          <aside className="flex w-[210px] shrink-0 flex-col gap-1 overflow-y-auto bg-[#101215] px-2 py-2 compact:w-full compact:flex-row compact:items-center compact:overflow-x-auto compact:overflow-y-hidden compact:border-b compact:border-r-0 compact:py-1.5">
             <RailItem
               icon={LayoutGrid}
               label="All"
@@ -347,7 +347,7 @@ export function LibraryPage() {
                 <Folder className="h-3.5 w-3.5 shrink-0 text-[var(--mc-ink-muted)]" aria-hidden />
                 <InlineName
                   initialName=""
-                  placeholder="Folder name"
+                  placeholder="Collection name"
                   onCommit={(name) => {
                     setNamingFolder(false);
                     if (name.trim()) {
@@ -366,7 +366,7 @@ export function LibraryPage() {
               className="flex h-8 shrink-0 items-center gap-1.5 border-2 border-dashed border-[var(--mc-47)] px-2 text-[var(--mc-ink-muted)] hover:border-[var(--mc-61)] hover:text-[var(--mc-ink)]"
             >
               <FolderPlus className="h-3.5 w-3.5" aria-hidden />
-              <span className="text-[13px] font-bold">New folder</span>
+              <span className="text-[13px] font-bold">New collection</span>
             </button>
 
             <div className="mx-1 my-2 border-t-2 border-[#23262d] compact:mx-2 compact:my-0 compact:h-4 compact:border-l compact:border-t-0" />
@@ -580,16 +580,16 @@ export function LibraryPage() {
                               void fileSelected(value === "none" ? undefined : value);
                             }
                           }}
-                          aria-label="Add the selection to a folder"
+                          aria-label="Add the selection to a collection"
                           className="h-6 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
                         >
-                          <option value="">Add to folder…</option>
+                          <option value="">Add to collection…</option>
                           {folders.map((folder) => (
                             <option key={folder.id} value={folder.id}>
                               {folder.name}
                             </option>
                           ))}
-                          <option value="none">No folder</option>
+                          <option value="none">No collection</option>
                         </select>
                       ) : null}
                       <BarButton
@@ -616,7 +616,7 @@ export function LibraryPage() {
                       {search || maxTier
                         ? "No designs match."
                         : viewFolderId
-                          ? "Nothing here yet. Drag a design onto this folder, or use Move to in a design's menu."
+                          ? "Nothing here yet. Drag a design onto this collection, or use Add to collection in its menu."
                           : "Nothing here yet. Press New design to start one."}
                     </p>
                   ) : (
@@ -734,7 +734,7 @@ export function LibraryPage() {
           />
           {folders.length > 0 ? (
             <>
-              <MenuHeading>Add to folder</MenuHeading>
+              <MenuHeading>Add to collection</MenuHeading>
               {folders.map((folder) => (
                 <MenuItem
                   key={folder.id}
@@ -843,7 +843,7 @@ export function LibraryPage() {
         <LibraryMenu
           left={folderMenu.left}
           top={folderMenu.top}
-          label={`Options for folder ${menuFolder.name}`}
+          label={`Options for collection ${menuFolder.name}`}
           onClose={closeMenus}
         >
           <MenuItem
@@ -854,7 +854,7 @@ export function LibraryPage() {
             }}
           />
           <ArmedMenuItem
-            label="Delete folder"
+            label="Delete collection"
             armedLabel="Confirm delete (designs stay)"
             armed={armed?.id === menuFolder.id && armed.what === "delete"}
             onArm={() => setArmed({ id: menuFolder.id, what: "delete" })}
@@ -1048,7 +1048,7 @@ function RailItem({
       {onMenu ? (
         <button
           type="button"
-          aria-label={`Options for folder ${label}`}
+          aria-label={`Options for collection ${label}`}
           onClick={(event) => {
             const rect = event.currentTarget.getBoundingClientRect();
             onMenu(rect.left, rect.bottom + 4);

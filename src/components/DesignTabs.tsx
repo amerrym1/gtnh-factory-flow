@@ -826,7 +826,7 @@ function DesignMenu({
       {folders.length > 0 ? (
         <>
           <div className="mt-1 border-t border-line px-2 pb-0.5 pt-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-fg-muted">
-            Move to
+            Add to collection
           </div>
           {folders.map((folder) => (
             <MenuItem
@@ -838,7 +838,7 @@ function DesignMenu({
             />
           ))}
           <MenuItem
-            label="No folder"
+            label="No collection"
             indent
             checked={!folderId}
             onClick={() => onMoveToFolder(undefined)}
