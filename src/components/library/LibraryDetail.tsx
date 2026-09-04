@@ -131,13 +131,13 @@ export function LibraryDetail({
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden text-fg">
-      {/* THE PHOTOGRAPH: a strip, not a hero. */}
-      <div className="relative h-[150px] w-full shrink-0 bg-[#0b0e12]">
+      {/* THE PHOTOGRAPH: the top half, whole, never cropped. */}
+      <div className="relative h-1/2 w-full shrink-0 bg-[#0b0e12]">
         {picture === "ok" && entry.previewUrl ? (
           // Not next/image: the picture is served by our own route and
           // changes when the post is re-shared.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={entry.previewUrl} alt="" className="h-full w-full object-cover object-center" />
+          <img src={entry.previewUrl} alt="" className="h-full w-full object-contain" />
         ) : picture === "loading" ? null : (
           <div className="flex h-full w-full items-center justify-center gap-2 text-[12px] text-fg-muted">
             <ImageIcon className="h-4 w-4 opacity-50" aria-hidden />
