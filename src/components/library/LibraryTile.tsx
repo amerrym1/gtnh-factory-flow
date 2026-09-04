@@ -155,11 +155,11 @@ export function LibraryTile({
         onMenu(event.clientX, event.clientY);
       }}
       className={[
-        "group relative flex h-[84px] cursor-pointer select-none flex-col justify-between rounded border px-2.5 py-2 text-left",
+        "group relative flex h-[84px] cursor-pointer select-none flex-col justify-between border-2 px-2.5 py-2 text-left",
         selected
-          ? "border-cyan-400 bg-[#182029] ring-1 ring-cyan-400"
-          : "border-line bg-[#151a21] hover:border-line-strong hover:bg-[#182029]",
-        menuOpen ? "border-line-strong" : "",
+          ? "border-cyan-400 bg-[var(--mc-47)]"
+          : "border-[var(--mc-33)] bg-[var(--mc-25)] hover:border-[var(--mc-61)] hover:bg-[var(--mc-47)]",
+        menuOpen ? "border-[var(--mc-61)]" : "",
         busy ? "opacity-60" : "",
       ].join(" ")}
     >
@@ -171,7 +171,7 @@ export function LibraryTile({
             {renaming ? (
               <InlineName initialName={name} onCommit={renaming.onCommit} onCancel={renaming.onCancel} />
             ) : (
-              <span className="min-w-0 flex-1 truncate text-[12px] font-bold leading-tight text-fg group-hover:text-white">
+              <span className="min-w-0 flex-1 truncate text-[12px] font-bold leading-tight text-[var(--mc-ink)] group-hover:text-white">
                 {name}
               </span>
             )}
@@ -181,7 +181,7 @@ export function LibraryTile({
                   type="button"
                   onClick={onTier}
                   aria-label={`Show setups up to ${tier}`}
-                  className="flex shrink-0 rounded ring-cyan-400 hover:ring-2"
+                  className="flex shrink-0 ring-cyan-400 hover:ring-2"
                 >
                   <TierBadge tier={tier} />
                 </button>
@@ -190,7 +190,7 @@ export function LibraryTile({
               )
             ) : null}
           </div>
-          <div className="flex items-center gap-1 text-[10px] text-fg-muted">
+          <div className="flex items-center gap-1 text-[10px] text-[var(--mc-ink-muted)]">
             <span className="min-w-0 flex-1 truncate">
               {creator ? (
                 onCreator ? (
@@ -198,7 +198,7 @@ export function LibraryTile({
                     type="button"
                     onClick={onCreator}
                     aria-label={`Show setups by ${creator}`}
-                    className="rounded text-fg-subtle hover:bg-surface-raised hover:text-cyan-200"
+                    className="text-neutral-300 hover:bg-[var(--mc-61)] hover:text-cyan-200"
                   >
                     {creator}
                   </button>
@@ -214,7 +214,7 @@ export function LibraryTile({
       </div>
 
       {/* Row three: the numbers, then the marks and the social figures. */}
-      <div className="flex items-center gap-3 text-[10px] text-fg-muted">
+      <div className="flex items-center gap-3 text-[10px] text-[var(--mc-ink-muted)]">
         {machines !== undefined ? <Stat icon={Factory} value={String(machines)} /> : null}
         {euT !== undefined ? (
           <Stat icon={Zap} value={`${formatEuT(euT)} EU/t`} tone="text-amber-300/80" />
@@ -223,13 +223,13 @@ export function LibraryTile({
           {busy ? <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden /> : null}
           {marks.open ? (
             <span
-              className="rounded bg-surface-raised px-1 text-[9px] font-black uppercase tracking-wide text-fg-subtle"
+              className="bg-[var(--mc-61)] px-1 text-[9px] font-black uppercase tracking-wide text-neutral-300"
             >
               open
             </span>
           ) : null}
           {marks.privatePost ? (
-            <span className="text-fg-muted" aria-label="Private post">
+            <span className="text-[var(--mc-ink-muted)]" aria-label="Private post">
               <EyeOff className="h-3 w-3" aria-hidden />
             </span>
           ) : null}
@@ -242,10 +242,10 @@ export function LibraryTile({
                 onClick={social.onVote}
                 aria-label={social.myVote === 1 ? "Take back your vote" : "Vote this up"}
                 className={[
-                  "flex items-center gap-0.5 rounded px-0.5",
+                  "flex items-center gap-0.5 px-0.5",
                   social.myVote === 1
                     ? "text-cyan-300"
-                    : "hover:bg-surface-raised hover:text-fg disabled:hover:bg-transparent",
+                    : "hover:bg-[var(--mc-61)] hover:text-[var(--mc-ink)] disabled:hover:bg-transparent",
                 ].join(" ")}
               >
                 <ArrowBigUp className="h-3 w-3" aria-hidden />
@@ -291,7 +291,7 @@ function PostGlyph({
 }) {
   if (marks.fromNetwork) {
     return (
-      <span aria-label="Opened from a shared setup" className="text-fg-muted">
+      <span aria-label="Opened from a shared setup" className="text-[var(--mc-ink-muted)]">
         <Download className="h-3 w-3" aria-hidden />
       </span>
     );
@@ -316,7 +316,7 @@ function PostGlyph({
             type="button"
             onClick={onCopyLink}
             aria-label="Copy the share link"
-            className="rounded p-0.5 text-fg-muted hover:bg-surface-raised hover:text-cyan-200"
+            className="p-0.5 text-[var(--mc-ink-muted)] hover:bg-[var(--mc-61)] hover:text-cyan-200"
           >
             <Link2 className="h-3 w-3" aria-hidden />
           </button>
@@ -326,7 +326,7 @@ function PostGlyph({
   }
   if (marks.linked) {
     return (
-      <span aria-label="Linked to a post" className="text-fg-muted">
+      <span aria-label="Linked to a post" className="text-[var(--mc-ink-muted)]">
         <Link2 className="h-3 w-3" aria-hidden />
       </span>
     );
@@ -337,7 +337,7 @@ function PostGlyph({
         type="button"
         onClick={onPost}
         aria-label="Post this design to the network"
-        className="rounded p-0.5 text-fg-muted/60 hover:bg-surface-raised hover:text-emerald-300"
+        className="p-0.5 text-[var(--mc-ink-muted)] opacity-70 hover:bg-[var(--mc-61)] hover:text-emerald-300"
       >
         <Globe className="h-3 w-3" aria-hidden />
       </button>
@@ -427,7 +427,7 @@ export function InlineName({
       }}
       onClick={(event) => event.stopPropagation()}
       aria-label="Name"
-      className="min-w-0 w-full rounded border border-cyan-500 bg-surface px-1 text-xs text-fg outline-none"
+      className="min-w-0 w-full border-2 border-cyan-500 bg-[#17191d] px-1 text-xs text-neutral-100 outline-none"
     />
   );
 }
@@ -488,7 +488,7 @@ export function TagEditor({
         top: Math.min(top, window.innerHeight - 120),
         width: 260,
       }}
-      className="fixed z-[100] flex flex-wrap items-center gap-1 rounded border border-line bg-surface-raised p-1.5 shadow-lg"
+      className="fixed z-[100] flex flex-wrap items-center gap-1 border border-[var(--mc-33)] bg-[var(--mc-61)] p-1.5 shadow-lg"
     >
       {draft.map((tag) => (
         <button
@@ -496,7 +496,7 @@ export function TagEditor({
           type="button"
           onClick={() => setDraft(draft.filter((entry) => entry !== tag))}
           aria-label={`Remove tag ${tag}`}
-          className="rounded border border-neutral-700 bg-[#17191d] px-1.5 text-[11px] text-neutral-300 hover:border-red-700 hover:text-red-300"
+          className="border border-neutral-700 bg-[#17191d] px-1.5 text-[11px] text-neutral-300 hover:border-red-700 hover:text-red-300"
         >
           #{tag}
         </button>
@@ -520,7 +520,7 @@ export function TagEditor({
           }
         }}
         aria-label="Add a tag"
-        className="min-w-[80px] flex-1 bg-transparent text-xs text-fg outline-none placeholder:text-fg-muted"
+        className="min-w-[80px] flex-1 bg-transparent text-xs text-[var(--mc-ink)] outline-none placeholder:text-[var(--mc-ink-muted)]"
       />
     </div>,
     document.body,

@@ -62,7 +62,7 @@ export function LibraryMenu({
       role="menu"
       aria-label={label}
       style={{ left: clampedLeft, top: Math.max(8, clampedTop), width: MENU_WIDTH }}
-      className="fixed z-[100] max-h-[340px] overflow-y-auto rounded border border-line bg-surface-raised py-0.5 shadow-lg"
+      className="fixed z-[100] max-h-[340px] overflow-y-auto border-2 border-[var(--mc-61)] bg-[var(--mc-47)] py-0.5 shadow-[0_8px_0_rgba(0,0,0,0.5)]"
     >
       {children}
     </div>,
@@ -72,14 +72,14 @@ export function LibraryMenu({
 
 export function MenuHeading({ children }: { children: ReactNode }) {
   return (
-    <div className="mt-1 border-t border-line px-2 pb-0.5 pt-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-fg-muted">
+    <div className="mt-1 border-t border-[var(--mc-33)] px-2 pb-0.5 pt-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[var(--mc-ink-muted)]">
       {children}
     </div>
   );
 }
 
 export function MenuRule() {
-  return <div className="my-1 border-t border-line" />;
+  return <div className="my-1 border-t border-[var(--mc-33)]" />;
 }
 
 export function MenuItem({
@@ -104,9 +104,9 @@ export function MenuItem({
       disabled={disabled}
       onClick={onClick}
       className={[
-        "flex w-full items-center gap-1.5 whitespace-nowrap px-2 py-1.5 text-left text-xs hover:bg-surface-sunken disabled:opacity-50",
+        "flex w-full items-center gap-1.5 whitespace-nowrap px-2 py-1.5 text-left text-xs hover:bg-[var(--mc-61)] disabled:opacity-50",
         indent ? "pl-4" : "",
-        tone === "danger" ? "text-red-400" : "text-fg",
+        tone === "danger" ? "text-red-400" : "text-[var(--mc-ink)]",
       ].join(" ")}
     >
       <span className="min-w-0 flex-1 truncate">{label}</span>

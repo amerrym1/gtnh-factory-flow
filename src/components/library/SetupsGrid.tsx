@@ -23,6 +23,7 @@ import { GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
 import type { FactoryProject } from "@/lib/model/types";
 import { applyPlanView, capturePlanView } from "@/lib/plan-view";
 import { SETUPS_CHANGED_EVENT, type SetupsScope } from "@/lib/setups-tab";
+import { playBoardSound } from "@/lib/board-sounds";
 import { useDesignStore } from "@/store/design-store";
 import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
 import { LibraryDetail, previewUrlFor } from "./LibraryDetail";
@@ -398,22 +399,22 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
         />
       ) : (
         <>
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-4 compact:gap-1.5 compact:px-2">
-        <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded border border-line-strong bg-surface px-2 text-xs text-fg">
-          <Search className="h-3.5 w-3.5 shrink-0 text-fg-muted" aria-hidden />
+      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--mc-33)] px-4 compact:gap-1.5 compact:px-2">
+        <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
+          <Search className="h-3.5 w-3.5 shrink-0 text-[var(--mc-ink-muted)]" aria-hidden />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={scope === "mine" ? "Search my posts (#tag, @name)" : "Search the network (#tag, @name)"}
             aria-label="Search setups"
-            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-fg-muted"
+            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[var(--mc-ink-muted)]"
           />
           {query ? (
             <button
               type="button"
               onClick={() => setQuery("")}
               aria-label="Clear search"
-              className="text-fg-muted hover:text-fg"
+              className="text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -421,9 +422,12 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
         </label>
         <select
           value={maxTier}
-          onChange={(event) => setMaxTier(event.target.value)}
+          onChange={(event) => {
+            playBoardSound("tick");
+            setMaxTier(event.target.value);
+          }}
           aria-label="Highest power tier"
-          className="h-7 shrink-0 rounded border border-line-strong bg-surface px-1 text-xs text-fg outline-none"
+          className="h-7 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
         >
           <option value="">Any tier</option>
           {GT_VOLTAGE_TIERS.map((entry, index) => (
@@ -434,9 +438,12 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
         </select>
         <select
           value={activeTag}
-          onChange={(event) => setQuery(event.target.value ? `#${event.target.value}` : "")}
+          onChange={(event) => {
+            playBoardSound("tick");
+            setQuery(event.target.value ? `#${event.target.value}` : "");
+          }}
           aria-label="Filter by tag"
-          className="h-7 max-w-[140px] shrink-0 rounded border border-line-strong bg-surface px-1 text-xs text-fg outline-none"
+          className="h-7 max-w-[140px] shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
         >
           <option value="">All tags</option>
           {tagOptions.map((tag) => (
@@ -447,9 +454,12 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
         </select>
         <select
           value={sort}
-          onChange={(event) => setSort(event.target.value as CommunityPlanSort)}
+          onChange={(event) => {
+            playBoardSound("tick");
+            setSort(event.target.value as CommunityPlanSort);
+          }}
           aria-label="Sort setups"
-          className="h-7 shrink-0 rounded border border-line-strong bg-surface px-1 text-xs text-fg outline-none"
+          className="h-7 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
         >
           {SETUP_SORTS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -462,16 +472,16 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 compact:px-2">
         {error ? <p className="mb-2 text-[11px] text-red-400">{error}</p> : null}
         {needsAccount && !isAuthLoading ? (
-          <p className="text-[12px] leading-relaxed text-fg-muted">
+          <p className="text-[12px] leading-relaxed text-[var(--mc-ink-muted)]">
             Sign in (top right) to see your posts here. Share a design with the Share button
             in the header, then manage it from this page.
           </p>
         ) : isLoading && plans.length === 0 ? (
-          <p className="flex items-center gap-1.5 text-[12px] text-fg-muted">
+          <p className="flex items-center gap-1.5 text-[12px] text-[var(--mc-ink-muted)]">
             <LoaderCircle className="h-3 w-3 animate-spin" /> Loading…
           </p>
         ) : plans.length === 0 && !error ? (
-          <p className="text-[12px] leading-relaxed text-fg-muted">
+          <p className="text-[12px] leading-relaxed text-[var(--mc-ink-muted)]">
             {search
               ? "No setups match."
               : scope === "mine"
@@ -527,7 +537,7 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
                 type="button"
                 disabled={isLoading}
                 onClick={() => setTarget({ key, page: activePage + 1 })}
-                className="mt-3 flex h-7 w-full items-center justify-center gap-1.5 rounded border border-line-strong bg-surface text-[11px] text-fg-subtle hover:border-line-strong hover:text-fg disabled:opacity-50"
+                className="mt-3 flex h-7 w-full items-center justify-center gap-1.5 border border-[var(--mc-61)] bg-[var(--mc-33)] text-[11px] text-neutral-300 hover:border-[var(--mc-61)] hover:text-[var(--mc-ink)] disabled:opacity-50"
               >
                 {isLoading ? <LoaderCircle className="h-3 w-3 animate-spin" /> : null}
                 Load more

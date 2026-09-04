@@ -178,7 +178,7 @@ export function LibraryDetail({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden text-fg">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden text-[var(--mc-ink)]">
       {/* THE PHOTOGRAPH: the top half, whole, never cropped. */}
       <div className="relative h-1/2 w-full shrink-0 bg-[#0b0e12]">
         {picture === "ok" && entry.previewUrl ? (
@@ -187,7 +187,7 @@ export function LibraryDetail({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={entry.previewUrl} alt="" className="h-full w-full object-contain" />
         ) : picture === "loading" ? null : (
-          <div className="flex h-full w-full items-center justify-center gap-2 text-[12px] text-fg-muted">
+          <div className="flex h-full w-full items-center justify-center gap-2 text-[12px] text-[var(--mc-ink-muted)]">
             <ImageIcon className="h-4 w-4 opacity-50" aria-hidden />
             {entry.previewUrl
               ? "No picture of this board yet."
@@ -197,7 +197,7 @@ export function LibraryDetail({
         <button
           type="button"
           onClick={onClose}
-          className="absolute left-3 top-3 flex h-7 items-center gap-1.5 rounded border border-line bg-[#12161b]/90 px-2 text-xs font-medium text-fg-subtle hover:text-fg"
+          className="absolute left-3 top-3 flex h-7 items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2 text-xs font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
         >
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
           Back
@@ -213,7 +213,7 @@ export function LibraryDetail({
                 type="button"
                 onClick={entry.onPickIcon}
                 aria-label="Change the icon"
-                className="rounded ring-cyan-400 hover:ring-2"
+                className="ring-cyan-400 hover:ring-2"
               >
                 <Face icon={entry.icon} size={48} />
               </button>
@@ -228,7 +228,7 @@ export function LibraryDetail({
                   value={editing.name}
                   onChange={(event) => setEditing({ ...editing, name: event.target.value })}
                   aria-label="Name"
-                  className="h-7 rounded border border-cyan-500 bg-surface px-2 text-[13px] font-bold text-fg outline-none"
+                  className="h-7 border border-cyan-500 bg-[var(--mc-33)] px-2 text-[13px] font-bold text-[var(--mc-ink)] outline-none"
                 />
                 <textarea
                   value={editing.description}
@@ -236,7 +236,7 @@ export function LibraryDetail({
                   rows={2}
                   placeholder="Describe it"
                   aria-label="Description"
-                  className="resize-none rounded border border-line-strong bg-surface px-2 py-1 text-[12px] text-fg outline-none placeholder:text-fg-muted"
+                  className="resize-none border-2 border-[var(--mc-33)] bg-[#17191d] px-2 py-1 text-[12px] text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607] placeholder:text-[var(--mc-ink-muted)]"
                 />
                 {entry.editTags ? (
                   <input
@@ -246,7 +246,7 @@ export function LibraryDetail({
                     }
                     placeholder="Tags, separated by commas"
                     aria-label="Tags"
-                    className="h-7 rounded border border-line-strong bg-surface px-2 text-[12px] text-fg outline-none placeholder:text-fg-muted"
+                    className="h-7 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-[12px] text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607] placeholder:text-[var(--mc-ink-muted)]"
                   />
                 ) : null}
                 <div className="flex items-center gap-1.5">
@@ -254,19 +254,19 @@ export function LibraryDetail({
                     type="button"
                     disabled={saving}
                     onClick={() => void saveEdit()}
-                    className="flex h-7 items-center rounded border border-cyan-500/60 bg-cyan-500/20 px-3 text-[12px] font-bold text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-50"
+                    className="flex h-7 items-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-3 text-[12px] font-bold text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85)] hover:border-cyan-400 hover:text-cyan-200 disabled:opacity-50"
                   >
                     Save
                   </button>
                   <button
                     type="button"
                     onClick={() => setEditing(undefined)}
-                    className="flex h-7 items-center rounded border border-line-strong bg-surface px-3 text-[12px] font-medium text-fg-subtle hover:text-fg"
+                    className="flex h-7 items-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-3 text-[12px] font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
                   >
                     Cancel
                   </button>
                   {entry.onPickIcon ? (
-                    <span className="text-[11px] text-fg-muted">Click the icon to change it.</span>
+                    <span className="text-[11px] text-[var(--mc-ink-muted)]">Click the icon to change it.</span>
                   ) : null}
                 </div>
               </div>
@@ -278,20 +278,20 @@ export function LibraryDetail({
                   </h2>
                   {entry.tier ? <TierBadge tier={entry.tier} /> : null}
                   {marks.open ? (
-                    <span className="rounded bg-surface-raised px-1 text-[9px] font-black uppercase tracking-wide text-fg-subtle">
+                    <span className="bg-[var(--mc-61)] px-1 text-[9px] font-black uppercase tracking-wide text-neutral-300">
                       open
                     </span>
                   ) : null}
                 </div>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-fg-muted">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-[var(--mc-ink-muted)]">
                   <span>
-                    {entry.creator ? <span className="text-fg-subtle">{entry.creator}</span> : null}
+                    {entry.creator ? <span className="text-neutral-300">{entry.creator}</span> : null}
                     {entry.creator ? " · " : ""}
                     {entry.when}
                   </span>
                   {entry.machines !== undefined ? (
                     <span>
-                      <span className="font-bold text-fg-subtle">{entry.machines}</span> machines
+                      <span className="font-bold text-neutral-300">{entry.machines}</span> machines
                     </span>
                   ) : null}
                   {entry.euT !== undefined ? (
@@ -317,7 +317,7 @@ export function LibraryDetail({
                   ) : null}
                 </div>
                 {entry.description ? (
-                  <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-[12px] leading-relaxed text-fg-subtle">
+                  <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-[12px] leading-relaxed text-neutral-300">
                     {entry.description}
                   </p>
                 ) : null}
@@ -326,7 +326,7 @@ export function LibraryDetail({
                     {entry.tags.map((tag) => (
                       <span
                         key={tag}
-                        className="rounded border border-neutral-700 bg-[#17191d] px-1.5 text-[10px] text-neutral-300"
+                        className="border border-neutral-700 bg-[#17191d] px-1.5 text-[10px] text-neutral-300"
                       >
                         #{tag}
                       </span>
@@ -342,7 +342,7 @@ export function LibraryDetail({
                 <button
                   type="button"
                   onClick={entry.primary.onClick}
-                  className="flex h-7 items-center rounded border border-cyan-500/60 bg-cyan-500/20 px-3 text-[12px] font-bold text-cyan-100 hover:bg-cyan-500/30"
+                  className="flex h-7 items-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-3 text-[12px] font-bold text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85)] hover:border-cyan-400 hover:text-cyan-200"
                 >
                   {entry.primary.label}
                 </button>
@@ -384,7 +384,7 @@ export function LibraryDetail({
 
           {/* THE QUESTION, in words, when a key asks one. */}
           {confirming ? (
-            <div className="flex items-center gap-2 rounded border border-red-900 bg-red-950/50 px-3 py-2 text-[12px] text-red-100">
+            <div className="flex items-center gap-2 border border-red-900 bg-red-950/50 px-3 py-2 text-[12px] text-red-100">
               <span className="min-w-0 flex-1">{confirming.confirm}</span>
               <button
                 type="button"
@@ -393,14 +393,14 @@ export function LibraryDetail({
                   setConfirming(undefined);
                   key.onClick();
                 }}
-                className="h-7 rounded border border-red-600 bg-red-700 px-3 text-[12px] font-bold text-white hover:bg-red-600"
+                className="h-7 border border-red-600 bg-red-700 px-3 text-[12px] font-bold text-white hover:bg-red-600"
               >
                 {confirming.icon === "delete" ? "Delete" : "Yes"}
               </button>
               <button
                 type="button"
                 onClick={() => setConfirming(undefined)}
-                className="h-7 rounded border border-line-strong bg-surface px-3 text-[12px] font-medium text-fg-subtle hover:text-fg"
+                className="h-7 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-3 text-[12px] font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
               >
                 Cancel
               </button>
@@ -417,23 +417,23 @@ export function LibraryDetail({
 
           {/* COMMENTS: only on something posted. The shape, not yet the thing. */}
           {entry.hasComments ? (
-            <section className="flex flex-col gap-1.5 border-t border-line pt-3">
-              <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#aebccd]">
-                <MessageSquare className="h-3.5 w-3.5 text-fg-muted" aria-hidden />
+            <section className="flex flex-col gap-1.5 border-t border-[var(--mc-33)] pt-3">
+              <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--mc-ink)]">
+                <MessageSquare className="h-3.5 w-3.5 text-[var(--mc-ink-muted)]" aria-hidden />
                 Comments
               </h3>
-              <p className="text-[12px] text-fg-muted">No comments yet.</p>
-              <div className="flex items-center gap-2 rounded border border-line bg-[#151a21] px-2 py-1.5 opacity-60">
+              <p className="text-[12px] text-[var(--mc-ink-muted)]">No comments yet.</p>
+              <div className="flex items-center gap-2 border border-[var(--mc-33)] bg-[var(--mc-25)] px-2 py-1.5 opacity-60">
                 <input
                   disabled
                   placeholder="Say something about this setup"
-                  className="min-w-0 flex-1 bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-muted"
+                  className="min-w-0 flex-1 bg-transparent text-[12px] text-[var(--mc-ink)] outline-none placeholder:text-[var(--mc-ink-muted)]"
                 />
-                <span className="text-[10px] text-fg-muted">coming soon</span>
+                <span className="text-[10px] text-[var(--mc-ink-muted)]">coming soon</span>
                 <button
                   type="button"
                   disabled
-                  className="h-6 rounded border border-line-strong bg-surface px-2.5 text-[11px] font-medium text-fg-muted"
+                  className="h-6 border border-[var(--mc-61)] bg-[var(--mc-33)] px-2.5 text-[11px] font-medium text-[var(--mc-ink-muted)]"
                 >
                   Post
                 </button>
@@ -486,12 +486,12 @@ function IconKey({
       onClick={onClick}
       aria-label={label}
       className={[
-        "flex h-6 min-w-6 items-center justify-center gap-1 rounded border px-1.5 text-[10px] font-medium",
+        "flex h-6 min-w-6 items-center justify-center gap-1 border px-1.5 text-[10px] font-medium",
         active
           ? "border-cyan-500 bg-cyan-500/15 text-cyan-200"
           : danger
-            ? "border-line-strong bg-surface text-fg-muted hover:border-red-700 hover:text-red-300"
-            : "border-line-strong bg-surface text-fg-subtle hover:text-fg",
+            ? "border-[var(--mc-61)] bg-[var(--mc-33)] text-[var(--mc-ink-muted)] hover:border-red-700 hover:text-red-300"
+            : "border-[var(--mc-61)] bg-[var(--mc-33)] text-neutral-300 hover:text-[var(--mc-ink)]",
       ].join(" ")}
     >
       {children}
@@ -503,13 +503,13 @@ function IconKey({
 /** One side of needs or makes: every stat, in as many columns as fit. */
 function StatColumns({ label, stats }: { label: string; stats: PlanResourceStat[] }) {
   return (
-    <div className="min-w-0 rounded border border-line bg-[#151a21] p-2">
-      <div className="mb-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#aebccd]">
+    <div className="min-w-0 border border-[var(--mc-33)] bg-[var(--mc-25)] p-2">
+      <div className="mb-1 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--mc-ink)]">
         {label}
-        <span className="ml-1.5 font-medium text-fg-muted">{stats.length}</span>
+        <span className="ml-1.5 font-medium text-[var(--mc-ink-muted)]">{stats.length}</span>
       </div>
       {stats.length === 0 ? (
-        <div className="text-[11px] text-fg-muted">Nothing</div>
+        <div className="text-[11px] text-[var(--mc-ink-muted)]">Nothing</div>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-x-3 gap-y-0.5">
           {stats.map((stat) => (
@@ -526,10 +526,10 @@ function StatColumns({ label, stats }: { label: string; stats: PlanResourceStat[
                   className={stat.kind === "fluid" ? "!h-4 !w-4" : "!h-4 !w-4 origin-center scale-150"}
                 />
               </span>
-              <span className="min-w-0 flex-1 truncate text-[11px] text-fg-subtle">
+              <span className="min-w-0 flex-1 truncate text-[11px] text-neutral-300">
                 {stat.displayName ?? stat.resourceId}
               </span>
-              <span className="shrink-0 tabular-nums text-[11px] text-fg-muted">
+              <span className="shrink-0 tabular-nums text-[11px] text-[var(--mc-ink-muted)]">
                 {formatSlotRate(stat.ratePerSecond, stat.kind)}
               </span>
             </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { Factory, Folder, FolderPlus, LayoutGrid, Plus, Search, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useCommunityUser } from "@/components/community/auth";
 import { IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
 import { formatRelativeDate } from "@/components/shelf-cards";
@@ -12,6 +12,7 @@ import type { DesignSummary } from "@/lib/designs/design-library";
 import { GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
 import { SETUPS_CHANGED_EVENT, notifySetupsChanged, requestShareDialog } from "@/lib/setups-tab";
 import { setLibraryView, useLibraryTab } from "@/lib/library/library-tab";
+import { playBoardSound } from "@/lib/board-sounds";
 import { useDesignStore } from "@/store/design-store";
 import { LibraryDetail, previewUrlFor } from "./LibraryDetail";
 import { ArmedMenuItem, LibraryMenu, MenuHeading, MenuItem, MenuRule } from "./library-menu";
@@ -85,6 +86,22 @@ export function LibraryPage() {
   /** The design whose preview page is up, if any. */
   const [detailId, setDetailId] = useState<string>();
   const { posts: myPosts, signedIn } = useMyPosts();
+
+  // The library has the search's voice: a leaf lifted on open, a page
+  // turned for every view and every focus page, the leaf laid down on close.
+  useEffect(() => {
+    playBoardSound("pageOpen");
+    return () => playBoardSound("pageClose");
+  }, []);
+  const turnedRef = useRef(false);
+  const pageKey = `${library.view.kind}:${viewFolderKey(library.view)}:${detailId ?? ""}`;
+  useEffect(() => {
+    if (!turnedRef.current) {
+      turnedRef.current = true;
+      return;
+    }
+    playBoardSound("pageTurn");
+  }, [pageKey]);
 
   const closeMenus = useCallback(() => {
     setTileMenu(undefined);
@@ -288,11 +305,13 @@ export function LibraryPage() {
     : undefined;
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-canvas text-fg">
-      <div className="min-h-0 flex-1 p-4 compact:p-2">
-        <div className="flex h-full min-h-0 overflow-hidden rounded border border-line bg-[#12161b] compact:flex-col">
+    <div className="flex h-full min-h-0 w-full flex-col bg-[#101215] text-[var(--mc-ink)]">
+      <div className="min-h-0 flex-1">
+        {/* The frame is the recipe search's: 4px, one shade off the floor,
+            an accent by contrast rather than colour, flush to the board. */}
+        <div className="flex h-full min-h-0 overflow-hidden border-4 border-[#23262d] bg-[#101215] shadow-[inset_2px_2px_0_rgba(255,255,255,0.05),inset_-2px_-2px_0_rgba(0,0,0,0.6)] compact:flex-col">
           {/* THE RAIL: all, then folders. On a phone, one row of chips. */}
-          <aside className="flex w-[210px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-line bg-surface/70 px-2 py-2 compact:w-full compact:flex-row compact:items-center compact:overflow-x-auto compact:overflow-y-hidden compact:border-b compact:border-r-0 compact:py-1.5">
+          <aside className="flex w-[210px] shrink-0 flex-col gap-1 overflow-y-auto border-r-4 border-[#23262d] bg-[#101215] px-2 py-2 compact:w-full compact:flex-row compact:items-center compact:overflow-x-auto compact:overflow-y-hidden compact:border-b compact:border-r-0 compact:py-1.5">
             <RailItem
               icon={LayoutGrid}
               label="All"
@@ -324,8 +343,8 @@ export function LibraryPage() {
               />
             ))}
             {namingFolder ? (
-              <div className="flex h-7 items-center gap-1.5 rounded px-2">
-                <Folder className="h-3.5 w-3.5 shrink-0 text-fg-muted" aria-hidden />
+              <div className="flex h-7 items-center gap-1.5 px-2">
+                <Folder className="h-3.5 w-3.5 shrink-0 text-[var(--mc-ink-muted)]" aria-hidden />
                 <InlineName
                   initialName=""
                   placeholder="Folder name"
@@ -344,13 +363,13 @@ export function LibraryPage() {
             <button
               type="button"
               onClick={() => setNamingFolder(true)}
-              className="flex h-7 shrink-0 items-center gap-1.5 rounded px-2 text-fg-muted hover:bg-surface-raised hover:text-fg"
+              className="flex h-8 shrink-0 items-center gap-1.5 border-2 border-dashed border-[var(--mc-47)] px-2 text-[var(--mc-ink-muted)] hover:border-[var(--mc-61)] hover:text-[var(--mc-ink)]"
             >
               <FolderPlus className="h-3.5 w-3.5" aria-hidden />
-              <span className="text-xs">New folder</span>
+              <span className="text-[13px] font-bold">New folder</span>
             </button>
 
-            <div className="mx-1 my-2 border-t border-line compact:mx-2 compact:my-0 compact:h-4 compact:border-l compact:border-t-0" />
+            <div className="mx-1 my-2 border-t-2 border-[#23262d] compact:mx-2 compact:my-0 compact:h-4 compact:border-l compact:border-t-0" />
             <RailItem
               icon={Factory}
               label="Public setups"
@@ -479,22 +498,22 @@ export function LibraryPage() {
               />
                   ) : (
               <>
-                <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-4 compact:gap-1.5 compact:px-2">
-                  <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded border border-line-strong bg-surface px-2 text-xs text-fg">
-                    <Search className="h-3.5 w-3.5 shrink-0 text-fg-muted" aria-hidden />
+                <header className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--mc-33)] px-4 compact:gap-1.5 compact:px-2">
+                  <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
+                    <Search className="h-3.5 w-3.5 shrink-0 text-[var(--mc-ink-muted)]" aria-hidden />
                     <input
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
                       placeholder="Search your designs"
                       aria-label="Search your designs"
-                      className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-fg-muted"
+                      className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[var(--mc-ink-muted)]"
                     />
                     {query ? (
                       <button
                         type="button"
                         onClick={() => setQuery("")}
                         aria-label="Clear search"
-                        className="text-fg-muted hover:text-fg"
+                        className="text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -502,9 +521,12 @@ export function LibraryPage() {
                   </label>
                   <select
                     value={maxTier}
-                    onChange={(event) => setMaxTier(event.target.value)}
+                    onChange={(event) => {
+                      playBoardSound("tick");
+                      setMaxTier(event.target.value);
+                    }}
                     aria-label="Highest power tier"
-                    className="h-7 shrink-0 rounded border border-line-strong bg-surface px-1 text-xs text-fg outline-none"
+                    className="h-7 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
                   >
                     <option value="">Any tier</option>
                     {GT_VOLTAGE_TIERS.map((entry, index) => (
@@ -515,9 +537,12 @@ export function LibraryPage() {
                   </select>
                   <select
                     value={sort}
-                    onChange={(event) => setSort(event.target.value as SortKey)}
+                    onChange={(event) => {
+                      playBoardSound("tick");
+                      setSort(event.target.value as SortKey);
+                    }}
                     aria-label="Sort designs"
-                    className="h-7 shrink-0 rounded border border-line-strong bg-surface px-1 text-xs text-fg outline-none"
+                    className="h-7 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
                   >
                     {SORTS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -529,7 +554,7 @@ export function LibraryPage() {
                     type="button"
                     onClick={() => void addDesign()}
                     aria-label="New design"
-                    className="flex h-7 shrink-0 items-center gap-1 rounded border border-cyan-500/60 bg-cyan-500/15 px-2.5 text-xs font-bold text-cyan-200 hover:bg-cyan-500/25"
+                    className="flex h-7 shrink-0 items-center gap-1 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2.5 text-xs font-bold text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85)] hover:border-cyan-400 hover:text-cyan-200"
                   >
                     <Plus className="h-3.5 w-3.5" aria-hidden />
                     <span className="compact:hidden">New design</span>
@@ -537,9 +562,9 @@ export function LibraryPage() {
                 </header>
 
                 {visibleSelected.size > 0 ? (
-                  <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line bg-cyan-500/10 px-4 text-xs text-fg compact:px-2">
+                  <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--mc-33)] bg-cyan-500/10 px-4 text-xs text-[var(--mc-ink)] compact:px-2">
                     <span className="font-bold text-cyan-200">{visibleSelected.size} selected</span>
-                    <span className="text-fg-muted compact:hidden">
+                    <span className="text-[var(--mc-ink-muted)] compact:hidden">
                       Ctrl-click to add, Shift-click for a run
                     </span>
                     <span className="ml-auto flex items-center gap-1.5">
@@ -556,7 +581,7 @@ export function LibraryPage() {
                             }
                           }}
                           aria-label="Add the selection to a folder"
-                          className="h-6 rounded border border-line-strong bg-surface px-1 text-xs text-fg outline-none"
+                          className="h-6 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
                         >
                           <option value="">Add to folder…</option>
                           {folders.map((folder) => (
@@ -587,7 +612,7 @@ export function LibraryPage() {
                 <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 compact:px-2">
                   {error ? <p className="mb-2 text-[11px] text-red-400">{error}</p> : null}
                   {shown.length === 0 ? (
-                    <p className="px-0.5 pt-1 text-[12px] leading-relaxed text-fg-muted">
+                    <p className="px-0.5 pt-1 text-[12px] leading-relaxed text-[var(--mc-ink-muted)]">
                       {search || maxTier
                         ? "No designs match."
                         : viewFolderId
@@ -846,6 +871,10 @@ export function LibraryPage() {
 
 /* ------------------------------------------------------------------ */
 
+function viewFolderKey(view: { kind: string; folderId?: string }): string {
+  return view.kind === "folder" ? (view.folderId ?? "") : "";
+}
+
 /** A button on the selection bar. */
 function BarButton({
   onClick,
@@ -861,10 +890,10 @@ function BarButton({
       type="button"
       onClick={onClick}
       className={[
-        "h-6 rounded border px-2 text-xs font-medium",
+        "h-6 border px-2 text-xs font-medium",
         tone === "danger"
           ? "border-red-800 bg-red-950/60 text-red-300 hover:border-red-600"
-          : "border-line-strong bg-surface text-fg-subtle hover:text-fg",
+          : "border-[var(--mc-61)] bg-[var(--mc-33)] text-neutral-300 hover:text-[var(--mc-ink)]",
       ].join(" ")}
     >
       {children}
@@ -993,11 +1022,11 @@ function RailItem({
           : undefined
       }
       className={[
-        "group flex h-7 shrink-0 items-center gap-1.5 rounded px-2 text-xs compact:h-8",
+        "group flex h-8 shrink-0 items-center gap-1.5 border-2 px-2 text-[13px] font-bold compact:h-8",
         selected
-          ? "bg-cyan-500/15 text-cyan-200"
-          : "text-fg-subtle hover:bg-surface-raised hover:text-fg",
-        highlighted ? "outline outline-2 outline-cyan-400" : "",
+          ? "border-[var(--mc-61)] bg-[var(--mc-47)] text-[var(--mc-ink)]"
+          : "border-[var(--mc-47)] bg-[var(--mc-33)] text-[var(--mc-ink)] opacity-55 hover:opacity-100",
+        highlighted ? "border-cyan-400 opacity-100" : "",
       ].join(" ")}
     >
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -1008,13 +1037,13 @@ function RailItem({
           type="button"
           onClick={onClick}
           onDoubleClick={onDoubleClick}
-          className="min-w-0 flex-1 truncate text-left text-xs font-medium"
+          className="min-w-0 flex-1 truncate text-left text-[13px] font-bold"
         >
           {label}
         </button>
       )}
       {count !== undefined ? (
-        <span className="shrink-0 tabular-nums text-[10px] text-fg-muted/60">{count}</span>
+        <span className="shrink-0 text-[12px] font-bold tabular-nums text-[var(--mc-ink-muted)]">{count}</span>
       ) : null}
       {onMenu ? (
         <button
@@ -1024,7 +1053,7 @@ function RailItem({
             const rect = event.currentTarget.getBoundingClientRect();
             onMenu(rect.left, rect.bottom + 4);
           }}
-          className="-mr-1 shrink-0 rounded px-1 text-fg-muted opacity-0 hover:bg-surface hover:text-fg focus:opacity-100 group-hover:opacity-100"
+          className="-mr-1 shrink-0 px-1 text-[var(--mc-ink-muted)] opacity-0 hover:bg-[var(--mc-33)] hover:text-[var(--mc-ink)] focus:opacity-100 group-hover:opacity-100"
         >
           ⋯
         </button>
