@@ -524,11 +524,11 @@ function PanelRail({ side, label }: { side: "left" | "right"; label: string }) {
       onClick={open}
       aria-label={`Show ${label}`}
       className={[
-        "group flex h-full w-full flex-col items-center gap-3 bg-surface pt-3 text-fg-muted hover:text-fg",
+        "flex h-full w-full flex-col items-center gap-3 bg-surface pt-3 text-fg-muted transition-colors hover:bg-[#2a2d33]",
         side === "left" ? "border-r border-line" : "border-l border-line",
       ].join(" ")}
     >
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center group-hover:text-cyan-400">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center">
         <ChevronIcon direction={side === "left" ? "right" : "left"} />
       </span>
       <span
