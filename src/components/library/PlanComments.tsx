@@ -141,35 +141,29 @@ export function PlanComments({ planId }: { planId: string }) {
           ))}
         </ul>
       )}
-      {/* The box to write in, under the thread. */}
+      {/* The box to write in, under the thread: a plain field and a key. */}
       {user ? (
-        <div className="flex items-end gap-2 border-2 border-[var(--mc-33)] bg-[#17191d] px-2.5 py-1.5 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
-          <textarea
+        <div className="flex items-center gap-2">
+          <input
             value={draft}
-            onChange={(event) => {
-              setDraft(event.target.value.slice(0, COMMUNITY_COMMENT_MAX_LENGTH));
-              // Grows with the text, one line at rest.
-              event.target.style.height = "auto";
-              event.target.style.height = `${Math.min(event.target.scrollHeight, 120)}px`;
-            }}
+            onChange={(event) =>
+              setDraft(event.target.value.slice(0, COMMUNITY_COMMENT_MAX_LENGTH))
+            }
             onKeyDown={(event) => {
-              // Enter posts; Shift+Enter breaks a line.
-              if (event.key === "Enter" && !event.shiftKey) {
+              if (event.key === "Enter") {
                 event.preventDefault();
                 void post();
               }
             }}
-            rows={1}
             placeholder="Write a comment"
             aria-label="Your comment"
-            className="min-w-0 flex-1 resize-none bg-transparent py-0.5 text-[12px] leading-relaxed text-neutral-100 outline-none placeholder:text-neutral-500"
+            className="h-8 min-w-0 flex-1 border-2 border-[var(--mc-33)] bg-[#17191d] px-2.5 text-[12px] text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607] placeholder:text-neutral-500"
           />
           <button
             type="button"
             disabled={!draft.trim() || posting}
             onClick={() => void post()}
-            aria-label="Post the comment"
-            className="flex h-6 shrink-0 items-center gap-1 text-[11px] font-bold text-cyan-300 hover:text-cyan-100 disabled:text-neutral-600"
+            className="flex h-8 shrink-0 items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-3 text-[12px] font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)] disabled:opacity-40"
           >
             {posting ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
             Post
@@ -178,7 +172,6 @@ export function PlanComments({ planId }: { planId: string }) {
       ) : (
         <p className="text-[11px] text-[var(--mc-ink-muted)]">Sign in (top right) to comment.</p>
       )}
-
     </section>
   );
 }
