@@ -524,16 +524,28 @@ function PanelRail({ side, label }: { side: "left" | "right"; label: string }) {
       onClick={open}
       aria-label={`Show ${label}`}
       className={[
-        "flex h-full w-full flex-col items-center gap-3 bg-surface pt-3 text-fg-muted transition-colors hover:bg-[#2a2d33]",
+        "flex h-full w-full flex-col items-center gap-2 bg-surface pt-1.5 text-fg-muted transition-colors hover:bg-[#2a2d33]",
         side === "left" ? "border-r border-line" : "border-l border-line",
       ].join(" ")}
     >
+      {/* One drawing for both sides, mirrored, so they cannot differ. */}
       <span className="flex h-6 w-6 shrink-0 items-center justify-center">
-        <ChevronIcon direction={side === "left" ? "right" : "left"} />
+        <svg
+          viewBox="0 0 16 16"
+          className={["h-4 w-4", side === "left" ? "" : "rotate-180"].join(" ")}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M6 3l5 5-5 5" />
+        </svg>
       </span>
       <span
         aria-hidden
-        className="min-h-0 flex-1 text-[10px] font-semibold uppercase tracking-widest"
+        className="min-h-0 flex-1 text-[12px] font-semibold uppercase tracking-widest"
         style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
       >
         <span className={side === "right" ? "rotate-180" : undefined}>{label}</span>
