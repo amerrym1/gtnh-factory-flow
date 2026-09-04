@@ -57,7 +57,7 @@ export async function GET(request: Request) {
     const maxTierIndex = Number.parseInt(url.searchParams.get("maxTierIndex") ?? "", 10);
     const page = Math.max(1, Number.parseInt(url.searchParams.get("page") ?? "1", 10) || 1);
     const pageSize = Math.min(
-      48,
+      60,
       Math.max(1, Number.parseInt(url.searchParams.get("pageSize") ?? "24", 10) || 24),
     );
     const deviceId = url.searchParams.get("deviceId") ?? undefined;

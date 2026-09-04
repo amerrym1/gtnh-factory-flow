@@ -38,7 +38,7 @@ const SETUP_SORTS: Array<{ value: CommunityPlanSort; label: string }> = [
   { value: "power", label: "Highest power" },
 ];
 
-const PAGE_SIZE = 24;
+const PAGE_SIZE = 60;
 
 interface Shelf {
   key: string;
