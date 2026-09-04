@@ -308,7 +308,7 @@ export function LibraryPage() {
             an accent by contrast rather than colour, flush to the board. */}
         <div className="flex h-full min-h-0 overflow-hidden border-4 border-[#23262d] bg-[#101215] shadow-[inset_2px_2px_0_rgba(255,255,255,0.05),inset_-2px_-2px_0_rgba(0,0,0,0.6)] compact:flex-col">
           {/* THE RAIL: all, then folders. On a phone, one row of chips. */}
-          <aside className="flex w-[168px] shrink-0 flex-col gap-1 overflow-y-auto bg-[#101215] px-2 py-2 compact:w-full compact:flex-row compact:items-center compact:overflow-x-auto compact:overflow-y-hidden compact:border-b compact:border-r-0 compact:py-1.5">
+          <aside className="flex w-[184px] shrink-0 flex-col gap-1 overflow-y-auto bg-[#101215] px-2 py-2 compact:w-full compact:flex-row compact:items-center compact:overflow-x-auto compact:overflow-y-hidden compact:border-b compact:border-r-0 compact:py-1.5">
             <RailItem
               icon={LayoutGrid}
               label="My designs"
@@ -363,7 +363,7 @@ export function LibraryPage() {
               className="flex h-8 shrink-0 items-center gap-1.5 border-2 border-dashed border-[var(--mc-47)] px-2 text-[var(--mc-ink-muted)] hover:border-[var(--mc-61)] hover:text-[var(--mc-ink)]"
             >
               <FolderPlus className="h-3.5 w-3.5" aria-hidden />
-              <span className="text-[13px] font-bold">New collection</span>
+              <span className="whitespace-nowrap text-[12px] font-bold">New collection</span>
             </button>
 
             <div className="mx-1 my-2 border-t-2 border-[#23262d] compact:mx-2 compact:my-0 compact:h-4 compact:border-l compact:border-t-0" />
@@ -1019,7 +1019,7 @@ function RailItem({
           : undefined
       }
       className={[
-        "group flex h-8 shrink-0 items-center gap-1.5 border-2 px-2 text-[13px] font-bold compact:h-8",
+        "group flex h-8 shrink-0 items-center gap-1.5 border-2 px-2 text-[12px] font-bold compact:h-8",
         selected
           ? "border-[var(--mc-61)] bg-[var(--mc-47)] text-[var(--mc-ink)]"
           : "border-[var(--mc-47)] bg-[var(--mc-33)] text-[var(--mc-ink)] opacity-55 hover:opacity-100",
@@ -1034,7 +1034,7 @@ function RailItem({
           type="button"
           onClick={onClick}
           onDoubleClick={onDoubleClick}
-          className="min-w-0 flex-1 truncate text-left text-[13px] font-bold"
+          className="min-w-0 flex-1 truncate text-left text-[12px] font-bold"
         >
           {label}
         </button>

@@ -205,7 +205,9 @@ export function LibraryDetail({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="flex flex-col gap-3 px-5 py-3 compact:px-3">
+        <div className="grid min-h-0 grid-cols-2 gap-4 px-5 py-3 compact:grid-cols-1 compact:px-3">
+          {/* LEFT: who and what it is, the keys, then the comments. */}
+          <div className="flex min-w-0 flex-col gap-3">
           {/* FACE, NAME, WHO, WHEN, FIGURES; Open and the keys on the right. */}
           <div className="flex items-start gap-3">
             {entry.onPickIcon && editing ? (
@@ -316,23 +318,6 @@ export function LibraryDetail({
                     </span>
                   ) : null}
                 </div>
-                {entry.description ? (
-                  <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-[12px] leading-relaxed text-neutral-300">
-                    {entry.description}
-                  </p>
-                ) : null}
-                {entry.tags && entry.tags.length > 0 ? (
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {entry.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="border border-neutral-700 bg-[#17191d] px-1.5 text-[10px] text-neutral-300"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
               </div>
             )}
 
@@ -407,14 +392,6 @@ export function LibraryDetail({
             </div>
           ) : null}
 
-          {/* NEEDS AND MAKES: tight columns, all of them. */}
-          {(entry.needs && entry.needs.length > 0) || (entry.outputs && entry.outputs.length > 0) ? (
-            <div className="grid grid-cols-2 gap-3 compact:grid-cols-1">
-              <StatColumns label="Needs" stats={entry.needs ?? []} />
-              <StatColumns label="Makes" stats={entry.outputs ?? []} />
-            </div>
-          ) : null}
-
           {/* COMMENTS: only on something posted. The shape, not yet the thing. */}
           {entry.hasComments ? (
             <section className="flex flex-col gap-1.5 border-t border-[var(--mc-33)] pt-3">
@@ -440,6 +417,36 @@ export function LibraryDetail({
               </div>
             </section>
           ) : null}
+          </div>
+
+          {/* RIGHT: the description over needs and makes, side by side. */}
+          <div className="flex min-w-0 flex-col gap-3">
+            {entry.description ? (
+              <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-[12px] leading-relaxed text-neutral-300">
+                {entry.description}
+              </p>
+            ) : null}
+            {entry.tags && entry.tags.length > 0 ? (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {entry.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="border border-neutral-700 bg-[#17191d] px-1.5 text-[10px] text-neutral-300"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          {/* NEEDS AND MAKES: tight columns, all of them. */}
+          {(entry.needs && entry.needs.length > 0) || (entry.outputs && entry.outputs.length > 0) ? (
+            <div className="grid grid-cols-2 gap-3 compact:grid-cols-1">
+              <StatColumns label="Needs" stats={entry.needs ?? []} />
+              <StatColumns label="Makes" stats={entry.outputs ?? []} />
+            </div>
+          ) : null}
+
+          </div>
         </div>
       </div>
     </div>
