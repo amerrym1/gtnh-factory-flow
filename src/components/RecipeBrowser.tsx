@@ -1143,72 +1143,6 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
         data-help-anchor="browser"
         className="relative z-40 flex h-full min-h-[360px] compact:min-h-0 flex-col border-r border-neutral-800 bg-[#25272c] text-neutral-100"
       >
-        {/*
-          The column's own head row. It carried the game-version picker until
-          that went up to the top bar; the row stays because it is what holds
-          the tabs below level with the board's toolbar rather than riding up
-          against the window chrome. The fold-away button sits on the outer
-          edge, mirroring the resource panel's on the right.
-
-          Gone on a phone: as a drawer this column has nothing to line up with,
-          and a row holding one button is a row of screen the list wants. The
-          close button moves in beside the tabs.
-        */}
-        <div className="flex h-8 shrink-0 items-center border-b border-neutral-800 px-2 compact:hidden">
-          <button
-            type="button"
-            onClick={() => writeWorkspaceView({ leftPanelOpen: false })}
-            title="Hide this column"
-            aria-label="Hide the items column"
-            className="flex h-7 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 text-neutral-400 hover:border-cyan-600 hover:text-cyan-400"
-          >
-            <svg
-              viewBox="0 0 16 16"
-              className="h-3.5 w-3.5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M10 3L5 8l5 5" />
-            </svg>
-          </button>
-        </div>
-
-        {/* The master switch: item search, the board shelf, or the
-            setups network — whole column each. Flat tabs, not buttons. Three
-            iconed labels need every trick to breathe: the column runs 344px,
-            and the tabs wear 12px icons with 11px text, one size under the
-            rest of the sidebar. */}
-        <div className="flex shrink-0 border-b border-neutral-800">
-          <button
-            type="button"
-            onClick={() => setSidebarMode("items")}
-            className={[
-              "flex h-7 flex-1 items-center justify-center gap-1 border-b-2 text-[11px] font-medium",
-              sidebarMode === "items"
-                ? "border-cyan-400 text-cyan-300"
-                : "border-transparent text-neutral-400 hover:text-neutral-200",
-            ].join(" ")}
-          >
-            <Search className="h-3 w-3" />
-            Items
-          </button>
-          {/* Boards and Setups used to be two more tabs here. Both live in
-              the library now (the square at the head of the tab strip), so
-              this column is the recipe book and nothing else. */}
-          {/* The drawer's own way out, on the tab row, since the head row that
-              used to carry it is folded away on a phone. */}
-          <button
-            type="button"
-            onClick={() => writeWorkspaceView({ leftPanelOpen: false })}
-            aria-label="Close the items panel"
-            className="hidden h-7 w-8 shrink-0 items-center justify-center border-b-2 border-transparent text-neutral-400 compact:flex"
-          >
-            <ChevronIcon direction="left" />
-          </button>
-        </div>
         {(
           // The wheel pages the list from anywhere in the column, including over
           // the controls and the recent shelf: nothing here scrolls, so a wheel
@@ -1219,6 +1153,17 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             thing from the other two, when they are the same thing. */}
         <ControlsCard>
           <div className="flex items-center gap-1.5">
+            {/* The way to fold this column away, inside the search row the way
+                the resource column keeps its own. On a phone it closes the
+                drawer. */}
+            <button
+              type="button"
+              onClick={() => writeWorkspaceView({ leftPanelOpen: false })}
+              aria-label="Hide the items column"
+              className="flex h-9 w-7 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 text-neutral-400 hover:border-cyan-600 hover:text-cyan-400"
+            >
+              <ChevronIcon direction="left" />
+            </button>
             {/* 16px text on a phone, deliberately: below that, iOS zooms the
                 whole page in the moment the field takes focus, and the way back
                 out is a pinch. */}

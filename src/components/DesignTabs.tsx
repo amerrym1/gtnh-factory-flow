@@ -470,7 +470,6 @@ export function DesignTabs() {
         <button
           type="button"
           onClick={() => openLibrary()}
-          title="Library: your designs, boards and shared setups"
           aria-label="Open the library"
           aria-pressed={shelf.active}
           data-help-anchor="library"
@@ -501,7 +500,6 @@ export function DesignTabs() {
                 leaveLibrary();
                 openWelcomeTab();
               }}
-              title="Welcome"
               className="flex items-center gap-1 text-xs font-medium"
             >
               <Compass className="h-3 w-3" aria-hidden />
@@ -511,7 +509,6 @@ export function DesignTabs() {
               type="button"
               onClick={closeWelcomeTab}
               aria-label="Close the Welcome tab"
-              title="Close tab"
               className="ml-1 rounded px-1 text-xs text-fg-muted opacity-0 hover:bg-surface hover:text-fg focus:opacity-100 group-hover:opacity-100"
             >
               ✕
@@ -602,7 +599,6 @@ export function DesignTabs() {
                         void switchToDesign(design.id);
                       }}
                       onDoubleClick={() => setRenamingId(design.id)}
-                      title={design.name}
                       className="flex max-w-[166px] items-center gap-1.5 text-xs font-medium"
                     >
                       {hasDrawableFace(design.icon) ? <TabFace icon={design.icon} /> : null}
@@ -669,7 +665,6 @@ export function DesignTabs() {
             leaveWelcomeTab();
             void addDesign();
           }}
-          title="New design"
           aria-label="New design"
           className="shrink-0 rounded px-2 py-0.5 text-sm text-fg-muted hover:bg-surface-sunken hover:text-fg"
         >
@@ -680,7 +675,6 @@ export function DesignTabs() {
         {/* A library that failed to load or save says so here, in red, rather
             than leaving an empty strip to explain itself. */}
         <span
-          title={libraryError}
           className={[
             "ml-auto max-w-[360px] shrink-0 truncate pl-1 text-[11px]",
             libraryError || sync.state === "error" ? "text-red-400" : "text-fg-muted",
