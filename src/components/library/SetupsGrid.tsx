@@ -351,7 +351,7 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
               privatePost: detailPlan.isMine === true && !detailPlan.isPublic,
             },
             primary: {
-              label: "Open as a tab",
+              label: "Open a copy",
               onClick: () => {
                 setDetailId(undefined);
                 void open(detailPlan);
@@ -530,7 +530,7 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
           onClose={closeMenu}
         >
           <MenuItem
-            label="Open as a tab"
+            label="Open a copy as a tab"
             onClick={() => {
               closeMenu();
               void open(menuPlan);
