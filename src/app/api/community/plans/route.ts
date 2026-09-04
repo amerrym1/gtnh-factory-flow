@@ -50,10 +50,11 @@ export async function GET(request: Request) {
     const sort = SORT_COLUMNS[sortParam as CommunityPlanSort] ? (sortParam as CommunityPlanSort) : "new";
     // ilike patterns and PostgREST's or() syntax both have magic characters;
     // stripping them beats escaping them for a search box.
-    const search = (url.searchParams.get("search") ?? "")
-      .replace(/[,()%_\\]/g, " ")
-      .trim()
-      .slice(0, 80);
+    const rawSearch = (url.searchParams.get("search") ?? "").trim().slice(0, 80);
+    // An @name is matched EXACTLY, untouched: usernames carry underscores,
+    // and the scrub below would turn dom_loid into "dom loid" and find nobody.
+    const author = rawSearch.startsWith("@") ? rawSearch.slice(1).trim() : "";
+    const search = rawSearch.replace(/[,()%_\\]/g, " ").trim();
     const maxTierIndex = Number.parseInt(url.searchParams.get("maxTierIndex") ?? "", 10);
     const page = Math.max(1, Number.parseInt(url.searchParams.get("page") ?? "1", 10) || 1);
     const pageSize = Math.min(
@@ -74,12 +75,12 @@ export async function GET(request: Request) {
       if (tagTerm) {
         query = query.ilike("tags_text", `%${tagTerm}%`);
       }
-    } else if (search.startsWith("@")) {
+    } else if (author) {
       // One author, by name: clicking a creator on a library tile asks this.
-      const author = search.slice(1).trim();
-      if (author) {
-        query = query.ilike("author_name", author);
-      }
+      query = query.eq("author_name", author);
+    } else if (rawSearch.startsWith("@")) {
+      // A bare @ narrows to nobody rather than to everything.
+      query = query.eq("author_name", "");
     } else if (search) {
       query = query.or(
         `name.ilike.%${search}%,description.ilike.%${search}%,tags_text.ilike.%${search}%`,
