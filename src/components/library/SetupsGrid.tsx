@@ -4,7 +4,7 @@ import { LoaderCircle, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useCommunityUser } from "@/components/community/auth";
 import { IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
-import { formatRelativeDate, renderEntryHoverCard } from "@/components/shelf-cards";
+import { formatRelativeDate } from "@/components/shelf-cards";
 import {
   deleteCommunityPlan,
   downloadCommunityPlan,
@@ -19,6 +19,7 @@ import type { CommunityPlanSort, CommunityPlanSummary, EntryIcon } from "@/lib/c
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { parseFactoryProjectJson, serializeFactoryProject } from "@/lib/import-export";
 import { placePayload } from "@/lib/library/place-payload";
+import { GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
 import type { FactoryProject } from "@/lib/model/types";
 import { applyPlanView, capturePlanView } from "@/lib/plan-view";
 import { SETUPS_CHANGED_EVENT, type SetupsScope } from "@/lib/setups-tab";
@@ -57,6 +58,8 @@ type Armed = { id: string; what: "takedown" | "overwrite" };
 export function SetupsGrid({ scope }: { scope: SetupsScope }) {
   const { user, isLoading: isAuthLoading } = useCommunityUser();
   const [sort, setSort] = useState<CommunityPlanSort>("new");
+  /** Highest tier allowed, as an index into GT_VOLTAGE_TIERS; "" is any. */
+  const [maxTier, setMaxTier] = useState("");
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 250);
   const [shelf, setShelf] = useState<Shelf>();
@@ -82,7 +85,7 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
 
   const username = user?.username ?? "";
   const search = debouncedQuery.trim();
-  const key = `${scope}|${sort}|${search}|${username}|${refreshTick}`;
+  const key = `${scope}|${sort}|${maxTier}|${search}|${username}|${refreshTick}`;
   const activePage = target.key === key ? target.page : 1;
 
   useEffect(() => {
@@ -93,6 +96,7 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
     void listCommunityPlans({
       sort,
       search: search || undefined,
+      maxTier: maxTier || undefined,
       mine: scope === "mine" || undefined,
       page: activePage,
       pageSize: PAGE_SIZE,
@@ -123,7 +127,7 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
     return () => {
       cancelled = true;
     };
-  }, [key, activePage, scope, sort, search, username]);
+  }, [key, activePage, scope, sort, maxTier, search, username]);
 
   const isCurrent = shelf?.key === key;
   const plans = isCurrent ? shelf.plans : [];
@@ -323,12 +327,12 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-4 compact:gap-1.5 compact:px-2">
-        <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded border border-line-strong bg-surface px-2 text-xs text-fg sm:max-w-[320px]">
+        <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded border border-line-strong bg-surface px-2 text-xs text-fg">
           <Search className="h-3.5 w-3.5 shrink-0 text-fg-muted" aria-hidden />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={scope === "mine" ? "Search my posts (#tag)" : "Search the network (#tag)"}
+            placeholder={scope === "mine" ? "Search my posts (#tag, @name)" : "Search the network (#tag, @name)"}
             aria-label="Search setups"
             className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-fg-muted"
           />
@@ -343,6 +347,19 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
             </button>
           ) : null}
         </label>
+        <select
+          value={maxTier}
+          onChange={(event) => setMaxTier(event.target.value)}
+          aria-label="Highest power tier"
+          className="h-7 shrink-0 rounded border border-line-strong bg-surface px-1 text-xs text-fg outline-none"
+        >
+          <option value="">Any tier</option>
+          {GT_VOLTAGE_TIERS.map((entry, index) => (
+            <option key={entry.tier} value={String(index)}>
+              Up to {entry.tier}
+            </option>
+          ))}
+        </select>
         <select
           value={activeTag}
           onChange={(event) => setQuery(event.target.value ? `#${event.target.value}` : "")}
@@ -397,13 +414,19 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
                   <LibraryTile
                     icon={plan.icon}
                     name={plan.name}
-                    subtitle={
-                      <>
-                        {plan.authorName ?? "someone"} · {formatRelativeDate(plan.createdAt)}
-                        {copiedId === plan.id ? " · link copied" : ""}
-                      </>
+                    creator={plan.authorName}
+                    onCreator={plan.authorName ? () => setQuery(`@${plan.authorName}`) : undefined}
+                    when={
+                      copiedId === plan.id
+                        ? "link copied"
+                        : formatRelativeDate(plan.createdAt)
                     }
                     tier={plan.highestTier}
+                    onTier={
+                      plan.highestTierIndex >= 0
+                        ? () => setMaxTier(String(plan.highestTierIndex))
+                        : undefined
+                    }
                     machines={plan.machineCount}
                     euT={plan.totalEuT}
                     social={{
@@ -414,21 +437,6 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
                     }}
                     marks={{ posted: plan.isMine === true, privatePost: plan.isMine && !plan.isPublic }}
                     busy={busyId === plan.id}
-                    hoverCard={() =>
-                      renderEntryHoverCard({
-                        icon: plan.icon,
-                        name: plan.name,
-                        authorName: plan.authorName,
-                        createdAt: plan.createdAt,
-                        cardCount: plan.nodeCount + plan.storageCount,
-                        machineCount: plan.machineCount,
-                        tier: plan.highestTier,
-                        gameVersion: plan.gameVersion,
-                        description: plan.description || undefined,
-                        needs: plan.needs,
-                        outputs: plan.outputs,
-                      })
-                    }
                     menuOpen={menu?.id === plan.id}
                     onOpen={() => void open(plan)}
                     onMenu={(left, top) => {

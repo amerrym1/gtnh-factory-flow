@@ -74,6 +74,12 @@ export async function GET(request: Request) {
       if (tagTerm) {
         query = query.ilike("tags_text", `%${tagTerm}%`);
       }
+    } else if (search.startsWith("@")) {
+      // One author, by name: clicking a creator on a library tile asks this.
+      const author = search.slice(1).trim();
+      if (author) {
+        query = query.ilike("author_name", author);
+      }
     } else if (search) {
       query = query.or(
         `name.ilike.%${search}%,description.ilike.%${search}%,tags_text.ilike.%${search}%`,

@@ -4,17 +4,16 @@ import {
   ArrowBigUp,
   Download,
   EyeOff,
+  Factory,
   Globe,
   LayoutGrid,
   Link2,
-  Factory,
   LoaderCircle,
   Zap,
 } from "lucide-react";
-import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import { createPortal } from "react-dom";
 import { FLUID_ICON_SCALE, ResourceIcon } from "@/components/nei/ResourceIcon";
-import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { TierBadge, type VoltageTier } from "@/components/shelf-cards";
 import { normalizeBlueprintTags } from "@/lib/blueprints/types";
 import type { EntryIcon } from "@/lib/model/types";
@@ -26,12 +25,13 @@ import { MENU_WIDTH } from "./library-menu";
  *
  *   [face]  Title on one line                           [EV]
  *           creator · 2d ago                    ⋯ (on hover)
- *   🏭 15   ⚡ 5.0k                       OPEN 🌐●   ▲ 12  ⤓ 34
+ *   🏭 15   ⚡ 5.0k EU/t                   OPEN 🌐●   ▲ 12  ⤓ 34
  *
  * Click opens it: one verb, no question. Right click or the dots is the
- * menu. The vote arrow is the one control on the face of it; everything
- * else lives in the menu. Hover reveals the full stat card. No tags on
- * the tile: they live in the search and the hover.
+ * menu. The creator's name is a filter (click it, the grid narrows to
+ * them) and so is the tier badge. The vote arrow is the one other control
+ * on the face of it. NO TOOLTIPS anywhere on a tile: what a thing is must
+ * be readable without hovering.
  */
 
 export const DESIGN_DRAG_TYPE = "application/x-gtnh-design";
@@ -63,16 +63,21 @@ export interface TileSocial {
 export interface LibraryTileProps {
   icon?: EntryIcon;
   name: string;
-  /** Who or where, and when: "dom_loid · 1h ago", "Oil · 2d ago". */
-  subtitle: ReactNode;
+  /** Who made it (a post) or where it is filed (a design). */
+  creator?: string;
+  /** Clicking the creator narrows the grid to them. */
+  onCreator?: () => void;
+  /** "2d ago". */
+  when: string;
   tier?: VoltageTier;
+  /** Clicking the tier badge narrows the grid to that tier and below. */
+  onTier?: () => void;
   /** Machines to build. Drawers, sources and other non-machine cards never count. */
   machines?: number;
   euT?: number;
   social?: TileSocial;
   marks?: TileMarks;
   busy?: boolean;
-  hoverCard?: ReactNode | (() => ReactNode);
   menuOpen?: boolean;
   onOpen: () => void;
   onMenu: (left: number, top: number) => void;
@@ -84,21 +89,23 @@ export interface LibraryTileProps {
 export function LibraryTile({
   icon,
   name,
-  subtitle,
+  creator,
+  onCreator,
+  when,
   tier,
+  onTier,
   machines,
   euT,
   social,
   marks = {},
   busy,
-  hoverCard,
   menuOpen,
   onOpen,
   onMenu,
   dragId,
   renaming,
 }: LibraryTileProps) {
-  const body = (
+  return (
     <div
       draggable={Boolean(dragId) && !renaming}
       onDragStart={
@@ -126,9 +133,8 @@ export function LibraryTile({
         event.preventDefault();
         onMenu(event.clientX, event.clientY);
       }}
-      title={name}
       className={[
-        "group relative flex h-[76px] cursor-pointer select-none flex-col justify-between rounded border px-2.5 py-2 text-left",
+        "group relative flex h-[84px] cursor-pointer select-none flex-col justify-between rounded border px-2.5 py-2 text-left",
         marks.active
           ? "border-cyan-500/70 bg-[#182029]"
           : "border-line bg-[#151a21] hover:border-line-strong hover:bg-[#182029]",
@@ -138,7 +144,7 @@ export function LibraryTile({
     >
       {/* Row one and two: face, title, who and when; tier at the corner. */}
       <div className="flex items-start gap-2.5">
-        <Face icon={icon} size={36} />
+        <Face icon={icon} size={44} />
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-center gap-2">
             {renaming ? (
@@ -148,10 +154,40 @@ export function LibraryTile({
                 {name}
               </span>
             )}
-            {tier ? <TierBadge tier={tier} /> : null}
+            {tier ? (
+              onTier ? (
+                <button
+                  type="button"
+                  onClick={onTier}
+                  aria-label={`Show setups up to ${tier}`}
+                  className="flex shrink-0 rounded ring-cyan-400 hover:ring-2"
+                >
+                  <TierBadge tier={tier} />
+                </button>
+              ) : (
+                <TierBadge tier={tier} />
+              )
+            ) : null}
           </div>
-          <div className="flex items-center gap-1">
-            <span className="min-w-0 flex-1 truncate text-[10px] text-fg-muted">{subtitle}</span>
+          <div className="flex items-center gap-1 text-[10px] text-fg-muted">
+            <span className="min-w-0 flex-1 truncate">
+              {creator ? (
+                onCreator ? (
+                  <button
+                    type="button"
+                    onClick={onCreator}
+                    aria-label={`Show setups by ${creator}`}
+                    className="rounded text-fg-subtle hover:bg-surface-raised hover:text-cyan-200"
+                  >
+                    {creator}
+                  </button>
+                ) : (
+                  <span>{creator}</span>
+                )
+              ) : null}
+              {creator ? " · " : ""}
+              {when}
+            </span>
             <button
               type="button"
               aria-label={`Options for ${name}`}
@@ -170,17 +206,14 @@ export function LibraryTile({
 
       {/* Row three: the numbers, then the marks and the social figures. */}
       <div className="flex items-center gap-3 text-[10px] text-fg-muted">
-        {machines !== undefined ? (
-          <Stat icon={Factory} title="Machines" value={String(machines)} />
-        ) : null}
+        {machines !== undefined ? <Stat icon={Factory} value={String(machines)} /> : null}
         {euT !== undefined ? (
-          <Stat icon={Zap} title="EU per tick" value={formatEuT(euT)} tone="text-amber-300/80" />
+          <Stat icon={Zap} value={`${formatEuT(euT)} EU/t`} tone="text-amber-300/80" />
         ) : null}
         <span className="ml-auto flex items-center gap-2">
           {busy ? <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden /> : null}
           {marks.open ? (
             <span
-              title={marks.active ? "On the board now" : "Open on the tab strip"}
               className={[
                 "rounded px-1 text-[9px] font-black uppercase tracking-wide",
                 marks.active ? "bg-cyan-500/25 text-cyan-200" : "bg-surface-raised text-fg-subtle",
@@ -190,7 +223,7 @@ export function LibraryTile({
             </span>
           ) : null}
           {marks.privatePost ? (
-            <span title="Private: only you see this post" className="text-fg-muted">
+            <span className="text-fg-muted" aria-label="Private post">
               <EyeOff className="h-3 w-3" aria-hidden />
             </span>
           ) : null}
@@ -202,7 +235,6 @@ export function LibraryTile({
                 disabled={!social.onVote}
                 onClick={social.onVote}
                 aria-label={social.myVote === 1 ? "Take back your vote" : "Vote this up"}
-                title="Votes"
                 className={[
                   "flex items-center gap-0.5 rounded px-0.5",
                   social.myVote === 1
@@ -214,7 +246,7 @@ export function LibraryTile({
                 {social.score}
               </button>
               {social.downloads !== undefined ? (
-                <span className="flex items-center gap-0.5" title="Downloads">
+                <span className="flex items-center gap-0.5" aria-label="Downloads">
                   <Download className="h-3 w-3" aria-hidden />
                   {social.downloads}
                 </span>
@@ -225,23 +257,11 @@ export function LibraryTile({
       </div>
     </div>
   );
-
-  return hoverCard ? <MinecraftTooltip content={hoverCard}>{body}</MinecraftTooltip> : body;
 }
 
-function Stat({
-  icon: Icon,
-  title,
-  value,
-  tone,
-}: {
-  icon: typeof Factory;
-  title: string;
-  value: string;
-  tone?: string;
-}) {
+function Stat({ icon: Icon, value, tone }: { icon: typeof Factory; value: string; tone?: string }) {
   return (
-    <span className="flex items-center gap-1 tabular-nums" title={title}>
+    <span className="flex items-center gap-1 tabular-nums">
       <Icon className={["h-3 w-3", tone ?? ""].join(" ")} aria-hidden />
       {value}
     </span>
@@ -253,16 +273,16 @@ function PostGlyph({ marks }: { marks: TileMarks }) {
     return null;
   }
   const Icon = marks.posted ? Globe : marks.fromNetwork ? Download : Link2;
-  const title = marks.fromNetwork
+  const label = marks.fromNetwork
     ? "Opened from a shared setup"
     : marks.behind
-      ? "Posted. Edited since: use Update post to refresh it."
+      ? "Posted, edited since"
       : marks.posted
-        ? "Posted on the network"
-        : "Linked to a post on the network";
+        ? "Posted"
+        : "Linked to a post";
   return (
     <span
-      title={title}
+      aria-label={label}
       className={[
         "relative inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center",
         marks.posted ? "text-emerald-400" : "text-fg-muted",
@@ -275,7 +295,6 @@ function PostGlyph({ marks }: { marks: TileMarks }) {
           className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-amber-400 ring-2 ring-[#151a21]"
         />
       ) : null}
-      <span className="sr-only">{title}</span>
     </span>
   );
 }
@@ -429,7 +448,7 @@ export function TagEditor({
           key={tag}
           type="button"
           onClick={() => setDraft(draft.filter((entry) => entry !== tag))}
-          title="Remove this tag"
+          aria-label={`Remove tag ${tag}`}
           className="rounded border border-neutral-700 bg-[#17191d] px-1.5 text-[11px] text-neutral-300 hover:border-red-700 hover:text-red-300"
         >
           #{tag}

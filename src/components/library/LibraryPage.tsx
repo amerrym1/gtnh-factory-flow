@@ -24,6 +24,7 @@ import { formatRelativeDate } from "@/components/shelf-cards";
 import { listCommunityPlans } from "@/lib/community/client";
 import type { DesignFolder, DesignSummary } from "@/lib/designs/design-library";
 import { openDesigns } from "@/lib/designs/design-library";
+import { GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
 import { SETUPS_CHANGED_EVENT, requestShareDialog } from "@/lib/setups-tab";
 import { setLibraryView, useLibraryTab, type LibraryView } from "@/lib/library/library-tab";
 import { useDesignStore } from "@/store/design-store";
@@ -76,6 +77,8 @@ export function LibraryPage() {
 
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("edited");
+  /** Highest tier allowed, as an index into GT_VOLTAGE_TIERS; "" is any. */
+  const [maxTier, setMaxTier] = useState("");
   const [tileMenu, setTileMenu] = useState<{ designId: string; left: number; top: number }>();
   const [folderMenu, setFolderMenu] = useState<{ folderId: string; left: number; top: number }>();
   const [armedDeleteId, setArmedDeleteId] = useState<string>();
@@ -103,10 +106,17 @@ export function LibraryPage() {
   }, [folders, library.view]);
 
   const search = query.trim().toLowerCase();
-  const matches = useMemo(
-    () => (search ? designs.filter((design) => design.name.toLowerCase().includes(search)) : designs),
-    [designs, search],
-  );
+  const matches = useMemo(() => {
+    const tierLimit = maxTier === "" ? undefined : Number(maxTier);
+    return designs.filter(
+      (design) =>
+        (!search || design.name.toLowerCase().includes(search)) &&
+        // A design with no stat row yet cannot answer the tier question, so
+        // it shows under "any" and hides under a limit.
+        (tierLimit === undefined ||
+          (design.stats !== undefined && design.stats.tierIndex <= tierLimit)),
+    );
+  }, [designs, search, maxTier]);
   const sorted = useMemo(() => sortDesignsBy(matches, sort), [matches, sort]);
 
   const counts = useMemo(() => {
@@ -281,7 +291,7 @@ export function LibraryPage() {
                   <h2 className="mr-2 shrink-0 text-[12px] font-black uppercase tracking-[0.12em] text-fg compact:hidden">
                     {title}
                   </h2>
-                  <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded border border-line-strong bg-surface px-2 text-xs text-fg sm:max-w-[320px]">
+                  <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded border border-line-strong bg-surface px-2 text-xs text-fg">
                     <Search className="h-3.5 w-3.5 shrink-0 text-fg-muted" aria-hidden />
                     <input
                       value={query}
@@ -301,6 +311,19 @@ export function LibraryPage() {
                       </button>
                     ) : null}
                   </label>
+                  <select
+                    value={maxTier}
+                    onChange={(event) => setMaxTier(event.target.value)}
+                    aria-label="Highest power tier"
+                    className="h-7 shrink-0 rounded border border-line-strong bg-surface px-1 text-xs text-fg outline-none"
+                  >
+                    <option value="">Any tier</option>
+                    {GT_VOLTAGE_TIERS.map((entry, index) => (
+                      <option key={entry.tier} value={String(index)}>
+                        Up to {entry.tier}
+                      </option>
+                    ))}
+                  </select>
                   <select
                     value={sort}
                     onChange={(event) => setSort(event.target.value as SortKey)}
@@ -359,13 +382,14 @@ export function LibraryPage() {
                                 dragId={design.id}
                                 icon={design.icon}
                                 name={design.name}
-                                subtitle={[
-                                  folderName(design.folderId),
-                                  formatRelativeDate(design.updatedAt),
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
+                                creator={folderName(design.folderId)}
+                                when={formatRelativeDate(design.updatedAt)}
                                 tier={design.stats?.tier}
+                                onTier={
+                                  design.stats && design.stats.tierIndex >= 0
+                                    ? () => setMaxTier(String(design.stats?.tierIndex))
+                                    : undefined
+                                }
                                 machines={design.stats?.machines}
                                 euT={design.stats?.euT}
                                 marks={{
@@ -755,7 +779,7 @@ function RailItem({
           type="button"
           onClick={onClick}
           onDoubleClick={onDoubleClick}
-          title={label}
+
           className="min-w-0 flex-1 truncate text-left text-xs font-medium"
         >
           {label}
