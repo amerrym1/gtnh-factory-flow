@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, X } from "lucide-react";
+import { LoaderCircle, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useCommunityUser } from "@/components/community/auth";
 import { IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
@@ -472,7 +472,9 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
         ) : isLoading && plans.length === 0 ? (
           // Loading is a moment the whole page is about, so it sits in the
           // middle, large, and breathes: not a whisper in the corner.
-          <LoadingWire caption={scope === "mine" ? "Fetching your posts" : "Fetching public setups"} />
+          <div className="flex h-full min-h-[240px] items-center justify-center">
+            <LoaderCircle className="h-8 w-8 animate-spin text-neutral-200" aria-label="Loading" />
+          </div>
         ) : plans.length === 0 && !error ? (
           <p className="text-[12px] leading-relaxed text-[var(--mc-ink-muted)]">
             {search
@@ -528,8 +530,8 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
             {hasMore ? (
               // The next page comes on its own as this sentinel scrolls into
               // view; the spinner is only there to say so.
-              <div ref={moreRef} className="mt-3">
-                <LoadingWire caption="Loading more" small />
+              <div ref={moreRef} className="mt-3 flex h-10 items-center justify-center">
+                <LoaderCircle className="h-5 w-5 animate-spin text-neutral-400" aria-label="Loading more" />
               </div>
             ) : null}
           </>
@@ -642,54 +644,6 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
           onClose={() => setIconEditId(undefined)}
         />
       ) : null}
-    </div>
-  );
-}
-
-/**
- * The library's own loading sign: a wire between two machines with packets
- * riding it, the board's motif rather than a spinner. Big while the whole
- * page waits, small under the grid while the next page comes.
- */
-function LoadingWire({ caption, small }: { caption: string; small?: boolean }) {
-  const width = small ? 160 : 260;
-  const height = small ? 28 : 44;
-  const box = small ? 14 : 22;
-  const y = height / 2;
-  const from = box + 4;
-  const to = width - box - 4;
-  const packets = [0, 0.33, 0.66];
-  return (
-    <div
-      className={[
-        "flex flex-col items-center justify-center gap-2 text-[var(--mc-ink-muted)]",
-        small ? "h-12" : "h-full min-h-[240px]",
-      ].join(" ")}
-    >
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden>
-        <rect x={1} y={y - box / 2} width={box} height={box} fill="var(--mc-47)" stroke="var(--mc-61)" strokeWidth={2} />
-        <rect x={width - box - 1} y={y - box / 2} width={box} height={box} fill="var(--mc-47)" stroke="var(--mc-61)" strokeWidth={2} />
-        <line x1={from} y1={y} x2={to} y2={y} stroke="var(--mc-61)" strokeWidth={small ? 2 : 3} />
-        {packets.map((offset) => (
-          <circle key={offset} r={small ? 2.5 : 3.5} cy={y} fill="#22d3ee">
-            <animate
-              attributeName="cx"
-              values={`${from};${to}`}
-              dur="1.6s"
-              begin={`-${(offset * 1.6).toFixed(2)}s`}
-              repeatCount="indefinite"
-            />
-          </circle>
-        ))}
-      </svg>
-      <span
-        className={[
-          "font-black uppercase tracking-[0.18em]",
-          small ? "text-[10px]" : "text-[12px]",
-        ].join(" ")}
-      >
-        {caption}
-      </span>
     </div>
   );
 }
