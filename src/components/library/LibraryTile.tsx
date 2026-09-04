@@ -2,14 +2,13 @@
 
 import {
   ArrowBigUp,
-  Cog,
   Download,
   EyeOff,
   Globe,
   LayoutGrid,
   Link2,
+  Factory,
   LoaderCircle,
-  Square,
   Zap,
 } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
@@ -27,7 +26,7 @@ import { MENU_WIDTH } from "./library-menu";
  *
  *   [face]  Title on one line                           [EV]
  *           creator · 2d ago                    ⋯ (on hover)
- *   ▢ 21   ⚙ 15   ⚡ 5.0k                 OPEN 🌐●   ▲ 12  ⤓ 34
+ *   🏭 15   ⚡ 5.0k                       OPEN 🌐●   ▲ 12  ⤓ 34
  *
  * Click opens it: one verb, no question. Right click or the dots is the
  * menu. The vote arrow is the one control on the face of it; everything
@@ -67,7 +66,7 @@ export interface LibraryTileProps {
   /** Who or where, and when: "dom_loid · 1h ago", "Oil · 2d ago". */
   subtitle: ReactNode;
   tier?: VoltageTier;
-  cards?: number;
+  /** Machines to build. Drawers, sources and other non-machine cards never count. */
   machines?: number;
   euT?: number;
   social?: TileSocial;
@@ -87,7 +86,6 @@ export function LibraryTile({
   name,
   subtitle,
   tier,
-  cards,
   machines,
   euT,
   social,
@@ -172,11 +170,8 @@ export function LibraryTile({
 
       {/* Row three: the numbers, then the marks and the social figures. */}
       <div className="flex items-center gap-3 text-[10px] text-fg-muted">
-        {cards !== undefined ? (
-          <Stat icon={Square} title="Cards" value={String(cards)} />
-        ) : null}
         {machines !== undefined ? (
-          <Stat icon={Cog} title="Machines" value={String(machines)} />
+          <Stat icon={Factory} title="Machines" value={String(machines)} />
         ) : null}
         {euT !== undefined ? (
           <Stat icon={Zap} title="EU per tick" value={formatEuT(euT)} tone="text-amber-300/80" />
@@ -240,7 +235,7 @@ function Stat({
   value,
   tone,
 }: {
-  icon: typeof Square;
+  icon: typeof Factory;
   title: string;
   value: string;
   tone?: string;

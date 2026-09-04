@@ -404,7 +404,6 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
                       </>
                     }
                     tier={plan.highestTier}
-                    cards={plan.nodeCount + plan.storageCount}
                     machines={plan.machineCount}
                     euT={plan.totalEuT}
                     social={{

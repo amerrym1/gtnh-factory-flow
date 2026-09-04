@@ -366,7 +366,6 @@ export function LibraryPage() {
                                   .filter(Boolean)
                                   .join(" · ")}
                                 tier={design.stats?.tier}
-                                cards={design.stats?.cards}
                                 machines={design.stats?.machines}
                                 euT={design.stats?.euT}
                                 marks={{
