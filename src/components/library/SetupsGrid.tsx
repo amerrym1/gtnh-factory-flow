@@ -14,6 +14,7 @@ import {
   tagPlanWithCommunityId,
   voteCommunityPlan,
 } from "@/lib/community/client";
+import { parsePlanSearch, withAuthor, withTag } from "@/lib/community/search-query";
 import { sharedPlanLink } from "@/lib/community/shared-link";
 import type { CommunityPlanSort, CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
@@ -166,7 +167,7 @@ export function SetupsGrid({ scope, presetQuery }: { scope: SetupsScope; presetQ
   const needsAccount = scope === "mine" && !username;
   const isLoading = !needsAccount && (!isCurrent || shelf.page !== activePage);
   const hasMore = isCurrent && shelf.plans.length < shelf.total;
-  const activeTag = search.startsWith("#") ? search.slice(1).trim() : "";
+  const activeTag = parsePlanSearch(search).tags[0] ?? "";
   const tagOptions = [
     ...new Set([...plans.flatMap((plan) => plan.tags ?? []), ...(activeTag ? [activeTag] : [])]),
   ].sort();
@@ -341,7 +342,7 @@ export function SetupsGrid({ scope, presetQuery }: { scope: SetupsScope; presetQ
             onCreator: detailPlan.authorName
               ? () => {
                   setDetailId(undefined);
-                  setQuery(`@${detailPlan.authorName}`);
+                  setQuery((current) => withAuthor(current, detailPlan.authorName ?? ""));
                 }
               : undefined,
             when: `posted ${formatRelativeDate(detailPlan.createdAt)}`,
@@ -447,7 +448,7 @@ export function SetupsGrid({ scope, presetQuery }: { scope: SetupsScope; presetQ
           value={activeTag}
           onChange={(event) => {
             playBoardSound("tick");
-            setQuery(event.target.value ? `#${event.target.value}` : "");
+            setQuery((current) => (event.target.value ? withTag(current, event.target.value) : ""));
           }}
           aria-label="Filter by tag"
           className="h-7 max-w-[140px] shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
@@ -506,7 +507,7 @@ export function SetupsGrid({ scope, presetQuery }: { scope: SetupsScope; presetQ
                     icon={plan.icon}
                     name={plan.name}
                     creator={plan.authorName}
-                    onCreator={plan.authorName ? () => setQuery(`@${plan.authorName}`) : undefined}
+                    onCreator={plan.authorName ? () => setQuery((current) => withAuthor(current, plan.authorName ?? "")) : undefined}
                     when={
                       copiedId === plan.id
                         ? "link copied"
