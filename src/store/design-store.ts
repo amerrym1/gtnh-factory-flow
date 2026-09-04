@@ -195,6 +195,18 @@ async function flushCanvasInto(summary: DesignSummary | undefined): Promise<void
   await writeDesign(updateDesignProject({ ...summary, project }, project));
 }
 
+/** Still called Untitled, and nothing has been put on its board. */
+function isBlankDesign(record: DesignRecord): boolean {
+  const { project } = record;
+  return (
+    record.name === UNTITLED_DESIGN_NAME &&
+    project.nodes.length === 0 &&
+    (project.storages?.length ?? 0) === 0 &&
+    (project.annotations?.length ?? 0) === 0 &&
+    (project.pockets?.length ?? 0) === 0
+  );
+}
+
 async function listLibrary(): Promise<Pick<DesignStore, "designs" | "folders">> {
   const [designs, folders] = await Promise.all([listDesignSummaries(), listDesignFolders()]);
   return { designs: sortDesigns(designs), folders: sortFolders(folders) };
@@ -420,6 +432,18 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
         : undefined;
 
     for (const design of closing) {
+      // A tab nobody touched (still Untitled, nothing on the board) is not
+      // work, and a library full of blank "Untitled design" tiles is noise.
+      // Closing one throws it away instead of keeping it.
+      const record = await readDesign(design.id);
+      if (record && isBlankDesign(record)) {
+        await deleteDesign(design.id);
+        forgetDesignCameras([design.id]);
+        if (record.remoteUpdatedAt) {
+          noteLibraryDeletion("design", design.id);
+        }
+        continue;
+      }
       await writeDesignSummary(touchDesignMeta({ ...design, closed: true }));
     }
     const library = await listLibrary();

@@ -221,3 +221,31 @@ describe("folders", () => {
     expect(storage.deleteDesignFolder).toHaveBeenCalledWith("f1");
   });
 });
+
+describe("closing a blank tab", () => {
+  it("throws away an untouched Untitled design instead of keeping it", async () => {
+    const records = library(
+      summary("a"),
+      summary("blank", { name: "Untitled design" }),
+    );
+    storage.readActiveDesignId.mockReturnValue("blank");
+    await useDesignStore.getState().hydrate();
+
+    await useDesignStore.getState().closeDesign("blank");
+
+    expect(storage.deleteDesign).toHaveBeenCalledWith("blank");
+    expect(records.has("blank")).toBe(false);
+    expect(useDesignStore.getState().activeDesignId).toBe("a");
+  });
+
+  it("keeps a renamed design even when its board is empty", async () => {
+    const records = library(summary("a"), summary("named", { name: "Platline" }));
+    storage.readActiveDesignId.mockReturnValue("named");
+    await useDesignStore.getState().hydrate();
+
+    await useDesignStore.getState().closeDesign("named");
+
+    expect(storage.deleteDesign).not.toHaveBeenCalled();
+    expect(records.get("named")?.closed).toBe(true);
+  });
+});
