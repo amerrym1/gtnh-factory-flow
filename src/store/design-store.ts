@@ -45,7 +45,7 @@ import { applyPlanView, capturePlanView } from "@/lib/plan-view";
 import { noteLibraryDeletion } from "@/lib/library/library-deletes";
 import { leaveLibrary, openLibrary } from "@/lib/library/library-tab";
 import { leaveWelcomeTab } from "@/lib/welcome/welcome-tab";
-import type { FactoryProject } from "@/lib/model/types";
+import type { EntryIcon, FactoryProject } from "@/lib/model/types";
 import { LOCAL_STORAGE_KEY, useFactoryStore } from "./factory-store";
 
 export type DesignSaveState = "idle" | "saving" | "saved" | "error";
@@ -91,6 +91,15 @@ interface DesignStore {
   reloadActiveDesign: () => Promise<void>;
   /** Realigns the canvas plan's name with the active design's (sync renamed it). */
   syncActiveName: () => void;
+  /**
+   * The library's edit form: name, description and icon, for any design,
+   * open or not. The plan is rewritten (description and icon live on it),
+   * and the canvas follows when it is the active one.
+   */
+  updateDesignIdentity: (
+    id: string,
+    patch: { name?: string; description?: string; icon?: EntryIcon | null },
+  ) => Promise<void>;
   /**
    * Rearranges the strip to `orderedIds`, stamping each summary's `order`.
    * State updates first so the drop lands instantly; the writes follow.
@@ -618,6 +627,41 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     if (active) {
       useFactoryStore.getState().renameProject(active.name);
     }
+  },
+
+  updateDesignIdentity: async (id, patch) => {
+    if (patch.name !== undefined) {
+      await get().renameDesign(id, patch.name);
+    }
+    if (patch.description === undefined && patch.icon === undefined) {
+      return;
+    }
+    if (id === get().activeDesignId) {
+      // The canvas is the source of truth for the active design; autosave
+      // writes it through.
+      useFactoryStore.getState().setProjectIdentity({
+        ...(patch.description !== undefined ? { description: patch.description } : {}),
+        ...(patch.icon !== undefined ? { icon: patch.icon } : {}),
+      });
+      return;
+    }
+    const record = await readDesign(id);
+    if (!record) {
+      return;
+    }
+    const project = { ...record.project };
+    if (patch.description !== undefined) {
+      project.description = patch.description;
+    }
+    if (patch.icon !== undefined) {
+      if (patch.icon) {
+        project.icon = patch.icon;
+      } else {
+        delete project.icon;
+      }
+    }
+    await writeDesign(withStats(updateDesignProject({ ...record, project }, project)));
+    set(await listLibrary());
   },
 
   saveActiveProject: async (designId, project) => {

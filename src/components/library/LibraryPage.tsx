@@ -3,6 +3,7 @@
 import { Factory, Folder, FolderPlus, LayoutGrid, Plus, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 import { useCommunityUser } from "@/components/community/auth";
+import { IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
 import { formatRelativeDate } from "@/components/shelf-cards";
 import { deleteCommunityPlan, listCommunityPlans, patchCommunityPlan } from "@/lib/community/client";
 import { sharedPlanLink } from "@/lib/community/shared-link";
@@ -59,8 +60,11 @@ export function LibraryPage() {
   const createFolder = useDesignStore((state) => state.createFolder);
   const renameFolder = useDesignStore((state) => state.renameFolder);
   const deleteFolder = useDesignStore((state) => state.deleteFolder);
+  const updateDesignIdentity = useDesignStore((state) => state.updateDesignIdentity);
 
   const [query, setQuery] = useState("");
+  /** The design whose icon is being picked on the preview page. */
+  const [iconEditId, setIconEditId] = useState<string>();
   const [sort, setSort] = useState<SortKey>("edited");
   /** Highest tier allowed, as an index into GT_VOLTAGE_TIERS; "" is any. */
   const [maxTier, setMaxTier] = useState("");
@@ -380,6 +384,7 @@ export function LibraryPage() {
                     privatePost: detailPost ? !detailPost.isPublic : false,
                     behind: Boolean(detailPost && detailDesign.communityBehind),
                   },
+                  hasComments: Boolean(detailPost),
                   primary: {
                     label: "Open",
                     onClick: () => {
@@ -387,6 +392,26 @@ export function LibraryPage() {
                       open(detailDesign.id);
                     },
                   },
+                  onEdit: async (patch) => {
+                    await updateDesignIdentity(detailDesign.id, {
+                      name: patch.name,
+                      description: patch.description,
+                    });
+                    if (detailPost) {
+                      try {
+                        await patchCommunityPlan(detailPost.id, {
+                          name: patch.name,
+                          description: patch.description,
+                          tags: patch.tags,
+                        });
+                        notifySetupsChanged();
+                      } catch (thrown) {
+                        setError(thrown instanceof Error ? thrown.message : "Saving the post failed.");
+                      }
+                    }
+                  },
+                  editTags: Boolean(detailPost),
+                  onPickIcon: () => setIconEditId(detailDesign.id),
                   keys: [
                     ...(detailPost
                       ? [
@@ -438,9 +463,11 @@ export function LibraryPage() {
                         ]
                       : []),
                     {
-                      label: "Delete",
+                      label: "Delete this design",
                       icon: "delete" as const,
-                      arm: true,
+                      confirm: detailPost
+                        ? `Delete "${detailDesign.name}" from your library? Its post stays on the network.`
+                        : `Delete "${detailDesign.name}" from your library? This cannot be undone.`,
                       onClick: () => {
                         setDetailId(undefined);
                         void removeDesign(detailDesign.id);
@@ -757,6 +784,34 @@ export function LibraryPage() {
             }}
           />
         </LibraryMenu>
+      ) : null}
+
+      {iconEditId ? (
+        <IconPicker
+          title="Pick an icon"
+          suggestions={iconSuggestionsFromStats(detailPost?.needs, detailPost?.outputs)}
+          onPick={(icon) => {
+            const id = iconEditId;
+            setIconEditId(undefined);
+            void updateDesignIdentity(id, { icon });
+            if (detailPost) {
+              void patchCommunityPlan(detailPost.id, { icon }).then(notifySetupsChanged, () => undefined);
+            }
+          }}
+          onClear={
+            detailDesign?.icon
+              ? () => {
+                  const id = iconEditId;
+                  setIconEditId(undefined);
+                  void updateDesignIdentity(id, { icon: null });
+                  if (detailPost) {
+                    void patchCommunityPlan(detailPost.id, { icon: null }).then(notifySetupsChanged, () => undefined);
+                  }
+                }
+              : undefined
+          }
+          onClose={() => setIconEditId(undefined)}
+        />
       ) : null}
 
       {folderMenu && menuFolder ? (

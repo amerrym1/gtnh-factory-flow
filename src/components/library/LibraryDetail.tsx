@@ -10,6 +10,8 @@ import {
   Image as ImageIcon,
   Link2,
   MessageSquare,
+  Pencil,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
@@ -17,17 +19,24 @@ import { useEffect, useState, type ReactNode } from "react";
 import { formatSlotRate } from "@/components/flow/flow-explainers";
 import { fluidArtPixels, isSwatchFluid, ResourceIcon } from "@/components/nei/ResourceIcon";
 import { TierBadge, type VoltageTier } from "@/components/shelf-cards";
+import { normalizeBlueprintTags } from "@/lib/blueprints/types";
 import type { PlanResourceStat } from "@/lib/community/types";
 import type { EntryIcon } from "@/lib/model/types";
 import { Face, formatEuT, type TileMarks } from "./LibraryTile";
 
 /**
  * The step between a tile and the board: the grid gives way to one page
- * that fits on one screen. A short strip of the board photograph across
- * the top, then the face, name, who and when, the figures, a short toolbar
- * of ICON keys (vote, link, visibility, close tab, delete) and one big
- * Open button; the description; needs and makes as tight columns; then
- * the comments. Back (or Escape) brings the grid back. Not a popup.
+ * that fits on one screen. The board photograph in the top half, whole;
+ * then the face, name, who and when, the figures, and on the right the
+ * one big Open button over a short row of ICON keys (vote, link, public
+ * or private, post, edit, close tab, delete); the description; needs and
+ * makes as tight columns; then, for anything posted, the comments. Back
+ * (or Escape) brings the grid back. Not a popup.
+ *
+ * The SAME page whether you came from your own grid or the network: what
+ * differs is only which keys you have, because you own it or you do not.
+ * Edit turns the header into a form for the name, description and tags.
+ * Delete asks in words, in a strip under the keys, never by arming.
  */
 
 /** The board photograph a post carries, taken when it was shared. */
@@ -44,8 +53,14 @@ export interface DetailKey {
   active?: boolean;
   /** A number beside the icon: the vote count. */
   count?: number;
-  /** Two clicks: the first arms, the second fires. */
-  arm?: boolean;
+  /** Ask first, in these words, with a Delete and a Cancel under the keys. */
+  confirm?: string;
+}
+
+export interface DetailEdit {
+  name: string;
+  description: string;
+  tags: string[];
 }
 
 export interface LibraryDetailEntry {
@@ -64,10 +79,16 @@ export interface LibraryDetailEntry {
   /** The board photograph, when there is one. */
   previewUrl?: string;
   marks?: TileMarks;
-  /** The big button: Open, or Open as a tab. */
+  /** Posted things have a comments section; private designs do not. */
+  hasComments?: boolean;
+  /** The big button: Open, or Open a copy. */
   primary: { label: string; onClick: () => void };
-  /** The icon keys beside it. */
+  /** The icon keys under it. */
   keys?: DetailKey[];
+  /** Owned: the Edit key and the form it opens. Tags only where they exist. */
+  onEdit?: (patch: DetailEdit) => Promise<void> | void;
+  editTags?: boolean;
+  onPickIcon?: () => void;
 }
 
 export function LibraryDetail({
@@ -80,8 +101,10 @@ export function LibraryDetail({
   // The picture is probed up front: an <img> that 404s before React has
   // attached its onError never reports, and the frame would sit dark.
   const [probed, setProbed] = useState<{ url: string; ok: boolean }>();
-  const [armedKey, setArmedKey] = useState<string>();
+  const [confirming, setConfirming] = useState<DetailKey>();
   const [flashKey, setFlashKey] = useState<string>();
+  const [editing, setEditing] = useState<DetailEdit>();
+  const [saving, setSaving] = useState(false);
   const marks = entry.marks ?? {};
   useEffect(() => {
     if (!entry.previewUrl) {
@@ -109,23 +132,48 @@ export function LibraryDetail({
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.stopPropagation();
-        onClose();
+        if (editing) {
+          setEditing(undefined);
+        } else if (confirming) {
+          setConfirming(undefined);
+        } else {
+          onClose();
+        }
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
+  }, [onClose, editing, confirming]);
 
   const pressKey = (key: DetailKey) => {
-    if (key.arm && armedKey !== key.label) {
-      setArmedKey(key.label);
+    if (key.confirm) {
+      setConfirming(key);
       return;
     }
-    setArmedKey(undefined);
     key.onClick();
     if (key.icon === "link") {
       setFlashKey(key.label);
-      window.setTimeout(() => setFlashKey((current) => (current === key.label ? undefined : current)), 1200);
+      window.setTimeout(
+        () => setFlashKey((current) => (current === key.label ? undefined : current)),
+        1200,
+      );
+    }
+  };
+
+  const saveEdit = async () => {
+    if (!editing || !entry.onEdit) {
+      return;
+    }
+    setSaving(true);
+    try {
+      await entry.onEdit({
+        name: editing.name.trim() || entry.name,
+        description: editing.description.trim(),
+        tags: normalizeBlueprintTags(editing.tags),
+      });
+      setEditing(undefined);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -158,99 +206,206 @@ export function LibraryDetail({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex flex-col gap-3 px-5 py-3 compact:px-3">
-          {/* FACE, NAME, WHO, WHEN, FIGURES; the keys and Open on the right. */}
+          {/* FACE, NAME, WHO, WHEN, FIGURES; Open and the keys on the right. */}
           <div className="flex items-start gap-3">
-            <Face icon={entry.icon} size={48} />
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <div className="flex items-center gap-2">
-                <h2 className="min-w-0 truncate text-[17px] font-black leading-tight text-white">
-                  {entry.name}
-                </h2>
-                {entry.tier ? <TierBadge tier={entry.tier} /> : null}
-                {marks.open ? (
-                  <span className="rounded bg-surface-raised px-1 text-[9px] font-black uppercase tracking-wide text-fg-subtle">
-                    open
-                  </span>
-                ) : null}
-              </div>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-fg-muted">
-                <span>
-                  {entry.creator ? <span className="text-fg-subtle">{entry.creator}</span> : null}
-                  {entry.creator ? " · " : ""}
-                  {entry.when}
-                </span>
-                {entry.machines !== undefined ? (
-                  <span>
-                    <span className="font-bold text-fg-subtle">{entry.machines}</span> machines
-                  </span>
-                ) : null}
-                {entry.euT !== undefined ? (
-                  <span>
-                    <span className="font-bold text-amber-300">{formatEuT(entry.euT)}</span> EU/t
-                  </span>
-                ) : null}
-                {entry.downloads !== undefined ? (
-                  <span className="flex items-center gap-1">
-                    <Download className="h-3 w-3" aria-hidden />
-                    {entry.downloads}
-                  </span>
-                ) : null}
-                {marks.posted ? (
-                  <span className="flex items-center gap-1 text-emerald-400">
-                    <Globe className="h-3 w-3" aria-hidden />
-                    {marks.behind ? "posted, edited since" : marks.privatePost ? "posted, private" : "posted"}
-                  </span>
-                ) : null}
-              </div>
-              {entry.description ? (
-                <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-[12px] leading-relaxed text-fg-subtle">
-                  {entry.description}
-                </p>
-              ) : null}
-              {entry.tags && entry.tags.length > 0 ? (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {entry.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded border border-neutral-700 bg-[#17191d] px-1.5 text-[10px] text-neutral-300"
-                    >
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-
-            {/* THE KEYS. Icons, one job each, read by their label. */}
-            <div className="flex shrink-0 flex-col items-end gap-1.5">
+            {entry.onPickIcon && editing ? (
               <button
                 type="button"
-                onClick={entry.primary.onClick}
-                className="flex h-7 items-center rounded border border-cyan-500/60 bg-cyan-500/20 px-3 text-[12px] font-bold text-cyan-100 hover:bg-cyan-500/30"
+                onClick={entry.onPickIcon}
+                aria-label="Change the icon"
+                className="rounded ring-cyan-400 hover:ring-2"
               >
-                {entry.primary.label}
+                <Face icon={entry.icon} size={48} />
               </button>
-              <div className="flex items-center gap-1">
-                {entry.keys?.map((key) => (
-                  <IconKey
-                    key={key.label}
-                    label={armedKey === key.label ? `${key.label}: click again` : key.label}
-                    active={key.active}
-                    armed={armedKey === key.label}
-                    danger={key.icon === "delete"}
-                    count={key.count}
-                    onClick={() => pressKey(key)}
+            ) : (
+              <Face icon={entry.icon} size={48} />
+            )}
+
+            {editing ? (
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <input
+                  autoFocus
+                  value={editing.name}
+                  onChange={(event) => setEditing({ ...editing, name: event.target.value })}
+                  aria-label="Name"
+                  className="h-7 rounded border border-cyan-500 bg-surface px-2 text-[13px] font-bold text-fg outline-none"
+                />
+                <textarea
+                  value={editing.description}
+                  onChange={(event) => setEditing({ ...editing, description: event.target.value })}
+                  rows={2}
+                  placeholder="Describe it"
+                  aria-label="Description"
+                  className="resize-none rounded border border-line-strong bg-surface px-2 py-1 text-[12px] text-fg outline-none placeholder:text-fg-muted"
+                />
+                {entry.editTags ? (
+                  <input
+                    value={editing.tags.join(", ")}
+                    onChange={(event) =>
+                      setEditing({ ...editing, tags: event.target.value.split(",") })
+                    }
+                    placeholder="Tags, separated by commas"
+                    aria-label="Tags"
+                    className="h-7 rounded border border-line-strong bg-surface px-2 text-[12px] text-fg outline-none placeholder:text-fg-muted"
+                  />
+                ) : null}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void saveEdit()}
+                    className="flex h-7 items-center rounded border border-cyan-500/60 bg-cyan-500/20 px-3 text-[12px] font-bold text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-50"
                   >
-                    {flashKey === key.label ? (
-                      <Check className="h-3 w-3 text-emerald-300" aria-hidden />
-                    ) : (
-                      keyIcon(key.icon)
-                    )}
-                  </IconKey>
-                ))}
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditing(undefined)}
+                    className="flex h-7 items-center rounded border border-line-strong bg-surface px-3 text-[12px] font-medium text-fg-subtle hover:text-fg"
+                  >
+                    Cancel
+                  </button>
+                  {entry.onPickIcon ? (
+                    <span className="text-[11px] text-fg-muted">Click the icon to change it.</span>
+                  ) : null}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <div className="flex items-center gap-2">
+                  <h2 className="min-w-0 truncate text-[17px] font-black leading-tight text-white">
+                    {entry.name}
+                  </h2>
+                  {entry.tier ? <TierBadge tier={entry.tier} /> : null}
+                  {marks.open ? (
+                    <span className="rounded bg-surface-raised px-1 text-[9px] font-black uppercase tracking-wide text-fg-subtle">
+                      open
+                    </span>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-fg-muted">
+                  <span>
+                    {entry.creator ? <span className="text-fg-subtle">{entry.creator}</span> : null}
+                    {entry.creator ? " · " : ""}
+                    {entry.when}
+                  </span>
+                  {entry.machines !== undefined ? (
+                    <span>
+                      <span className="font-bold text-fg-subtle">{entry.machines}</span> machines
+                    </span>
+                  ) : null}
+                  {entry.euT !== undefined ? (
+                    <span>
+                      <span className="font-bold text-amber-300">{formatEuT(entry.euT)}</span> EU/t
+                    </span>
+                  ) : null}
+                  {entry.downloads !== undefined ? (
+                    <span className="flex items-center gap-1">
+                      <Download className="h-3 w-3" aria-hidden />
+                      {entry.downloads}
+                    </span>
+                  ) : null}
+                  {marks.posted ? (
+                    <span className="flex items-center gap-1 text-emerald-400">
+                      <Globe className="h-3 w-3" aria-hidden />
+                      {marks.behind
+                        ? "posted, edited since"
+                        : marks.privatePost
+                          ? "posted, private"
+                          : "posted"}
+                    </span>
+                  ) : null}
+                </div>
+                {entry.description ? (
+                  <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-[12px] leading-relaxed text-fg-subtle">
+                    {entry.description}
+                  </p>
+                ) : null}
+                {entry.tags && entry.tags.length > 0 ? (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {entry.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="rounded border border-neutral-700 bg-[#17191d] px-1.5 text-[10px] text-neutral-300"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {/* OPEN, then the keys: one job each, read by their label. */}
+            {editing ? null : (
+              <div className="flex shrink-0 flex-col items-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={entry.primary.onClick}
+                  className="flex h-7 items-center rounded border border-cyan-500/60 bg-cyan-500/20 px-3 text-[12px] font-bold text-cyan-100 hover:bg-cyan-500/30"
+                >
+                  {entry.primary.label}
+                </button>
+                <div className="flex items-center gap-1">
+                  {entry.onEdit ? (
+                    <IconKey
+                      label="Edit the name, description and tags"
+                      onClick={() =>
+                        setEditing({
+                          name: entry.name,
+                          description: entry.description ?? "",
+                          tags: entry.tags ?? [],
+                        })
+                      }
+                    >
+                      <Pencil className="h-3 w-3" aria-hidden />
+                    </IconKey>
+                  ) : null}
+                  {entry.keys?.map((key) => (
+                    <IconKey
+                      key={key.label}
+                      label={key.label}
+                      active={key.active}
+                      danger={key.icon === "delete"}
+                      count={key.count}
+                      onClick={() => pressKey(key)}
+                    >
+                      {flashKey === key.label ? (
+                        <Check className="h-3 w-3 text-emerald-300" aria-hidden />
+                      ) : (
+                        keyIcon(key.icon)
+                      )}
+                    </IconKey>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* THE QUESTION, in words, when a key asks one. */}
+          {confirming ? (
+            <div className="flex items-center gap-2 rounded border border-red-900 bg-red-950/50 px-3 py-2 text-[12px] text-red-100">
+              <span className="min-w-0 flex-1">{confirming.confirm}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const key = confirming;
+                  setConfirming(undefined);
+                  key.onClick();
+                }}
+                className="h-7 rounded border border-red-600 bg-red-700 px-3 text-[12px] font-bold text-white hover:bg-red-600"
+              >
+                {confirming.icon === "delete" ? "Delete" : "Yes"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirming(undefined)}
+                className="h-7 rounded border border-line-strong bg-surface px-3 text-[12px] font-medium text-fg-subtle hover:text-fg"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : null}
 
           {/* NEEDS AND MAKES: tight columns, all of them. */}
           {(entry.needs && entry.needs.length > 0) || (entry.outputs && entry.outputs.length > 0) ? (
@@ -260,29 +415,31 @@ export function LibraryDetail({
             </div>
           ) : null}
 
-          {/* COMMENTS: the shape of it, not yet the thing. */}
-          <section className="flex flex-col gap-1.5 border-t border-line pt-3">
-            <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#aebccd]">
-              <MessageSquare className="h-3.5 w-3.5 text-fg-muted" aria-hidden />
-              Comments
-            </h3>
-            <p className="text-[12px] text-fg-muted">No comments yet.</p>
-            <div className="flex items-center gap-2 rounded border border-line bg-[#151a21] px-2 py-1.5 opacity-60">
-              <input
-                disabled
-                placeholder="Say something about this setup"
-                className="min-w-0 flex-1 bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-muted"
-              />
-              <span className="text-[10px] text-fg-muted">coming soon</span>
-              <button
-                type="button"
-                disabled
-                className="h-6 rounded border border-line-strong bg-surface px-2.5 text-[11px] font-medium text-fg-muted"
-              >
-                Post
-              </button>
-            </div>
-          </section>
+          {/* COMMENTS: only on something posted. The shape, not yet the thing. */}
+          {entry.hasComments ? (
+            <section className="flex flex-col gap-1.5 border-t border-line pt-3">
+              <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#aebccd]">
+                <MessageSquare className="h-3.5 w-3.5 text-fg-muted" aria-hidden />
+                Comments
+              </h3>
+              <p className="text-[12px] text-fg-muted">No comments yet.</p>
+              <div className="flex items-center gap-2 rounded border border-line bg-[#151a21] px-2 py-1.5 opacity-60">
+                <input
+                  disabled
+                  placeholder="Say something about this setup"
+                  className="min-w-0 flex-1 bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-muted"
+                />
+                <span className="text-[10px] text-fg-muted">coming soon</span>
+                <button
+                  type="button"
+                  disabled
+                  className="h-6 rounded border border-line-strong bg-surface px-2.5 text-[11px] font-medium text-fg-muted"
+                >
+                  Post
+                </button>
+              </div>
+            </section>
+          ) : null}
         </div>
       </div>
     </div>
@@ -304,14 +461,13 @@ function keyIcon(icon: DetailKey["icon"]): ReactNode {
     case "close":
       return <X className="h-3 w-3" aria-hidden />;
     case "delete":
-      return <X className="h-3 w-3" aria-hidden />;
+      return <Trash2 className="h-3 w-3" aria-hidden />;
   }
 }
 
 function IconKey({
   label,
   active,
-  armed,
   danger,
   count,
   onClick,
@@ -319,7 +475,6 @@ function IconKey({
 }: {
   label: string;
   active?: boolean;
-  armed?: boolean;
   danger?: boolean;
   count?: number;
   onClick: () => void;
@@ -332,13 +487,11 @@ function IconKey({
       aria-label={label}
       className={[
         "flex h-6 min-w-6 items-center justify-center gap-1 rounded border px-1.5 text-[10px] font-medium",
-        armed
-          ? "border-red-500 bg-red-950 text-red-200"
-          : active
-            ? "border-cyan-500 bg-cyan-500/15 text-cyan-200"
-            : danger
-              ? "border-line-strong bg-surface text-fg-muted hover:border-red-700 hover:text-red-300"
-              : "border-line-strong bg-surface text-fg-subtle hover:border-line-strong hover:text-fg",
+        active
+          ? "border-cyan-500 bg-cyan-500/15 text-cyan-200"
+          : danger
+            ? "border-line-strong bg-surface text-fg-muted hover:border-red-700 hover:text-red-300"
+            : "border-line-strong bg-surface text-fg-subtle hover:text-fg",
       ].join(" ")}
     >
       {children}

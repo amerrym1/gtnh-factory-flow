@@ -350,6 +350,23 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
               posted: detailPlan.isMine === true,
               privatePost: detailPlan.isMine === true && !detailPlan.isPublic,
             },
+            hasComments: true,
+            onEdit: detailPlan.isMine
+              ? async (patch) => {
+                  try {
+                    await patchCommunityPlan(detailPlan.id, {
+                      name: patch.name,
+                      description: patch.description,
+                      tags: patch.tags,
+                    });
+                    patchPlan(detailPlan.id, (entry) => ({ ...entry, ...patch }));
+                  } catch (thrown) {
+                    fail(thrown, "Saving the post failed.");
+                  }
+                }
+              : undefined,
+            editTags: true,
+            onPickIcon: detailPlan.isMine ? () => setIconEditId(detailPlan.id) : undefined,
             primary: {
               label: "Open a copy",
               onClick: () => {
