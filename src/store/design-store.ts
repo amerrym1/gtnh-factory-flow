@@ -39,6 +39,7 @@ import {
   keepDesignCameras,
   readDesignCamera,
 } from "@/lib/designs/design-camera";
+import { computeDesignStats } from "@/lib/designs/design-stats";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { applyPlanView, capturePlanView } from "@/lib/plan-view";
 import { noteLibraryDeletion } from "@/lib/library/library-deletes";
@@ -192,7 +193,17 @@ async function flushCanvasInto(summary: DesignSummary | undefined): Promise<void
   }
 
   const project = withCurrentView(currentProject());
-  await writeDesign(updateDesignProject({ ...summary, project }, project));
+  await writeDesign(withStats(updateDesignProject({ ...summary, project }, project)));
+}
+
+/**
+ * The tile's stat row, from the plan being written and the canvas's books
+ * when the plan IS the canvas (EU/t needs a solve; the rest does not).
+ */
+function withStats(record: DesignRecord): DesignRecord {
+  // Both callers write the ACTIVE design, whose books are the canvas's.
+  const { lastResult } = useFactoryStore.getState();
+  return { ...record, stats: computeDesignStats(record.project, lastResult ?? undefined) };
 }
 
 /** Still called Untitled, and nothing has been put on its board. */
@@ -623,7 +634,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     set({ saveState: "saving" });
     try {
       const saved = withCurrentView(project);
-      await writeDesign(updateDesignProject({ ...summary, project: saved }, saved));
+      await writeDesign(withStats(updateDesignProject({ ...summary, project: saved }, saved)));
       set({ saveState: "saved", designs: sortDesigns(await listDesignSummaries()) });
     } catch (error) {
       set({
@@ -644,7 +655,8 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
  * since posted" reading onto every summary for the shelf's marks.
  */
 const ICON_BACKFILL_KEY = "gtnh-factory-flow.design-summary-icons.v1";
-const POST_BACKFILL_KEY = "gtnh-factory-flow.design-summary-posts.v1";
+// v2: the stat row joined the pass.
+const POST_BACKFILL_KEY = "gtnh-factory-flow.design-summary-posts.v2";
 
 /**
  * Runs the backfill once the library is hydrated, in the background, and
@@ -690,9 +702,14 @@ async function backfillSummaryIcons(
 
   for (const summary of summaries) {
     const record = await readDesign(summary.id);
-    if (record?.project.icon || record?.project.metadata?.communityPlanId) {
-      await writeDesignSummary(toDesignSummary(record));
+    if (!record) {
+      continue;
     }
+    // Every design gets its stat row (no EU/t without a solve); the icon
+    // and post fields come along for the ones that have them.
+    await writeDesignSummary(
+      toDesignSummary({ ...record, stats: record.stats ?? computeDesignStats(record.project) }),
+    );
   }
 
   try {

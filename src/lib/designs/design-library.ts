@@ -1,5 +1,6 @@
 import { planContentFingerprint } from "@/lib/community/plan-fingerprint";
 import type { EntryIcon, FactoryProject } from "@/lib/model/types";
+import type { DesignStats } from "./design-stats";
 
 /** Tab-strip metadata: everything needed to draw the tabs without loading plans. */
 export interface DesignSummary {
@@ -51,6 +52,8 @@ export interface DesignSummary {
    */
   metaUpdatedAt?: string;
   remoteUpdatedAt?: string;
+  /** The tile's stat row, stamped at save. Local only; never synced. */
+  stats?: DesignStats;
 }
 
 /** A library folder. Flat: folders hold designs, never other folders. */
@@ -247,6 +250,9 @@ export function toDesignSummary(record: DesignRecord): DesignSummary {
   }
   if (record.remoteUpdatedAt) {
     summary.remoteUpdatedAt = record.remoteUpdatedAt;
+  }
+  if (record.stats) {
+    summary.stats = record.stats;
   }
   if (communityPlanId) {
     summary.communityPlanId = communityPlanId;

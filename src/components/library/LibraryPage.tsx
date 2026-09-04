@@ -1,13 +1,11 @@
 "use client";
 
 import {
-  Download,
   Factory,
   Folder,
   FolderPlus,
   Globe,
   LayoutGrid,
-  Link2,
   PanelsTopLeft,
   Plus,
   Search,
@@ -17,48 +15,39 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type DragEvent,
   type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
-import { FLUID_ICON_SCALE, ResourceIcon } from "@/components/nei/ResourceIcon";
-import { BlueprintPanel } from "@/components/BlueprintPanel";
-import { SetupsPanel } from "@/components/SetupsPanel";
 import { useCommunityUser } from "@/components/community/auth";
-import { listCommunityPlans } from "@/lib/community/client";
 import { formatRelativeDate } from "@/components/shelf-cards";
+import { listCommunityPlans } from "@/lib/community/client";
 import type { DesignFolder, DesignSummary } from "@/lib/designs/design-library";
 import { openDesigns } from "@/lib/designs/design-library";
-import type { EntryIcon } from "@/lib/model/types";
 import { SETUPS_CHANGED_EVENT, requestShareDialog } from "@/lib/setups-tab";
 import { setLibraryView, useLibraryTab, type LibraryView } from "@/lib/library/library-tab";
 import { useDesignStore } from "@/store/design-store";
+import { BoardsSection } from "./BoardsSection";
+import { ArmedMenuItem, LibraryMenu, MenuHeading, MenuItem } from "./library-menu";
+import { DESIGN_DRAG_TYPE, InlineName, LibraryTile } from "./LibraryTile";
+import { SetupsGrid } from "./SetupsGrid";
 
 /**
- * The Shelf: all your designs, in folders, with the strip's open tabs as
- * one view of the same list.
+ * The Library: everything you have and everything the network has, as one
+ * kind of tile (see LibraryTile) under one rail.
  *
- * The rail on the left is the tree: Everything, Open, Shared, then the
- * folders and Unfiled. The right side is the designs as tiles, grouped by
- * folder under one title each when the whole shelf is showing, so
- * "Everything" reads as your folders in one scroll instead of a soup.
+ * MINE is your designs: Everything (grouped by folder, your saved boards
+ * at the foot), Open tabs, Shared (your posts, with the owner tools), the
+ * folders, Unfiled. NETWORK is Public setups, everyone's posts with their
+ * boards under them. Click a tile to open it (place it, for a board), right
+ * click or the dots for its menu, drag a design onto a rail folder to file
+ * it. Closing a tab never deletes; delete lives here, armed.
  *
- * Every tile is one design. Click opens it (onto the strip if it was
- * closed), right click or the dots is the menu, and a drag onto a rail
- * folder files it. Closing a tab never deletes; delete lives here, armed.
- *
- * SHARED is your posts on the network, the same list the Setups column used
- * to show under Mine, with the same owner tools. A design whose board has
- * moved on since it was last posted wears an amber ring on its globe, and
- * its menu offers "Update post": the design goes onto the canvas and the
- * ordinary share dialog opens on it, already pointed at the post.
+ * One framed panel with the rail INSIDE it, so it reads as this page's
+ * tree rather than another column bolted onto the recipe book. No title:
+ * the tab strip already says where you are.
  */
 
-const DESIGN_DRAG_TYPE = "application/x-gtnh-design";
-const MENU_WIDTH = 220;
-/** The server's page cap; my posts are read a page at a time up to this. */
 const POSTS_PAGE_SIZE = 48;
 const POSTS_MAX_PAGES = 6;
 
@@ -70,20 +59,8 @@ const SORTS: { value: SortKey; label: string }[] = [
   { value: "created", label: "Newest" },
 ];
 
-interface TileMenu {
-  designId: string;
-  left: number;
-  top: number;
-}
-
-interface FolderMenu {
-  folderId: string;
-  left: number;
-  top: number;
-}
-
 export function LibraryPage() {
-  const shelf = useLibraryTab();
+  const library = useLibraryTab();
   const designs = useDesignStore((state) => state.designs);
   const folders = useDesignStore((state) => state.folders);
   const activeDesignId = useDesignStore((state) => state.activeDesignId);
@@ -100,8 +77,8 @@ export function LibraryPage() {
 
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("edited");
-  const [tileMenu, setTileMenu] = useState<TileMenu>();
-  const [folderMenu, setFolderMenu] = useState<FolderMenu>();
+  const [tileMenu, setTileMenu] = useState<{ designId: string; left: number; top: number }>();
+  const [folderMenu, setFolderMenu] = useState<{ folderId: string; left: number; top: number }>();
   const [armedDeleteId, setArmedDeleteId] = useState<string>();
   const [renamingId, setRenamingId] = useState<string>();
   const [renamingFolderId, setRenamingFolderId] = useState<string>();
@@ -119,19 +96,19 @@ export function LibraryPage() {
   // A view naming a folder that has since gone falls back to everything.
   useEffect(() => {
     if (
-      shelf.view.kind === "folder" &&
-      !folders.some((folder) => folder.id === (shelf.view as { folderId: string }).folderId)
+      library.view.kind === "folder" &&
+      !folders.some((folder) => folder.id === (library.view as { folderId: string }).folderId)
     ) {
       setLibraryView({ kind: "all" });
     }
-  }, [folders, shelf.view]);
+  }, [folders, library.view]);
 
   const search = query.trim().toLowerCase();
   const matches = useMemo(
     () => (search ? designs.filter((design) => design.name.toLowerCase().includes(search)) : designs),
     [designs, search],
   );
-  const sorted = useMemo(() => sortForShelf(matches, sort), [matches, sort]);
+  const sorted = useMemo(() => sortDesignsBy(matches, sort), [matches, sort]);
 
   const counts = useMemo(() => {
     const perFolder = new Map<string, number>();
@@ -151,26 +128,16 @@ export function LibraryPage() {
   }, [designs]);
 
   const sections = useMemo(
-    () => sectionsFor(shelf.view, sorted, folders),
-    [shelf.view, sorted, folders],
+    () => sectionsFor(library.view, sorted, folders),
+    [library.view, sorted, folders],
   );
+  const folderName = (id: string | undefined) =>
+    id ? folders.find((folder) => folder.id === id)?.name : undefined;
 
-  const open = (id: string) => {
-    void switchToDesign(id);
-  };
-
+  const open = (id: string) => void switchToDesign(id);
   const updatePost = async (id: string) => {
     await switchToDesign(id);
     requestShareDialog();
-  };
-
-  const onRailDrop = (event: DragEvent, folderId: string | undefined) => {
-    event.preventDefault();
-    setDropKey(undefined);
-    const id = event.dataTransfer.getData(DESIGN_DRAG_TYPE);
-    if (id) {
-      void moveDesignToFolder(id, folderId);
-    }
   };
 
   const railDropProps = (key: string, folderId: string | undefined) => ({
@@ -184,26 +151,27 @@ export function LibraryPage() {
       }
     },
     onDragLeave: () => setDropKey((current) => (current === key ? undefined : current)),
-    onDrop: (event: DragEvent) => onRailDrop(event, folderId),
+    onDrop: (event: DragEvent) => {
+      event.preventDefault();
+      setDropKey(undefined);
+      const id = event.dataTransfer.getData(DESIGN_DRAG_TYPE);
+      if (id) {
+        void moveDesignToFolder(id, folderId);
+      }
+    },
   });
 
-  const menuDesign = tileMenu ? designs.find((design) => design.id === tileMenu.designId) : undefined;
+  const menuDesign = tileMenu
+    ? designs.find((design) => design.id === tileMenu.designId)
+    : undefined;
   const menuFolder = folderMenu
     ? folders.find((folder) => folder.id === folderMenu.folderId)
     : undefined;
-
-  const title = viewTitle(shelf.view, folders);
-
-  const embedded = embeddedPanelFor(shelf.view);
+  const title = viewTitle(library.view, folders);
+  const isSetupsView = library.view.kind === "shared" || library.view.kind === "public";
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-canvas text-fg">
-      {/*
-        ONE PAGE, not a second sidebar: one framed panel inset from the
-        columns either side, with the rail INSIDE the frame so it reads as
-        this page's tree rather than another column bolted onto the recipe
-        book. No title: the tab strip already says where you are.
-      */}
       <div className="min-h-0 flex-1 p-4 compact:p-2">
         <div className="flex h-full min-h-0 overflow-hidden rounded border border-line bg-[#12161b] compact:flex-col">
           {/* THE RAIL. On a phone it turns into one scrolling row of chips. */}
@@ -213,21 +181,21 @@ export function LibraryPage() {
               icon={LayoutGrid}
               label="Everything"
               count={designs.length}
-              selected={shelf.view.kind === "all"}
+              selected={library.view.kind === "all"}
               onClick={() => setLibraryView({ kind: "all" })}
             />
             <RailItem
               icon={PanelsTopLeft}
               label="Open tabs"
               count={counts.open}
-              selected={shelf.view.kind === "open"}
+              selected={library.view.kind === "open"}
               onClick={() => setLibraryView({ kind: "open" })}
             />
             <RailItem
               icon={Globe}
               label="Shared"
               count={counts.shared}
-              selected={shelf.view.kind === "shared"}
+              selected={library.view.kind === "shared"}
               onClick={() => setLibraryView({ kind: "shared" })}
             />
             {folders.map((folder) => (
@@ -236,7 +204,7 @@ export function LibraryPage() {
                 icon={Folder}
                 label={folder.name}
                 count={counts.perFolder.get(folder.id) ?? 0}
-                selected={shelf.view.kind === "folder" && shelf.view.folderId === folder.id}
+                selected={library.view.kind === "folder" && library.view.folderId === folder.id}
                 highlighted={dropKey === `folder:${folder.id}`}
                 renaming={renamingFolderId === folder.id}
                 onRename={(name) => {
@@ -277,7 +245,7 @@ export function LibraryPage() {
                 label="Unfiled"
                 count={counts.unfiled}
                 muted
-                selected={shelf.view.kind === "unfiled"}
+                selected={library.view.kind === "unfiled"}
                 highlighted={dropKey === "unfiled"}
                 onClick={() => setLibraryView({ kind: "unfiled" })}
                 {...railDropProps("unfiled", undefined)}
@@ -286,7 +254,7 @@ export function LibraryPage() {
             <button
               type="button"
               onClick={() => setNamingFolder(true)}
-              className="flex h-7 shrink-0 items-center gap-1.5 rounded px-2 text-xs text-fg-muted hover:bg-surface-raised hover:text-fg"
+              className="flex h-7 shrink-0 items-center gap-1.5 rounded px-2 text-fg-muted hover:bg-surface-raised hover:text-fg"
             >
               <FolderPlus className="h-3.5 w-3.5" aria-hidden />
               <span className="text-xs">New folder</span>
@@ -296,38 +264,18 @@ export function LibraryPage() {
             <RailItem
               icon={Factory}
               label="Public setups"
-              selected={shelf.view.kind === "public"}
+              selected={library.view.kind === "public"}
               onClick={() => setLibraryView({ kind: "public" })}
-            />
-
-            <RailGroup label="Boards" />
-            <RailItem
-              chip="✦"
-              label="My boards"
-              selected={shelf.view.kind === "boards"}
-              onClick={() => setLibraryView({ kind: "boards" })}
-            />
-            <RailItem
-              chip="✦"
-              label="Public boards"
-              selected={shelf.view.kind === "public-boards"}
-              onClick={() => setLibraryView({ kind: "public-boards" })}
             />
           </aside>
 
           {/* THE CONTENT. */}
           <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {embedded ? (
-              <div className="flex min-h-0 flex-1 flex-col">
-                <header className="flex h-10 shrink-0 items-center gap-3 border-b border-line px-4">
-                  <h2 className="text-[12px] font-black uppercase tracking-[0.12em] text-fg">
-                    {title}
-                  </h2>
-                  <span className="truncate text-[11px] text-fg-muted">{embedded.note}</span>
-                </header>
-                {/* The list panels keep their own search, tags and sort. */}
-                <div className="flex min-h-0 flex-1 flex-col">{embedded.panel}</div>
-              </div>
+            {isSetupsView ? (
+              <SetupsGrid
+                key={library.view.kind}
+                scope={library.view.kind === "shared" ? "mine" : "network"}
+              />
             ) : (
               <>
                 <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-4 compact:gap-1.5 compact:px-2">
@@ -373,61 +321,88 @@ export function LibraryPage() {
                     className="ml-auto flex h-7 shrink-0 items-center gap-1 rounded border border-cyan-500/60 bg-cyan-500/15 px-2.5 text-xs font-bold text-cyan-200 hover:bg-cyan-500/25"
                   >
                     <Plus className="h-3.5 w-3.5" aria-hidden />
-                    {/* A phone keeps the search box; the word goes. */}
                     <span className="compact:hidden">New design</span>
                   </button>
                 </header>
 
                 <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 compact:px-2">
-                  {sections.length === 0 ? (
-                    <EmptyNote>
-                      {search
-                        ? "No designs match."
-                        : shelf.view.kind === "open"
-                          ? "No design is open. Click one in the library to open it."
-                          : "Nothing here yet. Press New design, or drag a design onto a folder to file it."}
-                    </EmptyNote>
-                  ) : (
-                    <div className="flex flex-col gap-5">
-                      {sections.map((section) => (
-                        <div key={section.key} className="flex flex-col gap-2">
-                          {section.title ? (
-                            <h3 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-[#aebccd]">
-                              {section.folderId ? (
-                                <Folder className="h-3.5 w-3.5 text-fg-muted" aria-hidden />
-                              ) : null}
-                              {section.title}
-                              <span className="font-medium text-fg-muted">
-                                {section.designs.length}
-                              </span>
-                            </h3>
-                          ) : null}
-                          <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-2">
-                            {section.designs.map((design) => (
-                              <DesignTile
+                  <div className="flex flex-col gap-5">
+                    {sections.length === 0 ? (
+                      <EmptyNote>
+                        {search
+                          ? "No designs match."
+                          : library.view.kind === "open"
+                            ? "No design is open. Click one in the library to open it."
+                            : library.view.kind === "all"
+                              ? "Nothing here yet. Press New design to start one."
+                              : "Nothing here yet. Drag a design onto this folder to file it."}
+                      </EmptyNote>
+                    ) : null}
+                    {sections.map((section) => (
+                      <div key={section.key} className="flex flex-col gap-2">
+                        {section.title ? (
+                          <h3 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-[#aebccd]">
+                            {section.folderId ? (
+                              <Folder className="h-3.5 w-3.5 text-fg-muted" aria-hidden />
+                            ) : null}
+                            {section.title}
+                            <span className="font-medium text-fg-muted">
+                              {section.designs.length}
+                            </span>
+                          </h3>
+                        ) : null}
+                        <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-2">
+                          {section.designs.map((design) => {
+                            const post = postMark(design, myPosts);
+                            return (
+                              <LibraryTile
                                 key={design.id}
-                                design={design}
-                                isActive={design.id === activeDesignId}
-                                post={postMark(design, myPosts)}
-                                renaming={renamingId === design.id}
+                                dragId={design.id}
+                                icon={design.icon}
+                                name={design.name}
+                                subtitle={[
+                                  folderName(design.folderId),
+                                  formatRelativeDate(design.updatedAt),
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                                tier={design.stats?.tier}
+                                cards={design.stats?.cards}
+                                machines={design.stats?.machines}
+                                euT={design.stats?.euT}
+                                marks={{
+                                  open: !design.closed,
+                                  active: design.id === activeDesignId,
+                                  posted: post === "mine",
+                                  fromNetwork: post === "theirs",
+                                  linked: post === "linked",
+                                  behind: Boolean(design.communityBehind),
+                                }}
                                 menuOpen={tileMenu?.designId === design.id}
                                 onOpen={() => open(design.id)}
-                                onRename={(name) => {
-                                  setRenamingId(undefined);
-                                  void renameDesign(design.id, name);
-                                }}
-                                onCancelRename={() => setRenamingId(undefined)}
                                 onMenu={(left, top) => {
                                   closeMenus();
                                   setTileMenu({ designId: design.id, left, top });
                                 }}
+                                renaming={
+                                  renamingId === design.id
+                                    ? {
+                                        onCommit: (name) => {
+                                          setRenamingId(undefined);
+                                          void renameDesign(design.id, name);
+                                        },
+                                        onCancel: () => setRenamingId(undefined),
+                                      }
+                                    : undefined
+                                }
                               />
-                            ))}
-                          </div>
+                            );
+                          })}
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      </div>
+                    ))}
+                    {library.view.kind === "all" && !search ? <BoardsSection scope="mine" /> : null}
+                  </div>
                 </div>
               </>
             )}
@@ -435,25 +410,27 @@ export function LibraryPage() {
         </div>
       </div>
 
-
       {tileMenu && menuDesign ? (
-        <ShelfMenu
+        <LibraryMenu
           left={tileMenu.left}
           top={tileMenu.top}
           label={`Options for ${menuDesign.name}`}
           onClose={closeMenus}
         >
-          <MenuItem label="Open" onClick={() => {
+          <MenuItem
+            label="Open"
+            onClick={() => {
               closeMenus();
               open(menuDesign.id);
-            }} />
+            }}
+          />
           {!menuDesign.closed ? (
             <MenuItem
               label="Close tab"
               onClick={() => {
-              closeMenus();
-              void closeDesign(menuDesign.id);
-            }}
+                closeMenus();
+                void closeDesign(menuDesign.id);
+              }}
             />
           ) : null}
           <MenuItem
@@ -474,9 +451,9 @@ export function LibraryPage() {
             <MenuItem
               label="Update post"
               onClick={() => {
-              closeMenus();
-              void updatePost(menuDesign.id);
-            }}
+                closeMenus();
+                void updatePost(menuDesign.id);
+              }}
             />
           ) : null}
           {folders.length > 0 ? (
@@ -489,9 +466,9 @@ export function LibraryPage() {
                   indent
                   checked={menuDesign.folderId === folder.id}
                   onClick={() => {
-              closeMenus();
-              void moveDesignToFolder(menuDesign.id, folder.id);
-            }}
+                    closeMenus();
+                    void moveDesignToFolder(menuDesign.id, folder.id);
+                  }}
                 />
               ))}
               <MenuItem
@@ -499,35 +476,29 @@ export function LibraryPage() {
                 indent
                 checked={!menuDesign.folderId}
                 onClick={() => {
-              closeMenus();
-              void moveDesignToFolder(menuDesign.id, undefined);
-            }}
+                  closeMenus();
+                  void moveDesignToFolder(menuDesign.id, undefined);
+                }}
               />
             </>
           ) : null}
-          <MenuItem
-            label={
-              armedDeleteId === menuDesign.id
-                ? menuDesign.communityPlanId
-                  ? "Confirm delete (the post stays up)"
-                  : "Confirm delete"
-                : "Delete"
+          <ArmedMenuItem
+            label="Delete"
+            armedLabel={
+              menuDesign.communityPlanId ? "Confirm delete (the post stays up)" : "Confirm delete"
             }
-            tone="danger"
-            onClick={() => {
-              if (armedDeleteId === menuDesign.id) {
-                closeMenus();
-                void removeDesign(menuDesign.id);
-              } else {
-                setArmedDeleteId(menuDesign.id);
-              }
+            armed={armedDeleteId === menuDesign.id}
+            onArm={() => setArmedDeleteId(menuDesign.id)}
+            onFire={() => {
+              closeMenus();
+              void removeDesign(menuDesign.id);
             }}
           />
-        </ShelfMenu>
+        </LibraryMenu>
       ) : null}
 
       {folderMenu && menuFolder ? (
-        <ShelfMenu
+        <LibraryMenu
           left={folderMenu.left}
           top={folderMenu.top}
           label={`Options for folder ${menuFolder.name}`}
@@ -540,23 +511,17 @@ export function LibraryPage() {
               setRenamingFolderId(menuFolder.id);
             }}
           />
-          <MenuItem
-            label={
-              armedDeleteId === menuFolder.id
-                ? "Confirm delete (designs stay, unfiled)"
-                : "Delete folder"
-            }
-            tone="danger"
-            onClick={() => {
-              if (armedDeleteId === menuFolder.id) {
-                closeMenus();
-                void deleteFolder(menuFolder.id);
-              } else {
-                setArmedDeleteId(menuFolder.id);
-              }
+          <ArmedMenuItem
+            label="Delete folder"
+            armedLabel="Confirm delete (designs stay, unfiled)"
+            armed={armedDeleteId === menuFolder.id}
+            onArm={() => setArmedDeleteId(menuFolder.id)}
+            onFire={() => {
+              closeMenus();
+              void deleteFolder(menuFolder.id);
             }}
           />
-        </ShelfMenu>
+        </LibraryMenu>
       ) : null}
     </div>
   );
@@ -571,7 +536,11 @@ interface Section {
   designs: DesignSummary[];
 }
 
-function sectionsFor(view: LibraryView, designs: DesignSummary[], folders: DesignFolder[]): Section[] {
+function sectionsFor(
+  view: LibraryView,
+  designs: DesignSummary[],
+  folders: DesignFolder[],
+): Section[] {
   switch (view.kind) {
     case "open": {
       const open = openDesigns(designs);
@@ -587,9 +556,6 @@ function sectionsFor(view: LibraryView, designs: DesignSummary[], folders: Desig
     }
     case "shared":
     case "public":
-    case "boards":
-    case "public-boards":
-      // Embedded lists draw themselves.
       return [];
     case "all": {
       const sections: Section[] = [];
@@ -616,7 +582,7 @@ function sectionsFor(view: LibraryView, designs: DesignSummary[], folders: Desig
   }
 }
 
-function sortForShelf(designs: DesignSummary[], sort: SortKey): DesignSummary[] {
+function sortDesignsBy(designs: DesignSummary[], sort: SortKey): DesignSummary[] {
   const sorted = [...designs];
   switch (sort) {
     case "name":
@@ -642,10 +608,6 @@ function viewTitle(view: LibraryView, folders: DesignFolder[]): string {
       return "Shared";
     case "public":
       return "Public setups";
-    case "boards":
-      return "My boards";
-    case "public-boards":
-      return "Public boards";
     case "unfiled":
       return "Unfiled";
     case "folder":
@@ -733,41 +695,8 @@ function RailGroup({ label }: { label: string }) {
   );
 }
 
-/**
- * The views that are LISTS FROM ELSEWHERE, embedded whole: the network's
- * setups and the board shelves keep their own search, tags and sort, so the
- * library's own header steps aside for them.
- */
-function embeddedPanelFor(view: LibraryView): { panel: ReactNode; note: string } | undefined {
-  switch (view.kind) {
-    case "shared":
-      return {
-        panel: <SetupsPanel scope="mine" />,
-        note: "Your posts on the network. Open one to work on it.",
-      };
-    case "public":
-      return {
-        panel: <SetupsPanel scope="network" />,
-        note: "Everyone's shared factories. Open one as a tab, or load it as a board.",
-      };
-    case "boards":
-      return {
-        panel: <BlueprintPanel scope="mine" />,
-        note: "Boards you saved. Place one and it lands on the open design.",
-      };
-    case "public-boards":
-      return {
-        panel: <BlueprintPanel scope="public" />,
-        note: "Boards other people shared. Place one and it lands on the open design.",
-      };
-    default:
-      return undefined;
-  }
-}
-
 function RailItem({
   icon: Icon,
-  chip,
   label,
   count,
   selected,
@@ -783,9 +712,7 @@ function RailItem({
   onDragLeave,
   onDrop,
 }: {
-  icon?: typeof Folder;
-  /** A glyph instead of an icon: the board star. */
-  chip?: string;
+  icon: typeof Folder;
   label: string;
   count?: number;
   selected: boolean;
@@ -824,13 +751,7 @@ function RailItem({
         highlighted ? "outline outline-2 outline-cyan-400" : "",
       ].join(" ")}
     >
-      {Icon ? (
-        <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-      ) : (
-        <span aria-hidden className="w-3.5 shrink-0 text-center text-[12px] leading-none">
-          {chip}
-        </span>
-      )}
+      <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
       {renaming && onRename && onCancelRename ? (
         <InlineName initialName={label} onCommit={onRename} onCancel={onCancelRename} />
       ) : (
@@ -839,7 +760,7 @@ function RailItem({
           onClick={onClick}
           onDoubleClick={onDoubleClick}
           title={label}
-          className="min-w-0 flex-1 truncate text-left font-medium"
+          className="min-w-0 flex-1 truncate text-left text-xs font-medium"
         >
           {label}
         </button>
@@ -864,319 +785,6 @@ function RailItem({
   );
 }
 
-function DesignTile({
-  design,
-  isActive,
-  post,
-  renaming,
-  menuOpen,
-  onOpen,
-  onRename,
-  onCancelRename,
-  onMenu,
-}: {
-  design: DesignSummary;
-  isActive: boolean;
-  post: PostMark;
-  renaming: boolean;
-  menuOpen: boolean;
-  onOpen: () => void;
-  onRename: (name: string) => void;
-  onCancelRename: () => void;
-  onMenu: (left: number, top: number) => void;
-}) {
-  const isOpen = !design.closed;
-  return (
-    <div
-      draggable={!renaming}
-      onDragStart={(event) => {
-        event.dataTransfer.setData(DESIGN_DRAG_TYPE, design.id);
-        event.dataTransfer.effectAllowed = "move";
-      }}
-      role="button"
-      tabIndex={0}
-      onClick={(event) => {
-        if (renaming || (event.target as HTMLElement).closest("button, input")) {
-          return;
-        }
-        onOpen();
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" && !renaming) {
-          onOpen();
-        }
-      }}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        onMenu(event.clientX, event.clientY);
-      }}
-      title={design.name}
-      className={[
-        "group relative flex cursor-pointer select-none items-center gap-2.5 rounded border px-2 py-1.5 text-left",
-        isActive
-          ? "border-cyan-500/70 bg-[#182029]"
-          : "border-line bg-[#151a21] hover:border-line-strong hover:bg-[#182029]",
-        menuOpen ? "border-line-strong" : "",
-      ].join(" ")}
-    >
-      <Face icon={design.icon} size={44} />
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        {renaming ? (
-          <InlineName initialName={design.name} onCommit={onRename} onCancel={onCancelRename} />
-        ) : (
-          <span className="line-clamp-2 text-[12px] font-bold leading-tight text-fg group-hover:text-white">
-            {design.name}
-          </span>
-        )}
-        <span className="flex items-center gap-1.5 text-[10px] text-fg-muted">
-          <span className="truncate">{formatRelativeDate(design.updatedAt)}</span>
-          {isOpen ? (
-            <span
-              title={isActive ? "On the board now" : "Open on the tab strip"}
-              className={[
-                "rounded px-1 font-black uppercase tracking-wide",
-                isActive ? "bg-cyan-500/25 text-cyan-200" : "bg-surface-raised text-fg-subtle",
-              ].join(" ")}
-            >
-              open
-            </span>
-          ) : null}
-          <PostGlyph post={post} behind={Boolean(design.communityBehind)} />
-        </span>
-      </div>
-      <button
-        type="button"
-        aria-label={`Options for ${design.name}`}
-        aria-expanded={menuOpen}
-        onClick={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect();
-          onMenu(Math.min(rect.left, window.innerWidth - MENU_WIDTH - 8), rect.bottom + 4);
-        }}
-        className="absolute right-1 top-1 rounded px-1 text-xs text-fg-muted opacity-0 hover:bg-surface-raised hover:text-fg focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
-      >
-        ⋯
-      </button>
-    </div>
-  );
-}
-
-/**
- * The post mark: a globe for your own post, a download arrow for one you
- * opened from someone else, a link when the network has not said whose.
- * Amber ring: the board has been edited since the post last matched it.
- */
-function PostGlyph({ post, behind }: { post: PostMark; behind: boolean }) {
-  if (!post) {
-    return null;
-  }
-  const Icon = post === "mine" ? Globe : post === "theirs" ? Download : Link2;
-  const title =
-    post === "theirs"
-      ? "Opened from a shared setup"
-      : behind
-        ? "Posted. Edited since: use Update post to refresh it."
-        : post === "mine"
-          ? "Posted on the network"
-          : "Linked to a post on the network";
-  return (
-    <span
-      title={title}
-      className={[
-        "relative inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center",
-        post === "mine" ? "text-emerald-400" : "text-fg-muted",
-      ].join(" ")}
-    >
-      <Icon className="h-3 w-3" aria-hidden />
-      {behind && post !== "theirs" ? (
-        <span
-          aria-hidden
-          className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-amber-400 ring-2 ring-[#151a21]"
-        />
-      ) : null}
-      <span className="sr-only">{title}</span>
-    </span>
-  );
-}
-
-/** A saved face, drawn oversized so the art fills the box the way tabs do. */
-function Face({ icon, size }: { icon: EntryIcon | undefined; size: number }) {
-  const drawable = Boolean(icon && (icon.iconPath || icon.iconAtlas || icon.kind === "fluid"));
-  return (
-    <span
-      aria-hidden
-      className="flex shrink-0 items-center justify-center overflow-hidden rounded bg-[#0f1318]"
-      style={{ width: size, height: size }}
-    >
-      {drawable && icon ? (
-        <ResourceIcon
-          resource={{
-            id: icon.resourceId,
-            kind: icon.kind,
-            amount: 1,
-            displayName: icon.displayName,
-            iconPath: icon.iconPath,
-            iconAtlas: icon.iconAtlas,
-            dominantColor: icon.dominantColor,
-          }}
-          bare
-          tooltip={false}
-          showAmount={false}
-          iconPixelSize={
-            icon.kind === "fluid" ? Math.round((size - 8) / FLUID_ICON_SCALE) : (size - 8) * 2
-          }
-          className="!h-full !w-full"
-        />
-      ) : (
-        <LayoutGrid className="h-1/2 w-1/2 text-[#3d4a58]" />
-      )}
-    </span>
-  );
-}
-
 function EmptyNote({ children }: { children: ReactNode }) {
   return <p className="px-0.5 pt-2 text-[12px] leading-relaxed text-fg-muted">{children}</p>;
-}
-
-function InlineName({
-  initialName,
-  placeholder,
-  onCommit,
-  onCancel,
-}: {
-  initialName: string;
-  placeholder?: string;
-  onCommit: (name: string) => void;
-  onCancel: () => void;
-}) {
-  const [value, setValue] = useState(initialName);
-  // Committing on blur keeps a click elsewhere from silently discarding the
-  // edit. Escape is the one way out without saving, and it must not also
-  // commit on the blur it causes.
-  const cancelledRef = useRef(false);
-  return (
-    <input
-      autoFocus
-      value={value}
-      placeholder={placeholder}
-      onChange={(event) => setValue(event.target.value)}
-      onFocus={(event) => event.target.select()}
-      onBlur={() => {
-        if (!cancelledRef.current) {
-          onCommit(value);
-        }
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          onCommit(value);
-        } else if (event.key === "Escape") {
-          cancelledRef.current = true;
-          onCancel();
-        }
-      }}
-      onClick={(event) => event.stopPropagation()}
-      aria-label="Name"
-      className="min-w-0 w-full rounded border border-cyan-500 bg-surface px-1 text-xs text-fg outline-none"
-    />
-  );
-}
-
-/**
- * Rendered into `document.body` so no ancestor's `overflow` can clip it, and
- * positioned in viewport coordinates.
- */
-function ShelfMenu({
-  left,
-  top,
-  label,
-  onClose,
-  children,
-}: {
-  left: number;
-  top: number;
-  label: string;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) {
-        onClose();
-      }
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-    document.addEventListener("pointerdown", closeOnOutsideClick, true);
-    document.addEventListener("keydown", closeOnEscape);
-    window.addEventListener("resize", onClose);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsideClick, true);
-      document.removeEventListener("keydown", closeOnEscape);
-      window.removeEventListener("resize", onClose);
-    };
-  }, [onClose]);
-
-  if (typeof document === "undefined") {
-    return null;
-  }
-
-  // Kept on screen: a right click near the bottom edge would otherwise put
-  // half the menu below the fold.
-  const clampedLeft = Math.min(left, window.innerWidth - MENU_WIDTH - 8);
-  const clampedTop = Math.min(top, window.innerHeight - 320);
-
-  return createPortal(
-    <div
-      ref={menuRef}
-      role="menu"
-      aria-label={label}
-      style={{ left: clampedLeft, top: Math.max(8, clampedTop), width: MENU_WIDTH }}
-      className="fixed z-[100] max-h-[300px] overflow-y-auto rounded border border-line bg-surface-raised py-0.5 shadow-lg"
-    >
-      {children}
-    </div>,
-    document.body,
-  );
-}
-
-function MenuHeading({ children }: { children: ReactNode }) {
-  return (
-    <div className="mt-1 border-t border-line px-2 pb-0.5 pt-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-fg-muted">
-      {children}
-    </div>
-  );
-}
-
-function MenuItem({
-  label,
-  onClick,
-  tone = "default",
-  indent,
-  checked,
-}: {
-  label: string;
-  onClick: () => void;
-  tone?: "default" | "danger";
-  indent?: boolean;
-  checked?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      onClick={onClick}
-      className={[
-        "flex w-full items-center gap-1.5 whitespace-nowrap px-2 py-1.5 text-left text-xs hover:bg-surface-sunken",
-        indent ? "pl-4" : "",
-        tone === "danger" ? "text-red-400" : "text-fg",
-      ].join(" ")}
-    >
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {checked ? <span className="text-cyan-300">✓</span> : null}
-    </button>
-  );
 }

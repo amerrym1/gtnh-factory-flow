@@ -25,11 +25,8 @@ export type LibraryView =
   | { kind: "shared" }
   | { kind: "unfiled" }
   | { kind: "folder"; folderId: string }
-  /* NETWORK: everyone's public setups. */
-  | { kind: "public" }
-  /* BOARDS: saved chunks to place, yours and everyone's. */
-  | { kind: "boards" }
-  | { kind: "public-boards" };
+  /* NETWORK: everyone's public setups, saved boards included. */
+  | { kind: "public" };
 
 export interface LibraryTabState {
   /** It is the thing being shown, covering the board. */
@@ -74,9 +71,7 @@ function isShelfView(value: unknown): value is LibraryView {
     kind === "open" ||
     kind === "shared" ||
     kind === "unfiled" ||
-    kind === "public" ||
-    kind === "boards" ||
-    kind === "public-boards"
+    kind === "public"
   );
 }
 
