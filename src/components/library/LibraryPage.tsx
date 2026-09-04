@@ -12,6 +12,7 @@ import { GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
 import { SETUPS_CHANGED_EVENT, notifySetupsChanged, requestShareDialog } from "@/lib/setups-tab";
 import { setLibraryView, useLibraryTab } from "@/lib/library/library-tab";
 import { useDesignStore } from "@/store/design-store";
+import { LibraryDetail, previewUrlFor } from "./LibraryDetail";
 import { ArmedMenuItem, LibraryMenu, MenuHeading, MenuItem, MenuRule } from "./library-menu";
 import { DESIGN_DRAG_TYPE, InlineName, LibraryTile } from "./LibraryTile";
 import { SetupsGrid } from "./SetupsGrid";
@@ -77,6 +78,8 @@ export function LibraryPage() {
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [anchorId, setAnchorId] = useState<string>();
   const [bulkDeleteArmed, setBulkDeleteArmed] = useState(false);
+  /** The design whose preview page is up, if any. */
+  const [detailId, setDetailId] = useState<string>();
   const { posts: myPosts, signedIn } = useMyPosts();
 
   const closeMenus = useCallback(() => {
@@ -275,6 +278,10 @@ export function LibraryPage() {
   const menuFolder = folderMenu
     ? folders.find((folder) => folder.id === folderMenu.folderId)
     : undefined;
+  const detailDesign = detailId ? designs.find((design) => design.id === detailId) : undefined;
+  const detailPost = detailDesign?.communityPlanId
+    ? myPosts?.get(detailDesign.communityPlanId)
+    : undefined;
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-canvas text-fg">
@@ -352,7 +359,81 @@ export function LibraryPage() {
           <section className="flex min-h-0 min-w-0 flex-1 flex-col">
             {library.view.kind === "public" ? (
               <SetupsGrid scope="network" />
-            ) : (
+            ) : detailDesign ? (
+              <LibraryDetail
+                entry={{
+                  name: detailDesign.name,
+                  icon: detailDesign.icon,
+                  creator: folders.find((folder) => folder.id === detailDesign.folderId)?.name,
+                  when: `edited ${formatRelativeDate(detailDesign.updatedAt)}`,
+                  tier: detailDesign.stats?.tier,
+                  machines: detailDesign.stats?.machines,
+                  euT: detailDesign.stats?.euT,
+                  description: detailPost?.description || undefined,
+                  tags: detailPost?.tags,
+                  needs: detailPost?.needs,
+                  outputs: detailPost?.outputs,
+                  previewUrl: detailPost ? previewUrlFor(detailPost.id) : undefined,
+                  marks: {
+                    open: !detailDesign.closed,
+                    posted: Boolean(detailPost),
+                    privatePost: detailPost ? !detailPost.isPublic : false,
+                    behind: Boolean(detailPost && detailDesign.communityBehind),
+                  },
+                  primary: {
+                    label: "Open",
+                    onClick: () => {
+                      setDetailId(undefined);
+                      open(detailDesign.id);
+                    },
+                  },
+                  actions: [
+                    ...(detailPost
+                      ? [
+                          ...(detailDesign.communityBehind
+                            ? [
+                                {
+                                  label: "Update post",
+                                  onClick: () => {
+                                    setDetailId(undefined);
+                                    void postDesign(detailDesign.id);
+                                  },
+                                },
+                              ]
+                            : []),
+                          { label: "Copy link", onClick: () => void copyLink(detailDesign) },
+                          {
+                            label: detailPost.isPublic ? "Make private" : "Make public",
+                            onClick: () => void setPostVisibility(detailDesign, !detailPost.isPublic),
+                          },
+                        ]
+                      : signedIn && !detailDesign.communityPlanId
+                        ? [
+                            {
+                              label: "Post to the network",
+                              onClick: () => {
+                                setDetailId(undefined);
+                                void postDesign(detailDesign.id);
+                              },
+                            },
+                          ]
+                        : []),
+                    ...(!detailDesign.closed
+                      ? [
+                          {
+                            label: "Close tab",
+                            onClick: () => {
+                              setDetailId(undefined);
+                              void closeDesign(detailDesign.id);
+                            },
+                          },
+                        ]
+                      : []),
+                  ],
+                }}
+                onClose={() => setDetailId(undefined)}
+              />
+                  ) : (
               <>
                 <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-4 compact:gap-1.5 compact:px-2">
                   <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded border border-line-strong bg-surface px-2 text-xs text-fg">
@@ -517,7 +598,7 @@ export function LibraryPage() {
                             }
                             onCopyLink={post ? () => void copyLink(design) : undefined}
                             menuOpen={tileMenu?.designId === design.id}
-                            onOpen={() => open(design.id)}
+                            onOpen={() => setDetailId(design.id)}
                             onMenu={(left, top) => {
                               closeMenus();
                               setTileMenu({ designId: design.id, left, top });

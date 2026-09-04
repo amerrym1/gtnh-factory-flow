@@ -17,7 +17,6 @@ import { FLUID_ICON_SCALE, ResourceIcon } from "@/components/nei/ResourceIcon";
 import { TierBadge, type VoltageTier } from "@/components/shelf-cards";
 import { normalizeBlueprintTags } from "@/lib/blueprints/types";
 import type { EntryIcon } from "@/lib/model/types";
-import { MENU_WIDTH } from "./library-menu";
 
 /**
  * THE tile: one shape for a design of yours and a post on the network, in
@@ -210,18 +209,6 @@ export function LibraryTile({
               {creator ? " · " : ""}
               {when}
             </span>
-            <button
-              type="button"
-              aria-label={`Options for ${name}`}
-              aria-expanded={menuOpen}
-              onClick={(event) => {
-                const rect = event.currentTarget.getBoundingClientRect();
-                onMenu(Math.min(rect.left, window.innerWidth - MENU_WIDTH - 8), rect.bottom + 4);
-              }}
-              className="-my-1 shrink-0 rounded border border-line px-1.5 text-xs leading-none text-fg-muted hover:border-line-strong hover:bg-surface-raised hover:text-fg aria-expanded:text-fg"
-            >
-              ⋯
-            </button>
           </div>
         </div>
       </div>

@@ -25,6 +25,7 @@ import { applyPlanView, capturePlanView } from "@/lib/plan-view";
 import { SETUPS_CHANGED_EVENT, type SetupsScope } from "@/lib/setups-tab";
 import { useDesignStore } from "@/store/design-store";
 import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
+import { LibraryDetail, previewUrlFor } from "./LibraryDetail";
 import { ArmedMenuItem, LibraryMenu, MenuItem, MenuRule } from "./library-menu";
 import { LibraryTile, TagEditor } from "./LibraryTile";
 
@@ -71,6 +72,8 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
   const [armed, setArmed] = useState<Armed>();
   const [iconEditId, setIconEditId] = useState<string>();
   const [tagEdit, setTagEdit] = useState<{ id: string; left: number; top: number }>();
+  /** The post whose preview page is up, if any. */
+  const [detailId, setDetailId] = useState<string>();
   const [refreshTick, setRefreshTick] = useState(0);
   const activeTabName = useDesignStore(
     (state) =>
@@ -323,9 +326,65 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
   };
   const menuPlan = menu ? plans.find((plan) => plan.id === menu.id) : undefined;
   const tagPlan = tagEdit ? plans.find((plan) => plan.id === tagEdit.id) : undefined;
+  const detailPlan = detailId ? plans.find((plan) => plan.id === detailId) : undefined;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {detailPlan ? (
+        <LibraryDetail
+          entry={{
+            name: detailPlan.name,
+            icon: detailPlan.icon,
+            creator: detailPlan.authorName,
+            when: `posted ${formatRelativeDate(detailPlan.createdAt)}`,
+            tier: detailPlan.highestTier,
+            machines: detailPlan.machineCount,
+            euT: detailPlan.totalEuT,
+            description: detailPlan.description || undefined,
+            tags: detailPlan.tags,
+            needs: detailPlan.needs,
+            outputs: detailPlan.outputs,
+            previewUrl: previewUrlFor(detailPlan.id),
+            social: {
+              score: detailPlan.score,
+              myVote: detailPlan.myVote,
+              onVote: () => void vote(detailPlan),
+              downloads: detailPlan.downloads,
+            },
+            marks: {
+              posted: detailPlan.isMine === true,
+              privatePost: detailPlan.isMine === true && !detailPlan.isPublic,
+            },
+            primary: {
+              label: "Open as a tab",
+              onClick: () => {
+                setDetailId(undefined);
+                void open(detailPlan);
+              },
+            },
+            actions: [
+              {
+                label: "Load as a board",
+                onClick: () => {
+                  setDetailId(undefined);
+                  void openAsBoard(detailPlan);
+                },
+              },
+              { label: "Copy link", onClick: () => void copyLink(detailPlan) },
+              ...(detailPlan.isMine
+                ? [
+                    {
+                      label: detailPlan.isPublic ? "Make private" : "Make public",
+                      onClick: () => void setVisibility(detailPlan),
+                    },
+                  ]
+                : []),
+            ],
+          }}
+          onClose={() => setDetailId(undefined)}
+        />
+      ) : (
+        <>
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-4 compact:gap-1.5 compact:px-2">
         <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded border border-line-strong bg-surface px-2 text-xs text-fg">
           <Search className="h-3.5 w-3.5 shrink-0 text-fg-muted" aria-hidden />
@@ -438,7 +497,10 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
                     marks={{ posted: plan.isMine === true, privatePost: plan.isMine && !plan.isPublic }}
                     busy={busyId === plan.id}
                     menuOpen={menu?.id === plan.id}
-                    onOpen={() => void open(plan)}
+                    onOpen={() => {
+                      refreshStats(plan.id);
+                      setDetailId(plan.id);
+                    }}
                     onMenu={(left, top) => {
                       setArmed(undefined);
                       setMenu({ id: plan.id, left, top });
@@ -461,6 +523,8 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
           </>
         )}
       </div>
+        </>
+      )}
 
       {menu && menuPlan ? (
         <LibraryMenu
