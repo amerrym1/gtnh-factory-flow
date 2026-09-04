@@ -73,6 +73,8 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
   /** The post whose preview page is up, if any. */
   const [detailId, setDetailId] = useState<string>();
   const [refreshTick, setRefreshTick] = useState(0);
+  /** The sentinel under the grid; scrolling it into view asks for the next page. */
+  const moreRef = useRef<HTMLDivElement>(null);
   const activeTabName = useDesignStore(
     (state) =>
       state.designs.find((design) => design.id === state.activeDesignId)?.name ?? "this board",
@@ -129,6 +131,27 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
       cancelled = true;
     };
   }, [key, activePage, scope, sort, maxTier, search, username]);
+
+  // Infinite scroll: when the sentinel under the last row comes into view
+  // and nothing is loading, ask for the next page under the same key.
+  useEffect(() => {
+    const sentinel = moreRef.current;
+    if (!sentinel) {
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setTarget((current) => {
+          if (current.key === key && current.page !== activePage) {
+            return current;
+          }
+          return { key, page: activePage + 1 };
+        });
+      }
+    });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [key, activePage, shelf?.plans.length]);
 
   const isCurrent = shelf?.key === key;
   const plans = isCurrent ? shelf.plans : [];
@@ -508,15 +531,15 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
               ))}
             </div>
             {hasMore ? (
-              <button
-                type="button"
-                disabled={isLoading}
-                onClick={() => setTarget({ key, page: activePage + 1 })}
-                className="mt-3 flex h-7 w-full items-center justify-center gap-1.5 border border-[var(--mc-61)] bg-[var(--mc-33)] text-[11px] text-neutral-300 hover:border-[var(--mc-61)] hover:text-[var(--mc-ink)] disabled:opacity-50"
+              // The next page comes on its own as this sentinel scrolls into
+              // view; the spinner is only there to say so.
+              <div
+                ref={moreRef}
+                className="mt-3 flex h-10 items-center justify-center gap-2 text-[12px] text-[var(--mc-ink-muted)]"
               >
-                {isLoading ? <LoaderCircle className="h-3 w-3 animate-spin" /> : null}
-                Load more
-              </button>
+                <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden />
+                Loading more
+              </div>
             ) : null}
           </>
         )}
