@@ -24,7 +24,6 @@ import { applyPlanView, capturePlanView } from "@/lib/plan-view";
 import { SETUPS_CHANGED_EVENT, type SetupsScope } from "@/lib/setups-tab";
 import { useDesignStore } from "@/store/design-store";
 import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
-import { BoardsSection } from "./BoardsSection";
 import { ArmedMenuItem, LibraryMenu, MenuItem, MenuRule } from "./library-menu";
 import { LibraryTile, TagEditor } from "./LibraryTile";
 
@@ -408,14 +407,11 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
                     cards={plan.nodeCount + plan.storageCount}
                     machines={plan.machineCount}
                     euT={plan.totalEuT}
-                    tags={plan.tags}
-                    onTag={(tag) => setQuery(`#${tag}`)}
                     social={{
                       score: plan.score,
                       myVote: plan.myVote,
                       onVote: () => void vote(plan),
                       downloads: plan.downloads,
-                      views: plan.views,
                     }}
                     marks={{ posted: plan.isMine === true, privatePost: plan.isMine && !plan.isPublic }}
                     busy={busyId === plan.id}
@@ -457,12 +453,6 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
             ) : null}
           </>
         )}
-
-        {scope === "network" ? (
-          <div className="mt-6">
-            <BoardsSection scope="public" title="Public boards" />
-          </div>
-        ) : null}
       </div>
 
       {menu && menuPlan ? (

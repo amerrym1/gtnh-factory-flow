@@ -1,30 +1,38 @@
 "use client";
 
-import { ArrowBigUp, Download, EyeOff, Globe, LayoutGrid, Link2, LoaderCircle } from "lucide-react";
+import {
+  ArrowBigUp,
+  Cog,
+  Download,
+  EyeOff,
+  Globe,
+  LayoutGrid,
+  Link2,
+  LoaderCircle,
+  Square,
+  Zap,
+} from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { FLUID_ICON_SCALE, ResourceIcon } from "@/components/nei/ResourceIcon";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
-import { TagChips, TierBadge, type VoltageTier } from "@/components/shelf-cards";
+import { TierBadge, type VoltageTier } from "@/components/shelf-cards";
 import { normalizeBlueprintTags } from "@/lib/blueprints/types";
 import type { EntryIcon } from "@/lib/model/types";
 import { MENU_WIDTH } from "./library-menu";
 
 /**
- * THE tile: one shape for a design of yours, a post on the network and a
- * saved board, in every view of the library.
+ * THE tile: one shape for a design of yours and a post on the network, in
+ * every view of the library. Fixed height, three rows:
  *
- *   [face]  Name, up to two lines                  [⋯]
- *           who or where · when
- *   [LV]  42 cards · 31 machines · 8.2k EU/t
- *   #tag #tag                                (only when there are tags)
- *   ---------------------------------------------------
- *   ▲ 12   ⤓ 34                        OPEN  🌐●  ✦
+ *   [face]  Title on one line                           [EV]
+ *           creator · 2d ago                    ⋯ (on hover)
+ *   ▢ 21   ⚙ 15   ⚡ 5.0k                 OPEN 🌐●   ▲ 12  ⤓ 34
  *
- * Click opens (or places, for a board): one verb per kind, no question.
- * Right click or the dots is the menu. The vote arrow is the one control
- * on the face of it; everything else lives in the menu. Hover reveals the
- * full stat card. Rows with nothing in them collapse.
+ * Click opens it: one verb, no question. Right click or the dots is the
+ * menu. The vote arrow is the one control on the face of it; everything
+ * else lives in the menu. Hover reveals the full stat card. No tags on
+ * the tile: they live in the search and the hover.
  */
 
 export const DESIGN_DRAG_TYPE = "application/x-gtnh-design";
@@ -44,8 +52,6 @@ export interface TileMarks {
   linked?: boolean;
   /** A post of yours that is not public. */
   privatePost?: boolean;
-  /** A saved board (a chunk to place), not a whole design. */
-  board?: boolean;
 }
 
 export interface TileSocial {
@@ -53,7 +59,6 @@ export interface TileSocial {
   myVote?: 1 | -1;
   onVote?: () => void;
   downloads?: number;
-  views?: number;
 }
 
 export interface LibraryTileProps {
@@ -65,8 +70,6 @@ export interface LibraryTileProps {
   cards?: number;
   machines?: number;
   euT?: number;
-  tags?: string[];
-  onTag?: (tag: string) => void;
   social?: TileSocial;
   marks?: TileMarks;
   busy?: boolean;
@@ -87,8 +90,6 @@ export function LibraryTile({
   cards,
   machines,
   euT,
-  tags,
-  onTag,
   social,
   marks = {},
   busy,
@@ -99,11 +100,6 @@ export function LibraryTile({
   dragId,
   renaming,
 }: LibraryTileProps) {
-  const hasStats = cards !== undefined || machines !== undefined || euT !== undefined || tier;
-  const hasMarks =
-    marks.open || marks.posted || marks.fromNetwork || marks.linked || marks.privatePost || marks.board;
-  const hasFooter = Boolean(social) || hasMarks;
-
   const body = (
     <div
       draggable={Boolean(dragId) && !renaming}
@@ -134,7 +130,7 @@ export function LibraryTile({
       }}
       title={name}
       className={[
-        "group relative flex h-full cursor-pointer select-none flex-col rounded border text-left",
+        "group relative flex h-[76px] cursor-pointer select-none flex-col justify-between rounded border px-2.5 py-2 text-left",
         marks.active
           ? "border-cyan-500/70 bg-[#182029]"
           : "border-line bg-[#151a21] hover:border-line-strong hover:bg-[#182029]",
@@ -142,55 +138,68 @@ export function LibraryTile({
         busy ? "opacity-60" : "",
       ].join(" ")}
     >
-      <div className="flex items-start gap-2.5 px-2 pt-2">
-        <Face icon={icon} size={40} board={marks.board} />
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5 pr-5">
-          {renaming ? (
-            <InlineName initialName={name} onCommit={renaming.onCommit} onCancel={renaming.onCancel} />
-          ) : (
-            <span className="line-clamp-2 text-[12px] font-bold leading-tight text-fg group-hover:text-white">
-              {name}
-            </span>
-          )}
-          <span className="truncate text-[10px] text-fg-muted">{subtitle}</span>
+      {/* Row one and two: face, title, who and when; tier at the corner. */}
+      <div className="flex items-start gap-2.5">
+        <Face icon={icon} size={36} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-center gap-2">
+            {renaming ? (
+              <InlineName initialName={name} onCommit={renaming.onCommit} onCancel={renaming.onCancel} />
+            ) : (
+              <span className="min-w-0 flex-1 truncate text-[12px] font-bold leading-tight text-fg group-hover:text-white">
+                {name}
+              </span>
+            )}
+            {tier ? <TierBadge tier={tier} /> : null}
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="min-w-0 flex-1 truncate text-[10px] text-fg-muted">{subtitle}</span>
+            <button
+              type="button"
+              aria-label={`Options for ${name}`}
+              aria-expanded={menuOpen}
+              onClick={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                onMenu(Math.min(rect.left, window.innerWidth - MENU_WIDTH - 8), rect.bottom + 4);
+              }}
+              className="-my-1 shrink-0 rounded px-1 text-xs leading-none text-fg-muted opacity-0 hover:bg-surface-raised hover:text-fg focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
+            >
+              ⋯
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          aria-label={`Options for ${name}`}
-          aria-expanded={menuOpen}
-          onClick={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect();
-            onMenu(Math.min(rect.left, window.innerWidth - MENU_WIDTH - 8), rect.bottom + 4);
-          }}
-          className="absolute right-1 top-1 rounded px-1 text-xs text-fg-muted opacity-0 hover:bg-surface-raised hover:text-fg focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
-        >
-          ⋯
-        </button>
       </div>
 
-      {hasStats ? (
-        <div className="flex items-center gap-1.5 px-2 pt-1.5 text-[10px] text-fg-muted">
-          {tier ? <TierBadge tier={tier} /> : null}
-          <span className="leading-tight">
-            {[
-              cards !== undefined ? `${cards} cards` : undefined,
-              machines !== undefined ? `${machines} machines` : undefined,
-              euT !== undefined ? `${formatEuT(euT)} EU/t` : undefined,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </span>
-        </div>
-      ) : null}
-
-      {tags && tags.length > 0 ? (
-        <div className="h-7 overflow-hidden px-2 pt-1">
-          <TagChips tags={tags} onTag={onTag ?? (() => undefined)} className="pl-0" />
-        </div>
-      ) : null}
-
-      {hasFooter ? (
-        <div className="mt-auto flex items-center gap-2 border-t border-line/70 px-2 py-1 pt-1 text-[10px] text-fg-muted">
+      {/* Row three: the numbers, then the marks and the social figures. */}
+      <div className="flex items-center gap-3 text-[10px] text-fg-muted">
+        {cards !== undefined ? (
+          <Stat icon={Square} title="Cards" value={String(cards)} />
+        ) : null}
+        {machines !== undefined ? (
+          <Stat icon={Cog} title="Machines" value={String(machines)} />
+        ) : null}
+        {euT !== undefined ? (
+          <Stat icon={Zap} title="EU per tick" value={formatEuT(euT)} tone="text-amber-300/80" />
+        ) : null}
+        <span className="ml-auto flex items-center gap-2">
+          {busy ? <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden /> : null}
+          {marks.open ? (
+            <span
+              title={marks.active ? "On the board now" : "Open on the tab strip"}
+              className={[
+                "rounded px-1 text-[9px] font-black uppercase tracking-wide",
+                marks.active ? "bg-cyan-500/25 text-cyan-200" : "bg-surface-raised text-fg-subtle",
+              ].join(" ")}
+            >
+              open
+            </span>
+          ) : null}
+          {marks.privatePost ? (
+            <span title="Private: only you see this post" className="text-fg-muted">
+              <EyeOff className="h-3 w-3" aria-hidden />
+            </span>
+          ) : null}
+          <PostGlyph marks={marks} />
           {social ? (
             <>
               <button
@@ -198,8 +207,9 @@ export function LibraryTile({
                 disabled={!social.onVote}
                 onClick={social.onVote}
                 aria-label={social.myVote === 1 ? "Take back your vote" : "Vote this up"}
+                title="Votes"
                 className={[
-                  "flex items-center gap-0.5 rounded px-1 py-0.5",
+                  "flex items-center gap-0.5 rounded px-0.5",
                   social.myVote === 1
                     ? "text-cyan-300"
                     : "hover:bg-surface-raised hover:text-fg disabled:hover:bg-transparent",
@@ -216,37 +226,31 @@ export function LibraryTile({
               ) : null}
             </>
           ) : null}
-          <span className="ml-auto flex items-center gap-1.5">
-            {busy ? <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden /> : null}
-            {marks.open ? (
-              <span
-                title={marks.active ? "On the board now" : "Open on the tab strip"}
-                className={[
-                  "rounded px-1 font-black uppercase tracking-wide",
-                  marks.active ? "bg-cyan-500/25 text-cyan-200" : "bg-surface-raised text-fg-subtle",
-                ].join(" ")}
-              >
-                open
-              </span>
-            ) : null}
-            {marks.privatePost ? (
-              <span title="Private: only you see this post" className="text-fg-muted">
-                <EyeOff className="h-3 w-3" aria-hidden />
-              </span>
-            ) : null}
-            <PostGlyph marks={marks} />
-            {marks.board ? (
-              <span title="A saved board: place it on the open design" className="text-[#c9b8ec]">
-                ✦
-              </span>
-            ) : null}
-          </span>
-        </div>
-      ) : null}
+        </span>
+      </div>
     </div>
   );
 
   return hoverCard ? <MinecraftTooltip content={hoverCard}>{body}</MinecraftTooltip> : body;
+}
+
+function Stat({
+  icon: Icon,
+  title,
+  value,
+  tone,
+}: {
+  icon: typeof Square;
+  title: string;
+  value: string;
+  tone?: string;
+}) {
+  return (
+    <span className="flex items-center gap-1 tabular-nums" title={title}>
+      <Icon className={["h-3 w-3", tone ?? ""].join(" ")} aria-hidden />
+      {value}
+    </span>
+  );
 }
 
 function PostGlyph({ marks }: { marks: TileMarks }) {
@@ -289,21 +293,13 @@ export function formatEuT(value: number): string {
   return `${Math.round(value)}`;
 }
 
-/** A saved face, drawn oversized so the art fills the box the way tabs do. */
-export function Face({
-  icon,
-  size,
-  board,
-}: {
-  icon: EntryIcon | undefined;
-  size: number;
-  board?: boolean;
-}) {
+/** The saved face, drawn oversized so the art fills the box the way tabs do. No box behind it. */
+export function Face({ icon, size }: { icon: EntryIcon | undefined; size: number }) {
   const drawable = Boolean(icon && (icon.iconPath || icon.iconAtlas || icon.kind === "fluid"));
   return (
     <span
       aria-hidden
-      className="flex shrink-0 items-center justify-center overflow-hidden rounded bg-[#0f1318]"
+      className="flex shrink-0 items-center justify-center overflow-hidden"
       style={{ width: size, height: size }}
     >
       {drawable && icon ? (
@@ -321,12 +317,10 @@ export function Face({
           tooltip={false}
           showAmount={false}
           iconPixelSize={
-            icon.kind === "fluid" ? Math.round((size - 8) / FLUID_ICON_SCALE) : (size - 8) * 2
+            icon.kind === "fluid" ? Math.round((size - 6) / FLUID_ICON_SCALE) : (size - 6) * 2
           }
           className="!h-full !w-full"
         />
-      ) : board ? (
-        <span className="text-[18px] leading-none text-[#3d4a58]">✦</span>
       ) : (
         <LayoutGrid className="h-1/2 w-1/2 text-[#3d4a58]" />
       )}
@@ -380,7 +374,7 @@ export function InlineName({
 /**
  * The tag editor, as a small box at a viewport point: chips for the tags
  * so far, an input that adds on Enter or comma, and closing saves. One PUT
- * per session of editing, the same manners the old rows had.
+ * per session of editing.
  */
 export function TagEditor({
   left,

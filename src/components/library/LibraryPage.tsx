@@ -27,7 +27,6 @@ import { openDesigns } from "@/lib/designs/design-library";
 import { SETUPS_CHANGED_EVENT, requestShareDialog } from "@/lib/setups-tab";
 import { setLibraryView, useLibraryTab, type LibraryView } from "@/lib/library/library-tab";
 import { useDesignStore } from "@/store/design-store";
-import { BoardsSection } from "./BoardsSection";
 import { ArmedMenuItem, LibraryMenu, MenuHeading, MenuItem } from "./library-menu";
 import { DESIGN_DRAG_TYPE, InlineName, LibraryTile } from "./LibraryTile";
 import { SetupsGrid } from "./SetupsGrid";
@@ -400,9 +399,7 @@ export function LibraryPage() {
                           })}
                         </div>
                       </div>
-                    ))}
-                    {library.view.kind === "all" && !search ? <BoardsSection scope="mine" /> : null}
-                  </div>
+                    ))}                  </div>
                 </div>
               </>
             )}
