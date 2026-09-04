@@ -447,9 +447,14 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
             in the header, then manage it from this page.
           </p>
         ) : isLoading && plans.length === 0 ? (
-          <p className="flex items-center gap-1.5 text-[12px] text-[var(--mc-ink-muted)]">
-            <LoaderCircle className="h-3 w-3 animate-spin" /> Loading…
-          </p>
+          // Loading is a moment the whole page is about, so it sits in the
+          // middle, large, and breathes: not a whisper in the corner.
+          <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-3 text-[var(--mc-ink)]">
+            <LoaderCircle className="h-10 w-10 animate-spin text-cyan-300" aria-hidden />
+            <span className="animate-pulse text-[16px] font-bold uppercase tracking-[0.08em]">
+              {scope === "mine" ? "Loading your posts" : "Loading public setups"}
+            </span>
+          </div>
         ) : plans.length === 0 && !error ? (
           <p className="text-[12px] leading-relaxed text-[var(--mc-ink-muted)]">
             {search
