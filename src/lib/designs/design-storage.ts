@@ -15,8 +15,11 @@ import {
  * the two would race on startup, when both are opened at once.
  */
 const DB_NAME = "gtnh-factory-flow-designs";
-// 2: the shelf's folders store.
-const DB_VERSION = 2;
+// 2: the library's folders store. 3: the same store again, because a browser
+// that hot-reloaded through the change reached 2 before the store was in the
+// code, and an upgrade never re-runs at the same number; the create below is
+// guarded, so a database that already has it is untouched.
+const DB_VERSION = 3;
 
 /*
  * Metadata and plans live in separate stores so the tab strip costs almost

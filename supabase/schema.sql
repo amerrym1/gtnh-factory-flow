@@ -165,3 +165,51 @@ create table if not exists blueprint_votes (
 );
 
 alter table blueprint_votes enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- THE LIBRARY: an account's own designs and folders, synced across browsers.
+--
+-- Ids are minted by the client (the same ids the browser database uses), so
+-- a design keeps its id whichever device made it. Rows are never deleted,
+-- only tombstoned (deleted_at), so a delete on one device reaches the others
+-- instead of being uploaded back by a browser that still holds the copy.
+-- Timestamps are the CLIENT's: last write wins by the writer's own clock,
+-- and the server stores what it is told so both sides agree on "synced".
+-- Same access model as everything above: RLS on, no policies, service-role
+-- only. Purely additive: nothing here touches existing tables or data.
+create table if not exists library_folders (
+  user_id uuid not null references community_users (id) on delete cascade,
+  id text not null,
+  name text not null check (char_length(name) between 1 and 60),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  primary key (user_id, id)
+);
+
+create table if not exists library_designs (
+  user_id uuid not null references community_users (id) on delete cascade,
+  id text not null,
+  name text not null check (char_length(name) between 1 and 80),
+  plan jsonb not null,
+  icon jsonb,
+  folder_id text,
+  -- Off the tab strip, in the library only. Synced: closing on one device
+  -- closes everywhere.
+  closed boolean not null default false,
+  sort_order integer,
+  community_plan_id text,
+  created_at timestamptz not null default now(),
+  -- updated_at moves on ANY change; plan_updated_at only when the plan did,
+  -- so a pull can tell a rename from an edit and skip fetching the plan.
+  updated_at timestamptz not null default now(),
+  plan_updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  primary key (user_id, id)
+);
+
+create index if not exists library_designs_user_updated_idx
+  on library_designs (user_id, updated_at desc);
+
+alter table library_folders enable row level security;
+alter table library_designs enable row level security;

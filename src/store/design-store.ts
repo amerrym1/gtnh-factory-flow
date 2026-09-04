@@ -15,6 +15,7 @@ import {
   sortFolders,
   stampDesignOrder,
   toDesignSummary,
+  touchDesignMeta,
   updateDesignProject,
   type DesignFolder,
   type DesignRecord,
@@ -40,6 +41,7 @@ import {
 } from "@/lib/designs/design-camera";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { applyPlanView, capturePlanView } from "@/lib/plan-view";
+import { noteLibraryDeletion } from "@/lib/library/library-deletes";
 import { leaveLibrary, openLibrary } from "@/lib/library/library-tab";
 import { leaveWelcomeTab } from "@/lib/welcome/welcome-tab";
 import type { FactoryProject } from "@/lib/model/types";
@@ -77,8 +79,17 @@ interface DesignStore {
    * closed.
    */
   closeDesigns: (ids: string[], keepActiveId?: string) => Promise<void>;
-  /** Deletes the design for good. Its post on the network, if any, stays up. */
-  removeDesign: (id: string) => Promise<void>;
+  /**
+   * Deletes the design for good. Its post on the network, if any, stays up.
+   * `fromSync` means the account already knows: no tombstone is queued.
+   */
+  removeDesign: (id: string, options?: { fromSync?: boolean }) => Promise<void>;
+  /** Relists designs and folders from storage (after sync wrote there). */
+  refreshLibrary: () => Promise<void>;
+  /** Puts the stored plan of the active design back on the canvas (sync pulled it). */
+  reloadActiveDesign: () => Promise<void>;
+  /** Realigns the canvas plan's name with the active design's (sync renamed it). */
+  syncActiveName: () => void;
   /**
    * Rearranges the strip to `orderedIds`, stamping each summary's `order`.
    * State updates first so the drop lands instantly; the writes follow.
@@ -206,7 +217,11 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       if (summaries.length === 0) {
         summaries = [await seedFirstDesign()];
       } else {
-        summaries = await backfillSummaryIcons(summaries);
+        // NOT awaited: the pass reads every plan, which on a big library is
+        // many seconds, and the strip must not sit as a placeholder for it.
+        // A New design pressed in that window used to open a canvas the
+        // strip could not list, and then be stamped over when this landed.
+        scheduleSummaryBackfill();
       }
       folders = sortFolders(await listDesignFolders());
     } catch (error) {
@@ -228,7 +243,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     // A remembered design that is somehow closed is reopened rather than
     // second-guessed: it is what was on the canvas.
     if (rememberedDesign?.closed) {
-      const reopened = { ...rememberedDesign };
+      const reopened = touchDesignMeta({ ...rememberedDesign });
       delete reopened.closed;
       await writeDesignSummary(reopened);
       summaries = summaries.map((design) => (design.id === reopened.id ? reopened : design));
@@ -291,7 +306,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     await flushCanvasInto(designs.find((design) => design.id === activeDesignId));
     if (target.closed) {
       // Opening from the shelf puts the design back on the strip, at the end.
-      const reopened = toDesignSummary(target);
+      const reopened = touchDesignMeta(toDesignSummary(target));
       delete reopened.closed;
       await writeDesignSummary(reopened);
     }
@@ -363,11 +378,12 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       return;
     }
 
-    const renamed: DesignSummary = {
+    // A rename is metadata: `metaUpdatedAt` moves and `updatedAt` (the plan's
+    // own stamp) does not, so sync sends the name without the plan.
+    const renamed: DesignSummary = touchDesignMeta({
       ...summary,
       name: normalizeDesignName(name),
-      updatedAt: new Date().toISOString(),
-    };
+    });
 
     // Only the metadata is rewritten: the stored plan can be megabytes, and a
     // rename does not touch it. The plan's own `name` field, which the JSON
@@ -404,7 +420,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
         : undefined;
 
     for (const design of closing) {
-      await writeDesignSummary({ ...design, closed: true });
+      await writeDesignSummary(touchDesignMeta({ ...design, closed: true }));
     }
     const library = await listLibrary();
 
@@ -431,12 +447,16 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     }
   },
 
-  removeDesign: async (id) => {
+  removeDesign: async (id, options) => {
     const { designs, activeDesignId } = get();
     const nextActiveId = pickDesignAfterDelete(openDesigns(designs), id);
 
     await deleteDesign(id);
     forgetDesignCameras([id]);
+    if (!options?.fromSync) {
+      // The account hears about it as a tombstone on the next push.
+      noteLibraryDeletion("design", id);
+    }
     let library = await listLibrary();
 
     if (library.designs.length === 0) {
@@ -469,7 +489,12 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
   },
 
   reorderDesigns: async (orderedIds) => {
-    const stamped = stampDesignOrder(get().designs, orderedIds);
+    const before = new Map(get().designs.map((design) => [design.id, design.order]));
+    const stamped = stampDesignOrder(get().designs, orderedIds).map((summary) =>
+      // Only the designs whose place actually changed are marked for sync:
+      // a drag of one tab must not push every plan's metadata.
+      before.get(summary.id) === summary.order ? summary : touchDesignMeta(summary),
+    );
     set({ designs: stamped });
     for (const summary of stamped) {
       await writeDesignSummary(summary);
@@ -481,7 +506,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     if (!summary || summary.folderId === folderId) {
       return;
     }
-    const moved: DesignSummary = { ...summary };
+    const moved: DesignSummary = touchDesignMeta({ ...summary });
     if (folderId) {
       moved.folderId = folderId;
     } else {
@@ -504,7 +529,11 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     if (!folder) {
       return;
     }
-    const renamed = { ...folder, name: normalizeFolderName(name) };
+    const renamed: DesignFolder = {
+      ...folder,
+      name: normalizeFolderName(name),
+      updatedAt: new Date().toISOString(),
+    };
     await writeDesignFolder(renamed);
     set({
       folders: sortFolders(get().folders.map((entry) => (entry.id === id ? renamed : entry))),
@@ -518,7 +547,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       if (design.folderId !== id) {
         return design;
       }
-      const moved = { ...design };
+      const moved = touchDesignMeta({ ...design });
       delete moved.folderId;
       unfiled.push(moved);
       return moved;
@@ -528,6 +557,32 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       await writeDesignSummary(design);
     }
     await deleteDesignFolder(id);
+    noteLibraryDeletion("folder", id);
+  },
+
+  refreshLibrary: async () => {
+    set(await listLibrary());
+  },
+
+  reloadActiveDesign: async () => {
+    const { activeDesignId } = get();
+    if (!activeDesignId) {
+      return;
+    }
+    const record = await readDesign(activeDesignId);
+    if (record) {
+      // Same landing as a switch, so the camera and the dressing come back
+      // as they were; the plan underneath is the account's newer one.
+      landOnDesign(set, activeDesignId, record.project);
+    }
+  },
+
+  syncActiveName: () => {
+    const { activeDesignId, designs } = get();
+    const active = designs.find((design) => design.id === activeDesignId);
+    if (active) {
+      useFactoryStore.getState().renameProject(active.name);
+    }
   },
 
   saveActiveProject: async (designId, project) => {
@@ -567,18 +622,46 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
 const ICON_BACKFILL_KEY = "gtnh-factory-flow.design-summary-icons.v1";
 const POST_BACKFILL_KEY = "gtnh-factory-flow.design-summary-posts.v1";
 
-async function backfillSummaryIcons(summaries: DesignSummary[]): Promise<DesignSummary[]> {
+/**
+ * Runs the backfill once the library is hydrated, in the background, and
+ * relists the strip when it is done. Anything added meanwhile is in the
+ * relist too, so nothing the player did during the pass is lost.
+ */
+function scheduleSummaryBackfill(): void {
+  const run = () => {
+    void backfillSummaryIcons(useDesignStore.getState().designs).then((relisted) => {
+      if (relisted) {
+        useDesignStore.setState({ designs: relisted });
+      }
+    });
+  };
+  if (useDesignStore.getState().isHydrated) {
+    run();
+    return;
+  }
+  const unsubscribe = useDesignStore.subscribe((state) => {
+    if (state.isHydrated) {
+      unsubscribe();
+      run();
+    }
+  });
+}
+
+/** Resolves to the relisted strip, or undefined when there was nothing to do. */
+async function backfillSummaryIcons(
+  summaries: DesignSummary[],
+): Promise<DesignSummary[] | undefined> {
   try {
     if (
       window.localStorage.getItem(ICON_BACKFILL_KEY) &&
       window.localStorage.getItem(POST_BACKFILL_KEY)
     ) {
-      return summaries;
+      return undefined;
     }
   } catch {
     // No localStorage means no way to remember the pass ran; skip it rather
     // than reread every plan on every load.
-    return summaries;
+    return undefined;
   }
 
   for (const summary of summaries) {

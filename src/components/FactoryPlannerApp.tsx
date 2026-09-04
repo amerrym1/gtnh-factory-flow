@@ -19,6 +19,7 @@ import { downloadCommunityPlan, tagPlanWithCommunityId } from "@/lib/community/c
 import { forgetSharedPlanId, readSharedPlanId } from "@/lib/community/shared-link";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { useIsCompactViewport } from "@/lib/compact-view";
+import { startLibrarySync } from "@/lib/library/library-sync";
 import { useLibraryTab } from "@/lib/library/library-tab";
 import { useWelcomeTab } from "@/lib/welcome/welcome-tab";
 import { AppHeader } from "./AppHeader";
@@ -160,6 +161,10 @@ export function FactoryPlannerApp() {
 
     return cancelHydration;
   }, [hydrateDesigns, hydrateResourceHistory]);
+
+  // The library follows the account: sign-in starts the sync, sign-out stops
+  // it, and every change here reaches the other devices a few seconds later.
+  useEffect(() => startLibrarySync(), []);
 
   // Recorded here rather than in the resource panel: the charts must not lose
   // their history because the right column happened to be closed, and every

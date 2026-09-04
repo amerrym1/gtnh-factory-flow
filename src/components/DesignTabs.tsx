@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { openDesigns, type DesignFolder } from "@/lib/designs/design-library";
 import type { EntryIcon } from "@/lib/model/types";
 import { FLUID_ICON_SCALE, ResourceIcon } from "./nei/ResourceIcon";
+import { useLibrarySyncStore } from "@/lib/library/library-sync";
 import { leaveLibrary, openLibrary, useLibraryTab } from "@/lib/library/library-tab";
 import {
   closeWelcomeTab,
@@ -42,6 +43,7 @@ export function DesignTabs() {
   const isHydrated = useDesignStore((state) => state.isHydrated);
   const saveState = useDesignStore((state) => state.saveState);
   const libraryError = useDesignStore((state) => state.error);
+  const sync = useLibrarySyncStore();
   const switchToDesign = useDesignStore((state) => state.switchToDesign);
   const addDesign = useDesignStore((state) => state.addDesign);
   const copyDesign = useDesignStore((state) => state.copyDesign);
@@ -693,7 +695,7 @@ export function DesignTabs() {
           title={libraryError}
           className={[
             "ml-auto max-w-[360px] shrink-0 truncate pl-1 text-[11px]",
-            libraryError ? "text-red-400" : "text-fg-muted",
+            libraryError || sync.state === "error" ? "text-red-400" : "text-fg-muted",
           ].join(" ")}
         >
           {libraryError
@@ -702,7 +704,13 @@ export function DesignTabs() {
               ? "Saving…"
               : saveState === "error"
                 ? "Save failed"
-                : "Saved"}
+                : sync.state === "syncing"
+                  ? "Syncing…"
+                  : sync.state === "error"
+                    ? `Sync failed: ${sync.message ?? ""}`
+                    : sync.state === "idle"
+                      ? "Synced"
+                      : "Saved"}
         </span>
       </div>
 

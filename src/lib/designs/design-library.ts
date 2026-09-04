@@ -41,13 +41,26 @@ export interface DesignSummary {
    * cannot be judged and is never marked.
    */
   communityBehind?: boolean;
+  /**
+   * SYNC BOOKKEEPING. `updatedAt` above moves when the PLAN is saved;
+   * `metaUpdatedAt` moves on any change at all (rename, close, folder,
+   * order, plan). `remoteUpdatedAt` is the account copy's `updatedAt` as of
+   * the last agreement; absent means never synced. Dirty is
+   * `metaUpdatedAt > remoteUpdatedAt`, and the plan needs sending only when
+   * `updatedAt > remoteUpdatedAt`. See library-sync.ts.
+   */
+  metaUpdatedAt?: string;
+  remoteUpdatedAt?: string;
 }
 
-/** A shelf folder. Flat: folders hold designs, never other folders. */
+/** A library folder. Flat: folders hold designs, never other folders. */
 export interface DesignFolder {
   id: string;
   name: string;
   createdAt: string;
+  /** Moves on rename. Sync compares it the way it compares designs. */
+  updatedAt?: string;
+  remoteUpdatedAt?: string;
 }
 
 /** A saved design: its metadata plus the plan itself. */
@@ -148,10 +161,19 @@ export function updateDesignProject(
   return {
     ...record,
     updatedAt: now,
+    metaUpdatedAt: now,
     // The tab name wins over whatever the plan carries, so an imported plan
     // cannot silently relabel the tab it was dropped into.
     project: { ...project, name: record.name },
   };
+}
+
+/** Stamps a metadata-only change (rename, close, folder, order) for sync. */
+export function touchDesignMeta<T extends DesignSummary>(
+  summary: T,
+  now: string = new Date().toISOString(),
+): T {
+  return { ...summary, metaUpdatedAt: now };
 }
 
 /**
@@ -220,6 +242,12 @@ export function toDesignSummary(record: DesignRecord): DesignSummary {
   if (record.folderId) {
     summary.folderId = record.folderId;
   }
+  if (record.metaUpdatedAt) {
+    summary.metaUpdatedAt = record.metaUpdatedAt;
+  }
+  if (record.remoteUpdatedAt) {
+    summary.remoteUpdatedAt = record.remoteUpdatedAt;
+  }
   if (communityPlanId) {
     summary.communityPlanId = communityPlanId;
     if (baseline && baseline !== planContentFingerprint(record.project)) {
@@ -235,7 +263,7 @@ export function openDesigns<T extends DesignSummary>(designs: T[]): T[] {
 }
 
 export function createFolder(name: string, now: string = new Date().toISOString()): DesignFolder {
-  return { id: createDesignId(), name: normalizeFolderName(name), createdAt: now };
+  return { id: createDesignId(), name: normalizeFolderName(name), createdAt: now, updatedAt: now };
 }
 
 export function normalizeFolderName(name: string): string {
