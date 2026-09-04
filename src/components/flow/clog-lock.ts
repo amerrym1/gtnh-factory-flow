@@ -1,4 +1,11 @@
-import type { FactoryProject, ResourceKey, ThroughputResult } from "@/lib/model/types";
+import type {
+  ClogLock,
+  ClogLockIndex,
+  ClogLockVent,
+  FactoryProject,
+  ResourceKey,
+  ThroughputResult,
+} from "@/lib/model/types";
 import { solveEquationsCore } from "@/lib/solver/equations-core";
 
 /**
@@ -25,44 +32,7 @@ import { solveEquationsCore } from "@/lib/solver/equations-core";
 const DEAD_EPSILON = 1e-4;
 const REVIVED_EPSILON = 1e-3;
 
-export interface ClogLockVent {
-  nodeId: string;
-  /** The culprit machine's display name, so a victim's card can say where
-   * to act without the player hunting the board. */
-  machineName: string;
-  resourceKey: ResourceKey;
-  resourceName: string;
-  /** What must leave through this port per second for the group to run. */
-  perSecond: number;
-}
-
-export interface ClogLock {
-  /** Stable id: the smallest member node id. Survives re-solves. */
-  id: string;
-  /** Every frozen card the jam holds, machines and pass-through drawers. */
-  nodeIds: string[];
-  /** Machine members only - what the copy counts. */
-  machineIds: string[];
-  /**
-   * The machines whose surplus needs the drawer - the only cards that flash,
-   * ordered WORST FIRST so the notice's "Show me" walks them by severity.
-   * A jam can hold half a board; marking every member painted whole plans
-   * blue and pointed nowhere. The victims keep the verdict and its story,
-   * the vent sites carry the ring, exactly as the fix copy promises.
-   */
-  ventNodeIds: string[];
-  /** The wires carrying a vented surplus out of a vent site - the ones the
-   * drawer tees into. Only these breathe, never the whole web. */
-  edgeIds: string[];
-  /** The surpluses that need a home, largest first. */
-  vents: ClogLockVent[];
-}
-
-export interface ClogLockIndex {
-  byNode: Map<string, ClogLock>;
-  byEdge: Map<string, ClogLock>;
-  locks: ClogLock[];
-}
+export type { ClogLock, ClogLockIndex, ClogLockVent };
 
 const EMPTY_INDEX: ClogLockIndex = { byNode: new Map(), byEdge: new Map(), locks: [] };
 
@@ -77,6 +47,13 @@ export function findClogLocks(
   project: FactoryProject,
   result: ThroughputResult | undefined,
 ): ClogLockIndex {
+  // Books solved off the main thread bring their own diagnosis (the solve
+  // worker runs `attachClogLocks`); a placeholder wearing an older plan's
+  // books wears its index too, which is as honest as the books themselves
+  // and never freezes the tab on a proof it already has.
+  if (result?.clogLocks) {
+    return result.clogLocks;
+  }
   const cached = cache.get(project);
   if (cached && cached.result === result) {
     return cached.index;
@@ -84,6 +61,15 @@ export function findClogLocks(
   const index = build(project, result);
   cache.set(project, { result, index });
   return index;
+}
+
+/**
+ * Runs the diagnosis where the books were solved and stores it on them, so
+ * the board never re-proves a clog lock on the main thread. The mutation is
+ * on a result no one has seen yet, before it leaves the worker.
+ */
+export function attachClogLocks(project: FactoryProject, result: ThroughputResult): void {
+  result.clogLocks = build(project, result);
 }
 
 function build(project: FactoryProject, result: ThroughputResult | undefined): ClogLockIndex {

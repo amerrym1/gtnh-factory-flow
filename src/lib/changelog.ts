@@ -75,6 +75,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Importing a plan file finds each card's exact recipe again, even one saved before a dataset update.",
       "Two recipes that share a name, like the Steel Ingot blast furnace pair, no longer swap places on import.",
       "A recipe the dataset no longer has stays on the card as it was saved instead of being replaced by a lookalike.",
+      "Big plans with many stopped machines no longer freeze for half a minute on every edit or drag.",
     ],
   },
   {

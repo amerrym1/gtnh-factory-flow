@@ -916,4 +916,50 @@ export interface ThroughputResult {
    * lands. See `src/store/solve-books.ts`.
    */
   stale?: boolean;
+  /**
+   * The clog-lock diagnosis, when the solve that made these books also ran
+   * it. Its vent solve is a second, harder LP: a board with many stopped
+   * machines pays 20-60 s for it on the main thread, so the solve worker
+   * computes it beside the books and `findClogLocks` serves it from here.
+   */
+  clogLocks?: ClogLockIndex;
+}
+
+export interface ClogLockVent {
+  nodeId: string;
+  /** The culprit machine's display name, so a victim's card can say where
+   * to act without the player hunting the board. */
+  machineName: string;
+  resourceKey: ResourceKey;
+  resourceName: string;
+  /** What must leave through this port per second for the group to run. */
+  perSecond: number;
+}
+
+export interface ClogLock {
+  /** Stable id: the smallest member node id. Survives re-solves. */
+  id: string;
+  /** Every frozen card the jam holds, machines and pass-through drawers. */
+  nodeIds: string[];
+  /** Machine members only - what the copy counts. */
+  machineIds: string[];
+  /**
+   * The machines whose surplus needs the drawer - the only cards that flash,
+   * ordered WORST FIRST so the notice's "Show me" walks them by severity.
+   * A jam can hold half a board; marking every member painted whole plans
+   * blue and pointed nowhere. The victims keep the verdict and its story,
+   * the vent sites carry the ring, exactly as the fix copy promises.
+   */
+  ventNodeIds: string[];
+  /** The wires carrying a vented surplus out of a vent site - the ones the
+   * drawer tees into. Only these breathe, never the whole web. */
+  edgeIds: string[];
+  /** The surpluses that need a home, largest first. */
+  vents: ClogLockVent[];
+}
+
+export interface ClogLockIndex {
+  byNode: Map<string, ClogLock>;
+  byEdge: Map<string, ClogLock>;
+  locks: ClogLock[];
 }
