@@ -5,23 +5,31 @@ import { createEmptyProject } from "@/examples";
 import {
   UNTITLED_DESIGN_NAME,
   createDesign as createDesignRecord,
+  createFolder as createFolderRecord,
   duplicateDesign as duplicateDesignRecord,
   normalizeDesignName,
+  normalizeFolderName,
+  openDesigns,
   pickDesignAfterDelete,
   sortDesigns,
+  sortFolders,
   stampDesignOrder,
   toDesignSummary,
   updateDesignProject,
+  type DesignFolder,
   type DesignRecord,
   type DesignSummary,
 } from "@/lib/designs/design-library";
 import {
   deleteDesign,
+  deleteDesignFolder,
+  listDesignFolders,
   listDesignSummaries,
   readActiveDesignId,
   readDesign,
   writeActiveDesignId,
   writeDesign,
+  writeDesignFolder,
   writeDesignSummary,
 } from "@/lib/designs/design-storage";
 import {
@@ -32,6 +40,7 @@ import {
 } from "@/lib/designs/design-camera";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { applyPlanView, capturePlanView } from "@/lib/plan-view";
+import { leaveShelf, openShelf } from "@/lib/shelf/shelf-tab";
 import { leaveWelcomeTab } from "@/lib/welcome/welcome-tab";
 import type { FactoryProject } from "@/lib/model/types";
 import { LOCAL_STORAGE_KEY, useFactoryStore } from "./factory-store";
@@ -39,34 +48,48 @@ import { LOCAL_STORAGE_KEY, useFactoryStore } from "./factory-store";
 export type DesignSaveState = "idle" | "saving" | "saved" | "error";
 
 interface DesignStore {
+  /** Every design on this device, open or closed, in strip order. */
   designs: DesignSummary[];
+  /** The shelf's folders, by name. */
+  folders: DesignFolder[];
   activeDesignId?: string;
   isHydrated: boolean;
   saveState: DesignSaveState;
   error?: string;
   hydrate: () => Promise<void>;
+  /** Puts `id` on the canvas, and back on the strip if it was closed. */
   switchToDesign: (id: string) => Promise<void>;
   addDesign: () => Promise<void>;
   /** Adds `project` as a new design tab and switches to it (community imports). */
   importProjectAsDesign: (project: FactoryProject, name: string) => Promise<void>;
   copyDesign: (id: string) => Promise<void>;
   renameDesign: (id: string, name: string) => Promise<void>;
-  removeDesign: (id: string) => Promise<void>;
   /**
-   * Close a run of tabs in one go.
-   *
-   * Not `removeDesign` in a loop: that re-reads the whole library and settles
-   * the active design after every single delete, so closing eight tabs would
-   * hand the canvas around eight times on the way. `keepActiveId` is the tab
-   * the menu was opened from, which always survives, so the canvas lands there
-   * when the active design is among the closed.
+   * Takes a design off the strip and leaves it on the shelf. Nothing is
+   * deleted. Closing the last open tab lands on the shelf, since there is
+   * no design left to show.
    */
-  removeDesigns: (ids: string[], keepActiveId?: string) => Promise<void>;
+  closeDesign: (id: string) => Promise<void>;
+  /**
+   * Close a run of tabs in one go (the menu's "close tabs to the right").
+   * `keepActiveId` is the tab the menu was opened from, which always
+   * survives, so the canvas lands there when the active design is among the
+   * closed.
+   */
+  closeDesigns: (ids: string[], keepActiveId?: string) => Promise<void>;
+  /** Deletes the design for good. Its post on the network, if any, stays up. */
+  removeDesign: (id: string) => Promise<void>;
   /**
    * Rearranges the strip to `orderedIds`, stamping each summary's `order`.
    * State updates first so the drop lands instantly; the writes follow.
    */
   reorderDesigns: (orderedIds: string[]) => Promise<void>;
+  /** Files a design in a folder; `undefined` unfiles it. */
+  moveDesignToFolder: (id: string, folderId: string | undefined) => Promise<void>;
+  createFolder: (name: string) => Promise<DesignFolder>;
+  renameFolder: (id: string, name: string) => Promise<void>;
+  /** Removes the folder; the designs in it become unfiled, none are lost. */
+  deleteFolder: (id: string) => Promise<void>;
   /**
    * Saves `project` into `designId`.
    *
@@ -118,6 +141,17 @@ function landOnDesign(
   showProject(project, designId);
 }
 
+/**
+ * No design on the canvas at all: every tab is closed. The plan that was up
+ * stays where it is, covered by the shelf, and autosave has nothing to file
+ * it under so it cannot be written anywhere.
+ */
+function landOnNothing(set: (partial: Partial<DesignStore>) => void, rest?: Partial<DesignStore>) {
+  writeActiveDesignId(undefined);
+  set({ ...rest, activeDesignId: undefined });
+  openShelf();
+}
+
 function currentProject(): FactoryProject {
   return useFactoryStore.getState().project;
 }
@@ -137,7 +171,7 @@ function withCurrentView(project: FactoryProject): FactoryProject {
 /**
  * Writes whatever is on the canvas into `summary`'s record.
  *
- * Runs before every switch, copy and delete: autosave is debounced, and those
+ * Runs before every switch, copy and close: autosave is debounced, and those
  * actions land inside that window often enough that skipping this would quietly
  * drop the last few edits of the design being left behind.
  */
@@ -150,8 +184,14 @@ async function flushCanvasInto(summary: DesignSummary | undefined): Promise<void
   await writeDesign(updateDesignProject({ ...summary, project }, project));
 }
 
+async function listLibrary(): Promise<Pick<DesignStore, "designs" | "folders">> {
+  const [designs, folders] = await Promise.all([listDesignSummaries(), listDesignFolders()]);
+  return { designs: sortDesigns(designs), folders: sortFolders(folders) };
+}
+
 export const useDesignStore = create<DesignStore>((set, get) => ({
   designs: [],
+  folders: [],
   activeDesignId: undefined,
   isHydrated: false,
   saveState: "idle",
@@ -159,6 +199,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
 
   hydrate: async () => {
     let summaries: DesignSummary[];
+    let folders: DesignFolder[] = [];
     try {
       summaries = sortDesigns(await listDesignSummaries());
 
@@ -167,8 +208,9 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       } else {
         summaries = await backfillSummaryIcons(summaries);
       }
+      folders = sortFolders(await listDesignFolders());
     } catch (error) {
-      // A browser with IndexedDB blocked still gets a working canvas — it just
+      // A browser with IndexedDB blocked still gets a working canvas: it just
       // cannot keep anything beyond the session.
       set({
         isHydrated: true,
@@ -182,8 +224,22 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     keepDesignCameras(summaries.map((design) => design.id));
 
     const remembered = readActiveDesignId();
-    const activeId =
-      summaries.find((design) => design.id === remembered)?.id ?? summaries[0].id;
+    const rememberedDesign = summaries.find((design) => design.id === remembered);
+    // A remembered design that is somehow closed is reopened rather than
+    // second-guessed: it is what was on the canvas.
+    if (rememberedDesign?.closed) {
+      const reopened = { ...rememberedDesign };
+      delete reopened.closed;
+      await writeDesignSummary(reopened);
+      summaries = summaries.map((design) => (design.id === reopened.id ? reopened : design));
+    }
+    const activeId = rememberedDesign?.id ?? openDesigns(summaries)[0]?.id;
+
+    if (!activeId) {
+      // Every design is closed: the shelf is the only place to be.
+      landOnNothing(set, { designs: summaries, folders, isHydrated: true });
+      return;
+    }
 
     // The strip is listed BEFORE the remembered design is opened, and its
     // opening is guarded on its own: a plan saved by an older version that
@@ -195,10 +251,15 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     try {
       const active = await readDesign(activeId);
       if (active) {
-        landOnDesign(set, activeId, active.project, { designs: summaries, isHydrated: true });
+        landOnDesign(set, activeId, active.project, {
+          designs: summaries,
+          folders,
+          isHydrated: true,
+        });
       } else {
         set({
           designs: summaries,
+          folders,
           isHydrated: true,
           error: "The last design you had open could not be read. Its record was left alone.",
         });
@@ -207,6 +268,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       console.error("The remembered design could not be opened; its record was left alone.", error);
       set({
         designs: summaries,
+        folders,
         isHydrated: true,
         error: error instanceof Error ? error.message : "Design could not be opened.",
       });
@@ -216,6 +278,8 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
   switchToDesign: async (id) => {
     const { activeDesignId, designs } = get();
     if (id === activeDesignId) {
+      // Already on the canvas; the only thing left to do is show it.
+      leaveShelf();
       return;
     }
 
@@ -225,12 +289,19 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     }
 
     await flushCanvasInto(designs.find((design) => design.id === activeDesignId));
+    if (target.closed) {
+      // Opening from the shelf puts the design back on the strip, at the end.
+      const reopened = toDesignSummary(target);
+      delete reopened.closed;
+      await writeDesignSummary(reopened);
+    }
     // Point the store at the new design *before* its plan reaches the canvas.
     // Autosave keys off the two together, so a canvas holding the new plan while
     // the store still names the old design is exactly the pairing that would
     // save one design's work into another.
     landOnDesign(set, id, target.project);
-    set({ designs: sortDesigns(await listDesignSummaries()) });
+    leaveShelf();
+    set(await listLibrary());
   },
 
   addDesign: async () => {
@@ -240,7 +311,8 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     const record = createDesignRecord(createEmptyProject(), UNTITLED_DESIGN_NAME);
     await writeDesign(record);
     landOnDesign(set, record.id, record.project);
-    set({ designs: sortDesigns(await listDesignSummaries()) });
+    leaveShelf();
+    set(await listLibrary());
   },
 
   importProjectAsDesign: async (project, name) => {
@@ -255,7 +327,8 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     // Leaving the greeting up would put it over the board it just landed on,
     // with the strip still naming Welcome as the tab you are on.
     leaveWelcomeTab();
-    set({ designs: sortDesigns(await listDesignSummaries()) });
+    leaveShelf();
+    set(await listLibrary());
   },
 
   copyDesign: async (id) => {
@@ -269,13 +342,19 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       return;
     }
 
-    const copy = duplicateDesignRecord(
-      source,
-      designs.map((design) => design.name),
-    );
+    const copy: DesignRecord = {
+      ...duplicateDesignRecord(
+        source,
+        designs.map((design) => design.name),
+      ),
+      // The copy is filed beside its original, and it opens: a copy you
+      // asked for is a copy you want to look at.
+      folderId: source.folderId,
+    };
     await writeDesign(copy);
     landOnDesign(set, copy.id, copy.project);
-    set({ designs: sortDesigns(await listDesignSummaries()) });
+    leaveShelf();
+    set(await listLibrary());
   },
 
   renameDesign: async (id, name) => {
@@ -290,7 +369,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       updatedAt: new Date().toISOString(),
     };
 
-    // Only the metadata is rewritten — the stored plan can be megabytes, and a
+    // Only the metadata is rewritten: the stored plan can be megabytes, and a
     // rename does not touch it. The plan's own `name` field, which the JSON
     // export uses for its filename, is realigned through the canvas below and
     // saved by the autosave that follows.
@@ -300,80 +379,92 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       useFactoryStore.getState().renameProject(renamed.name);
     }
 
-    set({ designs: sortDesigns(await listDesignSummaries()) });
+    set(await listLibrary());
+  },
+
+  closeDesign: async (id) => {
+    await get().closeDesigns([id]);
+  },
+
+  closeDesigns: async (ids, keepActiveId) => {
+    const doomed = new Set(ids);
+    doomed.delete(keepActiveId ?? "");
+    const { designs, activeDesignId } = get();
+    const closing = designs.filter((design) => doomed.has(design.id) && !design.closed);
+    if (closing.length === 0) {
+      return;
+    }
+
+    // The tab being closed may be the one on the canvas, with edits autosave
+    // has not written yet. Those go into its record before it leaves.
+    await flushCanvasInto(closing.find((design) => design.id === activeDesignId));
+    const nextActiveId =
+      activeDesignId && doomed.has(activeDesignId)
+        ? (keepActiveId ?? pickDesignAfterDelete(openDesigns(designs), activeDesignId))
+        : undefined;
+
+    for (const design of closing) {
+      await writeDesignSummary({ ...design, closed: true });
+    }
+    const library = await listLibrary();
+
+    if (!activeDesignId || !doomed.has(activeDesignId)) {
+      // The canvas is showing a design that survived, so it stays put.
+      set(library);
+      return;
+    }
+
+    const nextOpen = nextActiveId
+      ? library.designs.find((design) => design.id === nextActiveId && !design.closed)
+      : undefined;
+    if (!nextOpen) {
+      landOnNothing(set, library);
+      return;
+    }
+
+    const next = await readDesign(nextOpen.id);
+    if (next) {
+      landOnDesign(set, nextOpen.id, next.project, library);
+    } else {
+      // Unreadable: listed, never made active over an empty canvas.
+      set({ ...library, activeDesignId: undefined });
+    }
   },
 
   removeDesign: async (id) => {
     const { designs, activeDesignId } = get();
-    const nextActiveId = pickDesignAfterDelete(designs, id);
+    const nextActiveId = pickDesignAfterDelete(openDesigns(designs), id);
 
     await deleteDesign(id);
     forgetDesignCameras([id]);
-    let summaries = sortDesigns(await listDesignSummaries());
+    let library = await listLibrary();
 
-    if (summaries.length === 0) {
-      // The strip is never empty: closing the last design leaves a fresh one
-      // rather than a canvas backed by nothing.
+    if (library.designs.length === 0) {
+      // A library with nothing in it is seeded rather than shown empty: the
+      // canvas has to belong to some record for autosave to have a home.
       const seeded = createDesignRecord(createEmptyProject(), UNTITLED_DESIGN_NAME);
       await writeDesign(seeded);
-      summaries = [seeded];
-      landOnDesign(set, seeded.id, seeded.project, { designs: summaries });
+      library = { ...library, designs: [seeded] };
+      landOnDesign(set, seeded.id, seeded.project, library);
       return;
     }
 
-    if (id === activeDesignId && nextActiveId) {
-      const next = await readDesign(nextActiveId);
-      if (next) {
-        landOnDesign(set, nextActiveId, next.project, { designs: summaries });
-      } else {
-        // Unreadable: listed, never made active over an empty canvas.
-        set({ designs: summaries, activeDesignId: undefined });
-      }
+    if (id !== activeDesignId) {
+      set(library);
       return;
     }
 
-    set({ designs: summaries });
-  },
-
-  removeDesigns: async (ids, keepActiveId) => {
-    const doomed = new Set(ids);
-    doomed.delete(keepActiveId ?? "");
-    if (doomed.size === 0) {
+    if (!nextActiveId) {
+      landOnNothing(set, library);
       return;
     }
 
-    const { activeDesignId } = get();
-    for (const id of doomed) {
-      await deleteDesign(id);
-    }
-    forgetDesignCameras(doomed);
-
-    let summaries = sortDesigns(await listDesignSummaries());
-    if (summaries.length === 0) {
-      // The strip is never empty, same as closing the last design one at a time.
-      const seeded = createDesignRecord(createEmptyProject(), UNTITLED_DESIGN_NAME);
-      await writeDesign(seeded);
-      summaries = [seeded];
-      landOnDesign(set, seeded.id, seeded.project, { designs: summaries });
-      return;
-    }
-
-    if (!activeDesignId || !doomed.has(activeDesignId)) {
-      // The canvas is showing a design that survived, so it stays put and
-      // nothing has to be loaded.
-      set({ designs: summaries });
-      return;
-    }
-
-    const nextId = summaries.some((design) => design.id === keepActiveId)
-      ? keepActiveId!
-      : summaries[0].id;
-    const next = await readDesign(nextId);
+    const next = await readDesign(nextActiveId);
     if (next) {
-      landOnDesign(set, nextId, next.project, { designs: summaries });
+      landOnDesign(set, nextActiveId, next.project, library);
     } else {
       // Unreadable: listed, never made active over an empty canvas.
-      set({ designs: summaries, activeDesignId: undefined });
+      set({ ...library, activeDesignId: undefined });
     }
   },
 
@@ -383,6 +474,60 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     for (const summary of stamped) {
       await writeDesignSummary(summary);
     }
+  },
+
+  moveDesignToFolder: async (id, folderId) => {
+    const summary = get().designs.find((design) => design.id === id);
+    if (!summary || summary.folderId === folderId) {
+      return;
+    }
+    const moved: DesignSummary = { ...summary };
+    if (folderId) {
+      moved.folderId = folderId;
+    } else {
+      delete moved.folderId;
+    }
+    // State first so the tile lands in its new section on the same click.
+    set({ designs: get().designs.map((design) => (design.id === id ? moved : design)) });
+    await writeDesignSummary(moved);
+  },
+
+  createFolder: async (name) => {
+    const folder = createFolderRecord(name);
+    await writeDesignFolder(folder);
+    set({ folders: sortFolders([...get().folders, folder]) });
+    return folder;
+  },
+
+  renameFolder: async (id, name) => {
+    const folder = get().folders.find((entry) => entry.id === id);
+    if (!folder) {
+      return;
+    }
+    const renamed = { ...folder, name: normalizeFolderName(name) };
+    await writeDesignFolder(renamed);
+    set({
+      folders: sortFolders(get().folders.map((entry) => (entry.id === id ? renamed : entry))),
+    });
+  },
+
+  deleteFolder: async (id) => {
+    const { designs, folders } = get();
+    const unfiled: DesignSummary[] = [];
+    const next = designs.map((design) => {
+      if (design.folderId !== id) {
+        return design;
+      }
+      const moved = { ...design };
+      delete moved.folderId;
+      unfiled.push(moved);
+      return moved;
+    });
+    set({ designs: next, folders: folders.filter((folder) => folder.id !== id) });
+    for (const design of unfiled) {
+      await writeDesignSummary(design);
+    }
+    await deleteDesignFolder(id);
   },
 
   saveActiveProject: async (designId, project) => {
@@ -415,12 +560,19 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
  * happens to be saved again, so tabs would sit blank for exactly the designs
  * that have been around longest. Once per browser, every plan is read and its
  * summary restamped; new writes keep the copy fresh from then on.
+ *
+ * The same pass, under a second key, stamps the post link and its "edited
+ * since posted" reading onto every summary for the shelf's marks.
  */
 const ICON_BACKFILL_KEY = "gtnh-factory-flow.design-summary-icons.v1";
+const POST_BACKFILL_KEY = "gtnh-factory-flow.design-summary-posts.v1";
 
 async function backfillSummaryIcons(summaries: DesignSummary[]): Promise<DesignSummary[]> {
   try {
-    if (window.localStorage.getItem(ICON_BACKFILL_KEY)) {
+    if (
+      window.localStorage.getItem(ICON_BACKFILL_KEY) &&
+      window.localStorage.getItem(POST_BACKFILL_KEY)
+    ) {
       return summaries;
     }
   } catch {
@@ -431,13 +583,14 @@ async function backfillSummaryIcons(summaries: DesignSummary[]): Promise<DesignS
 
   for (const summary of summaries) {
     const record = await readDesign(summary.id);
-    if (record?.project.icon) {
+    if (record?.project.icon || record?.project.metadata?.communityPlanId) {
       await writeDesignSummary(toDesignSummary(record));
     }
   }
 
   try {
     window.localStorage.setItem(ICON_BACKFILL_KEY, "done");
+    window.localStorage.setItem(POST_BACKFILL_KEY, "done");
   } catch {
     // A failed flag just means the pass runs again next load.
   }
@@ -447,7 +600,7 @@ async function backfillSummaryIcons(summaries: DesignSummary[]): Promise<DesignS
 /**
  * First run: adopt the plan the app used to keep under a single localStorage
  * key, so existing work becomes the first tab instead of being stranded behind a
- * storage change. The old key is read, never cleared — if anything here goes
+ * storage change. The old key is read, never cleared: if anything here goes
  * wrong the original is still sitting where it was.
  */
 async function seedFirstDesign(): Promise<DesignSummary> {
@@ -473,4 +626,4 @@ function readLegacyProject(): FactoryProject | undefined {
   }
 }
 
-export type { DesignRecord, DesignSummary };
+export type { DesignFolder, DesignRecord, DesignSummary };

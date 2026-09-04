@@ -1,14 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DesignSummary } from "@/lib/designs/design-library";
+import type {
+  DesignFolder,
+  DesignRecord,
+  DesignSummary,
+} from "@/lib/designs/design-library";
 
 const storage = vi.hoisted(() => ({
   listDesignSummaries: vi.fn<() => Promise<DesignSummary[]>>(),
-  readDesign: vi.fn(),
-  writeDesign: vi.fn(async () => undefined),
-  writeDesignSummary: vi.fn(async () => undefined),
-  deleteDesign: vi.fn(async () => undefined),
+  listDesignFolders: vi.fn<() => Promise<DesignFolder[]>>(async () => []),
+  readDesign: vi.fn<(id: string) => Promise<DesignRecord | undefined>>(),
+  writeDesign: vi.fn<(record: DesignRecord) => Promise<void>>(async () => undefined),
+  writeDesignSummary: vi.fn<(summary: DesignSummary) => Promise<void>>(async () => undefined),
+  writeDesignFolder: vi.fn<(folder: DesignFolder) => Promise<void>>(async () => undefined),
+  deleteDesign: vi.fn<(id: string) => Promise<void>>(async () => undefined),
+  deleteDesignFolder: vi.fn<(id: string) => Promise<void>>(async () => undefined),
   readActiveDesignId: vi.fn<() => string | undefined>(),
-  writeActiveDesignId: vi.fn(),
+  writeActiveDesignId: vi.fn<(id: string | undefined) => void>(),
 }));
 
 vi.mock("@/lib/designs/design-storage", () => storage);
@@ -17,32 +24,62 @@ vi.mock("@/lib/designs/design-camera", () => ({
   forgetDesignCameras: vi.fn(),
   rememberDesignCamera: vi.fn(),
   readDesignCamera: vi.fn(),
+  beginDesignCameraHandover: vi.fn(),
   beginDesignHandover: vi.fn(),
   endDesignHandover: vi.fn(),
 }));
 
+import { readShelfTabState } from "@/lib/shelf/shelf-tab";
+import { createEmptyProject } from "@/examples";
 import { useDesignStore } from "./design-store";
 
-function summary(id: string): DesignSummary {
+function summary(id: string, extra: Partial<DesignSummary> = {}): DesignSummary {
   return {
     id,
     name: `Design ${id}`,
     createdAt: "2026-08-01T00:00:00.000Z",
     updatedAt: "2026-08-01T00:00:00.000Z",
-    machineCount: 0,
-    nodeCount: 0,
     order: 0,
-  } as DesignSummary;
+    ...extra,
+  };
 }
+
+/** The mock library: summaries answer the list, records answer reads. */
+function library(...designs: DesignSummary[]) {
+  const current = new Map(designs.map((design) => [design.id, design]));
+  storage.listDesignSummaries.mockImplementation(async () => [...current.values()]);
+  storage.readDesign.mockImplementation(async (id: string) => {
+    const design = current.get(id);
+    return design ? { ...design, project: createEmptyProject() } : undefined;
+  });
+  storage.writeDesignSummary.mockImplementation(async (design: DesignSummary) => {
+    current.set(design.id, design);
+  });
+  storage.writeDesign.mockImplementation(async (record: DesignRecord) => {
+    const rest: Partial<DesignRecord> = { ...record };
+    delete rest.project;
+    current.set(record.id, rest as DesignSummary);
+  });
+  storage.deleteDesign.mockImplementation(async (id: string) => {
+    current.delete(id);
+  });
+  return current;
+}
+
+beforeEach(() => {
+  useDesignStore.setState({
+    designs: [],
+    folders: [],
+    activeDesignId: undefined,
+    isHydrated: false,
+    error: undefined,
+  });
+  vi.clearAllMocks();
+  storage.listDesignFolders.mockResolvedValue([]);
+});
 
 describe("opening the design library", () => {
   beforeEach(() => {
-    useDesignStore.setState({
-      designs: [],
-      activeDesignId: undefined,
-      isHydrated: false,
-      error: undefined,
-    });
     storage.listDesignSummaries.mockResolvedValue([summary("a"), summary("b")]);
     storage.readActiveDesignId.mockReturnValue("a");
   });
@@ -74,5 +111,113 @@ describe("opening the design library", () => {
     expect(state.activeDesignId).toBeUndefined();
     expect(storage.writeActiveDesignId).not.toHaveBeenCalledWith("a");
     expect(storage.writeDesign).not.toHaveBeenCalled();
+  });
+
+  it("lands on the shelf when every design is closed", async () => {
+    library(summary("a", { closed: true }), summary("b", { closed: true }));
+    storage.readActiveDesignId.mockReturnValue(undefined);
+
+    await useDesignStore.getState().hydrate();
+
+    const state = useDesignStore.getState();
+    expect(state.activeDesignId).toBeUndefined();
+    expect(state.designs).toHaveLength(2);
+    expect(readShelfTabState().active).toBe(true);
+  });
+
+  it("opens the first open design when the remembered one is gone", async () => {
+    library(summary("a", { closed: true }), summary("b"));
+    storage.readActiveDesignId.mockReturnValue("gone");
+
+    await useDesignStore.getState().hydrate();
+
+    expect(useDesignStore.getState().activeDesignId).toBe("b");
+  });
+});
+
+describe("closing tabs", () => {
+  it("keeps the design and moves to the neighbour on the left", async () => {
+    const records = library(summary("a"), summary("b"), summary("c"));
+    storage.readActiveDesignId.mockReturnValue("b");
+    await useDesignStore.getState().hydrate();
+
+    await useDesignStore.getState().closeDesign("b");
+
+    const state = useDesignStore.getState();
+    expect(state.activeDesignId).toBe("a");
+    expect(records.get("b")?.closed).toBe(true);
+    expect(storage.deleteDesign).not.toHaveBeenCalled();
+    expect(state.designs.map((design) => design.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("lands on the shelf when the last open tab closes", async () => {
+    library(summary("a"), summary("b", { closed: true }));
+    storage.readActiveDesignId.mockReturnValue("a");
+    await useDesignStore.getState().hydrate();
+
+    await useDesignStore.getState().closeDesign("a");
+
+    expect(useDesignStore.getState().activeDesignId).toBeUndefined();
+    expect(readShelfTabState().active).toBe(true);
+    expect(storage.deleteDesign).not.toHaveBeenCalled();
+  });
+
+  it("reopens a closed design when it is switched to", async () => {
+    const records = library(summary("a"), summary("b", { closed: true }));
+    storage.readActiveDesignId.mockReturnValue("a");
+    await useDesignStore.getState().hydrate();
+
+    await useDesignStore.getState().switchToDesign("b");
+
+    expect(useDesignStore.getState().activeDesignId).toBe("b");
+    expect(records.get("b")?.closed).toBeUndefined();
+    expect(readShelfTabState().active).toBe(false);
+  });
+
+  it("closes a run of tabs and keeps the one the menu came from", async () => {
+    const records = library(summary("a"), summary("b"), summary("c"));
+    storage.readActiveDesignId.mockReturnValue("c");
+    await useDesignStore.getState().hydrate();
+
+    await useDesignStore.getState().closeDesigns(["a", "b", "c"], "a");
+
+    expect(useDesignStore.getState().activeDesignId).toBe("a");
+    expect(records.get("a")?.closed).toBeUndefined();
+    expect(records.get("b")?.closed).toBe(true);
+    expect(records.get("c")?.closed).toBe(true);
+  });
+});
+
+describe("folders", () => {
+  it("files and unfiles a design", async () => {
+    const records = library(summary("a"));
+    storage.readActiveDesignId.mockReturnValue("a");
+    await useDesignStore.getState().hydrate();
+
+    await useDesignStore.getState().moveDesignToFolder("a", "f1");
+    expect(records.get("a")?.folderId).toBe("f1");
+    expect(useDesignStore.getState().designs[0].folderId).toBe("f1");
+
+    await useDesignStore.getState().moveDesignToFolder("a", undefined);
+    expect(records.get("a")?.folderId).toBeUndefined();
+  });
+
+  it("deleting a folder unfiles its designs and loses none", async () => {
+    const records = library(summary("a", { folderId: "f1" }), summary("b", { folderId: "f2" }));
+    storage.readActiveDesignId.mockReturnValue("a");
+    storage.listDesignFolders.mockResolvedValue([
+      { id: "f1", name: "Oil", createdAt: "2026-08-01" },
+      { id: "f2", name: "Bees", createdAt: "2026-08-01" },
+    ]);
+    await useDesignStore.getState().hydrate();
+
+    await useDesignStore.getState().deleteFolder("f1");
+
+    const state = useDesignStore.getState();
+    expect(state.folders.map((folder) => folder.id)).toEqual(["f2"]);
+    expect(records.get("a")?.folderId).toBeUndefined();
+    expect(records.get("b")?.folderId).toBe("f2");
+    expect(state.designs).toHaveLength(2);
+    expect(storage.deleteDesignFolder).toHaveBeenCalledWith("f1");
   });
 });

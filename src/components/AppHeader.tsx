@@ -1,7 +1,8 @@
 "use client";
 
 import { Settings } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { OPEN_SHARE_DIALOG_EVENT } from "@/lib/setups-tab";
 import { useIsCompactViewport } from "@/lib/compact-view";
 import { unseenEntries } from "@/lib/whats-new";
 import { APP_VERSION } from "@/lib/version";
@@ -40,6 +41,13 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
   // same reason.
   const [isShareOpen, setShareOpen] = useState(false);
   const [isExportOpen, setExportOpen] = useState(false);
+  // The shelf asks for the share dialog by event after putting a design on
+  // the canvas ("Update post"): same dialog, same board, no second copy.
+  useEffect(() => {
+    const open = () => setShareOpen(true);
+    window.addEventListener(OPEN_SHARE_DIALOG_EVENT, open);
+    return () => window.removeEventListener(OPEN_SHARE_DIALOG_EVENT, open);
+  }, []);
   // Settings lives up here for the same reason as the share dialog: the
   // compact menu closes behind it without unmounting it.
   const [isSettingsOpen, setSettingsOpen] = useState(false);

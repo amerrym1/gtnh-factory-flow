@@ -1,7 +1,8 @@
 "use client";
 
-import { Bug, Compass, Heart, Sparkles } from "lucide-react";
+import { Bug, Compass, Heart, Library, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
+import { leaveShelf, openShelf } from "@/lib/shelf/shelf-tab";
 import { openWelcomeTab } from "@/lib/welcome/welcome-tab";
 import {
   markVersionSeenAndNotify,
@@ -48,7 +49,10 @@ export function HeaderLinks() {
       {/* The way back to the Welcome tab once it has been closed. */}
       <button
         type="button"
-        onClick={openWelcomeTab}
+        onClick={() => {
+          leaveShelf();
+          openWelcomeTab();
+        }}
         title="Welcome"
         aria-label="Open the Welcome tab"
         className="inline-flex h-7 w-7 items-center justify-center rounded border border-line-strong bg-surface text-fg-subtle hover:bg-surface-raised hover:text-fg"
@@ -183,6 +187,7 @@ export function MenuLinks({ onAction }: { onAction?: () => void }) {
       <button
         type="button"
         onClick={() => {
+          leaveShelf();
           openWelcomeTab();
           onAction?.();
         }}
@@ -192,6 +197,19 @@ export function MenuLinks({ onAction }: { onAction?: () => void }) {
           <Compass className="h-3.5 w-3.5" aria-hidden />
         </span>
         <span className="truncate">Welcome</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          openShelf();
+          onAction?.();
+        }}
+        className="flex h-10 items-center gap-2.5 rounded px-2 text-left text-sm text-fg-subtle hover:bg-surface-sunken"
+      >
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+          <Library className="h-3.5 w-3.5" aria-hidden />
+        </span>
+        <span className="truncate">Shelf</span>
       </button>
       <MenuLink href={GITHUB_URL} label="Source on GitHub">
         <GithubMark />

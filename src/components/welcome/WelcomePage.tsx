@@ -3,6 +3,7 @@
 import {
   Download,
   Factory,
+  Library,
   Plus,
   ScrollText,
   Search,
@@ -25,6 +26,7 @@ import { parseFactoryProjectJson } from "@/lib/import-export";
 import type { EntryIcon } from "@/lib/model/types";
 import { applyPlanView } from "@/lib/plan-view";
 import { openSetupsTab } from "@/lib/setups-tab";
+import { openShelf } from "@/lib/shelf/shelf-tab";
 import { openSidebarTab } from "@/lib/sidebar-tab";
 import { APP_VERSION } from "@/lib/version";
 import { leaveWelcomeTab, setWelcomeOnStartup, useWelcomeTab } from "@/lib/welcome/welcome-tab";
@@ -158,10 +160,12 @@ export function WelcomePage() {
               >
                 Find a recipe
               </SecondaryButton>
+              {/* Your own designs live on the shelf now, not on this page. */}
+              <SecondaryButton icon={Library} onClick={() => openShelf()}>
+                Your shelf
+              </SecondaryButton>
             </div>
           </header>
-
-          <YourDesigns />
 
           <CommunityShelf />
 
@@ -295,41 +299,6 @@ function Face({ icon, size }: { icon: EntryIcon | undefined; size: number }) {
         <Factory className="h-1/2 w-1/2 text-[#3d4a58]" />
       )}
     </span>
-  );
-}
-
-/** The designs already on this device, newest edit first. */
-function YourDesigns() {
-  const designs = useDesignStore((state) => state.designs);
-  const switchToDesign = useDesignStore((state) => state.switchToDesign);
-  if (designs.length === 0) {
-    return null;
-  }
-  const recent = [...designs]
-    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
-    .slice(0, 12);
-  return (
-    <section className="flex flex-col gap-2">
-      <SectionTitle>Your designs</SectionTitle>
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-        {recent.map((design) => (
-          <button
-            key={design.id}
-            type="button"
-            onClick={() => {
-              leaveWelcomeTab();
-              void switchToDesign(design.id);
-            }}
-            className="group flex items-center gap-2 border border-line bg-[#151a21]/80 px-2 py-1 text-left hover:border-cyan-500/60 hover:bg-[#182029]"
-          >
-            <Face icon={design.icon} size={40} />
-            <span className="min-w-0 truncate text-[12px] font-bold text-fg group-hover:text-white">
-              {design.name}
-            </span>
-          </button>
-        ))}
-      </div>
-    </section>
   );
 }
 

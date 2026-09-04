@@ -68,16 +68,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "2.55.1",
+    version: "2.56.0",
     date: "2026-09-04",
-    headline: "Imported plans keep their recipes",
+    headline: "The shelf: all your designs, in folders",
     notes: [
-      "Importing a plan file finds each card's exact recipe again, even one saved before a dataset update.",
-      "Two recipes that share a name, like the Steel Ingot blast furnace pair, no longer swap places on import.",
-      "A recipe the dataset no longer has stays on the card as it was saved instead of being replaced by a lookalike.",
-      "Big plans with many stopped machines no longer freeze for half a minute on every edit or drag.",
-      "Your chosen font stays after a refresh in Firefox.",
-      "One design that fails to open no longer hides all your other design tabs.",
+      "The square at the head of the tab strip opens the shelf: every design you have, with folders, search and sort.",
+      "Closing a tab keeps the design on the shelf; delete lives there, and your posted setups are its Shared view.",
+      "A posted design you have edited since wears a mark, and Update post refreshes it from the shelf.",
+      "Imported plans find each card's exact recipe again, big plans no longer freeze on every edit, and one broken design no longer hides the rest.",
     ],
   },
   {

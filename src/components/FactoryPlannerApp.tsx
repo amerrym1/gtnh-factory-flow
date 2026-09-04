@@ -19,8 +19,10 @@ import { downloadCommunityPlan, tagPlanWithCommunityId } from "@/lib/community/c
 import { forgetSharedPlanId, readSharedPlanId } from "@/lib/community/shared-link";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { useIsCompactViewport } from "@/lib/compact-view";
+import { useShelfTab } from "@/lib/shelf/shelf-tab";
 import { useWelcomeTab } from "@/lib/welcome/welcome-tab";
 import { AppHeader } from "./AppHeader";
+import { ShelfPage } from "./shelf/ShelfPage";
 import { WelcomePage } from "./welcome/WelcomePage";
 import { PlanIdentityDrawer } from "./PlanIdentityDrawer";
 import { SharedAddressSync } from "./SharedAddressSync";
@@ -331,7 +333,7 @@ function PlacementRevealer() {
 
 /** The board with the tab strip over it: the same on any window. */
 function BoardColumn() {
-  const welcome = useWelcomeTab();
+  const covering = useCoveringPage();
 
   return (
     /*
@@ -349,17 +351,42 @@ function BoardColumn() {
       */}
       <div className="relative min-h-0">
         <FactoryFlow />
-        {welcome.active ? (
+        {covering === "welcome" ? (
           <div className="absolute inset-0 z-40">
             <WelcomePage />
           </div>
+        ) : covering === "shelf" ? (
+          <div className="absolute inset-0 z-40">
+            <ShelfPage />
+          </div>
         ) : null}
       </div>
-      {/* The plan card describes the board it sits under; while Welcome
+      {/* The plan card describes the board it sits under; while a page
           covers that board, the card goes with it. */}
-      {welcome.active ? null : <PlanIdentityDrawer />}
+      {covering ? null : <PlanIdentityDrawer />}
     </div>
   );
+}
+
+/**
+ * Which page, if any, is covering the board. Welcome and the shelf never
+ * show together (opening one steps the other down), and with NO design open
+ * at all the shelf is shown whatever its own flag says: an empty strip has
+ * nothing else to stand on, and a board with no design behind it could not
+ * save an edit anywhere.
+ */
+function useCoveringPage(): "welcome" | "shelf" | undefined {
+  const welcome = useWelcomeTab();
+  const shelf = useShelfTab();
+  const isHydrated = useDesignStore((state) => state.isHydrated);
+  const hasActiveDesign = useDesignStore((state) => state.activeDesignId !== undefined);
+  if (welcome.active) {
+    return "welcome";
+  }
+  if (shelf.active || (isHydrated && !hasActiveDesign)) {
+    return "shelf";
+  }
+  return undefined;
 }
 
 function ColumnWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
@@ -368,8 +395,8 @@ function ColumnWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
   // about a plan you are not looking at. It folds to a blank strip for the
   // duration, WITHOUT writing the workspace view, so stepping off Welcome
   // brings it back exactly as it was left.
-  const welcome = useWelcomeTab();
-  const rightPanelShown = workspace.rightPanelOpen && !welcome.active;
+  const covering = useCoveringPage();
+  const rightPanelShown = workspace.rightPanelOpen && !covering;
 
   return (
     <>
@@ -401,7 +428,7 @@ function ColumnWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
         <BoardColumn />
         {rightPanelShown ? (
           <InspectorPanel />
-        ) : welcome.active ? (
+        ) : covering ? (
           <div className="h-full border-l border-line bg-surface" />
         ) : (
           <PanelRail side="right" label="Resources" />

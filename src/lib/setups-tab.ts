@@ -17,6 +17,17 @@ export function notifySetupsChanged(): void {
   window.dispatchEvent(new Event(SETUPS_CHANGED_EVENT));
 }
 
+/**
+ * Asks the header to open the share dialog for the board that is up. The
+ * shelf's "Update post" uses it: the design is put on the canvas first, then
+ * the same dialog the Share button opens takes it from there.
+ */
+export const OPEN_SHARE_DIALOG_EVENT = "gtnh:open-share-dialog";
+
+export function requestShareDialog(): void {
+  window.dispatchEvent(new Event(OPEN_SHARE_DIALOG_EVENT));
+}
+
 export type SetupsScope = "network" | "mine";
 
 let pendingScope: SetupsScope | undefined;

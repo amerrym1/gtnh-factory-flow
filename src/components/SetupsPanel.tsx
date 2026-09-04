@@ -40,6 +40,7 @@ import {
   takePendingSetupsScope,
   type SetupsScope,
 } from "@/lib/setups-tab";
+import { openShelf } from "@/lib/shelf/shelf-tab";
 import { useCommunityUser } from "@/components/community/auth";
 import { SharePlanDialog } from "@/components/community/SharePlanDialog";
 import { EntryIconSlot, IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
@@ -83,9 +84,15 @@ interface SetupShelf {
  * the open board). NETWORK is the whole hub; MINE is the account's own
  * posts, where take-down lives.
  */
-export function SetupsPanel() {
+export function SetupsPanel({ scope: fixedScope }: { scope?: SetupsScope } = {}) {
   const { user, isLoading: isAuthLoading } = useCommunityUser();
-  const [scope, setScope] = useState<SetupsScope>(() => takePendingSetupsScope() ?? "network");
+  // The column browses the NETWORK; Mine moved to the shelf, which embeds
+  // this same panel pinned to that scope (`fixedScope`).
+  const [ownScope, setScope] = useState<SetupsScope>(() => {
+    const requested = takePendingSetupsScope();
+    return requested === "network" ? requested : "network";
+  });
+  const scope = fixedScope ?? ownScope;
   const [sort, setSort] = useState<CommunityPlanSort>("new");
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 250);
@@ -106,11 +113,14 @@ export function SetupsPanel() {
       state.designs.find((design) => design.id === state.activeDesignId)?.name ?? "this board",
   );
 
-  // "My setups" in the account menu can retarget an already-open panel.
+  // A request to open the panel on Mine lands on the shelf's Shared view
+  // instead: that is where your posts live now.
   useEffect(() => {
     const applyScope = () => {
       const requested = takePendingSetupsScope();
-      if (requested) {
+      if (requested === "mine") {
+        openShelf({ kind: "shared" });
+      } else if (requested) {
         setScope(requested);
       }
     };
@@ -417,8 +427,10 @@ export function SetupsPanel() {
       <ControlsCard>
         {/* Share on the left, then Mine | Public: the same row shape as the
             board shelf. The panel still OPENS on Public: browsing is
-            the point. */}
-        <div className="flex gap-1">
+            the point. Mine is a door to the shelf's Shared view, where the
+            same list lives beside your other designs. Embedded on the shelf
+            the row is redundant and goes. */}
+        <div className={fixedScope ? "hidden" : "flex gap-1"}>
           <MinecraftTooltip
             label={
               hasBoardContent
@@ -439,13 +451,9 @@ export function SetupsPanel() {
           </MinecraftTooltip>
           <button
             type="button"
-            onClick={() => setScope("mine")}
-            className={[
-              "flex h-7 flex-1 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
-              scope === "mine"
-                ? "border-cyan-500 bg-cyan-500/15 text-cyan-300"
-                : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
-            ].join(" ")}
+            onClick={() => openShelf({ kind: "shared" })}
+            title="Your posts, on the shelf"
+            className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-[4px] border border-neutral-700 bg-[#17191d] text-xs font-medium text-neutral-400 hover:text-neutral-200"
           >
             <User className="h-3.5 w-3.5" />
             Mine

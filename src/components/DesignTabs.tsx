@@ -1,10 +1,12 @@
 "use client";
 
-import { Compass } from "lucide-react";
+import { Compass, Library } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { openDesigns, type DesignFolder } from "@/lib/designs/design-library";
 import type { EntryIcon } from "@/lib/model/types";
 import { FLUID_ICON_SCALE, ResourceIcon } from "./nei/ResourceIcon";
+import { leaveShelf, openShelf, useShelfTab } from "@/lib/shelf/shelf-tab";
 import {
   closeWelcomeTab,
   leaveWelcomeTab,
@@ -34,7 +36,8 @@ interface OpenMenu {
 }
 
 export function DesignTabs() {
-  const designs = useDesignStore((state) => state.designs);
+  const allDesigns = useDesignStore((state) => state.designs);
+  const folders = useDesignStore((state) => state.folders);
   const activeDesignId = useDesignStore((state) => state.activeDesignId);
   const isHydrated = useDesignStore((state) => state.isHydrated);
   const saveState = useDesignStore((state) => state.saveState);
@@ -42,10 +45,17 @@ export function DesignTabs() {
   const addDesign = useDesignStore((state) => state.addDesign);
   const copyDesign = useDesignStore((state) => state.copyDesign);
   const renameDesign = useDesignStore((state) => state.renameDesign);
+  const closeDesign = useDesignStore((state) => state.closeDesign);
+  const closeDesigns = useDesignStore((state) => state.closeDesigns);
   const removeDesign = useDesignStore((state) => state.removeDesign);
-  const removeDesigns = useDesignStore((state) => state.removeDesigns);
   const reorderDesigns = useDesignStore((state) => state.reorderDesigns);
+  const moveDesignToFolder = useDesignStore((state) => state.moveDesignToFolder);
   const welcome = useWelcomeTab();
+  const shelf = useShelfTab();
+  // The strip is the OPEN designs. The rest live on the shelf.
+  const designs = openDesigns(allDesigns);
+  // Neither page is a design, and exactly one thing in this row looks current.
+  const coveringPage = welcome.active || shelf.active;
 
   const [renamingId, setRenamingId] = useState<string>();
   const [openMenu, setOpenMenu] = useState<OpenMenu>();
@@ -449,6 +459,30 @@ export function DesignTabs() {
           their active state off `welcome.active` too - exactly one tab in this
           row can look current.
         */}
+        {/*
+          The SHELF: every design, open or not, in folders. Not a tab: a fixed
+          square at the head of the row with no name and no close, because it
+          is a place rather than a thing on the strip. It covers the board the
+          way Welcome does.
+        */}
+        <button
+          type="button"
+          onClick={() => openShelf()}
+          title="Shelf: all your designs"
+          aria-label="Open the shelf"
+          aria-pressed={shelf.active}
+          data-help-anchor="shelf"
+          className={[
+            "flex h-6 w-7 shrink-0 items-center justify-center rounded-t border-b-2",
+            shelf.active
+              ? "border-cyan-500 bg-surface-raised text-fg"
+              : "border-transparent text-fg-muted hover:bg-surface-sunken hover:text-fg",
+          ].join(" ")}
+        >
+          <Library className="h-3.5 w-3.5" aria-hidden />
+        </button>
+        <span aria-hidden className="h-3.5 w-px shrink-0 bg-line" />
+
         {welcome.open ? (
           <div
             className={[
@@ -460,7 +494,10 @@ export function DesignTabs() {
           >
             <button
               type="button"
-              onClick={openWelcomeTab}
+              onClick={() => {
+                leaveShelf();
+                openWelcomeTab();
+              }}
               title="Welcome"
               className="flex items-center gap-1 text-xs font-medium"
             >
@@ -504,7 +541,7 @@ export function DesignTabs() {
             className="flex w-max select-none items-center gap-1"
           >
             {designs.map((design, index) => {
-              const isActive = design.id === activeDesignId && !welcome.active;
+              const isActive = design.id === activeDesignId && !coveringPage;
 
               return (
                 <Fragment key={design.id}>
@@ -524,6 +561,14 @@ export function DesignTabs() {
                 <div
                   data-design-id={design.id}
                   onPointerDown={(event) => beginTabDrag(event, design.id)}
+                  // Middle click closes, the way every tab strip does. Safe
+                  // now that closing only puts the design on the shelf.
+                  onAuxClick={(event) => {
+                    if (event.button === 1) {
+                      event.preventDefault();
+                      void closeDesign(design.id);
+                    }
+                  }}
                   className={[
                     "group flex h-6 shrink-0 items-center rounded-t border-b-2 pl-2 pr-1",
                     isActive
@@ -590,6 +635,17 @@ export function DesignTabs() {
                   >
                     ⋯
                   </button>
+                  {/* Close puts the design on the shelf; nothing is lost, so
+                      it needs no arming and can sit right on the pill. */}
+                  <button
+                    type="button"
+                    aria-label={`Close ${design.name}`}
+                    title="Close tab (stays on the shelf)"
+                    onClick={() => void closeDesign(design.id)}
+                    className="rounded px-1 text-xs text-fg-muted opacity-0 hover:bg-surface hover:text-fg focus:opacity-100 group-hover:opacity-100"
+                  >
+                    ✕
+                  </button>
                 </div>
                 </Fragment>
               );
@@ -644,6 +700,8 @@ export function DesignTabs() {
             designs.map((design) => design.id),
             openMenu.id,
           )}
+          folders={folders}
+          folderId={allDesigns.find((design) => design.id === openMenu.id)?.folderId}
           onClose={closeMenu}
           onArm={setArmed}
           onRename={() => {
@@ -654,12 +712,20 @@ export function DesignTabs() {
             void copyDesign(openMenu.id);
             closeMenu();
           }}
+          onMoveToFolder={(folderId) => {
+            void moveDesignToFolder(openMenu.id, folderId);
+            closeMenu();
+          }}
+          onCloseTab={() => {
+            void closeDesign(openMenu.id);
+            closeMenu();
+          }}
           onDelete={() => {
             void removeDesign(openMenu.id);
             closeMenu();
           }}
           onCloseMany={(ids) => {
-            void removeDesigns(ids, openMenu.id);
+            void closeDesigns(ids, openMenu.id);
             closeMenu();
           }}
         />
@@ -676,20 +742,28 @@ function DesignMenu({
   menu,
   armed,
   neighbours,
+  folders,
+  folderId,
   onClose,
   onArm,
   onRename,
   onDuplicate,
+  onMoveToFolder,
+  onCloseTab,
   onDelete,
   onCloseMany,
 }: {
   menu: OpenMenu;
   armed?: ArmedAction;
   neighbours: { left: string[]; right: string[]; others: string[] };
+  folders: DesignFolder[];
+  folderId?: string;
   onClose: () => void;
   onArm: (action: ArmedAction) => void;
   onRename: () => void;
   onDuplicate: () => void;
+  onMoveToFolder: (folderId: string | undefined) => void;
+  onCloseTab: () => void;
   onDelete: () => void;
   onCloseMany: (ids: string[]) => void;
 }) {
@@ -743,17 +817,41 @@ function DesignMenu({
     >
       <MenuItem label="Rename" onClick={onRename} />
       <MenuItem label="Duplicate" onClick={onDuplicate} />
+      {folders.length > 0 ? (
+        <>
+          <div className="mt-1 border-t border-line px-2 pb-0.5 pt-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-fg-muted">
+            Move to
+          </div>
+          {folders.map((folder) => (
+            <MenuItem
+              key={folder.id}
+              label={folder.name}
+              indent
+              checked={folderId === folder.id}
+              onClick={() => onMoveToFolder(folder.id)}
+            />
+          ))}
+          <MenuItem
+            label="No folder"
+            indent
+            checked={!folderId}
+            onClick={() => onMoveToFolder(undefined)}
+          />
+          <div className="mt-1 border-t border-line" />
+        </>
+      ) : null}
 
       {/*
-        Every item below closes designs for good, so each one arms on the first
-        click and fires on the second — two steps rather than a native confirm
-        dialog, because closing cannot be undone and the second click lands
-        where the first did. Labels stay short enough to sit on one line; a
-        count in the label pushed them onto two.
+        Closing puts designs on the shelf, so every close fires on one click;
+        the bulk ones still arm first because a stray click on "close other
+        tabs" empties the strip, and getting it back means a trip to the
+        shelf. Labels stay short enough to sit on one line; a count in the
+        label pushed them onto two.
 
         An item with nothing to close is left out rather than shown disabled;
         on the first or last tab half this menu would otherwise be dead text.
       */}
+      <MenuItem label="Close" onClick={onCloseTab} />
       {neighbours.left.length > 0 ? (
         <BulkCloseItem
           label="Close tabs to left"
@@ -779,10 +877,11 @@ function DesignMenu({
         />
       ) : null}
 
+      {/* The one item that loses work, so it arms first. */}
       {armed === "delete" ? (
-        <MenuItem label="Confirm close" tone="danger" onClick={onDelete} />
+        <MenuItem label="Confirm delete" tone="danger" onClick={onDelete} />
       ) : (
-        <MenuItem label="Close" tone="danger" onClick={() => onArm("delete")} />
+        <MenuItem label="Delete" tone="danger" onClick={() => onArm("delete")} />
       )}
     </div>,
     document.body,
@@ -831,10 +930,14 @@ function MenuItem({
   label,
   onClick,
   tone = "default",
+  indent,
+  checked,
 }: {
   label: string;
   onClick: () => void;
   tone?: "default" | "danger";
+  indent?: boolean;
+  checked?: boolean;
 }) {
   return (
     <button
@@ -842,11 +945,13 @@ function MenuItem({
       role="menuitem"
       onClick={onClick}
       className={[
-        "block w-full whitespace-nowrap px-2 py-1.5 text-left text-xs hover:bg-surface-sunken",
+        "flex w-full items-center gap-1.5 whitespace-nowrap px-2 py-1.5 text-left text-xs hover:bg-surface-sunken",
+        indent ? "pl-4" : "",
         tone === "danger" ? "text-red-400" : "text-fg",
       ].join(" ")}
     >
-      {label}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {checked ? <span className="text-cyan-300">✓</span> : null}
     </button>
   );
 }

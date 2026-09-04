@@ -1,3 +1,4 @@
+import { planContentFingerprint } from "@/lib/community/plan-fingerprint";
 import type { EntryIcon, FactoryProject } from "@/lib/model/types";
 
 /** Tab-strip metadata: everything needed to draw the tabs without loading plans. */
@@ -17,6 +18,36 @@ export interface DesignSummary {
    * loading plans. Kept in step wherever the record is written.
    */
   icon?: EntryIcon;
+  /**
+   * Off the tab strip, on the shelf only. A closed design is not deleted:
+   * closing a tab puts the design back on the shelf, opening it from the
+   * shelf clears the flag. Absent means open, which is what every design was
+   * before the shelf existed.
+   */
+  closed?: boolean;
+  /** The shelf folder this design is filed in; absent means unfiled. */
+  folderId?: string;
+  /**
+   * The community post this design is linked to (posted as, or opened from),
+   * copied out of the plan's metadata so the shelf can mark it without
+   * loading the plan.
+   */
+  communityPlanId?: string;
+  /**
+   * True when the board has moved on since it last agreed with that post: the
+   * plan's content fingerprint no longer matches the one stamped at the last
+   * share or download. This is the shelf's "edited since posted" mark. A link
+   * with no stamped fingerprint (a copy from before fingerprints existed)
+   * cannot be judged and is never marked.
+   */
+  communityBehind?: boolean;
+}
+
+/** A shelf folder. Flat: folders hold designs, never other folders. */
+export interface DesignFolder {
+  id: string;
+  name: string;
+  createdAt: string;
 }
 
 /** A saved design: its metadata plus the plan itself. */
@@ -25,6 +56,7 @@ export interface DesignRecord extends DesignSummary {
 }
 
 export const UNTITLED_DESIGN_NAME = "Untitled design";
+export const UNTITLED_FOLDER_NAME = "New folder";
 
 export function createDesignId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -172,7 +204,9 @@ export function stampDesignOrder<T extends DesignSummary>(
 }
 
 export function toDesignSummary(record: DesignRecord): DesignSummary {
-  return {
+  const communityPlanId = record.project.metadata?.communityPlanId;
+  const baseline = record.project.metadata?.communityFingerprint;
+  const summary: DesignSummary = {
     id: record.id,
     name: record.name,
     createdAt: record.createdAt,
@@ -180,6 +214,41 @@ export function toDesignSummary(record: DesignRecord): DesignSummary {
     order: record.order,
     icon: record.project.icon,
   };
+  if (record.closed) {
+    summary.closed = true;
+  }
+  if (record.folderId) {
+    summary.folderId = record.folderId;
+  }
+  if (communityPlanId) {
+    summary.communityPlanId = communityPlanId;
+    if (baseline && baseline !== planContentFingerprint(record.project)) {
+      summary.communityBehind = true;
+    }
+  }
+  return summary;
+}
+
+/** The designs on the tab strip, in strip order. */
+export function openDesigns<T extends DesignSummary>(designs: T[]): T[] {
+  return designs.filter((design) => !design.closed);
+}
+
+export function createFolder(name: string, now: string = new Date().toISOString()): DesignFolder {
+  return { id: createDesignId(), name: normalizeFolderName(name), createdAt: now };
+}
+
+export function normalizeFolderName(name: string): string {
+  return name.trim() || UNTITLED_FOLDER_NAME;
+}
+
+/** Folders are listed by name; there is no hand order to keep. */
+export function sortFolders<T extends DesignFolder>(folders: T[]): T[] {
+  return [...folders].sort(
+    (left, right) =>
+      left.name.localeCompare(right.name, undefined, { sensitivity: "base" }) ||
+      left.createdAt.localeCompare(right.createdAt),
+  );
 }
 
 /**

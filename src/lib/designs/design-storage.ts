@@ -1,7 +1,12 @@
 "use client";
 
 import type { FactoryProject } from "@/lib/model/types";
-import { toDesignSummary, type DesignRecord, type DesignSummary } from "./design-library";
+import {
+  toDesignSummary,
+  type DesignFolder,
+  type DesignRecord,
+  type DesignSummary,
+} from "./design-library";
 
 /*
  * Deliberately a different database from the dataset cache in
@@ -10,7 +15,8 @@ import { toDesignSummary, type DesignRecord, type DesignSummary } from "./design
  * the two would race on startup, when both are opened at once.
  */
 const DB_NAME = "gtnh-factory-flow-designs";
-const DB_VERSION = 1;
+// 2: the shelf's folders store.
+const DB_VERSION = 2;
 
 /*
  * Metadata and plans live in separate stores so the tab strip costs almost
@@ -20,6 +26,8 @@ const DB_VERSION = 1;
  */
 const META_STORE = "design-meta";
 const PLAN_STORE = "design-plans";
+/** The shelf's folders: a handful of named ids, read once at startup. */
+const FOLDER_STORE = "design-folders";
 
 /** Small enough, and read early enough, to be worth keeping synchronous. */
 export const ACTIVE_DESIGN_STORAGE_KEY = "gtnh-factory-flow.active-design.v1";
@@ -126,6 +134,51 @@ export async function deleteDesign(id: string): Promise<void> {
   }
 }
 
+export async function listDesignFolders(): Promise<DesignFolder[]> {
+  if (!isDesignStorageAvailable()) {
+    return [];
+  }
+
+  const db = await openDesignDb();
+  try {
+    return await requestToPromise<DesignFolder[]>(
+      db.transaction(FOLDER_STORE, "readonly").objectStore(FOLDER_STORE).getAll(),
+    );
+  } finally {
+    db.close();
+  }
+}
+
+export async function writeDesignFolder(folder: DesignFolder): Promise<void> {
+  if (!isDesignStorageAvailable()) {
+    return;
+  }
+
+  const db = await openDesignDb();
+  try {
+    const transaction = db.transaction(FOLDER_STORE, "readwrite");
+    transaction.objectStore(FOLDER_STORE).put(folder);
+    await transactionToPromise(transaction);
+  } finally {
+    db.close();
+  }
+}
+
+export async function deleteDesignFolder(id: string): Promise<void> {
+  if (!isDesignStorageAvailable()) {
+    return;
+  }
+
+  const db = await openDesignDb();
+  try {
+    const transaction = db.transaction(FOLDER_STORE, "readwrite");
+    transaction.objectStore(FOLDER_STORE).delete(id);
+    await transactionToPromise(transaction);
+  } finally {
+    db.close();
+  }
+}
+
 export function readActiveDesignId(): string | undefined {
   if (typeof window === "undefined") {
     return undefined;
@@ -170,6 +223,9 @@ function openDesignDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(PLAN_STORE)) {
         db.createObjectStore(PLAN_STORE, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(FOLDER_STORE)) {
+        db.createObjectStore(FOLDER_STORE, { keyPath: "id" });
       }
     };
     request.onsuccess = () => resolve(request.result);

@@ -2,7 +2,7 @@
 
 import { ChevronDown, Factory, LogOut, ShieldCheck, User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { openSetupsTab } from "@/lib/setups-tab";
+import { openShelf } from "@/lib/shelf/shelf-tab";
 import { AuthForm, useCommunityUser } from "./auth";
 
 /**
@@ -94,7 +94,7 @@ export function AccountMenu() {
             type="button"
             onClick={() => {
               setMenuOpen(false);
-              openSetupsTab("mine");
+              openShelf({ kind: "shared" });
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-raised"
           >
