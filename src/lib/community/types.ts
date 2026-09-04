@@ -136,3 +136,18 @@ export const BOARD_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
 export const COMMUNITY_NAME_MAX_LENGTH = 80;
 export const COMMUNITY_DESCRIPTION_MAX_LENGTH = 2000;
 export const COMMUNITY_RESOURCE_STAT_LIMIT = 40;
+
+/** One comment on a shared setup, as the browser sees it. */
+export interface CommunityComment {
+  id: string;
+  planId: string;
+  authorName: string;
+  body: string;
+  createdAt: string;
+  /** Written by the signed-in user. */
+  isMine: boolean;
+  /** The signed-in user may delete it: their own, or on their own post. */
+  canDelete: boolean;
+}
+
+export const COMMUNITY_COMMENT_MAX_LENGTH = 2000;

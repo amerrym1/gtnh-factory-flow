@@ -213,3 +213,22 @@ create index if not exists library_designs_user_updated_idx
 
 alter table library_folders enable row level security;
 alter table library_designs enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- COMMENTS on shared setups. One row per comment; deleting sets deleted_at
+-- so a thread never loses its shape. The author, the post's owner and an
+-- admin may delete. Additive: touches nothing existing.
+create table if not exists community_comments (
+  id uuid primary key default gen_random_uuid(),
+  plan_id uuid not null references community_plans (id) on delete cascade,
+  user_id uuid not null references community_users (id) on delete cascade,
+  author_name text not null default '',
+  body text not null check (char_length(body) between 1 and 2000),
+  created_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+
+create index if not exists community_comments_plan_idx
+  on community_comments (plan_id, created_at);
+
+alter table community_comments enable row level security;

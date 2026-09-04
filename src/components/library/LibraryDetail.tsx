@@ -9,7 +9,6 @@ import {
   Globe,
   Image as ImageIcon,
   Link2,
-  MessageSquare,
   Pencil,
   Trash2,
   Upload,
@@ -23,6 +22,7 @@ import { normalizeBlueprintTags } from "@/lib/blueprints/types";
 import type { PlanResourceStat } from "@/lib/community/types";
 import type { EntryIcon } from "@/lib/model/types";
 import { Face, formatEuT, type TileMarks } from "./LibraryTile";
+import { PlanComments } from "./PlanComments";
 
 /**
  * The step between a tile and the board: the grid gives way to one page
@@ -79,8 +79,8 @@ export interface LibraryDetailEntry {
   /** The board photograph, when there is one. */
   previewUrl?: string;
   marks?: TileMarks;
-  /** Posted things have a comments section; private designs do not. */
-  hasComments?: boolean;
+  /** The post whose comments show; a private design has none. */
+  commentsPlanId?: string;
   /** The big button: Open, or Open a copy. */
   primary: { label: string; onClick: () => void };
   /** The icon keys under it. */
@@ -417,31 +417,8 @@ export function LibraryDetail({
           {/* BELOW: comments on the left, needs and makes on the right. */}
           <div className="grid grid-cols-2 gap-4 compact:grid-cols-1">
             <div className="flex min-w-0 flex-col gap-3">
-              {/* COMMENTS: only on something posted. The shape, not yet the thing. */}
-              {entry.hasComments ? (
-                <section className="flex flex-col gap-1.5 border-t border-[var(--mc-33)] pt-3">
-                  <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--mc-ink)]">
-                    <MessageSquare className="h-3.5 w-3.5 text-[var(--mc-ink-muted)]" aria-hidden />
-                    Comments
-                  </h3>
-                  <p className="text-[12px] text-[var(--mc-ink-muted)]">No comments yet.</p>
-                  <div className="flex items-center gap-2 border border-[var(--mc-33)] bg-[var(--mc-25)] px-2 py-1.5 opacity-60">
-                    <input
-                      disabled
-                      placeholder="Say something about this setup"
-                      className="min-w-0 flex-1 bg-transparent text-[12px] text-[var(--mc-ink)] outline-none placeholder:text-[var(--mc-ink-muted)]"
-                    />
-                    <span className="text-[10px] text-[var(--mc-ink-muted)]">coming soon</span>
-                    <button
-                      type="button"
-                      disabled
-                      className="h-6 border border-[var(--mc-61)] bg-[var(--mc-33)] px-2.5 text-[11px] font-medium text-[var(--mc-ink-muted)]"
-                    >
-                      Post
-                    </button>
-                  </div>
-                </section>
-              ) : null}
+              {/* COMMENTS: only on something posted. */}
+          {entry.commentsPlanId ? <PlanComments planId={entry.commentsPlanId} /> : null}
             </div>
             <div className="flex min-w-0 flex-col gap-3">
               {/* NEEDS AND MAKES: tight columns, all of them. */}

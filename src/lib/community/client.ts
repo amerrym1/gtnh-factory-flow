@@ -5,6 +5,7 @@ import { factoryProjectSchema } from "@/lib/model/schemas";
 import { normalizeLoadedProject } from "@/lib/model/project-normalize";
 import { randomUUID } from "@/lib/random-id";
 import type {
+  CommunityComment,
   CommunityPlanListRequest,
   CommunityPlanListResponse,
   CommunityPlanSummary,
@@ -238,4 +239,30 @@ export function tagPlanWithCommunityId(plan: unknown, planId: string): unknown {
 function downloadedPlanFingerprint(plan: unknown): string {
   const parsed = factoryProjectSchema.safeParse(plan);
   return planContentFingerprint(parsed.success ? normalizeLoadedProject(parsed.data) : plan);
+}
+
+export async function listPlanComments(planId: string): Promise<CommunityComment[]> {
+  const response = await fetch(`/api/community/plans/${encodeURIComponent(planId)}/comments`, {
+    cache: "no-store",
+  });
+  const body = await parseJsonOrThrow<{ comments: CommunityComment[] }>(response);
+  return body.comments;
+}
+
+export async function postPlanComment(planId: string, text: string): Promise<CommunityComment> {
+  const response = await fetch(`/api/community/plans/${encodeURIComponent(planId)}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body: text }),
+  });
+  const body = await parseJsonOrThrow<{ comment: CommunityComment }>(response);
+  return body.comment;
+}
+
+export async function deletePlanComment(planId: string, commentId: string): Promise<void> {
+  const response = await fetch(
+    `/api/community/plans/${encodeURIComponent(planId)}/comments/${encodeURIComponent(commentId)}`,
+    { method: "DELETE" },
+  );
+  await parseJsonOrThrow<{ ok: true }>(response);
 }

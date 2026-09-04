@@ -344,7 +344,7 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
               posted: detailPlan.isMine === true,
               privatePost: detailPlan.isMine === true && !detailPlan.isPublic,
             },
-            hasComments: true,
+            commentsPlanId: detailPlan.id,
             onEdit: detailPlan.isMine
               ? async (patch) => {
                   try {
@@ -473,7 +473,7 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
           // Loading is a moment the whole page is about, so it sits in the
           // middle, large, and breathes: not a whisper in the corner.
           <div className="flex h-full min-h-[240px] items-center justify-center">
-            <LoaderCircle className="h-8 w-8 animate-spin text-neutral-200" aria-label="Loading" />
+            <LoaderCircle className="h-14 w-14 animate-spin text-neutral-200" aria-label="Loading" />
           </div>
         ) : plans.length === 0 && !error ? (
           <p className="text-[12px] leading-relaxed text-[var(--mc-ink-muted)]">

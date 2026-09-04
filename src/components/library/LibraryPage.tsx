@@ -452,7 +452,7 @@ export function LibraryPage() {
                     privatePost: detailPost ? !detailPost.isPublic : false,
                     behind: Boolean(detailPost && detailDesign.communityBehind),
                   },
-                  hasComments: Boolean(detailPost),
+                  commentsPlanId: detailPost?.id,
                   primary: {
                     label: "Open",
                     onClick: () => {
