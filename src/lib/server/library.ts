@@ -61,7 +61,7 @@ export function rowToFolder(row: FolderRow): RemoteFolder {
  * and the app has to tell "not set up yet" from "broken".
  */
 export function libraryStorageErrorMessage(
-  error: { code?: string } | null,
+  error: { code?: string; message?: string } | null,
   fallback: string,
 ): string {
   if (error?.code === "PGRST205" || error?.code === "42P01") {
@@ -70,7 +70,9 @@ export function libraryStorageErrorMessage(
   if (error?.code === "PGRST204" || error?.code === "42703") {
     return "Library sync is out of date: re-run the latest supabase/schema.sql in the Supabase SQL editor.";
   }
-  return fallback;
+  // Anything else: say what the database said, so the strip's red line
+  // names the cause instead of hiding it behind a fallback.
+  return error?.message ? `${fallback} ${error.message}` : fallback;
 }
 
 /** True for a well-formed ISO timestamp the client is allowed to stamp. */
