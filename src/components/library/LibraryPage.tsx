@@ -387,13 +387,14 @@ export function LibraryPage() {
                       open(detailDesign.id);
                     },
                   },
-                  actions: [
+                  keys: [
                     ...(detailPost
                       ? [
                           ...(detailDesign.communityBehind
                             ? [
                                 {
-                                  label: "Update post",
+                                  label: "Update the post from this design",
+                                  icon: "post" as const,
                                   onClick: () => {
                                     setDetailId(undefined);
                                     void postDesign(detailDesign.id);
@@ -401,9 +402,14 @@ export function LibraryPage() {
                                 },
                               ]
                             : []),
-                          { label: "Copy link", onClick: () => void copyLink(detailDesign) },
                           {
-                            label: detailPost.isPublic ? "Make private" : "Make public",
+                            label: "Copy the share link",
+                            icon: "link" as const,
+                            onClick: () => void copyLink(detailDesign),
+                          },
+                          {
+                            label: detailPost.isPublic ? "Make it private" : "Make it public",
+                            icon: detailPost.isPublic ? ("private" as const) : ("public" as const),
                             onClick: () => void setPostVisibility(detailDesign, !detailPost.isPublic),
                           },
                         ]
@@ -411,6 +417,7 @@ export function LibraryPage() {
                         ? [
                             {
                               label: "Post to the network",
+                              icon: "post" as const,
                               onClick: () => {
                                 setDetailId(undefined);
                                 void postDesign(detailDesign.id);
@@ -421,7 +428,8 @@ export function LibraryPage() {
                     ...(!detailDesign.closed
                       ? [
                           {
-                            label: "Close tab",
+                            label: "Close its tab",
+                            icon: "close" as const,
                             onClick: () => {
                               setDetailId(undefined);
                               void closeDesign(detailDesign.id);
@@ -429,6 +437,15 @@ export function LibraryPage() {
                           },
                         ]
                       : []),
+                    {
+                      label: "Delete",
+                      icon: "delete" as const,
+                      arm: true,
+                      onClick: () => {
+                        setDetailId(undefined);
+                        void removeDesign(detailDesign.id);
+                      },
+                    },
                   ],
                 }}
                 onClose={() => setDetailId(undefined)}

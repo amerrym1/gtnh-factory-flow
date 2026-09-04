@@ -345,12 +345,7 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
             needs: detailPlan.needs,
             outputs: detailPlan.outputs,
             previewUrl: previewUrlFor(detailPlan.id),
-            social: {
-              score: detailPlan.score,
-              myVote: detailPlan.myVote,
-              onVote: () => void vote(detailPlan),
-              downloads: detailPlan.downloads,
-            },
+            downloads: detailPlan.downloads,
             marks: {
               posted: detailPlan.isMine === true,
               privatePost: detailPlan.isMine === true && !detailPlan.isPublic,
@@ -362,19 +357,20 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
                 void open(detailPlan);
               },
             },
-            actions: [
+            keys: [
               {
-                label: "Load as a board",
-                onClick: () => {
-                  setDetailId(undefined);
-                  void openAsBoard(detailPlan);
-                },
+                label: detailPlan.myVote === 1 ? "Take back your vote" : "Vote this up",
+                icon: "vote",
+                active: detailPlan.myVote === 1,
+                count: detailPlan.score,
+                onClick: () => void vote(detailPlan),
               },
-              { label: "Copy link", onClick: () => void copyLink(detailPlan) },
+              { label: "Copy the share link", icon: "link", onClick: () => void copyLink(detailPlan) },
               ...(detailPlan.isMine
                 ? [
                     {
-                      label: detailPlan.isPublic ? "Make private" : "Make public",
+                      label: detailPlan.isPublic ? "Make it private" : "Make it public",
+                      icon: detailPlan.isPublic ? ("private" as const) : ("public" as const),
                       onClick: () => void setVisibility(detailPlan),
                     },
                   ]
