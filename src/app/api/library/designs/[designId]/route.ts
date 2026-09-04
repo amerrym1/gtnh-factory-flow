@@ -182,11 +182,18 @@ export async function PUT(request: Request, context: RouteContext) {
     row.plan = plan;
   }
 
-  const { data, error } = await db
-    .from("library_designs")
-    .upsert(row, { onConflict: "user_id,id" })
-    .select(DESIGN_META_COLUMNS)
-    .single();
+  // An UPDATE for a row that exists, an INSERT for one that does not: an
+  // upsert forms the insert row first, and a metadata-only save (no plan)
+  // would trip the NOT NULL on plan before the conflict was ever checked.
+  const { data, error } = current
+    ? await db
+        .from("library_designs")
+        .update(row)
+        .eq("user_id", sessionUser.id)
+        .eq("id", designId)
+        .select(DESIGN_META_COLUMNS)
+        .single()
+    : await db.from("library_designs").insert(row).select(DESIGN_META_COLUMNS).single();
   if (error || !data) {
     return NextResponse.json(
       { error: libraryStorageErrorMessage(error, "The design could not be saved.") },
