@@ -205,7 +205,7 @@ export function LibraryDetail({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="flex flex-col gap-3 px-5 py-3 compact:px-3">
+        <div className="flex flex-col gap-2 px-5 py-3 compact:px-3">
           {/* THE HEAD, full width: who and what it is, Open and the keys. */}
           {/* FACE, NAME, WHO, WHEN, FIGURES; Open and the keys on the right. */}
           <div className="flex items-start gap-3">
@@ -395,7 +395,26 @@ export function LibraryDetail({
             </div>
           ) : null}
 
-          {/* BELOW: comments on the left; the description over needs and makes on the right. */}
+          {/* THE DESCRIPTION and its tags, right under the head. */}
+          {entry.description ? (
+            <p className="line-clamp-3 whitespace-pre-wrap text-[12px] leading-relaxed text-neutral-300">
+              {entry.description}
+            </p>
+          ) : null}
+          {entry.tags && entry.tags.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {entry.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="border border-neutral-700 bg-[#17191d] px-1.5 text-[10px] text-neutral-300"
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {/* BELOW: comments on the left, needs and makes on the right. */}
           <div className="grid grid-cols-2 gap-4 compact:grid-cols-1">
             <div className="flex min-w-0 flex-col gap-3">
               {/* COMMENTS: only on something posted. The shape, not yet the thing. */}
@@ -425,23 +444,6 @@ export function LibraryDetail({
               ) : null}
             </div>
             <div className="flex min-w-0 flex-col gap-3">
-              {entry.description ? (
-                <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-[12px] leading-relaxed text-neutral-300">
-                  {entry.description}
-                </p>
-              ) : null}
-              {entry.tags && entry.tags.length > 0 ? (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {entry.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="border border-neutral-700 bg-[#17191d] px-1.5 text-[10px] text-neutral-300"
-                    >
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
               {/* NEEDS AND MAKES: tight columns, all of them. */}
               {(entry.needs && entry.needs.length > 0) ||
               (entry.outputs && entry.outputs.length > 0) ? (
