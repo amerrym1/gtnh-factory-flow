@@ -218,7 +218,7 @@ export function LibraryPage() {
             />
             <RailItem
               icon={PanelsTopLeft}
-              label="Open"
+              label="Open tabs"
               count={counts.open}
               selected={shelf.view.kind === "open"}
               onClick={() => setLibraryView({ kind: "open" })}
@@ -637,7 +637,7 @@ function viewTitle(view: LibraryView, folders: DesignFolder[]): string {
     case "all":
       return "Everything";
     case "open":
-      return "Open";
+      return "Open tabs";
     case "shared":
       return "Shared";
     case "public":

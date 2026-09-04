@@ -26,7 +26,7 @@ const MENU_WIDTH = 230;
 const RUBBER_MAX = 24;
 
 /** Which destructive item is one click from firing, if any. */
-type ArmedAction = "delete" | "right" | "left" | "others";
+type ArmedAction = "right" | "left" | "others";
 
 interface OpenMenu {
   id: string;
@@ -50,7 +50,6 @@ export function DesignTabs() {
   const renameDesign = useDesignStore((state) => state.renameDesign);
   const closeDesign = useDesignStore((state) => state.closeDesign);
   const closeDesigns = useDesignStore((state) => state.closeDesigns);
-  const removeDesign = useDesignStore((state) => state.removeDesign);
   const reorderDesigns = useDesignStore((state) => state.reorderDesigns);
   const moveDesignToFolder = useDesignStore((state) => state.moveDesignToFolder);
   const welcome = useWelcomeTab();
@@ -644,7 +643,7 @@ export function DesignTabs() {
                   <button
                     type="button"
                     aria-label={`Close ${design.name}`}
-                    title="Close tab (stays in the library)"
+                    title="Close tab"
                     onClick={() => void closeDesign(design.id)}
                     className="rounded px-1 text-xs text-fg-muted opacity-0 hover:bg-surface hover:text-fg focus:opacity-100 group-hover:opacity-100"
                   >
@@ -744,10 +743,6 @@ export function DesignTabs() {
             void closeDesign(openMenu.id);
             closeMenu();
           }}
-          onDelete={() => {
-            void removeDesign(openMenu.id);
-            closeMenu();
-          }}
           onCloseMany={(ids) => {
             void closeDesigns(ids, openMenu.id);
             closeMenu();
@@ -774,7 +769,6 @@ function DesignMenu({
   onDuplicate,
   onMoveToFolder,
   onCloseTab,
-  onDelete,
   onCloseMany,
 }: {
   menu: OpenMenu;
@@ -788,7 +782,6 @@ function DesignMenu({
   onDuplicate: () => void;
   onMoveToFolder: (folderId: string | undefined) => void;
   onCloseTab: () => void;
-  onDelete: () => void;
   onCloseMany: (ids: string[]) => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -901,12 +894,8 @@ function DesignMenu({
         />
       ) : null}
 
-      {/* The one item that loses work, so it arms first. */}
-      {armed === "delete" ? (
-        <MenuItem label="Confirm delete" tone="danger" onClick={onDelete} />
-      ) : (
-        <MenuItem label="Delete" tone="danger" onClick={() => onArm("delete")} />
-      )}
+      {/* No Delete here: a tab is just a tab. Deleting a design for good is
+          the library's job, where the design is a thing rather than a tab. */}
     </div>,
     document.body,
   );
