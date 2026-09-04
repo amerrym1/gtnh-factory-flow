@@ -205,9 +205,8 @@ export function LibraryDetail({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="grid min-h-0 grid-cols-2 gap-4 px-5 py-3 compact:grid-cols-1 compact:px-3">
-          {/* LEFT: who and what it is, the keys, then the comments. */}
-          <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex flex-col gap-3 px-5 py-3 compact:px-3">
+          {/* THE HEAD, full width: who and what it is, Open and the keys. */}
           {/* FACE, NAME, WHO, WHEN, FIGURES; Open and the keys on the right. */}
           <div className="flex items-start gap-3">
             {entry.onPickIcon && editing ? (
@@ -268,7 +267,9 @@ export function LibraryDetail({
                     Cancel
                   </button>
                   {entry.onPickIcon ? (
-                    <span className="text-[11px] text-[var(--mc-ink-muted)]">Click the icon to change it.</span>
+                    <span className="text-[11px] text-[var(--mc-ink-muted)]">
+                      Click the icon to change it.
+                    </span>
                   ) : null}
                 </div>
               </div>
@@ -287,7 +288,9 @@ export function LibraryDetail({
                 </div>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-[var(--mc-ink-muted)]">
                   <span>
-                    {entry.creator ? <span className="text-neutral-300">{entry.creator}</span> : null}
+                    {entry.creator ? (
+                      <span className="text-neutral-300">{entry.creator}</span>
+                    ) : null}
                     {entry.creator ? " · " : ""}
                     {entry.when}
                   </span>
@@ -392,60 +395,62 @@ export function LibraryDetail({
             </div>
           ) : null}
 
-          {/* COMMENTS: only on something posted. The shape, not yet the thing. */}
-          {entry.hasComments ? (
-            <section className="flex flex-col gap-1.5 border-t border-[var(--mc-33)] pt-3">
-              <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--mc-ink)]">
-                <MessageSquare className="h-3.5 w-3.5 text-[var(--mc-ink-muted)]" aria-hidden />
-                Comments
-              </h3>
-              <p className="text-[12px] text-[var(--mc-ink-muted)]">No comments yet.</p>
-              <div className="flex items-center gap-2 border border-[var(--mc-33)] bg-[var(--mc-25)] px-2 py-1.5 opacity-60">
-                <input
-                  disabled
-                  placeholder="Say something about this setup"
-                  className="min-w-0 flex-1 bg-transparent text-[12px] text-[var(--mc-ink)] outline-none placeholder:text-[var(--mc-ink-muted)]"
-                />
-                <span className="text-[10px] text-[var(--mc-ink-muted)]">coming soon</span>
-                <button
-                  type="button"
-                  disabled
-                  className="h-6 border border-[var(--mc-61)] bg-[var(--mc-33)] px-2.5 text-[11px] font-medium text-[var(--mc-ink-muted)]"
-                >
-                  Post
-                </button>
-              </div>
-            </section>
-          ) : null}
-          </div>
-
-          {/* RIGHT: the description over needs and makes, side by side. */}
-          <div className="flex min-w-0 flex-col gap-3">
-            {entry.description ? (
-              <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-[12px] leading-relaxed text-neutral-300">
-                {entry.description}
-              </p>
-            ) : null}
-            {entry.tags && entry.tags.length > 0 ? (
-              <div className="mt-1 flex flex-wrap gap-1">
-                {entry.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="border border-neutral-700 bg-[#17191d] px-1.5 text-[10px] text-neutral-300"
-                  >
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-          {/* NEEDS AND MAKES: tight columns, all of them. */}
-          {(entry.needs && entry.needs.length > 0) || (entry.outputs && entry.outputs.length > 0) ? (
-            <div className="grid grid-cols-2 gap-3 compact:grid-cols-1">
-              <StatColumns label="Needs" stats={entry.needs ?? []} />
-              <StatColumns label="Makes" stats={entry.outputs ?? []} />
+          {/* BELOW: comments on the left; the description over needs and makes on the right. */}
+          <div className="grid grid-cols-2 gap-4 compact:grid-cols-1">
+            <div className="flex min-w-0 flex-col gap-3">
+              {/* COMMENTS: only on something posted. The shape, not yet the thing. */}
+              {entry.hasComments ? (
+                <section className="flex flex-col gap-1.5 border-t border-[var(--mc-33)] pt-3">
+                  <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--mc-ink)]">
+                    <MessageSquare className="h-3.5 w-3.5 text-[var(--mc-ink-muted)]" aria-hidden />
+                    Comments
+                  </h3>
+                  <p className="text-[12px] text-[var(--mc-ink-muted)]">No comments yet.</p>
+                  <div className="flex items-center gap-2 border border-[var(--mc-33)] bg-[var(--mc-25)] px-2 py-1.5 opacity-60">
+                    <input
+                      disabled
+                      placeholder="Say something about this setup"
+                      className="min-w-0 flex-1 bg-transparent text-[12px] text-[var(--mc-ink)] outline-none placeholder:text-[var(--mc-ink-muted)]"
+                    />
+                    <span className="text-[10px] text-[var(--mc-ink-muted)]">coming soon</span>
+                    <button
+                      type="button"
+                      disabled
+                      className="h-6 border border-[var(--mc-61)] bg-[var(--mc-33)] px-2.5 text-[11px] font-medium text-[var(--mc-ink-muted)]"
+                    >
+                      Post
+                    </button>
+                  </div>
+                </section>
+              ) : null}
             </div>
-          ) : null}
-
+            <div className="flex min-w-0 flex-col gap-3">
+              {entry.description ? (
+                <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-[12px] leading-relaxed text-neutral-300">
+                  {entry.description}
+                </p>
+              ) : null}
+              {entry.tags && entry.tags.length > 0 ? (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {entry.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="border border-neutral-700 bg-[#17191d] px-1.5 text-[10px] text-neutral-300"
+                    >
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {/* NEEDS AND MAKES: tight columns, all of them. */}
+              {(entry.needs && entry.needs.length > 0) ||
+              (entry.outputs && entry.outputs.length > 0) ? (
+                <div className="grid grid-cols-2 gap-3 compact:grid-cols-1">
+                  <StatColumns label="Needs" stats={entry.needs ?? []} />
+                  <StatColumns label="Makes" stats={entry.outputs ?? []} />
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
@@ -520,7 +525,10 @@ function StatColumns({ label, stats }: { label: string; stats: PlanResourceStat[
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-x-3 gap-y-0.5">
           {stats.map((stat) => (
-            <div key={`${stat.kind}:${stat.resourceId}`} className="flex min-w-0 items-center gap-1.5">
+            <div
+              key={`${stat.kind}:${stat.resourceId}`}
+              className="flex min-w-0 items-center gap-1.5"
+            >
               <span className="flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden">
                 <ResourceIcon
                   resource={{ ...stat, id: stat.resourceId, amount: 1 }}
@@ -528,9 +536,15 @@ function StatColumns({ label, stats }: { label: string; stats: PlanResourceStat[
                   tooltip={false}
                   showAmount={false}
                   iconPixelSize={
-                    stat.kind === "fluid" ? (isSwatchFluid(stat) ? 30 : fluidArtPixels(16)) : undefined
+                    stat.kind === "fluid"
+                      ? isSwatchFluid(stat)
+                        ? 30
+                        : fluidArtPixels(16)
+                      : undefined
                   }
-                  className={stat.kind === "fluid" ? "!h-4 !w-4" : "!h-4 !w-4 origin-center scale-150"}
+                  className={
+                    stat.kind === "fluid" ? "!h-4 !w-4" : "!h-4 !w-4 origin-center scale-150"
+                  }
                 />
               </span>
               <span className="min-w-0 flex-1 truncate text-[11px] text-neutral-300">
