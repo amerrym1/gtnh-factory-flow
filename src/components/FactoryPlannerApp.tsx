@@ -516,33 +516,29 @@ function PanelRail({ side, label }: { side: "left" | "right"; label: string }) {
   const open = () =>
     writeWorkspaceView(side === "left" ? { leftPanelOpen: true } : { rightPanelOpen: true });
 
+  // One button, the whole rail: a bare chevron at the top and the name
+  // running down it. No box, no tooltip; the rail is the thing you click.
   return (
-    <div
+    <button
+      type="button"
+      onClick={open}
+      aria-label={`Show ${label}`}
       className={[
-        "flex h-full flex-col items-center gap-2 bg-surface py-2",
+        "group flex h-full w-full flex-col items-center gap-3 bg-surface pt-3 text-fg-muted hover:text-fg",
         side === "left" ? "border-r border-line" : "border-l border-line",
       ].join(" ")}
     >
-      <button
-        type="button"
-        onClick={open}
-        title={`Show ${label}`}
-        aria-label={`Show ${label}`}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-line-strong text-fg-muted hover:border-cyan-600 hover:text-cyan-400"
-      >
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center group-hover:text-cyan-400">
         <ChevronIcon direction={side === "left" ? "right" : "left"} />
-      </button>
-      <button
-        type="button"
-        onClick={open}
-        tabIndex={-1}
+      </span>
+      <span
         aria-hidden
-        className="min-h-0 flex-1 cursor-pointer text-[10px] font-semibold uppercase tracking-widest text-fg-muted hover:text-fg"
+        className="min-h-0 flex-1 text-[10px] font-semibold uppercase tracking-widest"
         style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
       >
         <span className={side === "right" ? "rotate-180" : undefined}>{label}</span>
-      </button>
-    </div>
+      </span>
+    </button>
   );
 }
 
