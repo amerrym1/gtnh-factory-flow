@@ -68,6 +68,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.55.1",
+    date: "2026-09-04",
+    headline: "Imported plans keep their recipes",
+    notes: [
+      "Importing a plan file finds each card's exact recipe again, even one saved before a dataset update.",
+      "Two recipes that share a name, like the Steel Ingot blast furnace pair, no longer swap places on import.",
+      "A recipe the dataset no longer has stays on the card as it was saved instead of being replaced by a lookalike.",
+    ],
+  },
+  {
     version: "2.55.0",
     date: "2026-09-03",
     headline: "The recipe search is grouped by machine",

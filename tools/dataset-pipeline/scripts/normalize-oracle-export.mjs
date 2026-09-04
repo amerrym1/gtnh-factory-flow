@@ -51,6 +51,8 @@ const renderedIcons = await stageRenderedIcons(renderedIconDir, outDir);
 const resources = new Map();
 const recipes = [];
 const recipeMaps = new Set();
+/** Content hash -> how often it has been minted; see stableRecipeId. */
+const stableRecipeIdCounts = new Map();
 const recipeMapIcons = new Map();
 // GT's gt.recipe.furnace map mirrors vanilla FurnaceRecipes at runtime, so its
 // export has catalysts (steam/electric furnaces, Multi Smelter...) but zero
@@ -183,9 +185,16 @@ function normalizeGregtech(domain) {
         eut,
         machineConfigControls,
       });
+      const stableId = stableRecipeId(recipeMap.id, {
+        inputs,
+        outputs,
+        durationTicks,
+        eut,
+        specialValue: Number(rawRecipe.specialValue) || 0,
+      });
 
       addRecipe({
-        id: recipeId("gregtech", recipeMap.id, rawRecipe.id),
+        id: recipeId("gregtech", recipeMap.id, stableId),
         name: `${machineType}: ${resourceLabel(outputs[0])}`,
         kind: "gregtech_machine",
         category: "gregtech",
@@ -209,7 +218,7 @@ function normalizeGregtech(domain) {
           datasetVersionId,
           recipeMap: machineType,
           exporter: "gtnh-oracle",
-          rawRecipeId: `${recipeMap.id}:${rawRecipe.id}`,
+          rawRecipeId: `${recipeMap.id}:${stableId}`,
         },
         nei: {
           additionalInfo: [`Special value: ${rawRecipe.specialValue ?? 0}`],
@@ -224,7 +233,7 @@ function normalizeGregtech(domain) {
       // had them in their own fluidcanner map. The fluid-touch filter inside
       // keeps food canning out either way.
       if (recipeMap.id === "gt.recipe.canner" || recipeMap.id === "gt.recipe.fluidcanner") {
-        addTankRecipe(rawRecipe, inputs, outputs);
+        addTankRecipe(stableId, inputs, outputs);
       }
     }
   }
@@ -240,7 +249,7 @@ function normalizeGregtech(domain) {
  * waives is the Canner's power and time, so a chain that just needs the other
  * form of a fluid does not drag a powered machine line in with it.
  */
-function addTankRecipe(rawRecipe, inputs, outputs) {
+function addTankRecipe(stableId, inputs, outputs) {
   if (![...inputs, ...outputs].some((entry) => entry.kind === "fluid")) {
     return;
   }
@@ -254,7 +263,7 @@ function addTankRecipe(rawRecipe, inputs, outputs) {
     tankIconFallback = face;
   }
   addRecipe({
-    id: recipeId("gregtech", "planner.tank", rawRecipe.id),
+    id: recipeId("gregtech", "planner.tank", stableId),
     name: `Tank: ${resourceLabel(outputs[0])}`,
     kind: "gregtech_machine",
     category: "gregtech",
@@ -271,7 +280,7 @@ function addTankRecipe(rawRecipe, inputs, outputs) {
       datasetVersionId,
       recipeMap: TANK_MACHINE_TYPE,
       exporter: "gtnh-oracle",
-      rawRecipeId: `planner.tank:${rawRecipe.id}`,
+      rawRecipeId: `planner.tank:${stableId}`,
     },
     nei: {
       additionalInfo: ["Free and instant: a planner convenience, not a placeable machine."],
@@ -1994,6 +2003,47 @@ function normalizeOreDictionary(entries) {
 
 function findDomain(id) {
   return (raw.domains ?? []).find((domain) => domain.id === id);
+}
+
+/**
+ * A recipe's id, minted from what the recipe IS - its slots, ticks, EU and
+ * special value, in its map - so it comes out the same on every rebuild.
+ *
+ * The oracle's own id hashed the map, the recipe's position in it and
+ * `GTRecipe.toString()`, which GTRecipe never overrides: a JVM identity
+ * hash, different on every export. Every dataset rebuild therefore renamed
+ * every GregTech recipe, and every saved plan lost every id it held. Two
+ * recipes the game registers identically (GT has such pairs) get the same
+ * hash and are told apart by a counter, in the exporter's sorted order.
+ */
+
+function stableRecipeId(recipeMapId, recipe) {
+  const slotKey = (entry) =>
+    [
+      entry.kind,
+      entry.id,
+      entry.amount,
+      entry.consumed === false ? "nc" : "",
+      entry.chance ?? "",
+    ].join("|");
+  const hash = crypto
+    .createHash("sha1")
+    .update(
+      JSON.stringify({
+        map: recipeMapId,
+        inputs: recipe.inputs.map(slotKey).sort(),
+        outputs: recipe.outputs.map(slotKey).sort(),
+        durationTicks: recipe.durationTicks,
+        eut: recipe.eut,
+        specialValue: recipe.specialValue,
+      }),
+    )
+    .digest("hex")
+    .slice(0, 16);
+  const key = `${recipeMapId}:${hash}`;
+  const seen = (stableRecipeIdCounts.get(key) ?? 0) + 1;
+  stableRecipeIdCounts.set(key, seen);
+  return seen === 1 ? hash : `${hash}-${seen}`;
 }
 
 function recipeId(...parts) {

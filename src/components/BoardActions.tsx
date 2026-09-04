@@ -32,7 +32,6 @@ import type {
   FactoryEdge,
   FactoryProject,
   Recipe,
-  RecipeOutput,
   ResourceKind,
 } from "@/lib/model/types";
 import { formatBoardDump } from "./flow/board-dump";
@@ -44,6 +43,7 @@ import {
 } from "@/lib/import-export/plan-image";
 import { useWelcomeTab } from "@/lib/welcome/welcome-tab";
 import { isPowerRecipe } from "@/lib/power/power-recipe";
+import { pickRecipeRefMatch, recipeContentRef } from "@/lib/import-export/recipe-ref-match";
 import { useFactoryStore } from "@/store/factory-store";
 
 interface BoardActionsProps {
@@ -518,6 +518,7 @@ async function hydrateImportedProjectRecipes(
     fromId: string;
     toId: string;
     name: string;
+    exact: boolean;
   }>;
 }> {
   const availableRecipeIds = new Set(
@@ -534,23 +535,14 @@ async function hydrateImportedProjectRecipes(
           await resolveRecipeDatasetRecipes(
             DEFAULT_DATASET_MANIFEST_URL,
             version,
-            importRecipesToResolve.map((recipe) => ({
-              id: recipe.id,
-              name: recipe.name,
-              machineType: recipe.machineType,
-              recipeMap: recipe.source?.recipeMap,
-              rawRecipeId: recipe.source?.rawRecipeId,
-              outputs: recipe.outputs.map((output) => ({
-                kind: output.kind,
-                id: output.id,
-              })),
-            })),
+            importRecipesToResolve.map(recipeContentRef),
           )
-        ).matches.map((match) => [match.importedId, match.recipeId] as const)
+        ).matches.map((match) => [match.importedId, match] as const)
       : [],
   );
   const missingRecipes: Array<Pick<FactoryProject["recipes"][number], "id" | "name">> = [];
-  const migratedRecipes: Array<{ fromId: string; toId: string; name: string }> = [];
+  const migratedRecipes: Array<{ fromId: string; toId: string; name: string; exact: boolean }> =
+    [];
   const recipeIdMigration = new Map<string, string>();
 
   const hydratedRecipes = await Promise.all(
@@ -561,20 +553,23 @@ async function hydrateImportedProjectRecipes(
         return recipe;
       }
       if (!availableRecipeIds.has(recipe.id)) {
-        const rawRecipeIdMatch = resolvedRecipeIds.get(recipe.id);
-        const migratedRecipe = rawRecipeIdMatch
-          ? await getRecipeDatasetRecipe(DEFAULT_DATASET_MANIFEST_URL, version, rawRecipeIdMatch)
+        const contentMatch = resolvedRecipeIds.get(recipe.id);
+        const migratedRecipe = contentMatch
+          ? await getRecipeDatasetRecipe(DEFAULT_DATASET_MANIFEST_URL, version, contentMatch.recipeId)
           : await resolveImportedRecipe(version, recipe);
         if (migratedRecipe) {
           migratedRecipes.push({
             fromId: recipe.id,
             toId: migratedRecipe.id,
             name: recipe.name,
+            exact: contentMatch?.exact ?? false,
           });
           recipeIdMigration.set(recipe.id, migratedRecipe.id);
           return migratedRecipe;
         }
 
+        // Nothing in the dataset is close enough to stand in for it: the
+        // plan's own embedded body keeps working, so it stays.
         missingRecipes.push({ id: recipe.id, name: recipe.name });
         return recipe;
       }
@@ -602,10 +597,14 @@ function remapMigratedRecipeReferences(
     return project;
   }
 
-  const nodes = project.nodes.map((node) => ({
-    ...node,
-    recipeId: recipeIdMigration.get(node.recipeId) ?? node.recipeId,
-  }));
+  const recipesById = new Map(project.recipes.map((recipe) => [recipe.id, recipe] as const));
+  const nodes = project.nodes.map((node) => {
+    const migratedId = recipeIdMigration.get(node.recipeId);
+    if (!migratedId) {
+      return node;
+    }
+    return carryNodeOntoMigratedRecipe(node, recipesById.get(migratedId));
+  });
   const nodesById = new Map(nodes.map((node) => [node.id, node] as const));
   const originalNodesById = new Map(project.nodes.map((node) => [node.id, node] as const));
 
@@ -805,35 +804,75 @@ async function resolveImportedRecipe(
     offset: 0,
     limit: 40,
   });
-  const sourceRecipeMap = importedRecipe.source?.recipeMap;
-  const match = candidates.recipes.find(
-    (candidate) =>
-      candidate.id !== importedRecipe.id &&
-      candidate.name === importedRecipe.name &&
-      candidate.machineType === importedRecipe.machineType &&
-      (!sourceRecipeMap ||
-        candidate.recipeMap === sourceRecipeMap ||
-        candidate.source?.recipeMap === sourceRecipeMap) &&
-      outputsAreCompatible(importedRecipe.outputs, candidate.outputs),
+  // A name search is the last resort, and it only ever hands back a recipe
+  // that takes and makes the same things: a same-named recipe with other
+  // inputs (the second Steel Ingot blast furnace recipe) is not this one.
+  const match = pickRecipeRefMatch(
+    recipeContentRef(importedRecipe),
+    candidates.recipes.map((candidate) => ({
+      ...candidate,
+      source: candidate.source ?? { recipeMap: candidate.recipeMap },
+    })),
   );
 
-  return match
-    ? getRecipeDatasetRecipe(DEFAULT_DATASET_MANIFEST_URL, version, match.id)
+  return match && match.score >= RECIPE_MIGRATION_SCORE
+    ? getRecipeDatasetRecipe(DEFAULT_DATASET_MANIFEST_URL, version, match.candidate.id)
     : undefined;
 }
 
-function outputsAreCompatible(
-  importedOutputs: RecipeOutput[],
-  candidateOutputs: RecipeOutput[],
-): boolean {
-  if (importedOutputs.length === 0) {
-    return true;
-  }
+/** Below this the likeness is too loose to swap a plan's recipe for. */
+const RECIPE_MIGRATION_SCORE = 300;
 
-  const candidateResources = new Set(
-    candidateOutputs.map((output) => `${output.kind}:${output.id}`),
-  );
-  return importedOutputs.every((output) => candidateResources.has(`${output.kind}:${output.id}`));
+/**
+ * A node whose recipe was migrated keeps only the choices the new recipe
+ * can honour: a handler id the new recipe does not list is dropped (the
+ * card falls back to its first handler, as a dataset load would leave it),
+ * and slot overrides move from the old recipe's slot numbers to the slot
+ * holding the same resource on the new one, since the exporter's slot
+ * order is not part of what makes two recipes the same.
+ */
+function carryNodeOntoMigratedRecipe(
+  node: FactoryProject["nodes"][number],
+  recipe: Recipe | undefined,
+): FactoryProject["nodes"][number] {
+  if (!recipe) {
+    return node;
+  }
+  const carried: FactoryProject["nodes"][number] = { ...node, recipeId: recipe.id };
+  if (
+    node.machineHandlerId &&
+    !(recipe.machineHandlers ?? []).some((handler) => handler.id === node.machineHandlerId)
+  ) {
+    delete carried.machineHandlerId;
+  }
+  const overrides = node.recipeInputOverrides;
+  if (overrides) {
+    const claimed = new Set<number>();
+    const rekeyed: NonNullable<typeof overrides> = {};
+    for (const override of Object.values(overrides)) {
+      if (!override) {
+        continue;
+      }
+      const index = recipe.inputs.findIndex(
+        (input, inputIndex) =>
+          !claimed.has(inputIndex) &&
+          input.kind === override.kind &&
+          (input.id === override.id ||
+            input.alternatives?.some((alternative) => alternative.id === override.id)),
+      );
+      if (index === -1) {
+        continue;
+      }
+      claimed.add(index);
+      rekeyed[String(index)] = override;
+    }
+    if (Object.keys(rekeyed).length > 0) {
+      carried.recipeInputOverrides = rekeyed;
+    } else {
+      delete carried.recipeInputOverrides;
+    }
+  }
+  return carried;
 }
 
 function ExportMenuItem({

@@ -14,7 +14,6 @@ import type {
 import type {
   MachineTier,
   Recipe,
-  RecipeOutput,
   ResourceAlternative,
   ResourceAmount,
 } from "@/lib/model/types";
@@ -33,6 +32,7 @@ import {
   resourceMatchesInput,
 } from "@/lib/model";
 import { machineTableControlResourceIds } from "@/lib/machines/machine-table";
+import { pickRecipeRefMatch, type RecipeContentRef } from "@/lib/import-export/recipe-ref-match";
 import {
   MAX_RECIPE_QUERY_CLAUSES,
   recipeQueryClauseMode,
@@ -102,14 +102,7 @@ interface LoadedRecipeIndex {
   passiveSourceKeys?: Partial<Record<ResourceSourceFilter, Set<string>>>;
 }
 
-export interface DatasetRecipeRef {
-  id: string;
-  name: string;
-  machineType: string;
-  recipeMap?: string;
-  rawRecipeId?: string;
-  outputs: Array<Pick<RecipeOutput, "kind" | "id">>;
-}
+export type DatasetRecipeRef = RecipeContentRef;
 
 interface RecipeLookupIndexFile {
   schemaVersion: 1;
@@ -338,72 +331,149 @@ export async function getDatasetRecipeIds(versionId: string): Promise<string[]> 
   return recipeCatalog.recipes?.map((recipe) => recipe.id) ?? [];
 }
 
+/**
+ * Finds the dataset's recipe behind each imported one whose id it no longer
+ * lists.
+ *
+ * Recipe ids are minted per dataset build (and until 2026-09 from a JVM
+ * identity hash, so every rebuild changed all of them), so a plan exported
+ * one week and imported the next finds none of its ids. What survives a
+ * rebuild is the recipe's content, so each ref carries its slots, ticks and
+ * EU, and the candidates - every recipe in the ref's map that makes its
+ * first output, read off the lookup index - are scored on that
+ * (`pickRecipeRefMatch`). Only a candidate with the same resources in and
+ * out is offered; a weaker likeness is not, and the importer keeps the
+ * plan's own embedded body instead. A rawRecipeId hit is still consulted
+ * for refs the content scan could not settle, since it can bridge dataset
+ * versions when the raw ids are stable.
+ */
 export async function resolveDatasetRecipeRefs(
   versionId: string,
   refs: DatasetRecipeRef[],
-): Promise<Array<{ importedId: string; recipeId: string }>> {
-  if (!refs.some((ref) => ref.rawRecipeId)) {
+): Promise<Array<{ importedId: string; recipeId: string; exact: boolean }>> {
+  if (refs.length === 0) {
     return [];
   }
 
   const catalog = await loadCatalog(versionId);
-  const indexesByRawRecipeId = await getRecipeIndexesByRawRecipeId(catalog);
-
-  // Only the shards holding this request's candidates are read, through the
-  // bounded shard cache: the recipe bodies never stay resident.
-  const candidateShardRequests = new Map<RecipeIndexShard, number[]>();
+  const lookup = await loadRecipeLookupIndex(catalog.version);
+  const candidateIndexesByRef = new Map<DatasetRecipeRef, number[]>();
   for (const ref of refs) {
-    if (!ref.rawRecipeId) {
+    candidateIndexesByRef.set(ref, lookupCandidateIndexes(lookup, ref));
+  }
+
+  const candidatesByIndex = await loadRecipeBodies(
+    catalog,
+    [...candidateIndexesByRef.values()].flat(),
+  );
+  const matches = new Map<string, { recipeId: string; exact: boolean }>();
+  const unsettled: DatasetRecipeRef[] = [];
+  for (const ref of refs) {
+    const match = pickRecipeRefMatch(
+      ref,
+      (candidateIndexesByRef.get(ref) ?? [])
+        .map((recipeIndex) => candidatesByIndex.get(recipeIndex))
+        .filter((recipe): recipe is Recipe => recipe !== undefined),
+    );
+    if (match && match.score >= RECIPE_REF_MIGRATION_SCORE) {
+      matches.set(ref.id, { recipeId: match.candidate.id, exact: match.exact });
+    } else if (ref.rawRecipeId) {
+      unsettled.push(ref);
+    }
+  }
+
+  if (unsettled.length > 0) {
+    const indexesByRawRecipeId = await getRecipeIndexesByRawRecipeId(catalog);
+    const rawIndexes = unsettled.flatMap(
+      (ref) => indexesByRawRecipeId.get(ref.rawRecipeId ?? "") ?? [],
+    );
+    const rawCandidatesByIndex = await loadRecipeBodies(catalog, rawIndexes);
+    for (const ref of unsettled) {
+      const match = pickRecipeRefMatch(
+        ref,
+        (indexesByRawRecipeId.get(ref.rawRecipeId ?? "") ?? [])
+          .map((recipeIndex) => rawCandidatesByIndex.get(recipeIndex))
+          .filter((recipe): recipe is Recipe => recipe !== undefined),
+      );
+      if (match && match.score >= RECIPE_REF_MIGRATION_SCORE) {
+        matches.set(ref.id, { recipeId: match.candidate.id, exact: match.exact });
+      }
+    }
+  }
+
+  return refs.flatMap((ref) => {
+    const match = matches.get(ref.id);
+    return match ? [{ importedId: ref.id, ...match }] : [];
+  });
+}
+
+/** Below this the likeness is too loose to swap a plan's recipe for. */
+const RECIPE_REF_MIGRATION_SCORE = 300;
+
+/** How many bodies one ref may pull off the shards. */
+const RECIPE_REF_CANDIDATE_LIMIT = 600;
+
+/**
+ * Every recipe that makes the ref's first output, in the ref's own map when
+ * the dataset still has a map by that name and otherwise in any map.
+ */
+function lookupCandidateIndexes(lookup: LoadedRecipeLookupIndex, ref: DatasetRecipeRef): number[] {
+  const mapId = ref.recipeMap ? lookup.recipeMapIds.get(ref.recipeMap) : undefined;
+  const indexes: number[] = [];
+  for (const output of ref.outputs) {
+    const recipesByMap = lookup.entries.get(getResourceModeKey(output, "recipes"));
+    if (!recipesByMap) {
       continue;
     }
-    for (const recipeIndex of indexesByRawRecipeId.get(ref.rawRecipeId) ?? []) {
-      const shard = catalog.shards.find(
-        (entry) => recipeIndex >= entry.start && recipeIndex < entry.end,
-      );
-      if (!shard) {
-        continue;
+    if (mapId !== undefined) {
+      indexes.push(...(recipesByMap.get(mapId) ?? []));
+    } else {
+      for (const recipeIndexes of recipesByMap.values()) {
+        indexes.push(...recipeIndexes);
       }
-      const existing = candidateShardRequests.get(shard);
-      if (existing) {
-        existing.push(recipeIndex);
-      } else {
-        candidateShardRequests.set(shard, [recipeIndex]);
-      }
+    }
+    if (indexes.length > 0) {
+      break;
+    }
+  }
+  return [...new Set(indexes)].sort((left, right) => left - right).slice(0, RECIPE_REF_CANDIDATE_LIMIT);
+}
+
+/**
+ * Reads the named recipes through the bounded shard cache, one shard at a
+ * time, so the bodies never stay resident.
+ */
+async function loadRecipeBodies(
+  catalog: LoadedRecipeIndex,
+  recipeIndexes: number[],
+): Promise<Map<number, Recipe>> {
+  const requestsByShard = new Map<RecipeIndexShard, number[]>();
+  for (const recipeIndex of new Set(recipeIndexes)) {
+    const shard = catalog.shards.find(
+      (entry) => recipeIndex >= entry.start && recipeIndex < entry.end,
+    );
+    if (!shard) {
+      continue;
+    }
+    const existing = requestsByShard.get(shard);
+    if (existing) {
+      existing.push(recipeIndex);
+    } else {
+      requestsByShard.set(shard, [recipeIndex]);
     }
   }
 
-  const candidatesByIndex = new Map<number, Recipe>();
-  for (const [shard, recipeIndexes] of candidateShardRequests) {
+  const bodies = new Map<number, Recipe>();
+  for (const [shard, indexes] of requestsByShard) {
     const recipes = await loadShard(catalog.version, shard);
-    for (const recipeIndex of recipeIndexes) {
+    for (const recipeIndex of indexes) {
       const recipe = recipes[recipeIndex - shard.start];
       if (recipe) {
-        candidatesByIndex.set(recipeIndex, recipe);
+        bodies.set(recipeIndex, recipe);
       }
     }
   }
-
-  return refs
-    .map((ref) => {
-      if (!ref.rawRecipeId) {
-        return undefined;
-      }
-
-      const match = (indexesByRawRecipeId.get(ref.rawRecipeId) ?? [])
-        .map((recipeIndex) => candidatesByIndex.get(recipeIndex))
-        .find(
-          (recipe): recipe is Recipe =>
-            recipe !== undefined &&
-            recipe.id !== ref.id &&
-            recipe.name === ref.name &&
-            recipe.machineType === ref.machineType &&
-            (!ref.recipeMap || recipe.source?.recipeMap === ref.recipeMap) &&
-            outputsAreCompatible(ref.outputs, recipe.outputs),
-        );
-
-      return match ? { importedId: ref.id, recipeId: match.id } : undefined;
-    })
-    .filter((match): match is { importedId: string; recipeId: string } => Boolean(match));
+  return bodies;
 }
 
 export type ResourceQuerySort =
@@ -1796,20 +1866,6 @@ async function prewarmRecipeShards(catalog: LoadedRecipeIndex): Promise<void> {
         .map((shard) => loadShard(catalog.version, shard)),
     );
   }
-}
-
-function outputsAreCompatible(
-  importedOutputs: Array<Pick<RecipeOutput, "kind" | "id">>,
-  candidateOutputs: RecipeOutput[],
-): boolean {
-  if (importedOutputs.length === 0) {
-    return true;
-  }
-
-  const candidateResources = new Set(
-    candidateOutputs.map((output) => `${output.kind}:${output.id}`),
-  );
-  return importedOutputs.every((output) => candidateResources.has(`${output.kind}:${output.id}`));
 }
 
 async function readGzipJson<T>(filePath: string): Promise<T> {
