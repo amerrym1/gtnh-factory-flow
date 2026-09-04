@@ -76,6 +76,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Two recipes that share a name, like the Steel Ingot blast furnace pair, no longer swap places on import.",
       "A recipe the dataset no longer has stays on the card as it was saved instead of being replaced by a lookalike.",
       "Big plans with many stopped machines no longer freeze for half a minute on every edit or drag.",
+      "Your chosen font stays after a refresh in Firefox.",
     ],
   },
   {

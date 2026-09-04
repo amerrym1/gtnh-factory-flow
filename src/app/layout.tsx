@@ -9,6 +9,7 @@ import {
 } from "next/font/google";
 import localFont from "next/font/local";
 import { APP_FONT_STORAGE_KEY, DEFAULT_APP_FONT } from "@/lib/app-font";
+import { AppFontRestore } from "@/components/AppFontRestore";
 import { Analytics } from "./Analytics";
 import { AnalyticsHeartbeat } from "./AnalyticsHeartbeat";
 import { WhatsNewGate } from "@/components/WhatsNewGate";
@@ -223,6 +224,9 @@ export default function RootLayout({
         {/* Above the app rather than inside it: what changed is a fact about
             the whole planner, not about whichever tab happens to be open. */}
         <WhatsNewGate />
+        {/* Puts the saved font back if anything took it off after the boot
+            script above; see the component. */}
+        <AppFontRestore />
         {/* Every `title` attribute in the app, worn as the planner's own
             tooltip: the browser's grey box never renders again. */}
         <GlobalTitleTooltip />
