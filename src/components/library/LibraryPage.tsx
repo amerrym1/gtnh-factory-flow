@@ -430,7 +430,7 @@ export function LibraryPage() {
           {/* THE PAGE. */}
           <section className="flex min-h-0 min-w-0 flex-1 flex-col">
             {library.view.kind === "public" ? (
-              <SetupsGrid scope="network" />
+              <SetupsGrid scope="network" presetQuery={library.view.search} />
             ) : detailDesign ? (
               <LibraryDetail
                 entry={{

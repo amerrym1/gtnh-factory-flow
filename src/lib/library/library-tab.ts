@@ -21,7 +21,7 @@ import { leaveWelcomeTab } from "@/lib/welcome/welcome-tab";
 export type LibraryView =
   | { kind: "all" }
   | { kind: "folder"; folderId: string }
-  | { kind: "public" };
+  | { kind: "public"; search?: string };
 
 export interface LibraryTabState {
   /** It is the thing being shown, covering the board. */

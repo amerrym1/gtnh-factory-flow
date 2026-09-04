@@ -54,7 +54,7 @@ type Armed = { id: string; what: "takedown" | "overwrite" };
  * posts (MINE), with the owner tools in the menu. Click opens the focus
  * page; from there a setup opens as a COPY in its own tab.
  */
-export function SetupsGrid({ scope }: { scope: SetupsScope }) {
+export function SetupsGrid({ scope, presetQuery }: { scope: SetupsScope; presetQuery?: string }) {
   const { user, isLoading: isAuthLoading } = useCommunityUser();
   const [sort, setSort] = useState<CommunityPlanSort>("new");
   /** Highest tier allowed, as an index into GT_VOLTAGE_TIERS; "" is any. */
@@ -73,6 +73,14 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
   /** The post whose preview page is up, if any. */
   const [detailId, setDetailId] = useState<string>();
   const [refreshTick, setRefreshTick] = useState(0);
+  // A search handed in from elsewhere (a creator's name clicked on a focus
+  // page or in a comment) replaces the box and steps off any focus page.
+  const [presetSeen, setPresetSeen] = useState<string>();
+  if (presetQuery !== undefined && presetQuery !== presetSeen) {
+    setPresetSeen(presetQuery);
+    setQuery(presetQuery);
+    setDetailId(undefined);
+  }
   /** The sentinel under the grid; scrolling it into view asks for the next page. */
   const moreRef = useRef<HTMLDivElement>(null);
   const activeTabName = useDesignStore(
@@ -330,6 +338,12 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
             name: detailPlan.name,
             icon: detailPlan.icon,
             creator: detailPlan.authorName,
+            onCreator: detailPlan.authorName
+              ? () => {
+                  setDetailId(undefined);
+                  setQuery(`@${detailPlan.authorName}`);
+                }
+              : undefined,
             when: `posted ${formatRelativeDate(detailPlan.createdAt)}`,
             tier: detailPlan.highestTier,
             machines: detailPlan.machineCount,

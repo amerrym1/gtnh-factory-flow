@@ -7,6 +7,7 @@ import { formatRelativeDate } from "@/components/shelf-cards";
 import { deletePlanComment, listPlanComments, postPlanComment } from "@/lib/community/client";
 import type { CommunityComment } from "@/lib/community/types";
 import { COMMUNITY_COMMENT_MAX_LENGTH } from "@/lib/community/types";
+import { openLibrary } from "@/lib/library/library-tab";
 
 /**
  * The comments on a shared setup, on its focus page. Oldest first, the way
@@ -85,7 +86,7 @@ export function PlanComments({ planId }: { planId: string }) {
   };
 
   return (
-    <section className="flex flex-col gap-2">
+    <section className="mt-4 flex flex-col gap-2">
       <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--mc-ink)]">
         <MessageSquare className="h-3.5 w-3.5 text-[var(--mc-ink-muted)]" aria-hidden />
         Comments
@@ -94,7 +95,53 @@ export function PlanComments({ planId }: { planId: string }) {
         ) : null}
       </h3>
 
-      {/* The box to write in comes first: the thread grows under it. */}
+      {error ? <p className="text-[11px] text-red-400">{error}</p> : null}
+
+      {!comments ? (
+        <div className="flex h-8 items-center">
+          <LoaderCircle className="h-4 w-4 animate-spin text-neutral-400" aria-label="Loading" />
+        </div>
+      ) : comments.length === 0 ? (
+        <p className="text-[12px] text-[var(--mc-ink-muted)]">No comments yet.</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-[var(--mc-33)]">
+          {comments.map((comment) => (
+            <li key={comment.id} className="group flex flex-col gap-0.5 py-2">
+              <div className="flex items-center gap-2 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => openLibrary({ kind: "public", search: `@${comment.authorName}` })}
+                  className="font-bold text-neutral-100 hover:text-cyan-200"
+                >
+                  {comment.authorName}
+                </button>
+                <span className="text-[var(--mc-ink-muted)]">
+                  {formatRelativeDate(comment.createdAt)}
+                </span>
+                {comment.canDelete ? (
+                  <button
+                    type="button"
+                    disabled={deletingId === comment.id}
+                    onClick={() => void remove(comment)}
+                    aria-label="Delete this comment"
+                    className="ml-auto text-[var(--mc-ink-muted)] opacity-0 hover:text-red-300 focus:opacity-100 group-hover:opacity-100 disabled:opacity-50"
+                  >
+                    {deletingId === comment.id ? (
+                      <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden />
+                    ) : (
+                      <X className="h-3 w-3" aria-hidden />
+                    )}
+                  </button>
+                ) : null}
+              </div>
+              <p className="whitespace-pre-wrap break-words text-[12px] leading-relaxed text-neutral-300">
+                {comment.body}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+      {/* The box to write in, under the thread. */}
       {user ? (
         <div className="flex items-end gap-2 border-2 border-[var(--mc-33)] bg-[#17191d] px-2.5 py-1.5 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
           <textarea
@@ -132,46 +179,6 @@ export function PlanComments({ planId }: { planId: string }) {
         <p className="text-[11px] text-[var(--mc-ink-muted)]">Sign in (top right) to comment.</p>
       )}
 
-      {error ? <p className="text-[11px] text-red-400">{error}</p> : null}
-
-      {!comments ? (
-        <div className="flex h-8 items-center">
-          <LoaderCircle className="h-4 w-4 animate-spin text-neutral-400" aria-label="Loading" />
-        </div>
-      ) : comments.length === 0 ? (
-        <p className="text-[12px] text-[var(--mc-ink-muted)]">No comments yet.</p>
-      ) : (
-        <ul className="flex flex-col divide-y divide-[var(--mc-33)]">
-          {comments.map((comment) => (
-            <li key={comment.id} className="group flex flex-col gap-0.5 py-2">
-              <div className="flex items-center gap-2 text-[11px]">
-                <span className="font-bold text-neutral-100">{comment.authorName}</span>
-                <span className="text-[var(--mc-ink-muted)]">
-                  {formatRelativeDate(comment.createdAt)}
-                </span>
-                {comment.canDelete ? (
-                  <button
-                    type="button"
-                    disabled={deletingId === comment.id}
-                    onClick={() => void remove(comment)}
-                    aria-label="Delete this comment"
-                    className="ml-auto text-[var(--mc-ink-muted)] opacity-0 hover:text-red-300 focus:opacity-100 group-hover:opacity-100 disabled:opacity-50"
-                  >
-                    {deletingId === comment.id ? (
-                      <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden />
-                    ) : (
-                      <X className="h-3 w-3" aria-hidden />
-                    )}
-                  </button>
-                ) : null}
-              </div>
-              <p className="whitespace-pre-wrap break-words text-[12px] leading-relaxed text-neutral-300">
-                {comment.body}
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
     </section>
   );
 }

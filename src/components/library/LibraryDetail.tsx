@@ -67,6 +67,8 @@ export interface LibraryDetailEntry {
   name: string;
   icon?: EntryIcon;
   creator?: string;
+  /** Clicking the creator shows everything they posted. */
+  onCreator?: () => void;
   when: string;
   tier?: VoltageTier;
   machines?: number;
@@ -289,7 +291,17 @@ export function LibraryDetail({
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-[var(--mc-ink-muted)]">
                   <span>
                     {entry.creator ? (
-                      <span className="text-neutral-300">{entry.creator}</span>
+                      entry.onCreator ? (
+                        <button
+                          type="button"
+                          onClick={entry.onCreator}
+                          className="text-neutral-300 hover:text-cyan-200"
+                        >
+                          {entry.creator}
+                        </button>
+                      ) : (
+                        <span className="text-neutral-300">{entry.creator}</span>
+                      )
                     ) : null}
                     {entry.creator ? " · " : ""}
                     {entry.when}
