@@ -457,7 +457,7 @@ export function LibraryPage() {
                       : signedIn && !detailDesign.communityPlanId
                         ? [
                             {
-                              label: "Post to the network",
+                              label: "Post as a public setup",
                               icon: "post" as const,
                               onClick: () => {
                                 setDetailId(undefined);
@@ -482,7 +482,7 @@ export function LibraryPage() {
                       label: "Delete this design",
                       icon: "delete" as const,
                       confirm: detailPost
-                        ? `Delete "${detailDesign.name}" from your library? Its post stays on the network.`
+                        ? `Delete "${detailDesign.name}" from your library? Its public post stays up.`
                         : `Delete "${detailDesign.name}" from your library? This cannot be undone.`,
                       onClick: () => {
                         setDetailId(undefined);
@@ -788,7 +788,7 @@ export function LibraryPage() {
             </>
           ) : signedIn && !menuDesign.communityPlanId ? (
             <MenuItem
-              label="Post to the network"
+              label="Post as a public setup"
               onClick={() => {
                 closeMenus();
                 void postDesign(menuDesign.id);

@@ -18,14 +18,12 @@ import { sharedPlanLink } from "@/lib/community/shared-link";
 import type { CommunityPlanSort, CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { parseFactoryProjectJson, serializeFactoryProject } from "@/lib/import-export";
-import { placePayload } from "@/lib/library/place-payload";
 import { GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
-import type { FactoryProject } from "@/lib/model/types";
 import { applyPlanView, capturePlanView } from "@/lib/plan-view";
 import { SETUPS_CHANGED_EVENT, type SetupsScope } from "@/lib/setups-tab";
 import { playBoardSound } from "@/lib/board-sounds";
 import { useDesignStore } from "@/store/design-store";
-import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
+import { useFactoryStore } from "@/store/factory-store";
 import { LibraryDetail, previewUrlFor } from "./LibraryDetail";
 import { ArmedMenuItem, LibraryMenu, MenuItem, MenuRule } from "./library-menu";
 import { LibraryTile, TagEditor } from "./LibraryTile";
@@ -53,9 +51,8 @@ type Armed = { id: string; what: "takedown" | "overwrite" };
 
 /**
  * Shared setups as tiles: the whole network (NETWORK) or the account's own
- * posts (MINE), with the owner tools in the menu. Click opens a setup as its
- * own tab; the menu loads it as a board onto the open design instead. Under
- * the network's setups come the network's saved boards, same tiles.
+ * posts (MINE), with the owner tools in the menu. Click opens the focus
+ * page; from there a setup opens as a COPY in its own tab.
  */
 export function SetupsGrid({ scope }: { scope: SetupsScope }) {
   const { user, isLoading: isAuthLoading } = useCommunityUser();
@@ -222,33 +219,6 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
     }
   };
 
-  // The whole setup lands on the CURRENT canvas inside one board.
-  const openAsBoard = async (plan: CommunityPlanSummary) => {
-    setBusyId(plan.id);
-    try {
-      const { plan: planJson } = await downloadCommunityPlan(plan.id);
-      const project = parseFactoryProjectJson(JSON.stringify(planJson));
-      const payload = captureBoardSelection(project, rootBoardIds(project));
-      if (!payload) {
-        throw new Error("This setup has nothing to place.");
-      }
-      const pastedIds = placePayload(payload);
-      if (pastedIds.length > 0) {
-        const state = useFactoryStore.getState();
-        const boardId = state.wrapSelectionInBoard(pastedIds, plan.name);
-        if (boardId) {
-          state.frameBoardNodes([boardId]);
-        }
-      }
-      patchPlan(plan.id, (entry) => ({ ...entry, downloads: entry.downloads + 1 }));
-      setError(undefined);
-    } catch (thrown) {
-      fail(thrown, "Loading as a board failed.");
-    } finally {
-      setBusyId(undefined);
-    }
-  };
-
   const copyLink = async (plan: CommunityPlanSummary) => {
     const url = sharedPlanLink(plan.id);
     try {
@@ -405,7 +375,7 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={scope === "mine" ? "Search my posts (#tag, @name)" : "Search the network (#tag, @name)"}
+            placeholder={scope === "mine" ? "Search my posts (#tag, @name)" : "Search public setups (#tag, @name)"}
             aria-label="Search setups"
             className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[var(--mc-ink-muted)]"
           />
@@ -564,13 +534,6 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
             }}
           />
           <MenuItem
-            label="Load as a board on the open design"
-            onClick={() => {
-              closeMenu();
-              void openAsBoard(menuPlan);
-            }}
-          />
-          <MenuItem
             label="Copy link"
             onClick={() => {
               closeMenu();
@@ -662,16 +625,4 @@ export function SetupsGrid({ scope }: { scope: SetupsScope }) {
       ) : null}
     </div>
   );
-}
-
-/** Everything living at a project's top level: what a full-plan capture takes. */
-function rootBoardIds(project: FactoryProject): string[] {
-  return [
-    ...project.nodes.filter((node) => !node.pocketId).map((node) => node.id),
-    ...(project.storages ?? []).filter((storage) => !storage.pocketId).map((storage) => storage.id),
-    ...(project.annotations ?? [])
-      .filter((annotation) => !annotation.pocketId)
-      .map((annotation) => annotation.id),
-    ...(project.pockets ?? []).filter((pocket) => !pocket.parentPocketId).map((pocket) => pocket.id),
-  ];
 }

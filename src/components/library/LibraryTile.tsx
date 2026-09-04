@@ -336,7 +336,7 @@ function PostGlyph({
       <button
         type="button"
         onClick={onPost}
-        aria-label="Post this design to the network"
+        aria-label="Post this design as a public setup"
         className="p-0.5 text-[var(--mc-ink-muted)] opacity-70 hover:bg-[var(--mc-61)] hover:text-emerald-300"
       >
         <Globe className="h-3 w-3" aria-hidden />

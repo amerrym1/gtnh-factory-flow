@@ -338,11 +338,11 @@ export function LibraryDetail({
 
             {/* OPEN, then the keys: one job each, read by their label. */}
             {editing ? null : (
-              <div className="flex shrink-0 flex-col items-end gap-1.5">
+              <div className="flex shrink-0 flex-col items-end gap-1">
                 <button
                   type="button"
                   onClick={entry.primary.onClick}
-                  className="flex h-7 items-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-3 text-[12px] font-bold text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85)] hover:border-cyan-400 hover:text-cyan-200"
+                  className="flex h-6 items-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2.5 text-[11px] font-bold text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85)] hover:border-cyan-400 hover:text-cyan-200"
                 >
                   {entry.primary.label}
                 </button>
