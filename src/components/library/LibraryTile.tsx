@@ -83,8 +83,15 @@ export interface LibraryTileProps {
   menuOpen?: boolean;
   onOpen: () => void;
   onMenu: (left: number, top: number) => void;
-  /** Set to make the tile draggable onto a rail folder. */
-  dragId?: string;
+  /**
+   * What a drag from this tile carries onto a rail folder: itself, or the
+   * whole selection when it is part of one.
+   */
+  dragIds?: string[];
+  /** Part of the current selection: ringed, and dragged with the rest. */
+  selected?: boolean;
+  /** Ctrl-click toggles; Shift-click extends the range. Plain click opens. */
+  onSelect?: (mode: "toggle" | "range") => void;
   renaming?: { onCommit: (name: string) => void; onCancel: () => void };
 }
 
@@ -106,24 +113,35 @@ export function LibraryTile({
   menuOpen,
   onOpen,
   onMenu,
-  dragId,
+  dragIds,
+  selected,
+  onSelect,
   renaming,
 }: LibraryTileProps) {
   return (
     <div
-      draggable={Boolean(dragId) && !renaming}
+      draggable={Boolean(dragIds?.length) && !renaming}
       onDragStart={
-        dragId
+        dragIds
           ? (event: DragEvent) => {
-              event.dataTransfer.setData(DESIGN_DRAG_TYPE, dragId);
+              event.dataTransfer.setData(DESIGN_DRAG_TYPE, JSON.stringify(dragIds));
               event.dataTransfer.effectAllowed = "move";
             }
           : undefined
       }
       role="button"
       tabIndex={0}
+      data-selected={selected ? "true" : undefined}
       onClick={(event) => {
         if (renaming || busy || (event.target as HTMLElement).closest("button, input, a")) {
+          return;
+        }
+        if (onSelect && (event.ctrlKey || event.metaKey)) {
+          onSelect("toggle");
+          return;
+        }
+        if (onSelect && event.shiftKey) {
+          onSelect("range");
           return;
         }
         onOpen();
@@ -139,7 +157,9 @@ export function LibraryTile({
       }}
       className={[
         "group relative flex h-[84px] cursor-pointer select-none flex-col justify-between rounded border px-2.5 py-2 text-left",
-        "border-line bg-[#151a21] hover:border-line-strong hover:bg-[#182029]",
+        selected
+          ? "border-cyan-400 bg-[#182029] ring-1 ring-cyan-400"
+          : "border-line bg-[#151a21] hover:border-line-strong hover:bg-[#182029]",
         menuOpen ? "border-line-strong" : "",
         busy ? "opacity-60" : "",
       ].join(" ")}
@@ -198,7 +218,7 @@ export function LibraryTile({
                 const rect = event.currentTarget.getBoundingClientRect();
                 onMenu(Math.min(rect.left, window.innerWidth - MENU_WIDTH - 8), rect.bottom + 4);
               }}
-              className="-my-1 shrink-0 rounded px-1 text-xs leading-none text-fg-muted opacity-0 hover:bg-surface-raised hover:text-fg focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
+              className="-my-1 shrink-0 rounded border border-line px-1.5 text-xs leading-none text-fg-muted hover:border-line-strong hover:bg-surface-raised hover:text-fg aria-expanded:text-fg"
             >
               ⋯
             </button>

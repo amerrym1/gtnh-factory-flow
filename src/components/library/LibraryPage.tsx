@@ -73,6 +73,10 @@ export function LibraryPage() {
   const [error, setError] = useState<string>();
   /** The rail folder a dragged tile is over. */
   const [dropId, setDropId] = useState<string>();
+  /** Multi-select: Ctrl-click toggles, Shift-click ranges from the anchor. */
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [anchorId, setAnchorId] = useState<string>();
+  const [bulkDeleteArmed, setBulkDeleteArmed] = useState(false);
   const { posts: myPosts, signedIn } = useMyPosts();
 
   const closeMenus = useCallback(() => {
@@ -119,6 +123,81 @@ export function LibraryPage() {
       ),
     [designs, folders],
   );
+
+  // The selection lives in the grid that is showing: a view change or
+  // Escape clears it, and ids that scroll out of the filter drop out.
+  const shownIds = useMemo(() => shown.map((design) => design.id), [shown]);
+  // Derived, not pruned: ids that scroll out of the filter simply stop
+  // counting, and come back if the filter lets them back in.
+  const visibleSelected = useMemo(
+    () => new Set([...selected].filter((id) => shownIds.includes(id))),
+    [selected, shownIds],
+  );
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelected(new Set());
+        setBulkDeleteArmed(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const selectTile = (id: string, mode: "toggle" | "range") => {
+    setBulkDeleteArmed(false);
+    if (mode === "range" && anchorId && shownIds.includes(anchorId)) {
+      const from = shownIds.indexOf(anchorId);
+      const to = shownIds.indexOf(id);
+      const [start, end] = from < to ? [from, to] : [to, from];
+      setSelected((current) => new Set([...current, ...shownIds.slice(start, end + 1)]));
+      return;
+    }
+    setAnchorId(id);
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+  const clearSelection = () => {
+    setSelected(new Set());
+    setBulkDeleteArmed(false);
+  };
+  const selectedIds = [...visibleSelected];
+  const closeSelected = async () => {
+    await useDesignStore.getState().closeDesigns(selectedIds);
+    clearSelection();
+  };
+  const fileSelected = async (folderId: string | undefined) => {
+    for (const id of selectedIds) {
+      await moveDesignToFolder(id, folderId);
+    }
+    clearSelection();
+  };
+  const deleteSelected = async () => {
+    for (const id of selectedIds) {
+      await removeDesign(id);
+    }
+    clearSelection();
+  };
+  /** What a drag from `id` carries: the selection when it is part of one. */
+  const dragIdsFor = (id: string) => (visibleSelected.has(id) ? selectedIds : [id]);
+  const readDroppedIds = (event: DragEvent): string[] => {
+    const raw = event.dataTransfer.getData(DESIGN_DRAG_TYPE);
+    if (!raw) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+    } catch {
+      return [raw];
+    }
+  };
 
   const open = (id: string) => void switchToDesign(id);
   const postDesign = async (id: string) => {
@@ -175,9 +254,14 @@ export function LibraryPage() {
     onDrop: (event: DragEvent) => {
       event.preventDefault();
       setDropId(undefined);
-      const id = event.dataTransfer.getData(DESIGN_DRAG_TYPE);
-      if (id) {
-        void moveDesignToFolder(id, folderId);
+      const ids = readDroppedIds(event);
+      void (async () => {
+        for (const id of ids) {
+          await moveDesignToFolder(id, folderId);
+        }
+      })();
+      if (ids.length > 1) {
+        clearSelection();
       }
     },
   });
@@ -327,6 +411,54 @@ export function LibraryPage() {
                   </button>
                 </header>
 
+                {visibleSelected.size > 0 ? (
+                  <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line bg-cyan-500/10 px-4 text-xs text-fg compact:px-2">
+                    <span className="font-bold text-cyan-200">{visibleSelected.size} selected</span>
+                    <span className="text-fg-muted compact:hidden">
+                      Ctrl-click to add, Shift-click for a run
+                    </span>
+                    <span className="ml-auto flex items-center gap-1.5">
+                      {selectedIds.some((id) => !designs.find((d) => d.id === id)?.closed) ? (
+                        <BarButton onClick={() => void closeSelected()}>Close tabs</BarButton>
+                      ) : null}
+                      {folders.length > 0 ? (
+                        <select
+                          value=""
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            if (value) {
+                              void fileSelected(value === "none" ? undefined : value);
+                            }
+                          }}
+                          aria-label="Add the selection to a folder"
+                          className="h-6 rounded border border-line-strong bg-surface px-1 text-xs text-fg outline-none"
+                        >
+                          <option value="">Add to folder…</option>
+                          {folders.map((folder) => (
+                            <option key={folder.id} value={folder.id}>
+                              {folder.name}
+                            </option>
+                          ))}
+                          <option value="none">No folder</option>
+                        </select>
+                      ) : null}
+                      <BarButton
+                        tone="danger"
+                        onClick={() => {
+                          if (bulkDeleteArmed) {
+                            void deleteSelected();
+                          } else {
+                            setBulkDeleteArmed(true);
+                          }
+                        }}
+                      >
+                        {bulkDeleteArmed ? `Confirm delete ${visibleSelected.size}` : "Delete"}
+                      </BarButton>
+                      <BarButton onClick={clearSelection}>Clear</BarButton>
+                    </span>
+                  </div>
+                ) : null}
+
                 <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 compact:px-2">
                   {error ? <p className="mb-2 text-[11px] text-red-400">{error}</p> : null}
                   {shown.length === 0 ? (
@@ -347,7 +479,9 @@ export function LibraryPage() {
                         return (
                           <LibraryTile
                             key={design.id}
-                            dragId={design.id}
+                            dragIds={dragIdsFor(design.id)}
+                            selected={visibleSelected.has(design.id)}
+                            onSelect={(mode) => selectTile(design.id, mode)}
                             icon={design.icon}
                             name={design.name}
                             creator={
@@ -558,6 +692,32 @@ export function LibraryPage() {
 }
 
 /* ------------------------------------------------------------------ */
+
+/** A button on the selection bar. */
+function BarButton({
+  onClick,
+  tone,
+  children,
+}: {
+  onClick: () => void;
+  tone?: "danger";
+  children: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "h-6 rounded border px-2 text-xs font-medium",
+        tone === "danger"
+          ? "border-red-800 bg-red-950/60 text-red-300 hover:border-red-600"
+          : "border-line-strong bg-surface text-fg-subtle hover:text-fg",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
 
 function sortDesignsBy(designs: DesignSummary[], sort: SortKey): DesignSummary[] {
   const sorted = [...designs];
