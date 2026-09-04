@@ -294,7 +294,7 @@ export function InspectorPanel() {
       data-help-anchor="inspector"
       className="flex h-full min-h-[360px] compact:min-h-0 flex-col bg-[#25272c]"
     >
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <FlowIOPanel />
       </div>
       {/* The build list rides the panel's floor: what to build, at which
@@ -532,10 +532,8 @@ function FlowIOPanel() {
         // readable from anywhere in the list rather than only at the top.
         // Like the items column: only the controls sit on a card; the list
         // sits on the column itself.
-        "flex min-h-0 flex-1 flex-col rounded border",
-        selection
-          ? "border-[var(--selection)] ring-1 ring-[var(--selection-soft)]"
-          : "border-transparent",
+        "flex min-h-0 flex-1 flex-col",
+        selection ? "ring-1 ring-inset ring-[var(--selection)]" : "",
       ].join(" ")}
     >
       {selection ? (
