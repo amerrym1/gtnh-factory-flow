@@ -1,7 +1,15 @@
 "use client";
 
 import { Factory, Folder, FolderPlus, LayoutGrid, Plus, Search, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import { createPortal } from "react-dom";
 import { useCommunityUser } from "@/components/community/auth";
 import { IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
 import { formatRelativeDate } from "@/components/shelf-cards";
@@ -16,7 +24,7 @@ import { playBoardSound } from "@/lib/board-sounds";
 import { useDesignStore } from "@/store/design-store";
 import { LibraryDetail, previewUrlFor } from "./LibraryDetail";
 import { ArmedMenuItem, LibraryMenu, MenuHeading, MenuItem, MenuRule } from "./library-menu";
-import { DESIGN_DRAG_TYPE, InlineName, LibraryTile } from "./LibraryTile";
+import { Face, InlineName, LibraryTile } from "./LibraryTile";
 import { SetupsGrid } from "./SetupsGrid";
 
 /**
@@ -77,8 +85,8 @@ export function LibraryPage() {
   const [namingFolder, setNamingFolder] = useState(false);
   const [copiedId, setCopiedId] = useState<string>();
   const [error, setError] = useState<string>();
-  /** The rail folder a dragged tile is over. */
-  const [dropId, setDropId] = useState<string>();
+  /** Our own drag: the ghost card, where it is, and what it is over. */
+  const [drag, setDrag] = useState<TileDrag>();
   /** Multi-select: Ctrl-click toggles, Shift-click ranges from the anchor. */
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [anchorId, setAnchorId] = useState<string>();
@@ -207,17 +215,81 @@ export function LibraryPage() {
   };
   /** What a drag from `id` carries: the selection when it is part of one. */
   const dragIdsFor = (id: string) => (visibleSelected.has(id) ? selectedIds : [id]);
-  const readDroppedIds = (event: DragEvent): string[] => {
-    const raw = event.dataTransfer.getData(DESIGN_DRAG_TYPE);
-    if (!raw) {
-      return [];
-    }
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
-    } catch {
-      return [raw];
-    }
+
+  // The click that ends a drag must not also open the tile.
+  const suppressClickRef = useRef(false);
+
+  /**
+   * OUR OWN DRAG, not the browser's: a press on a tile that moves a few
+   * pixels becomes a small card riding the pointer (the face, the name, a
+   * count when the selection comes along). Rail chips light as it passes;
+   * releasing on a collection files the lot there, and releasing on New
+   * collection makes one on the spot and files them into it.
+   */
+  const beginTileDrag = (design: DesignSummary, event: ReactPointerEvent) => {
+    const ids = dragIdsFor(design.id);
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let started = false;
+    let over: string | undefined;
+    const targetAt = (x: number, y: number): string | undefined => {
+      const hit = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-drop-target]");
+      return hit?.dataset.dropTarget;
+    };
+    const move = (moveEvent: PointerEvent) => {
+      if (!started) {
+        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < 6) {
+          return;
+        }
+        started = true;
+        suppressClickRef.current = true;
+      }
+      over = targetAt(moveEvent.clientX, moveEvent.clientY);
+      setDrag({
+        ids,
+        name: design.name,
+        icon: design.icon,
+        x: moveEvent.clientX,
+        y: moveEvent.clientY,
+        over,
+      });
+    };
+    const finish = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      setDrag(undefined);
+      if (!started) {
+        return;
+      }
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+      if (over === "new") {
+        void (async () => {
+          const folder = await createFolder("New collection");
+          for (const id of ids) {
+            await moveDesignToFolder(id, folder.id);
+          }
+          setLibraryView({ kind: "folder", folderId: folder.id });
+          setRenamingFolderId(folder.id);
+        })();
+        clearSelection();
+      } else if (over?.startsWith("folder:")) {
+        const folderId = over.slice("folder:".length);
+        void (async () => {
+          for (const id of ids) {
+            await moveDesignToFolder(id, folderId);
+          }
+        })();
+        if (ids.length > 1) {
+          clearSelection();
+        }
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
   };
 
   const open = (id: string) => void switchToDesign(id);
@@ -261,32 +333,6 @@ export function LibraryPage() {
     }
   };
 
-  const railDropProps = (folderId: string) => ({
-    onDragOver: (event: DragEvent) => {
-      if (event.dataTransfer.types.includes(DESIGN_DRAG_TYPE)) {
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "move";
-        if (dropId !== folderId) {
-          setDropId(folderId);
-        }
-      }
-    },
-    onDragLeave: () => setDropId((current) => (current === folderId ? undefined : current)),
-    onDrop: (event: DragEvent) => {
-      event.preventDefault();
-      setDropId(undefined);
-      const ids = readDroppedIds(event);
-      void (async () => {
-        for (const id of ids) {
-          await moveDesignToFolder(id, folderId);
-        }
-      })();
-      if (ids.length > 1) {
-        clearSelection();
-      }
-    },
-  });
-
   const menuDesign = tileMenu
     ? designs.find((design) => design.id === tileMenu.designId)
     : undefined;
@@ -323,7 +369,8 @@ export function LibraryPage() {
                 label={folder.name}
                 count={perFolder.get(folder.id) ?? 0}
                 selected={viewFolderId === folder.id}
-                highlighted={dropId === folder.id}
+                highlighted={drag?.over === `folder:${folder.id}`}
+                dropTarget={`folder:${folder.id}`}
                 renaming={renamingFolderId === folder.id}
                 onRename={(name) => {
                   setRenamingFolderId(undefined);
@@ -336,7 +383,6 @@ export function LibraryPage() {
                   closeMenus();
                   setFolderMenu({ folderId: folder.id, left, top });
                 }}
-                {...railDropProps(folder.id)}
               />
             ))}
             {namingFolder ? (
@@ -359,8 +405,14 @@ export function LibraryPage() {
             ) : null}
             <button
               type="button"
+              data-drop-target="new"
               onClick={() => setNamingFolder(true)}
-              className="flex h-8 shrink-0 items-center gap-1.5 border-2 border-dashed border-[var(--mc-47)] px-2 text-[var(--mc-ink-muted)] hover:border-[var(--mc-61)] hover:text-[var(--mc-ink)]"
+              className={[
+                "flex h-8 shrink-0 items-center gap-1.5 border-2 border-dashed px-2 hover:border-[var(--mc-61)] hover:text-[var(--mc-ink)]",
+                drag?.over === "new"
+                  ? "border-cyan-400 text-[var(--mc-ink)]"
+                  : "border-[var(--mc-47)] text-[var(--mc-ink-muted)]",
+              ].join(" ")}
             >
               <FolderPlus className="h-3.5 w-3.5" aria-hidden />
               <span className="whitespace-nowrap text-[12px] font-bold">New collection</span>
@@ -626,7 +678,7 @@ export function LibraryPage() {
                         return (
                           <LibraryTile
                             key={design.id}
-                            dragIds={dragIdsFor(design.id)}
+                            onDragPress={(event) => beginTileDrag(design, event)}
                             selected={visibleSelected.has(design.id)}
                             onSelect={(mode) => selectTile(design.id, mode)}
                             icon={design.icon}
@@ -664,7 +716,12 @@ export function LibraryPage() {
                             }
                             onCopyLink={post ? () => void copyLink(design) : undefined}
                             menuOpen={tileMenu?.designId === design.id}
-                            onOpen={() => setDetailId(design.id)}
+                            onOpen={() => {
+                              if (suppressClickRef.current) {
+                                return;
+                              }
+                              setDetailId(design.id);
+                            }}
                             onMenu={(left, top) => {
                               closeMenus();
                               setTileMenu({ designId: design.id, left, top });
@@ -808,6 +865,8 @@ export function LibraryPage() {
         </LibraryMenu>
       ) : null}
 
+      {drag ? <DragGhost drag={drag} /> : null}
+
       {iconEditId ? (
         <IconPicker
           title="Pick an icon"
@@ -867,6 +926,39 @@ export function LibraryPage() {
 }
 
 /* ------------------------------------------------------------------ */
+
+interface TileDrag {
+  ids: string[];
+  name: string;
+  icon?: DesignSummary["icon"];
+  x: number;
+  y: number;
+  /** The drop target under the pointer, if any. */
+  over?: string;
+}
+
+/** The little card that rides the pointer while a tile is dragged. */
+function DragGhost({ drag }: { drag: TileDrag }) {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  return createPortal(
+    <div
+      aria-hidden
+      style={{ left: drag.x + 14, top: drag.y + 10 }}
+      className="pointer-events-none fixed z-[120] flex max-w-[240px] items-center gap-2 border-2 border-[var(--mc-61)] bg-[var(--mc-47)] px-2 py-1.5 text-[var(--mc-ink)] shadow-[0_8px_0_rgba(0,0,0,0.5)]"
+    >
+      <Face icon={drag.icon} size={28} />
+      <span className="min-w-0 truncate text-[12px] font-bold">{drag.name}</span>
+      {drag.ids.length > 1 ? (
+        <span className="shrink-0 border border-cyan-400 px-1 text-[10px] font-black text-cyan-200">
+          +{drag.ids.length - 1}
+        </span>
+      ) : null}
+    </div>,
+    document.body,
+  );
+}
 
 function viewFolderKey(view: { kind: string; folderId?: string }): string {
   return view.kind === "folder" ? (view.folderId ?? "") : "";
@@ -986,9 +1078,7 @@ function RailItem({
   onClick,
   onDoubleClick,
   onMenu,
-  onDragOver,
-  onDragLeave,
-  onDrop,
+  dropTarget,
 }: {
   icon: typeof Folder;
   label: string;
@@ -1001,9 +1091,8 @@ function RailItem({
   onClick: () => void;
   onDoubleClick?: () => void;
   onMenu?: (left: number, top: number) => void;
-  onDragOver?: (event: DragEvent) => void;
-  onDragLeave?: () => void;
-  onDrop?: (event: DragEvent) => void;
+  /** Named, the chip takes a dropped tile. */
+  dropTarget?: string;
 }) {
   return (
     <div
@@ -1016,9 +1105,7 @@ function RailItem({
           onClick();
         }
       }}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
+      data-drop-target={dropTarget}
       onContextMenu={
         onMenu
           ? (event) => {

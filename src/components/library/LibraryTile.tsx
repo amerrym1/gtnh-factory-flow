@@ -11,7 +11,7 @@ import {
   LoaderCircle,
   Zap,
 } from "lucide-react";
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FLUID_ICON_SCALE, ResourceIcon } from "@/components/nei/ResourceIcon";
 import { TierBadge, type VoltageTier } from "@/components/shelf-cards";
@@ -32,8 +32,6 @@ import type { EntryIcon } from "@/lib/model/types";
  * on the face of it. NO TOOLTIPS anywhere on a tile: what a thing is must
  * be readable without hovering.
  */
-
-export const DESIGN_DRAG_TYPE = "application/x-gtnh-design";
 
 export interface TileMarks {
   /** On the tab strip. */
@@ -83,10 +81,10 @@ export interface LibraryTileProps {
   onOpen: () => void;
   onMenu: (left: number, top: number) => void;
   /**
-   * What a drag from this tile carries onto a rail folder: itself, or the
-   * whole selection when it is part of one.
+   * A press that may become a drag. The page owns the drag itself (the
+   * ghost card, the drop targets); the tile only reports the press.
    */
-  dragIds?: string[];
+  onDragPress?: (event: React.PointerEvent) => void;
   /** Part of the current selection: ringed, and dragged with the rest. */
   selected?: boolean;
   /** Ctrl-click toggles; Shift-click extends the range. Plain click opens. */
@@ -112,19 +110,23 @@ export function LibraryTile({
   menuOpen,
   onOpen,
   onMenu,
-  dragIds,
+  onDragPress,
   selected,
   onSelect,
   renaming,
 }: LibraryTileProps) {
   return (
     <div
-      draggable={Boolean(dragIds?.length) && !renaming}
-      onDragStart={
-        dragIds
-          ? (event: DragEvent) => {
-              event.dataTransfer.setData(DESIGN_DRAG_TYPE, JSON.stringify(dragIds));
-              event.dataTransfer.effectAllowed = "move";
+      onPointerDown={
+        onDragPress
+          ? (event) => {
+              if (
+                event.button === 0 &&
+                !renaming &&
+                !(event.target as HTMLElement).closest("button, input, a")
+              ) {
+                onDragPress(event);
+              }
             }
           : undefined
       }
