@@ -638,17 +638,6 @@ export function DesignTabs() {
                   >
                     ⋯
                   </button>
-                  {/* Close puts the design on the shelf; nothing is lost, so
-                      it needs no arming and can sit right on the pill. */}
-                  <button
-                    type="button"
-                    aria-label={`Close ${design.name}`}
-                    title="Close tab"
-                    onClick={() => void closeDesign(design.id)}
-                    className="rounded px-1 text-xs text-fg-muted opacity-0 hover:bg-surface hover:text-fg focus:opacity-100 group-hover:opacity-100"
-                  >
-                    ✕
-                  </button>
                 </div>
                 </Fragment>
               );
