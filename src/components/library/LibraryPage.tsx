@@ -1007,6 +1007,15 @@ function RailItem({
 }) {
   return (
     <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          onClick();
+        }
+      }}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
@@ -1019,7 +1028,7 @@ function RailItem({
           : undefined
       }
       className={[
-        "group flex h-8 shrink-0 items-center gap-1.5 border-2 px-2 text-[12px] font-bold compact:h-8",
+        "group flex h-8 shrink-0 cursor-pointer items-center gap-1.5 border-2 px-2 text-[12px] font-bold compact:h-8",
         selected
           ? "border-[var(--mc-61)] bg-[var(--mc-47)] text-[var(--mc-ink)]"
           : "border-[var(--mc-47)] bg-[var(--mc-33)] text-[var(--mc-ink)] opacity-55 hover:opacity-100",
@@ -1030,14 +1039,7 @@ function RailItem({
       {renaming && onRename && onCancelRename ? (
         <InlineName initialName={label} onCommit={onRename} onCancel={onCancelRename} />
       ) : (
-        <button
-          type="button"
-          onClick={onClick}
-          onDoubleClick={onDoubleClick}
-          className="min-w-0 flex-1 truncate text-left text-[12px] font-bold"
-        >
-          {label}
-        </button>
+        <span className="min-w-0 flex-1 truncate text-left text-[12px] font-bold">{label}</span>
       )}
       {count !== undefined ? (
         <span className="shrink-0 text-[12px] font-bold tabular-nums text-[var(--mc-ink-muted)]">{count}</span>
@@ -1047,6 +1049,7 @@ function RailItem({
           type="button"
           aria-label={`Options for collection ${label}`}
           onClick={(event) => {
+            event.stopPropagation();
             const rect = event.currentTarget.getBoundingClientRect();
             onMenu(rect.left, rect.bottom + 4);
           }}
