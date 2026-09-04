@@ -506,7 +506,7 @@ export function LibraryPage() {
                             onClick: () => void setPostVisibility(detailDesign, !detailPost.isPublic),
                           },
                         ]
-                      : signedIn && !detailDesign.communityPlanId
+                      : signedIn
                         ? [
                             {
                               label: "Post as a public setup",
@@ -674,7 +674,9 @@ export function LibraryPage() {
                         const post = design.communityPlanId
                           ? myPosts?.get(design.communityPlanId)
                           : undefined;
-                        const linkedElsewhere = Boolean(design.communityPlanId && myPosts && !post);
+                        // A design opened as a copy of someone else's post is YOURS now: it
+                        // posts, edits and wears marks like anything you made from scratch.
+                        // The link it keeps to its source serves the plan card's reset only.
                         return (
                           <LibraryTile
                             key={design.id}
@@ -705,12 +707,10 @@ export function LibraryPage() {
                               open: !design.closed,
                               posted: Boolean(post),
                               privatePost: post ? !post.isPublic : false,
-                              fromNetwork: linkedElsewhere,
-                              linked: Boolean(design.communityPlanId && !myPosts),
                               behind: Boolean(post && design.communityBehind),
                             }}
                             onPost={
-                              !post && !linkedElsewhere && signedIn
+                              !post && signedIn
                                 ? () => void postDesign(design.id)
                                 : undefined
                             }
@@ -843,7 +843,7 @@ export function LibraryPage() {
                 }}
               />
             </>
-          ) : signedIn && !menuDesign.communityPlanId ? (
+          ) : signedIn ? (
             <MenuItem
               label="Post as a public setup"
               onClick={() => {
