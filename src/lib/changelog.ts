@@ -77,6 +77,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "A recipe the dataset no longer has stays on the card as it was saved instead of being replaced by a lookalike.",
       "Big plans with many stopped machines no longer freeze for half a minute on every edit or drag.",
       "Your chosen font stays after a refresh in Firefox.",
+      "One design that fails to open no longer hides all your other design tabs.",
     ],
   },
   {

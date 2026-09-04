@@ -158,30 +158,14 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
   error: undefined,
 
   hydrate: async () => {
+    let summaries: DesignSummary[];
     try {
-      let summaries = sortDesigns(await listDesignSummaries());
+      summaries = sortDesigns(await listDesignSummaries());
 
       if (summaries.length === 0) {
         summaries = [await seedFirstDesign()];
       } else {
         summaries = await backfillSummaryIcons(summaries);
-      }
-
-      const remembered = readActiveDesignId();
-      const activeId =
-        summaries.find((design) => design.id === remembered)?.id ?? summaries[0].id;
-
-      const active = await readDesign(activeId);
-
-      // Designs can also go away without this tab hearing about it, and a camera
-      // for a plan nothing can open is dead weight.
-      keepDesignCameras(summaries.map((design) => design.id));
-
-      if (active) {
-        landOnDesign(set, activeId, active.project, { designs: summaries, isHydrated: true });
-      } else {
-        writeActiveDesignId(activeId);
-        set({ designs: summaries, activeDesignId: activeId, isHydrated: true });
       }
     } catch (error) {
       // A browser with IndexedDB blocked still gets a working canvas — it just
@@ -189,6 +173,42 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       set({
         isHydrated: true,
         error: error instanceof Error ? error.message : "Designs could not be loaded.",
+      });
+      return;
+    }
+
+    // Designs can also go away without this tab hearing about it, and a camera
+    // for a plan nothing can open is dead weight.
+    keepDesignCameras(summaries.map((design) => design.id));
+
+    const remembered = readActiveDesignId();
+    const activeId =
+      summaries.find((design) => design.id === remembered)?.id ?? summaries[0].id;
+
+    // The strip is listed BEFORE the remembered design is opened, and its
+    // opening is guarded on its own: a plan saved by an older version that
+    // trips a load-time migration used to take every other tab down with it
+    // (issue #45, "all my plans disappeared"), when nothing but that one plan
+    // was ever at fault. And a design whose plan cannot be read lands NOWHERE:
+    // making it active over an empty canvas let the next autosave write that
+    // emptiness over the record, which is the one way to really lose a plan.
+    try {
+      const active = await readDesign(activeId);
+      if (active) {
+        landOnDesign(set, activeId, active.project, { designs: summaries, isHydrated: true });
+      } else {
+        set({
+          designs: summaries,
+          isHydrated: true,
+          error: "The last design you had open could not be read. Its record was left alone.",
+        });
+      }
+    } catch (error) {
+      console.error("The remembered design could not be opened; its record was left alone.", error);
+      set({
+        designs: summaries,
+        isHydrated: true,
+        error: error instanceof Error ? error.message : "Design could not be opened.",
       });
     }
   },
@@ -306,8 +326,8 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       if (next) {
         landOnDesign(set, nextActiveId, next.project, { designs: summaries });
       } else {
-        writeActiveDesignId(nextActiveId);
-        set({ designs: summaries, activeDesignId: nextActiveId });
+        // Unreadable: listed, never made active over an empty canvas.
+        set({ designs: summaries, activeDesignId: undefined });
       }
       return;
     }
@@ -352,8 +372,8 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     if (next) {
       landOnDesign(set, nextId, next.project, { designs: summaries });
     } else {
-      writeActiveDesignId(nextId);
-      set({ designs: summaries, activeDesignId: nextId });
+      // Unreadable: listed, never made active over an empty canvas.
+      set({ designs: summaries, activeDesignId: undefined });
     }
   },
 
