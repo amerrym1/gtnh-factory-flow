@@ -311,7 +311,7 @@ export function LibraryPage() {
           <aside className="flex w-[168px] shrink-0 flex-col gap-1 overflow-y-auto bg-[#101215] px-2 py-2 compact:w-full compact:flex-row compact:items-center compact:overflow-x-auto compact:overflow-y-hidden compact:border-b compact:border-r-0 compact:py-1.5">
             <RailItem
               icon={LayoutGrid}
-              label="All"
+              label="My designs"
               count={designs.length}
               selected={library.view.kind === "all"}
               onClick={() => setLibraryView({ kind: "all" })}
