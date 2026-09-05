@@ -266,13 +266,18 @@ export function LibraryTile({
           ) : null}
           {marks.open ? (
             <span
+              title="Open as a tab"
               className="bg-[var(--mc-61)] px-1 text-[9px] font-black uppercase tracking-wide text-neutral-300"
             >
               open
             </span>
           ) : null}
           {marks.privatePost ? (
-            <span className="text-[var(--mc-ink-muted)]" aria-label="Private post">
+            <span
+              className="text-[var(--mc-ink-muted)]"
+              aria-label="Private: only you can see it"
+              title="Private: only you can see it"
+            >
               <EyeOff className="h-3 w-3" aria-hidden />
             </span>
           ) : null}
@@ -335,7 +340,11 @@ function PostGlyph({
 }) {
   if (marks.fromNetwork) {
     return (
-      <span aria-label="Opened from a shared setup" className="text-[var(--mc-ink-muted)]">
+      <span
+        aria-label="Opened from a shared setup"
+        title="Opened from a shared setup"
+        className="text-[var(--mc-ink-muted)]"
+      >
         <Download className="h-3 w-3" aria-hidden />
       </span>
     );
@@ -366,7 +375,7 @@ function PostGlyph({
   }
   if (marks.linked) {
     return (
-      <span aria-label="Linked to a post" className="text-[var(--mc-ink-muted)]">
+      <span aria-label="Linked to a post" title="Linked to a post" className="text-[var(--mc-ink-muted)]">
         <Link2 className="h-3 w-3" aria-hidden />
       </span>
     );
