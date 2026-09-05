@@ -31,8 +31,9 @@ import type { EntryIcon } from "@/lib/model/types";
  * Click opens it: one verb, no question. Right click or the dots is the
  * menu. The creator's name is a filter (click it, the grid narrows to
  * them) and so is the tier badge. The vote arrow is the one other control
- * on the face of it. NO TOOLTIPS anywhere on a tile: what a thing is must
- * be readable without hovering.
+ * on the face of it. The small buttons carry a plain native tooltip saying
+ * exactly what a press does ("Add to Favorites", "Copy link"); nothing else
+ * on a tile has one, and no tooltip says more than the action.
  */
 
 export interface TileMarks {
@@ -193,6 +194,7 @@ export function LibraryTile({
                   type="button"
                   onClick={onTier}
                   aria-label={`Show setups up to ${tier}`}
+                  title={`Show setups up to ${tier}`}
                   className="flex shrink-0 ring-cyan-400 hover:ring-2"
                 >
                   <TierBadge tier={tier} />
@@ -210,6 +212,7 @@ export function LibraryTile({
                     type="button"
                     onClick={onCreator}
                     aria-label={`Show setups by ${creator}`}
+                    title={`Show setups by ${creator}`}
                     className="text-neutral-300 hover:bg-[var(--mc-61)] hover:text-cyan-200"
                   >
                     {creator}
@@ -237,7 +240,8 @@ export function LibraryTile({
             <button
               type="button"
               onClick={onFavorite}
-              aria-label={favorite ? "Take out of Favorites" : "Put in Favorites"}
+              aria-label={favorite ? "Remove from Favorites" : "Add to Favorites"}
+              title={favorite ? "Remove from Favorites" : "Add to Favorites"}
               className={[
                 "flex h-4 w-4 items-center justify-center",
                 favorite ? "text-amber-300" : "text-[var(--mc-ink-muted)] opacity-50 hover:opacity-100 hover:text-amber-200",
@@ -250,7 +254,8 @@ export function LibraryTile({
             <button
               type="button"
               onClick={onSave}
-              aria-label={saved ? "Take out of Saved" : "Save this setup"}
+              aria-label={saved ? "Remove from Saved" : "Add to Saved"}
+              title={saved ? "Remove from Saved" : "Add to Saved"}
               className={[
                 "flex h-4 w-4 items-center justify-center",
                 saved ? "text-cyan-300" : "text-[var(--mc-ink-muted)] opacity-50 hover:opacity-100 hover:text-cyan-200",
@@ -278,7 +283,8 @@ export function LibraryTile({
                 type="button"
                 disabled={!social.onVote}
                 onClick={social.onVote}
-                aria-label={social.myVote === 1 ? "Take back your vote" : "Vote this up"}
+                aria-label={social.myVote === 1 ? "Remove your vote" : "Vote up"}
+                title={social.myVote === 1 ? "Remove your vote" : "Vote up"}
                 className={[
                   "flex items-center gap-0.5 px-0.5",
                   social.myVote === 1
@@ -339,6 +345,7 @@ function PostGlyph({
       <>
         <span
           aria-label={marks.privatePost ? "Posted, private" : "Posted"}
+          title={marks.privatePost ? "Posted, private" : "Posted"}
           className="relative inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-emerald-400"
         >
           <Globe className="h-3 w-3" aria-hidden />
@@ -347,7 +354,8 @@ function PostGlyph({
           <button
             type="button"
             onClick={onCopyLink}
-            aria-label="Copy the share link"
+            aria-label="Copy link"
+            title="Copy link"
             className="p-0.5 text-[var(--mc-ink-muted)] hover:bg-[var(--mc-61)] hover:text-cyan-200"
           >
             <Link2 className="h-3 w-3" aria-hidden />
@@ -368,7 +376,8 @@ function PostGlyph({
       <button
         type="button"
         onClick={onPost}
-        aria-label="Post this design as a public setup"
+        aria-label="Post to Public setups"
+        title="Post to Public setups"
         className="p-0.5 text-[var(--mc-ink-muted)] opacity-70 hover:bg-[var(--mc-61)] hover:text-emerald-300"
       >
         <Globe className="h-3 w-3" aria-hidden />
