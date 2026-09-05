@@ -648,18 +648,14 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode, step 
       blip(ctx, out, { from: 587, to: 523, duration: 0.09, peak: 0.1 });
       break;
     case "shelfTurn":
-      // A card slid along the shelf: one low, soft brush, a fainter one
-      // trailing it, and a quiet flat tone underneath for body. An octave
-      // under the page turn, at two thirds of its voice, no pitch motion.
-      puff(ctx, out, { frequency: 520, q: 0.8, duration: 0.1, peak: 0.09 });
-      puff(ctx, out, { frequency: 380, q: 1, duration: 0.06, peak: 0.04, delay: 0.05 });
-      blip(ctx, out, { from: 330, to: 330, duration: 0.09, peak: 0.045, delay: 0.02 });
+      // A card slid along the shelf: brush only, no tone at all (Jack: the
+      // tone read as a beep). One low soft brush and a fainter one trailing.
+      puff(ctx, out, { frequency: 480, q: 0.7, duration: 0.11, peak: 0.07 });
+      puff(ctx, out, { frequency: 360, q: 0.9, duration: 0.07, peak: 0.03, delay: 0.05 });
       break;
     case "shelfTick":
-      // A low key: the tick's shape a fifth down and at two thirds of its
-      // voice, with less air on it.
-      blip(ctx, out, { from: 392, to: 392, duration: 0.06, peak: 0.06 });
-      puff(ctx, out, { frequency: 1100, q: 3, duration: 0.02, peak: 0.02 });
+      // A filter changed: the same brush, shorter and smaller. Air only.
+      puff(ctx, out, { frequency: 560, q: 0.9, duration: 0.06, peak: 0.05 });
       break;
   }
 }
