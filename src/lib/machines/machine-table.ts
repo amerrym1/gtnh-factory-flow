@@ -1682,6 +1682,37 @@ const MACHINES_V28: Record<string, MachineBehaviour> = {
   "Electric Implosion Compressor": {
     overclock: OVERCLOCK.normal(),
   },
+
+  // -- Verified identical: laser, neutron, dehydrator ---------------------
+  // MTEIndustrialLaserEngraver: 3.5x speed, 0.8x EU, parallels = cbrt of the
+  // laser hatch's amperage. Identical; its laser-tier overclock cap is not
+  // modelled here (the same simplification the 2.9 entry makes).
+  "Hyper-Intensity Laser Engraver": {
+    overclock: OVERCLOCK.normal(),
+    speed: 3.5,
+    power: 0.8,
+    parallels: (c) => Math.floor(Math.cbrt(c.value("laserAmperage"))),
+    controls: [LASER_AMPERAGE_CONTROL],
+  },
+  // MTENeutronActivator: duration is 0.9^(height - 4), i.e. (1/0.9)^(height-4)
+  // throughput. Identical; power is not counted.
+  "Neutron Activator": {
+    overclock: OVERCLOCK.none(),
+    speed: (c) => Math.pow(1 / 0.9, c.value("speedingPipeCasing") - 4),
+    power: 0,
+    controls: [NEUTRON_PIPE_CONTROL],
+    note: "Power use is not counted.",
+  },
+  // MTEIndustrialDehydrator (Utupu-Tanuri): 2.2x speed, 0.5x EU, four
+  // parallels, heat overclocks + heat discount off raw coil heat. Identical.
+  "Multiblock Dehydrator": {
+    aliases: ["Utupu-Tanuri"],
+    overclock: HEAT_OVERCLOCK,
+    speed: 2.2,
+    power: 0.5,
+    parallels: 4,
+    controls: [HEATING_COIL_CONTROL],
+  },
 };
 
 function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, MachineBehaviour> {

@@ -211,7 +211,12 @@ describe("machine model versions", () => {
     // The implosion compressor gains containment parallels only in 2.9.
     expect(getMachineBehaviour("Electric Implosion Compressor", "2.8")?.parallels).toBeUndefined();
     expect(getMachineBehaviour("Electric Implosion Compressor", "2.9")?.parallels).toBeDefined();
-    expect(machineTableNames("2.8")).toHaveLength(71);
+    // Batch 15: verified identical (laser, neutron activator, dehydrator).
+    expect(getMachineBehaviour("Hyper-Intensity Laser Engraver", "2.8")?.speed).toBe(3.5);
+    expect(getMachineBehaviour("Neutron Activator", "2.8")?.power).toBe(0);
+    expect(getMachineBehaviour("Multiblock Dehydrator", "2.8")?.speed).toBe(2.2);
+    expect(getMachineBehaviour("Multiblock Dehydrator", "2.8")?.overclock).toBe(HEAT_OVERCLOCK);
+    expect(machineTableNames("2.8")).toHaveLength(74);
     // Not yet transcribed: falls back to dataset-baked stats.
     expect(getMachineBehaviour("Industrial Coke Oven", "2.8")).toBeUndefined();
   });
