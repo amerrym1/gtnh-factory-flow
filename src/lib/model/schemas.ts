@@ -524,7 +524,6 @@ export const factoryProjectSchema = z.object({
       createdAt: z.string().optional(),
       updatedAt: z.string().optional(),
       communityPlanId: z.string().optional(),
-      communityFingerprint: z.string().optional(),
     })
     .optional(),
 });

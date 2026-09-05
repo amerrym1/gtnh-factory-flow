@@ -40,8 +40,6 @@ export interface TileMarks {
   open?: boolean;
   /** Your own post on the network. */
   posted?: boolean;
-  /** Edited since it last matched that post. */
-  behind?: boolean;
   /** Opened from someone else's setup. */
   fromNetwork?: boolean;
   /** Linked to a post whose owner the network has not said. */
@@ -315,8 +313,8 @@ function Stat({ icon: Icon, value, tone }: { icon: typeof Factory; value: string
 }
 
 /**
- * The globe, always in the same place: green when this is your post (with
- * an amber dot once the board has moved on from it), dim and clickable when
+ * The globe, always in the same place: green when this is your post (the
+ * post follows the design, so there is no "edited since"), dim and clickable when
  * it is not posted yet, a download arrow when it came from someone else's
  * setup. A posted tile also carries the link button beside it.
  */
@@ -340,16 +338,10 @@ function PostGlyph({
     return (
       <>
         <span
-          aria-label={marks.behind ? "Posted, edited since" : "Posted"}
+          aria-label={marks.privatePost ? "Posted, private" : "Posted"}
           className="relative inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-emerald-400"
         >
           <Globe className="h-3 w-3" aria-hidden />
-          {marks.behind ? (
-            <span
-              aria-hidden
-              className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-amber-400 ring-2 ring-[#151a21]"
-            />
-          ) : null}
         </span>
         {onCopyLink ? (
           <button

@@ -196,23 +196,19 @@ describe("toDesignSummary", () => {
     };
     record.project = {
       ...record.project,
-      metadata: { communityPlanId: "post-1", communityFingerprint: "stale" },
+      metadata: { communityPlanId: "post-1" },
     };
     const summary = toDesignSummary(record);
     expect(summary.closed).toBe(true);
     expect(summary.folderId).toBe("f1");
     expect(summary.communityPlanId).toBe("post-1");
-    // The stamped fingerprint no longer matches the board: edited since posted.
-    expect(summary.communityBehind).toBe(true);
   });
 
-  it("never marks a link it cannot judge, and leaves open designs unflagged", () => {
+  it("leaves open, unposted designs unflagged", () => {
     const record = createDesign(createEmptyProject(), "Oil");
-    record.project = { ...record.project, metadata: { communityPlanId: "post-1" } };
     const summary = toDesignSummary(record);
     expect(summary.closed).toBeUndefined();
-    expect(summary.communityPlanId).toBe("post-1");
-    expect(summary.communityBehind).toBeUndefined();
+    expect(summary.communityPlanId).toBeUndefined();
   });
 });
 

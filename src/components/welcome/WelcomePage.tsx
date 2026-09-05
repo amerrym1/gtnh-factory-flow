@@ -16,15 +16,10 @@ import { FLUID_ICON_SCALE, ResourceIcon } from "@/components/nei/ResourceIcon";
 import { CHANGELOG } from "@/lib/changelog";
 import { DEFAULT_DATASET_MANIFEST_URL } from "@/lib/datasets";
 import { queryRecipeDatasetResources } from "@/lib/datasets/browser-loader";
-import {
-  downloadCommunityPlan,
-  listCommunityPlans,
-  tagPlanWithCommunityId,
-} from "@/lib/community/client";
+import { listCommunityPlans } from "@/lib/community/client";
 import type { CommunityPlanSummary } from "@/lib/community/types";
-import { parseFactoryProjectJson } from "@/lib/import-export";
 import type { EntryIcon } from "@/lib/model/types";
-import { applyPlanView } from "@/lib/plan-view";
+import { openCommunityPost } from "@/lib/community/open-post";
 import { openLibrary } from "@/lib/library/library-tab";
 import { openSidebarTab } from "@/lib/sidebar-tab";
 import { APP_VERSION } from "@/lib/version";
@@ -321,13 +316,7 @@ function CommunityShelf() {
   const open = async (plan: CommunityPlanSummary) => {
     setBusyId(plan.id);
     try {
-      const { plan: planJson } = await downloadCommunityPlan(plan.id);
-      const project = parseFactoryProjectJson(
-        JSON.stringify(tagPlanWithCommunityId(planJson, plan.id)),
-      );
-      // The post's name first: it is the one on the tile just clicked.
-      await useDesignStore.getState().importProjectAsDesign(project, plan.name || project.name);
-      applyPlanView(project.view);
+      await openCommunityPost({ id: plan.id, name: plan.name, isMine: plan.isMine === true });
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : "Opening the setup failed.");
     } finally {

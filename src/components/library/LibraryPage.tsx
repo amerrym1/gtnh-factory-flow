@@ -81,7 +81,7 @@ export function LibraryPage() {
   const [maxTier, setMaxTier] = useState("");
   const [tileMenu, setTileMenu] = useState<{ designId: string; left: number; top: number }>();
   const [folderMenu, setFolderMenu] = useState<{ folderId: string; left: number; top: number }>();
-  const [armed, setArmed] = useState<{ id: string; what: "delete" | "takedown" }>();
+  const [armed, setArmed] = useState<{ id: string; what: "delete" }>();
   const [renamingId, setRenamingId] = useState<string>();
   const [renamingFolderId, setRenamingFolderId] = useState<string>();
   const [namingFolder, setNamingFolder] = useState(false);
@@ -214,7 +214,7 @@ export function LibraryPage() {
   };
   const deleteSelected = async () => {
     for (const id of selectedIds) {
-      await removeDesign(id);
+      await deleteDesign(id);
     }
     clearSelection();
   };
@@ -338,16 +338,23 @@ export function LibraryPage() {
       setError(thrown instanceof Error ? thrown.message : "Changing visibility failed.");
     }
   };
-  const takeDown = async (design: DesignSummary) => {
-    if (!design.communityPlanId) {
-      return;
+  /**
+   * A design and its post are one thing, so deleting the design takes the
+   * post down. A post that cannot be reached (signed out, already gone) does
+   * not stop the delete; a leftover post is the owner's to find in Public
+   * setups.
+   */
+  const deleteDesign = async (id: string) => {
+    const design = designs.find((entry) => entry.id === id);
+    if (design?.communityPlanId && signedIn) {
+      try {
+        await deleteCommunityPlan(design.communityPlanId);
+        notifySetupsChanged();
+      } catch (thrown) {
+        setError(thrown instanceof Error ? thrown.message : "Taking the post down failed.");
+      }
     }
-    try {
-      await deleteCommunityPlan(design.communityPlanId);
-      notifySetupsChanged();
-    } catch (thrown) {
-      setError(thrown instanceof Error ? thrown.message : "Taking the post down failed.");
-    }
+    await removeDesign(id);
   };
 
   const menuDesign = tileMenu
@@ -487,7 +494,6 @@ export function LibraryPage() {
                     open: !detailDesign.closed,
                     posted: Boolean(detailPost),
                     privatePost: detailPost ? !detailPost.isPublic : false,
-                    behind: Boolean(detailPost && detailDesign.communityBehind),
                   },
                   commentsPlanId: detailPost?.id,
                   primary: {
@@ -520,18 +526,6 @@ export function LibraryPage() {
                   keys: [
                     ...(detailPost
                       ? [
-                          ...(detailDesign.communityBehind
-                            ? [
-                                {
-                                  label: "Update the post from this design",
-                                  icon: "post" as const,
-                                  onClick: () => {
-                                    setDetailId(undefined);
-                                    void postDesign(detailDesign.id);
-                                  },
-                                },
-                              ]
-                            : []),
                           {
                             label: "Copy the share link",
                             icon: "link" as const,
@@ -555,27 +549,15 @@ export function LibraryPage() {
                             },
                           ]
                         : []),
-                    ...(!detailDesign.closed
-                      ? [
-                          {
-                            label: "Close its tab",
-                            icon: "close" as const,
-                            onClick: () => {
-                              setDetailId(undefined);
-                              void closeDesign(detailDesign.id);
-                            },
-                          },
-                        ]
-                      : []),
                     {
                       label: "Delete this design",
                       icon: "delete" as const,
                       confirm: detailPost
-                        ? `Delete "${detailDesign.name}" from your library? Its public post stays up.`
+                        ? `Delete "${detailDesign.name}"? Its post comes down with it. This cannot be undone.`
                         : `Delete "${detailDesign.name}" from your library? This cannot be undone.`,
                       onClick: () => {
                         setDetailId(undefined);
-                        void removeDesign(detailDesign.id);
+                        void deleteDesign(detailDesign.id);
                       },
                     },
                   ],
@@ -746,7 +728,6 @@ export function LibraryPage() {
                               open: !design.closed,
                               posted: Boolean(post),
                               privatePost: post ? !post.isPublic : false,
-                              behind: Boolean(post && design.communityBehind),
                             }}
                             favorite={design.favorite === true}
                             onFavorite={() => void toggleFavorite(design.id)}
@@ -850,15 +831,6 @@ export function LibraryPage() {
           <MenuRule />
           {menuPost ? (
             <>
-              {menuDesign.communityBehind ? (
-                <MenuItem
-                  label="Update post"
-                  onClick={() => {
-                    closeMenus();
-                    void postDesign(menuDesign.id);
-                  }}
-                />
-              ) : null}
               <MenuItem
                 label="Copy link"
                 onClick={() => {
@@ -873,16 +845,6 @@ export function LibraryPage() {
                   void setPostVisibility(menuDesign, !menuPost.isPublic);
                 }}
               />
-              <ArmedMenuItem
-                label="Take down"
-                armedLabel="Confirm: take it down for everyone"
-                armed={armed?.id === menuDesign.id && armed.what === "takedown"}
-                onArm={() => setArmed({ id: menuDesign.id, what: "takedown" })}
-                onFire={() => {
-                  closeMenus();
-                  void takeDown(menuDesign);
-                }}
-              />
             </>
           ) : signedIn ? (
             <MenuItem
@@ -895,12 +857,12 @@ export function LibraryPage() {
           ) : null}
           <ArmedMenuItem
             label="Delete"
-            armedLabel={menuPost ? "Confirm delete (the post stays up)" : "Confirm delete"}
+            armedLabel={menuPost ? "Confirm delete (the post comes down too)" : "Confirm delete"}
             armed={armed?.id === menuDesign.id && armed.what === "delete"}
             onArm={() => setArmed({ id: menuDesign.id, what: "delete" })}
             onFire={() => {
               closeMenus();
-              void removeDesign(menuDesign.id);
+              void deleteDesign(menuDesign.id);
             }}
           />
         </LibraryMenu>

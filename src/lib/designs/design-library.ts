@@ -1,4 +1,3 @@
-import { planContentFingerprint } from "@/lib/community/plan-fingerprint";
 import type { EntryIcon, FactoryProject } from "@/lib/model/types";
 import type { DesignStats } from "./design-stats";
 
@@ -29,19 +28,12 @@ export interface DesignSummary {
   /** The shelf folder this design is filed in; absent means unfiled. */
   folderId?: string;
   /**
-   * The community post this design is linked to (posted as, or opened from),
-   * copied out of the plan's metadata so the shelf can mark it without
-   * loading the plan.
+   * The community post this design IS, when it is posted: copied out of the
+   * plan's metadata so the library can mark it without loading the plan. The
+   * post follows the design (post-follow.ts); a copy of someone else's post
+   * carries no link.
    */
   communityPlanId?: string;
-  /**
-   * True when the board has moved on since it last agreed with that post: the
-   * plan's content fingerprint no longer matches the one stamped at the last
-   * share or download. This is the shelf's "edited since posted" mark. A link
-   * with no stamped fingerprint (a copy from before fingerprints existed)
-   * cannot be judged and is never marked.
-   */
-  communityBehind?: boolean;
   /**
    * SYNC BOOKKEEPING. `updatedAt` above moves when the PLAN is saved;
    * `metaUpdatedAt` moves on any change at all (rename, close, folder,
@@ -139,7 +131,15 @@ export function duplicateDesign(
   takenNames: Iterable<string>,
   now: string = new Date().toISOString(),
 ): DesignRecord {
-  return createDesign(record.project, makeUniqueDesignName(`${record.name} copy`, takenNames), now);
+  // A copy is a new design: it must not carry the original's post along, or
+  // two designs would be feeding one post.
+  const { communityPlanId, ...metadata } = record.project.metadata ?? {};
+  void communityPlanId;
+  return createDesign(
+    { ...record.project, metadata },
+    makeUniqueDesignName(`${record.name} copy`, takenNames),
+    now,
+  );
 }
 
 export function renameDesign(
@@ -232,7 +232,6 @@ export function stampDesignOrder<T extends DesignSummary>(
 
 export function toDesignSummary(record: DesignRecord): DesignSummary {
   const communityPlanId = record.project.metadata?.communityPlanId;
-  const baseline = record.project.metadata?.communityFingerprint;
   const summary: DesignSummary = {
     id: record.id,
     name: record.name,
@@ -261,9 +260,6 @@ export function toDesignSummary(record: DesignRecord): DesignSummary {
   }
   if (communityPlanId) {
     summary.communityPlanId = communityPlanId;
-    if (baseline && baseline !== planContentFingerprint(record.project)) {
-      summary.communityBehind = true;
-    }
   }
   return summary;
 }

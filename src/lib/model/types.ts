@@ -716,15 +716,12 @@ export interface FactoryProject {
     source?: string;
     createdAt?: string;
     updatedAt?: string;
-    /** The community post this design was shared as / imported from. */
-    communityPlanId?: string;
     /**
-     * Fingerprint of the board content as last synced with that post, stamped
-     * on download and on share. While the board still matches it, "reset to
-     * the posted version" has nothing to restore and greys out. Covers what
-     * the board IS, not what it is called; see plan-fingerprint.ts.
+     * The community post this design IS. Only the owner's design carries it;
+     * the post follows every save (post-follow.ts). A copy of someone else's
+     * post has none.
      */
-    communityFingerprint?: string;
+    communityPlanId?: string;
   };
 }
 

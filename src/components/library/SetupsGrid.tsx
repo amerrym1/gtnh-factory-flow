@@ -15,6 +15,7 @@ import {
   voteCommunityPlan,
 } from "@/lib/community/client";
 import { parsePlanSearch, withAuthor, withTag } from "@/lib/community/search-query";
+import { openCommunityPost } from "@/lib/community/open-post";
 import { sharedPlanLink } from "@/lib/community/shared-link";
 import type { CommunityPlanSort, CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
@@ -264,17 +265,18 @@ export function SetupsGrid({
     }
   };
 
+  // Your own post opens your design; anyone else's opens as a copy of yours.
   const open = async (plan: CommunityPlanSummary) => {
     setBusyId(plan.id);
     try {
-      const { plan: planJson } = await downloadCommunityPlan(plan.id);
-      const project = parseFactoryProjectJson(
-        JSON.stringify(tagPlanWithCommunityId(planJson, plan.id)),
-      );
-      // The post's name first: the plan carries its author's tab name.
-      await useDesignStore.getState().importProjectAsDesign(project, plan.name || project.name);
-      applyPlanView(project.view);
-      patchPlan(plan.id, (entry) => ({ ...entry, downloads: entry.downloads + 1 }));
+      const outcome = await openCommunityPost({
+        id: plan.id,
+        name: plan.name,
+        isMine: plan.isMine === true,
+      });
+      if (outcome === "copied") {
+        patchPlan(plan.id, (entry) => ({ ...entry, downloads: entry.downloads + 1 }));
+      }
       setError(undefined);
     } catch (thrown) {
       fail(thrown, "Opening the setup failed.");
@@ -409,7 +411,7 @@ export function SetupsGrid({
             editTags: true,
             onPickIcon: detailPlan.isMine ? () => setIconEditId(detailPlan.id) : undefined,
             primary: {
-              label: "Open a copy",
+              label: detailPlan.isMine ? "Open" : "Open a copy",
               onClick: () => {
                 setDetailId(undefined);
                 void open(detailPlan);
@@ -423,7 +425,11 @@ export function SetupsGrid({
                 count: detailPlan.score,
                 onClick: () => void vote(detailPlan),
               },
-              { label: "Copy the share link", icon: "link", onClick: () => void copyLink(detailPlan) },
+              {
+                label: "Copy the share link",
+                icon: "link",
+                onClick: () => void copyLink(detailPlan),
+              },
               ...(detailPlan.isMine
                 ? [
                     {
@@ -605,7 +611,7 @@ export function SetupsGrid({
           onClose={closeMenu}
         >
           <MenuItem
-            label="Open a copy as a tab"
+            label={menuPlan.isMine ? "Open" : "Open a copy as a tab"}
             onClick={() => {
               closeMenu();
               void open(menuPlan);

@@ -29,10 +29,22 @@ import {
   readActiveDesignId,
   readDesign,
   writeActiveDesignId,
-  writeDesign,
+  writeDesign as storeDesignRecord,
   writeDesignFolder,
   writeDesignSummary,
 } from "@/lib/designs/design-storage";
+import { flushPostFollow, schedulePostFollow } from "@/lib/community/post-follow";
+
+/**
+ * Every write of a plan goes through here so a posted design's post can
+ * follow it: the push is debounced in post-follow.ts and costs nothing for
+ * a design with no link. Summary-only writes (rename, star, folder) do not
+ * come this way; a rename reaches the post with the next plan save.
+ */
+async function writeDesign(record: DesignRecord): Promise<void> {
+  await storeDesignRecord(record);
+  schedulePostFollow(record.id, Boolean(record.project.metadata?.communityPlanId));
+}
 import {
   beginDesignCameraHandover,
   forgetDesignCameras,
@@ -205,6 +217,9 @@ async function flushCanvasInto(summary: DesignSummary | undefined): Promise<void
 
   const project = withCurrentView(currentProject());
   await writeDesign(withStats(updateDesignProject({ ...summary, project }, project)));
+  // The design is leaving the canvas: no autosave will follow, so the post
+  // takes this version now rather than after the debounce.
+  flushPostFollow(summary.id);
 }
 
 /**
@@ -712,8 +727,8 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
  * that have been around longest. Once per browser, every plan is read and its
  * summary restamped; new writes keep the copy fresh from then on.
  *
- * The same pass, under a second key, stamps the post link and its "edited
- * since posted" reading onto every summary for the shelf's marks.
+ * The same pass, under a second key, stamps the post link and the stat row
+ * onto every summary for the library's tiles.
  */
 const ICON_BACKFILL_KEY = "gtnh-factory-flow.design-summary-icons.v1";
 // v2: the stat row joined the pass.

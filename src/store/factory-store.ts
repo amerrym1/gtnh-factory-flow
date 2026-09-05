@@ -83,7 +83,6 @@ import type {
   ThroughputResult,
 } from "@/lib/model/types";
 import { nearestFreeSpot, type PlacementRect } from "@/components/flow/board-placement";
-import { planContentFingerprint } from "@/lib/community/plan-fingerprint";
 import { collectPocketMembers, expandPocketSelection } from "@/lib/model/pocket-connections";
 import { paperForBoardId, pickBoardPaper } from "@/lib/model/board-paper";
 import { getSetupRules, packSetupRules } from "@/lib/model/setup-rules";
@@ -2147,25 +2146,14 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
     set((state) => ({
       project: {
         ...state.project,
-        metadata: {
-          ...state.project.metadata,
-          communityPlanId,
-          // The moment of linking is a moment board and post agree, whichever
-          // direction the plan just travelled.
-          communityFingerprint: planContentFingerprint(state.project),
-        },
+        metadata: { ...state.project.metadata, communityPlanId },
       },
     }));
   },
   clearProjectCommunityLink: () => {
     set((state) => {
-      const {
-        communityPlanId: droppedId,
-        communityFingerprint: droppedFingerprint,
-        ...metadata
-      } = state.project.metadata ?? {};
+      const { communityPlanId: droppedId, ...metadata } = state.project.metadata ?? {};
       void droppedId;
-      void droppedFingerprint;
       return { project: { ...state.project, metadata } };
     });
   },

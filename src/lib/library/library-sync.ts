@@ -361,7 +361,6 @@ async function applyDesignAction(action: DesignAction): Promise<void> {
         updatedAt: existing.updatedAt,
         icon: existing.icon,
         communityPlanId: existing.communityPlanId,
-        communityBehind: existing.communityBehind,
       });
       if (action.id === store.activeDesignId) {
         if (action.remote.name !== existing.name) {

@@ -11,11 +11,13 @@ import {
   initRecipeDatasetVersion,
 } from "@/lib/datasets/browser-loader";
 import { loadResourceHistory, useFactoryStore } from "@/store/factory-store";
+import { useCommunityAuthStore } from "@/store/community-auth-store";
 import { useDesignStore } from "@/store/design-store";
 import { recordResourceTrend, resetResourceTrends } from "@/lib/resource-trends";
 import { applyPlanView } from "@/lib/plan-view";
 import { readWorkspaceViewSnapshot, useWorkspaceView, writeWorkspaceView } from "@/lib/workspace-view";
-import { downloadCommunityPlan, tagPlanWithCommunityId } from "@/lib/community/client";
+import { openCommunityPost } from "@/lib/community/open-post";
+import { retryPendingPostFollows } from "@/lib/community/post-follow";
 import { forgetSharedPlanId, readSharedPlanId } from "@/lib/community/shared-link";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { useIsCompactViewport } from "@/lib/compact-view";
@@ -27,7 +29,6 @@ import { LibraryPage } from "./library/LibraryPage";
 import { WelcomePage } from "./welcome/WelcomePage";
 import { PlanIdentityDrawer } from "./PlanIdentityDrawer";
 import { SharedAddressSync } from "./SharedAddressSync";
-import { planContentFingerprint } from "@/lib/community/plan-fingerprint";
 import { BlueprintSaveDialog } from "./BlueprintSaveDialog";
 import { PowerSourceOverlay } from "./PowerSourceOverlay";
 import { DesignTabs } from "./DesignTabs";
@@ -101,43 +102,15 @@ export function FactoryPlannerApp() {
 
       void hydrateDesigns()
         .then(async () => {
-          // A setup opened from a shared link becomes its own design tab, so
-          // it never overwrites whatever the user was working on.
-          const importAsDesign = async (raw: unknown, postName: string) => {
-            const project = parseFactoryProjectJson(JSON.stringify(raw));
-            // Named after the POST, which is the only name the person who
-            // followed the link has ever seen. A plan carries whatever its
-            // author happened to have that tab called, and "Untitled design"
-            // is common enough that a setup sent to you would land looking
-            // like a blank one.
-            await useDesignStore
-              .getState()
-              .importProjectAsDesign(project, postName || project.name || "Shared setup");
-            // A shared link opens the setup the way its author arranged it,
-            // same as opening one from the shelf.
-            applyPlanView(project.view);
-          };
-
           try {
-            // Shared "open to edit" links: /?plan=<community id>.
+            // Shared "open to edit" links: /?plan=<community id>. Your own
+            // post opens your design (the address carries the id while that
+            // design is on the board, so a reload lands back on it rather
+            // than opening a duplicate); anyone else's opens as a copy.
             const sharedPlanId = readSharedPlanId();
-            // The address carries the id while an open board still matches
-            // its post (see SharedAddressSync), so a reload arrives with the
-            // id of the very setup it is standing on. That is a reload, not
-            // an arrival: importing would open one duplicate tab per F5. A
-            // drifted or unproven copy still imports fresh - a pasted link
-            // means "show me the posted version".
-            const restingProject = useFactoryStore.getState().project;
-            const alreadyStandingOnIt =
-              sharedPlanId !== undefined &&
-              restingProject.metadata?.communityPlanId === sharedPlanId &&
-              Boolean(restingProject.metadata.communityFingerprint) &&
-              planContentFingerprint(restingProject) ===
-                restingProject.metadata.communityFingerprint;
-            if (sharedPlanId && !alreadyStandingOnIt) {
+            if (sharedPlanId) {
               try {
-                const { plan, name } = await downloadCommunityPlan(sharedPlanId);
-                await importAsDesign(tagPlanWithCommunityId(plan, sharedPlanId), name);
+                await openCommunityPost({ id: sharedPlanId });
               } finally {
                 // The sync re-advertises the imported copy on its own; this
                 // is for the failure path, so a dead link is not retried on
@@ -261,6 +234,14 @@ export function FactoryPlannerApp() {
       }
     };
   }, [activeDesignId, project, saveActiveProject]);
+
+  // Posts edited while signed out catch up the moment an account is back.
+  const communityUser = useCommunityAuthStore((state) => state.user);
+  useEffect(() => {
+    if (communityUser) {
+      retryPendingPostFollows();
+    }
+  }, [communityUser]);
 
   return (
     // h-dvh, not h-screen: a phone browser's address bar comes and goes, and

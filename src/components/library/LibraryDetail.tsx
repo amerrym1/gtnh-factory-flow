@@ -12,7 +12,6 @@ import {
   Pencil,
   Trash2,
   Upload,
-  X,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { formatSlotRate } from "@/components/flow/flow-explainers";
@@ -47,7 +46,7 @@ export function previewUrlFor(planId: string): string {
 export interface DetailKey {
   /** What the key does, read aloud. */
   label: string;
-  icon: "vote" | "link" | "public" | "private" | "post" | "close" | "delete";
+  icon: "vote" | "link" | "public" | "private" | "post" | "delete";
   onClick: () => void;
   /** Lit, for a vote already cast. */
   active?: boolean;
@@ -325,11 +324,7 @@ export function LibraryDetail({
                   {marks.posted ? (
                     <span className="flex items-center gap-1 text-emerald-400">
                       <Globe className="h-3 w-3" aria-hidden />
-                      {marks.behind
-                        ? "posted, edited since"
-                        : marks.privatePost
-                          ? "posted, private"
-                          : "posted"}
+                      {marks.privatePost ? "posted, private" : "posted"}
                     </span>
                   ) : null}
                 </div>
@@ -346,10 +341,11 @@ export function LibraryDetail({
                 >
                   {entry.primary.label}
                 </button>
-                <div className="flex items-center gap-1">
+                <div className="flex max-w-[360px] flex-wrap items-center justify-end gap-1">
                   {entry.onEdit ? (
                     <IconKey
                       label="Edit the name, description and tags"
+                      word="Edit"
                       onClick={() =>
                         setEditing({
                           name: entry.name,
@@ -365,6 +361,7 @@ export function LibraryDetail({
                     <IconKey
                       key={key.label}
                       label={key.label}
+                      word={keyWord(key.icon)}
                       active={key.active}
                       danger={key.icon === "delete"}
                       count={key.count}
@@ -461,15 +458,32 @@ function keyIcon(icon: DetailKey["icon"]): ReactNode {
       return <EyeOff className="h-3 w-3" aria-hidden />;
     case "post":
       return <Upload className="h-3 w-3" aria-hidden />;
-    case "close":
-      return <X className="h-3 w-3" aria-hidden />;
     case "delete":
       return <Trash2 className="h-3 w-3" aria-hidden />;
   }
 }
 
+/** The short word on each key: the icon alone was unreadable, and there are no tooltips here. */
+function keyWord(icon: DetailKey["icon"]): string {
+  switch (icon) {
+    case "vote":
+      return "Vote";
+    case "link":
+      return "Link";
+    case "public":
+      return "Make public";
+    case "private":
+      return "Make private";
+    case "post":
+      return "Post";
+    case "delete":
+      return "Delete";
+  }
+}
+
 function IconKey({
   label,
+  word,
   active,
   danger,
   count,
@@ -477,6 +491,7 @@ function IconKey({
   children,
 }: {
   label: string;
+  word: string;
   active?: boolean;
   danger?: boolean;
   count?: number;
@@ -489,7 +504,7 @@ function IconKey({
       onClick={onClick}
       aria-label={label}
       className={[
-        "flex h-6 min-w-6 items-center justify-center gap-1 border px-1.5 text-[10px] font-medium",
+        "flex h-6 items-center justify-center gap-1 border px-1.5 text-[10px] font-medium",
         active
           ? "border-cyan-500 bg-cyan-500/15 text-cyan-200"
           : danger
@@ -498,6 +513,7 @@ function IconKey({
       ].join(" ")}
     >
       {children}
+      <span>{word}</span>
       {count !== undefined ? <span className="tabular-nums">{count}</span> : null}
     </button>
   );
