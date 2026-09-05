@@ -135,9 +135,33 @@ describe("machine model versions", () => {
     expect(getMachineBehaviour("Circuit Assembly Line", "2.8")?.overclock).toEqual(
       OVERCLOCK.perfect(),
     );
-    expect(machineTableNames("2.8")).toHaveLength(17);
+    // Batch 4: the coil-driven machines, including the two that CHANGED.
+    const coilNode = {
+      overclockTier: "IV",
+      coilTier: "cupronickel",
+      machineConfigTiers: { pipeCasing: "bronze" },
+    };
+    // Multi Smelter: 2.8.4 parallel base is 4 (2.9 doubled it to 8). The
+    // 2.8.4 stamp is what routes the solver to the 2.8 table.
+    const multiSmelter = {
+      ...chemPlant,
+      machineType: "Multi Smelter",
+      source: { datasetVersionId: "stable-2.8.4" },
+    } as unknown as Recipe;
+    expect(getMachineParallelMultiplier(multiSmelter, coilNode)).toBe(4);
+    // Mega Oil Cracker: 2.8.4 uses the additive capped discount, not 2.9's
+    // compounding one — cupronickel is tier 0, so 1 - 0.1 = 0.9.
+    const oilCracker = {
+      machineType: "Mega Oil Cracker",
+      minimumTier: "HV",
+      eut: 480,
+      machineConfigControls: [coilControl()],
+      source: { datasetVersionId: "stable-2.8.4" },
+    } as unknown as Recipe;
+    expect(getMachineEutMultiplier(oilCracker, coilNode)).toBeCloseTo(0.9, 10);
+    expect(machineTableNames("2.8")).toHaveLength(24);
     // Not yet transcribed: falls back to dataset-baked stats.
-    expect(getMachineBehaviour("Chemical Plant", "2.8")).toBeUndefined();
+    expect(getMachineBehaviour("Large Fluid Extractor", "2.8")).toBeUndefined();
   });
 });
 

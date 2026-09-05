@@ -1314,6 +1314,65 @@ const MACHINES_V28: Record<string, MachineBehaviour> = {
   "IsaMill Grinding Machine": { overclock: OVERCLOCK.perfect() },
   // MTEFrothFlotationCell: enablePerfectOverclock(). Identical.
   "Flotation Cell Regulator": { overclock: OVERCLOCK.perfect() },
+
+  // -- Coil-driven, no heat mechanic ---------------------------------------
+  // MTEChemicalPlant: setSpeedBonus(2/(1 + mCoilTier)) is a DURATION multiplier,
+  // so throughput is (mCoilTier + 1) / 2 — the same 0.5x..2x ramp as 2.9.
+  // Pipe casings give (pipeTier + 1) * 2 parallels. Identical to 2.9.
+  "Chemical Plant": {
+    overclock: OVERCLOCK.normal(),
+    aliases: ["ExxonMobil Chemical Plant"],
+    speed: (c) => c.tier(COIL) * 0.5 + 0.5,
+    parallels: (c) => (c.tier(PIPE) + 1) * 2,
+  },
+  // MTEPyrolyseOven: setSpeedBonus(2/(1 + coilTier)) — throughput
+  // (coilTier + 1) * 0.5. Identical to 2.9.
+  "Pyrolyse Oven": { overclock: OVERCLOCK.normal(), speed: (c) => (c.tier(COIL) + 1) * 0.5 },
+  // MTEOilCracker: setEuModifier(1 - min(0.1 * (coilTier + 1), 0.5)). Identical.
+  "Oil Cracker": {
+    overclock: OVERCLOCK.normal(),
+    aliases: ["Oil Cracking Unit"],
+    power: (c) => 1 - Math.min(0.5, (c.tier(COIL) + 1) * 0.1),
+  },
+  // MTEMegaOilCracker: 2.8.4 uses the SMALL cracker's additive, capped coil
+  // discount (max 50%), where 2.9 compounds 10% per tier with no cap.
+  "Mega Oil Cracker": {
+    overclock: OVERCLOCK.normal(),
+    parallels: 256,
+    fullPowerPool: true,
+    unlimitedTierSkip: true,
+    power: (c) => 1 - Math.min(0.5, (c.tier(COIL) + 1) * 0.1),
+  },
+  // MTEIndustrialAlloySmelter: mLevel = coil tier + 1; setDurationModifier
+  // (100/(100 + 5*mLevel)) = throughput 1 + 0.05*mLevel; parallels = mLevel *
+  // voltage tier; setHeatOC(true), machine heat = coil heat * 2, no EU
+  // discount. Identical to 2.9.
+  Zyngen: {
+    overclock: HEAT_OVERCLOCK,
+    heat: { coilHeatMultiplier: 2, discount: false },
+    speed: (c) => 1 + (c.tier(COIL) + 1) * 0.05,
+    parallels: (c) => c.voltageTier * (c.tier(COIL) + 1),
+  },
+  // MTEMultiFurnace: mLevel = 4 << (coil ordinal - 1), i.e. 4 parallels
+  // doubling per coil tier. 2.9 doubled the base to 8.
+  "Multi Smelter": {
+    overclock: OVERCLOCK.normal(),
+    parallels: (c) => 4 * Math.pow(2, c.tier(COIL)),
+  },
+  // MTEMegaAlloyBlastSmelter (GT++): speedBonus = 1 - 0.05 * min(coilTier - 3,
+  // glassTier - 2), floored at 0 (stated as throughput, glass assumed
+  // matching); energyDiscount = 0.95 ^ (coilTier + 1 - recipeTier), floored
+  // at 1. Identical to 2.9.
+  "Mega Alloy Blast Smelter": {
+    overclock: OVERCLOCK.normal(),
+    parallels: 256,
+    fullPowerPool: true,
+    unlimitedTierSkip: true,
+    speed: (c) => 1 / (1 - 0.05 * Math.max(0, c.tier(COIL) - 3)),
+    power: (c) =>
+      Math.pow(0.95, Math.max(0, c.tier(COIL) + 1 - (c.recipeVoltageTier ?? c.voltageTier))),
+    note: "Assumes a matching glass tier.",
+  },
 };
 
 function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, MachineBehaviour> {
