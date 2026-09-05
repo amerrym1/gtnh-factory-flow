@@ -1374,20 +1374,66 @@ const MACHINES_V28: Record<string, MachineBehaviour> = {
     note: "Assumes a matching glass tier.",
   },
 
-  // -- Flat multiblocks (no coefficients, default normal overclock) --------
-  // Each of these 2.8.4 classes carries no speed/EU/parallel coefficients,
-  // matching the 2.9 entries of the same shape.
+  // -- Flat multiblocks and production multis ----------------------------
+  // Large Thermal Refinery (MTEIndustrialThermalCentrifuge): 2.8.4 is FLAT
+  // 2.5x speed, 0.8x EU, 8 parallels per voltage tier. 2.9 added coil speed/
+  // EU scaling and solenoid parallels.
+  "Large Thermal Refinery": {
+    overclock: OVERCLOCK.normal(),
+    speed: 2.5,
+    power: 0.8,
+    parallels: (c) => c.voltageTier * 8,
+  },
+  // MTEAlloyBlastSmelter: normal overclock, no special coefficients. Identical.
   "Alloy Blast Smelter": { overclock: OVERCLOCK.normal() },
+  // MTEIndustrialBrewery: 2.8.4's "Big Barrel Brewery". Coefficients below
+  // verified against it.
+  "Big Barrel Brewery": {
+    overclock: OVERCLOCK.normal(),
+    speed: 1.5,
+    parallels: (c) => c.voltageTier * 4,
+  },
+  // MTEBrickedBlastFurnace: normal overclock only. Identical.
   "Bricked Blast Furnace": { overclock: OVERCLOCK.normal() },
+  // MTECyclotron: normal overclock only. Identical.
   "COMET - Compact Cyclotron": { overclock: OVERCLOCK.normal() },
+  // MTEDissolutionTank (GTNH-Lanthanides): normal overclock only. Identical.
   "Dissolution Tank": { overclock: OVERCLOCK.normal() },
+  // MTEDistillationTower: normal overclock only. Identical.
   "Distillation Tower": { overclock: OVERCLOCK.normal() },
+  // MTEImplosionCompressor: normal overclock only. Identical.
   "Implosion Compressor": { overclock: OVERCLOCK.normal() },
+  // MTEIndustrialCentrifuge: 2.8.4 has no momentum ramp — flat 2.25x speed,
+  // 0.9x EU, 6 parallels per voltage tier. 2.9 added the momentum (3x max)
+  // and raised parallels to 8.
+  "Industrial Centrifuge": {
+    overclock: OVERCLOCK.normal(),
+    speed: 2.25,
+    power: 0.9,
+    parallels: (c) => c.voltageTier * 6,
+  },
+  // MTEIndustrialExtruder: 3.5x speed; 2.8.4 gives 4 parallels per voltage
+  // tier (2.9 raised it to 6).
+  "Industrial Extrusion Machine": {
+    overclock: OVERCLOCK.normal(),
+    speed: 3.5,
+    parallels: (c) => c.voltageTier * 4,
+  },
+  // MTEIndustrialMolecularTransformer: normal overclock only. Identical.
   "Molecular Transformer": { overclock: OVERCLOCK.normal() },
-  "Vacuum Freezer": { overclock: OVERCLOCK.normal() },
-  // The lanthanide beamline chambers bypass ProcessingLogic entirely.
+  // MTENuclearSaltProcessingPlant: 2.5x speed, 2 parallels per voltage tier.
+  // Identical to 2.9.
+  "Nuclear Salt Processing Plant": {
+    overclock: OVERCLOCK.normal(),
+    speed: 2.5,
+    parallels: (c) => c.voltageTier * 2,
+  },
+  // MTESourceChamber / MTETargetChamber (GTNH-Lanthanides): bypass
+  // ProcessingLogic entirely — no overclocking. Identical.
   "Source Chamber": { overclock: OVERCLOCK.none(), note: "Beam energy is not modelled." },
   "Target Chamber": { overclock: OVERCLOCK.none(), note: "Beam energy is not modelled." },
+  // MTEVacuumFreezer: normal overclock only. Identical.
+  "Vacuum Freezer": { overclock: OVERCLOCK.normal() },
 };
 
 function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, MachineBehaviour> {

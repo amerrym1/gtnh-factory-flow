@@ -159,9 +159,15 @@ describe("machine model versions", () => {
       source: { datasetVersionId: "stable-2.8.4" },
     } as unknown as Recipe;
     expect(getMachineEutMultiplier(oilCracker, coilNode)).toBeCloseTo(0.9, 10);
-    expect(machineTableNames("2.8")).toHaveLength(34);
+    // Batch 5: the flat multis, plus three more 2.8.4 changes.
+    expect(getMachineBehaviour("Industrial Centrifuge", "2.8")?.speed).toBe(2.25);
+    expect(getMachineBehaviour("Large Thermal Refinery", "2.8")?.speed).toBe(2.5);
+    expect(getMachineBehaviour("Large Thermal Refinery", "2.8")?.power).toBe(0.8);
+    expect(getMachineBehaviour("Big Barrel Brewery", "2.8")?.speed).toBe(1.5);
+    expect(getMachineBehaviour("Source Chamber", "2.8")?.overclock).toEqual(OVERCLOCK.none());
+    expect(machineTableNames("2.8")).toHaveLength(39);
     // Not yet transcribed: falls back to dataset-baked stats.
-    expect(getMachineBehaviour("Large Fluid Extractor", "2.8")).toBeUndefined();
+    expect(getMachineBehaviour("Boldarnator", "2.8")).toBeUndefined();
   });
 });
 
