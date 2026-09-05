@@ -92,6 +92,11 @@ export interface CommunityPlanListRequest {
   mine?: boolean;
   /** Exact game version, e.g. "2.8.0". */
   gameVersion?: string;
+  /** Posts drawing more than this many EU/t are left out. */
+  maxEuT?: number;
+  /** "kind:resourceId" keys the post must make / take, all of them. */
+  makes?: string[];
+  takes?: string[];
   page?: number;
   pageSize?: number;
   deviceId?: string;

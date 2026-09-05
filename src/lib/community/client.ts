@@ -54,6 +54,9 @@ export async function listCommunityPlans(
   if (params.maxTier) search.set("maxTierIndex", params.maxTier);
   if (params.mine) search.set("mine", "1");
   if (params.gameVersion) search.set("gameVersion", params.gameVersion);
+  if (params.maxEuT !== undefined) search.set("maxEuT", String(params.maxEuT));
+  if (params.makes?.length) search.set("makes", params.makes.join(","));
+  if (params.takes?.length) search.set("takes", params.takes.join(","));
   if (params.page) search.set("page", String(params.page));
   if (params.pageSize) search.set("pageSize", String(params.pageSize));
   search.set("deviceId", getDeviceId());

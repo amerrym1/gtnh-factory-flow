@@ -1,6 +1,6 @@
 "use client";
 
-import { LoaderCircle, Search, X } from "lucide-react";
+import { LoaderCircle, Plus, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useCommunityUser } from "@/components/community/auth";
 import { IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
@@ -16,6 +16,7 @@ import { parsePlanSearch, withAuthor, withTag } from "@/lib/community/search-que
 import { openCommunityPost } from "@/lib/community/open-post";
 import { sharedPlanLink } from "@/lib/community/shared-link";
 import type { CommunityPlanSort, CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
+import { parseEuT } from "@/lib/community/eu-shorthand";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { serializeFactoryProject } from "@/lib/import-export";
 import { toggleSavedSetup, useSavedSetups } from "@/lib/library/saved-setups";
@@ -27,7 +28,7 @@ import { useDesignStore } from "@/store/design-store";
 import { useFactoryStore } from "@/store/factory-store";
 import { LibraryDetail, previewUrlFor } from "./LibraryDetail";
 import { ArmedMenuItem, LibraryMenu, MenuItem, MenuRule } from "./library-menu";
-import { LibraryTile, TagEditor } from "./LibraryTile";
+import { Face, LibraryTile, TagEditor } from "./LibraryTile";
 
 const SETUP_SORTS: Array<{ value: CommunityPlanSort; label: string }> = [
   { value: "active", label: "Recently active" },
@@ -86,6 +87,14 @@ export function SetupsGrid({
   const [sort, setSort] = useState<CommunityPlanSort>("active");
   /** The public list narrowed to the account's own posts. */
   const [onlyMine, setOnlyMine] = useState(false);
+  /** The EU/t ceiling as typed, and as read; unreadable text is no ceiling. */
+  const [maxEuText, setMaxEuText] = useState("");
+  const maxEuT = maxEuText.trim() ? parseEuT(maxEuText) : undefined;
+  const debouncedMaxEuT = useDebouncedValue(maxEuT, 350);
+  /** What a setup must make and take: every one of these, on that side. */
+  const [makes, setMakes] = useState<EntryIcon[]>([]);
+  const [takes, setTakes] = useState<EntryIcon[]>([]);
+  const [picking, setPicking] = useState<"makes" | "takes">();
   /** Highest tier allowed, as an index into GT_VOLTAGE_TIERS; "" is any. */
   const [maxTier, setMaxTier] = useState("");
   const [query, setQuery] = useState("");
@@ -134,7 +143,10 @@ export function SetupsGrid({
   const username = user?.username ?? "";
   const search = debouncedQuery.trim();
   const mineOnly = scope === "mine" || (scope === "network" && onlyMine && Boolean(username));
-  const key = `${scope}|${mineOnly ? "mine" : ""}|${sort}|${maxTier}|${search}|${username}|${refreshTick}|${scope === "saved" ? savedIds.join(",") : ""}`;
+  const resourceKey = (resource: EntryIcon) => `${resource.kind}:${resource.resourceId}`;
+  const makesKeys = makes.map(resourceKey);
+  const takesKeys = takes.map(resourceKey);
+  const key = `${scope}|${mineOnly ? "mine" : ""}|${sort}|${maxTier}|${debouncedMaxEuT ?? ""}|${makesKeys.join(",")}|${takesKeys.join(",")}|${search}|${username}|${refreshTick}|${scope === "saved" ? savedIds.join(",") : ""}`;
   const activePage = target.key === key ? target.page : 1;
 
   useEffect(() => {
@@ -170,6 +182,9 @@ export function SetupsGrid({
       search: search || undefined,
       maxTier: maxTier || undefined,
       mine: mineOnly || undefined,
+      maxEuT: debouncedMaxEuT,
+      makes: makesKeys,
+      takes: takesKeys,
       page: activePage,
       pageSize: PAGE_SIZE,
     }).then(
@@ -478,27 +493,6 @@ export function SetupsGrid({
       ) : (
         <>
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--mc-33)] px-4 compact:gap-1.5 compact:px-2">
-        {/* The one switch, first in the row, in the same inset frame as
-            the boxes beside it. */}
-        {scope === "network" && username ? (
-          <label
-            className={[
-              "flex h-7 shrink-0 cursor-pointer select-none items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]",
-              onlyMine ? "text-cyan-200" : "text-neutral-100",
-            ].join(" ")}
-          >
-            <input
-              type="checkbox"
-              checked={onlyMine}
-              onChange={(event) => {
-                playBoardSound("shelfTick");
-                setOnlyMine(event.target.checked);
-              }}
-              className="h-3 w-3 accent-cyan-400"
-            />
-            My posts
-          </label>
-        ) : null}
         <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
           <Search className="h-3.5 w-3.5 shrink-0 text-[var(--mc-ink-muted)]" aria-hidden />
           <input
@@ -525,6 +519,80 @@ export function SetupsGrid({
             </button>
           ) : null}
         </label>
+        {/* THE FILTERS, right of the search, all in the search's inset
+            frame: My posts, the EU/t ceiling, then what it makes and takes. */}
+        {scope === "network" && username ? (
+          <label
+            className={[
+              "flex h-7 shrink-0 cursor-pointer select-none items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]",
+              onlyMine ? "text-cyan-200" : "text-neutral-100",
+            ].join(" ")}
+          >
+            <input
+              type="checkbox"
+              checked={onlyMine}
+              onChange={(event) => {
+                playBoardSound("shelfTick");
+                setOnlyMine(event.target.checked);
+              }}
+              className="h-3 w-3 accent-cyan-400"
+            />
+            My posts
+          </label>
+        ) : null}
+        <label
+          title="Leave out setups that draw more than this. Shorthand works: 512, 14.3k, 2M, 1.5G"
+          className={[
+            "flex h-7 w-[118px] shrink-0 items-center gap-1 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]",
+            maxEuText && maxEuT === undefined ? "text-red-300" : "text-neutral-100",
+          ].join(" ")}
+        >
+          <span className="shrink-0 text-[var(--mc-ink-muted)]">EU/t ≤</span>
+          <input
+            value={maxEuText}
+            onChange={(event) => setMaxEuText(event.target.value)}
+            onBlur={() => playBoardSound("shelfTick")}
+            placeholder="any"
+            aria-label="Highest EU/t to show"
+            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[var(--mc-ink-muted)]"
+          />
+        </label>
+        {(["makes", "takes"] as const).map((side) => (
+          <div key={side} className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setPicking(side)}
+              title={side === "makes" ? "Only setups that make this" : "Only setups that take this"}
+              className="flex h-7 items-center gap-1 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2 text-xs font-bold text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85)] hover:bg-[var(--mc-85)]"
+            >
+              <Plus className="h-3 w-3" aria-hidden />
+              {side === "makes" ? "Makes" : "Takes"}
+            </button>
+            {(side === "makes" ? makes : takes).map((resource) => (
+              <span
+                key={resource.kind + ":" + resource.resourceId}
+                className="flex h-7 items-center gap-1 border-2 border-[var(--mc-33)] bg-[#17191d] pl-1 pr-1.5 text-xs text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
+              >
+                <Face icon={resource} size={18} />
+                <span className="max-w-[120px] truncate">{resource.displayName ?? resource.resourceId}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playBoardSound("shelfTick");
+                    (side === "makes" ? setMakes : setTakes)((list) =>
+                      list.filter((entry) => entry.resourceId !== resource.resourceId),
+                    );
+                  }}
+                  aria-label={`Stop filtering by ${resource.displayName ?? resource.resourceId}`}
+                  title="Remove"
+                  className="text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]"
+                >
+                  <X className="h-3 w-3" aria-hidden />
+                </button>
+              </span>
+            ))}
+          </div>
+        ))}
         <select
           value={maxTier}
           onChange={(event) => {
@@ -745,6 +813,23 @@ export function SetupsGrid({
         />
       ) : null}
 
+      {picking ? (
+        <IconPicker
+          title={picking === "makes" ? "Only setups that make" : "Only setups that take"}
+          suggestions={iconSuggestionsFromStats(
+            picking === "takes" ? plans.flatMap((plan) => plan.needs) : [],
+            picking === "makes" ? plans.flatMap((plan) => plan.outputs) : [],
+          )}
+          onPick={(picked) => {
+            playBoardSound("shelfTick");
+            (picking === "makes" ? setMakes : setTakes)((list) =>
+              list.some((entry) => entry.resourceId === picked.resourceId) ? list : [...list, picked],
+            );
+            setPicking(undefined);
+          }}
+          onClose={() => setPicking(undefined)}
+        />
+      ) : null}
       {iconEditId ? (
         <IconPicker
           title="Pick an icon"

@@ -75,6 +75,21 @@ export async function GET(request: Request) {
     const deviceId = url.searchParams.get("deviceId") ?? undefined;
     const mineOnly = url.searchParams.get("mine") === "1";
     const gameVersion = url.searchParams.get("gameVersion")?.slice(0, 60) ?? "";
+    const maxEuT = Number(url.searchParams.get("maxEuT") ?? NaN);
+    // Resource keys as "kind:resourceId"; a post must carry every one of
+    // them on the named side. Capped so a URL cannot become a query bomb.
+    const resourceKeys = (name: string) =>
+      (url.searchParams.get(name) ?? "")
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter((entry) => /^(item|fluid):[^,]{1,200}$/.test(entry))
+        .slice(0, 8)
+        .map((entry) => {
+          const [kind, ...rest] = entry.split(":");
+          return { kind, resourceId: rest.join(":") };
+        });
+    const makes = resourceKeys("makes");
+    const takes = resourceKeys("takes");
     const sessionUser = await getSessionUser(request);
     if (mineOnly && !sessionUser) {
       return NextResponse.json({ plans: [], total: 0, page: 1, pageSize, gameVersions: [] });
@@ -90,7 +105,18 @@ export async function GET(request: Request) {
     // never cached: that list is theirs alone and changes as they work.
     const cacheKey = mineOnly
       ? undefined
-      : ["public", sort, url.searchParams.get("search") ?? "", maxTierIndex, gameVersion, page, pageSize].join("|");
+      : [
+          "public",
+          sort,
+          url.searchParams.get("search") ?? "",
+          maxTierIndex,
+          gameVersion,
+          Number.isFinite(maxEuT) ? maxEuT : "",
+          url.searchParams.get("makes") ?? "",
+          url.searchParams.get("takes") ?? "",
+          page,
+          pageSize,
+        ].join("|");
     // A database still without the activity columns answers with the old
     // ones, and a sort that needs them falls back to newest first, so the
     // list never blanks between a deploy and the schema paste.
@@ -105,6 +131,17 @@ export async function GET(request: Request) {
       }
       if (gameVersion) {
         query = query.eq("game_version", gameVersion);
+      }
+      if (Number.isFinite(maxEuT) && maxEuT >= 0) {
+        query = query.lte("total_eu_t", maxEuT);
+      }
+      // JSON containment: the stat arrays hold {kind, resourceId, ...} and
+      // @> matches on the keys given, so the rate is free to differ.
+      for (const resource of makes) {
+        query = query.contains("outputs", JSON.stringify([resource]));
+      }
+      for (const resource of takes) {
+        query = query.contains("needs", JSON.stringify([resource]));
       }
       if (mineOnly && sessionUser) {
         query = query.eq("user_id", sessionUser.id);
