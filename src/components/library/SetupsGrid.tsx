@@ -518,178 +518,185 @@ export function SetupsGrid({
         />
       ) : (
         <>
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--mc-33)] px-4 compact:gap-1.5 compact:px-2">
-        <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
-          <Search className="h-3.5 w-3.5 shrink-0 text-[var(--mc-ink-muted)]" aria-hidden />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={
-              scope === "mine"
-                ? "Search my posts (#tag, @name)"
-                : scope === "saved"
-                  ? "Search saved setups"
-                  : "Search public setups (#tag, @name)"
-            }
-            aria-label="Search setups"
-            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[var(--mc-ink-muted)]"
-          />
-          {query ? (
-            <button
-              type="button"
-              onClick={() => setQuery("")}
-              aria-label="Clear search"
-              className="text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          ) : null}
-        </label>
-        {/* THE FILTERS, right of the search, all in the search's inset
-            frame: My posts, the EU/t ceiling, then what it makes and takes. */}
-        {scope === "network" && username ? (
-          <label
-            className={[
-              "flex h-7 shrink-0 cursor-pointer select-none items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]",
-              onlyMine ? "text-cyan-200" : "text-neutral-100",
-            ].join(" ")}
-          >
+      {/* Two rows: what you are looking for, then what it must be. */}
+      <header className="flex shrink-0 flex-col border-b border-[var(--mc-33)]">
+        <div className="flex h-10 items-center gap-2 px-4 compact:gap-1.5 compact:px-2">
+          <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
+            <Search className="h-3.5 w-3.5 shrink-0 text-[var(--mc-ink-muted)]" aria-hidden />
             <input
-              type="checkbox"
-              checked={onlyMine}
-              onChange={(event) => {
-                playBoardSound("shelfTick");
-                setOnlyMine(event.target.checked);
-              }}
-              className="h-3 w-3 accent-cyan-400"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={
+                scope === "mine"
+                  ? "Search my posts (#tag, @name)"
+                  : scope === "saved"
+                    ? "Search saved setups"
+                    : "Search public setups (#tag, @name)"
+              }
+              aria-label="Search setups"
+              className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[var(--mc-ink-muted)]"
             />
-            My posts
-          </label>
-        ) : null}
-        <label
-          title="Leave out setups that draw more than this. Shorthand works: 512, 14.3k, 2M, 1.5G"
-          className={[
-            "flex h-7 w-[118px] shrink-0 items-center gap-1 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]",
-            maxEuText && maxEuT === undefined ? "text-red-300" : "text-neutral-100",
-          ].join(" ")}
-        >
-          <span className="shrink-0 text-[var(--mc-ink-muted)]">EU/t ≤</span>
-          <input
-            value={maxEuText}
-            onChange={(event) => setMaxEuText(event.target.value)}
-            onBlur={() => playBoardSound("shelfTick")}
-            placeholder="any"
-            aria-label="Highest EU/t to show"
-            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[var(--mc-ink-muted)]"
-          />
-        </label>
-        {(["makes", "takes"] as const).map((side) => (
-          <div key={side} className="relative flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setPicking(picking === side ? undefined : side)}
-              title={side === "makes" ? "Only setups that make this" : "Only setups that take this"}
-              className="flex h-7 items-center gap-1 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2 text-xs font-bold text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85)] hover:bg-[var(--mc-85)]"
-            >
-              <Plus className="h-3 w-3" aria-hidden />
-              {side === "makes" ? "Makes" : "Takes"}
-            </button>
-            {picking === side ? (
-              // The recipe search's own picker, opened downward from the key.
-              <ItemPickerPopover
-                role={side}
-                placement="below"
-                searchPickerResources={searchPickerResources}
-                onPick={(entry) => {
-                  playBoardSound("shelfTick");
-                  const picked: EntryIcon = {
-                    kind: entry.kind === "fluid" ? "fluid" : "item",
-                    resourceId: entry.id,
-                    displayName: entry.displayName,
-                    iconPath: entry.iconPath,
-                    iconAtlas: entry.iconAtlas,
-                    dominantColor: entry.dominantColor,
-                  };
-                  (side === "makes" ? setMakes : setTakes)((list) =>
-                    list.some((item) => item.resourceId === picked.resourceId) ? list : [...list, picked],
-                  );
-                  setPicking(undefined);
-                }}
-                onClose={() => setPicking(undefined)}
-              />
-            ) : null}
-            {(side === "makes" ? makes : takes).map((resource) => (
-              <span
-                key={resource.kind + ":" + resource.resourceId}
-                className="flex h-7 items-center gap-1 border-2 border-[var(--mc-33)] bg-[#17191d] pl-1 pr-1.5 text-xs text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
+            {query ? (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                aria-label="Clear search"
+                className="text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]"
               >
-                <Face icon={resource} size={18} />
-                <span className="max-w-[120px] truncate">{resource.displayName ?? resource.resourceId}</span>
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </label>
+            <select
+            value={maxTier}
+            onChange={(event) => {
+              playBoardSound("shelfTick");
+              setMaxTier(event.target.value);
+            }}
+            aria-label="Highest power tier"
+            className="h-7 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
+          >
+            <option value="">Any tier</option>
+            {GT_VOLTAGE_TIERS.map((entry, index) => (
+              <option key={entry.tier} value={String(index)}>
+                Up to {entry.tier}
+              </option>
+            ))}
+          </select>
+          <select
+            value={activeTag}
+            onChange={(event) => {
+              playBoardSound("shelfTick");
+              setQuery((current) => (event.target.value ? withTag(current, event.target.value) : ""));
+            }}
+            aria-label="Filter by tag"
+            className="h-7 max-w-[140px] shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
+          >
+            <option value="">All tags</option>
+            {tagOptions.map((tag) => (
+              <option key={tag} value={tag}>
+                #{tag}
+              </option>
+            ))}
+          </select>
+          <select
+            value={sort}
+            onChange={(event) => {
+              playBoardSound("shelfTick");
+              setSort(event.target.value as CommunityPlanSort);
+            }}
+            aria-label="Sort setups"
+            className="h-7 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
+          >
+            {SETUP_SORTS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          </div>
+        {scope !== "saved" ? (
+          <div className="flex min-h-9 flex-wrap items-center gap-2 border-t border-[var(--mc-33)]/60 bg-[#0c0e11] px-4 py-1 compact:gap-1.5 compact:px-2">
+            {/* THE FILTERS, right of the search, all in the search's inset
+                frame: My posts, the EU/t ceiling, then what it makes and takes. */}
+            {scope === "network" && username ? (
+              <label
+                className={[
+                  "flex h-7 shrink-0 cursor-pointer select-none items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]",
+                  onlyMine ? "text-cyan-200" : "text-neutral-100",
+                ].join(" ")}
+              >
+                <input
+                  type="checkbox"
+                  checked={onlyMine}
+                  onChange={(event) => {
+                    playBoardSound("shelfTick");
+                    setOnlyMine(event.target.checked);
+                  }}
+                  className="h-3 w-3 accent-cyan-400"
+                />
+                My posts
+              </label>
+            ) : null}
+            <label
+              title="Leave out setups that draw more than this. Shorthand works: 512, 14.3k, 2M, 1.5G"
+              className={[
+                "flex h-7 w-[118px] shrink-0 items-center gap-1 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]",
+                maxEuText && maxEuT === undefined ? "text-red-300" : "text-neutral-100",
+              ].join(" ")}
+            >
+              <span className="shrink-0 text-[var(--mc-ink-muted)]">EU/t ≤</span>
+              <input
+                value={maxEuText}
+                onChange={(event) => setMaxEuText(event.target.value)}
+                onBlur={() => playBoardSound("shelfTick")}
+                placeholder="any"
+                aria-label="Highest EU/t to show"
+                className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[var(--mc-ink-muted)]"
+              />
+            </label>
+            {(["makes", "takes"] as const).map((side) => (
+              <div key={side} className="relative flex shrink-0 items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => {
-                    playBoardSound("shelfTick");
-                    (side === "makes" ? setMakes : setTakes)((list) =>
-                      list.filter((entry) => entry.resourceId !== resource.resourceId),
-                    );
-                  }}
-                  aria-label={`Stop filtering by ${resource.displayName ?? resource.resourceId}`}
-                  title="Remove"
-                  className="text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]"
+                  onClick={() => setPicking(picking === side ? undefined : side)}
+                  title={side === "makes" ? "Only setups that make this" : "Only setups that take this"}
+                  className="flex h-7 items-center gap-1 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2 text-xs font-bold text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85)] hover:bg-[var(--mc-85)]"
                 >
-                  <X className="h-3 w-3" aria-hidden />
+                  <Plus className="h-3 w-3" aria-hidden />
+                  {side === "makes" ? "Makes" : "Takes"}
                 </button>
-              </span>
+                {picking === side ? (
+                  // The recipe search's own picker, opened downward from the key.
+                  <ItemPickerPopover
+                    role={side}
+                    placement="below"
+                    searchPickerResources={searchPickerResources}
+                    onPick={(entry) => {
+                      playBoardSound("shelfTick");
+                      const picked: EntryIcon = {
+                        kind: entry.kind === "fluid" ? "fluid" : "item",
+                        resourceId: entry.id,
+                        displayName: entry.displayName,
+                        iconPath: entry.iconPath,
+                        iconAtlas: entry.iconAtlas,
+                        dominantColor: entry.dominantColor,
+                      };
+                      (side === "makes" ? setMakes : setTakes)((list) =>
+                        list.some((item) => item.resourceId === picked.resourceId) ? list : [...list, picked],
+                      );
+                      setPicking(undefined);
+                    }}
+                    onClose={() => setPicking(undefined)}
+                  />
+                ) : null}
+                {(side === "makes" ? makes : takes).map((resource) => (
+                  <span
+                    key={resource.kind + ":" + resource.resourceId}
+                    className="flex h-7 items-center gap-1 border-2 border-[var(--mc-33)] bg-[#17191d] pl-1 pr-1.5 text-xs text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
+                  >
+                    <Face icon={resource} size={18} />
+                    <span className="max-w-[120px] truncate">{resource.displayName ?? resource.resourceId}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playBoardSound("shelfTick");
+                        (side === "makes" ? setMakes : setTakes)((list) =>
+                          list.filter((entry) => entry.resourceId !== resource.resourceId),
+                        );
+                      }}
+                      aria-label={`Stop filtering by ${resource.displayName ?? resource.resourceId}`}
+                      title="Remove"
+                      className="text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]"
+                    >
+                      <X className="h-3 w-3" aria-hidden />
+                    </button>
+                  </span>
+                ))}
+              </div>
             ))}
-          </div>
-        ))}
-        <select
-          value={maxTier}
-          onChange={(event) => {
-            playBoardSound("shelfTick");
-            setMaxTier(event.target.value);
-          }}
-          aria-label="Highest power tier"
-          className="h-7 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
-        >
-          <option value="">Any tier</option>
-          {GT_VOLTAGE_TIERS.map((entry, index) => (
-            <option key={entry.tier} value={String(index)}>
-              Up to {entry.tier}
-            </option>
-          ))}
-        </select>
-        <select
-          value={activeTag}
-          onChange={(event) => {
-            playBoardSound("shelfTick");
-            setQuery((current) => (event.target.value ? withTag(current, event.target.value) : ""));
-          }}
-          aria-label="Filter by tag"
-          className="h-7 max-w-[140px] shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
-        >
-          <option value="">All tags</option>
-          {tagOptions.map((tag) => (
-            <option key={tag} value={tag}>
-              #{tag}
-            </option>
-          ))}
-        </select>
-        <select
-          value={sort}
-          onChange={(event) => {
-            playBoardSound("shelfTick");
-            setSort(event.target.value as CommunityPlanSort);
-          }}
-          aria-label="Sort setups"
-          className="h-7 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
-        >
-          {SETUP_SORTS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+              </div>
+        ) : null}
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 compact:px-2">
