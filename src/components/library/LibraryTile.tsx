@@ -171,7 +171,7 @@ export function LibraryTile({
         onMenu(event.clientX, event.clientY);
       }}
       className={[
-        "group relative flex h-[84px] cursor-pointer select-none flex-col justify-between border-2 px-2.5 py-2 text-left",
+        "group relative flex h-[84px] cursor-pointer select-none flex-col justify-between border-2 px-2.5 py-2 text-left shadow-[4px_4px_0_rgba(0,0,0,0.4)]",
         selected
           ? "border-cyan-400 bg-[var(--mc-47)]"
           : "border-[var(--mc-33)] bg-[var(--mc-25)] hover:border-[var(--mc-61)] hover:bg-[var(--mc-47)]",
