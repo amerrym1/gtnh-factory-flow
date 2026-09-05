@@ -186,7 +186,12 @@ describe("machine model versions", () => {
     expect(getMachineBehaviour("Industrial Cutting Factory", "2.8")?.speed).toBe(3);
     expect(getMachineBehaviour("Industrial Mixing Machine", "2.8")?.speed).toBe(3.5);
     expect(getMachineBehaviour("Industrial Precision Lathe", "2.8")?.speed).toBe(4);
-    expect(machineTableNames("2.8")).toHaveLength(57);
+    // Batch 11: renames and formula drift.
+    expect(getMachineBehaviour("Fluid Shaper", "2.8")?.speed).toBe(3);
+    // Naquadah Fuel Refinery lost its parallel multiplier between 2.8.4 and 2.9.
+    expect(getMachineBehaviour("Naquadah Fuel Refinery", "2.8")?.parallels).toBeUndefined();
+    expect(getMachineBehaviour("Naquadah Fuel Refinery", "2.9")?.parallels).toBeDefined();
+    expect(machineTableNames("2.8")).toHaveLength(59);
     // Not yet transcribed: falls back to dataset-baked stats.
     expect(getMachineBehaviour("Industrial Coke Oven", "2.8")).toBeUndefined();
   });

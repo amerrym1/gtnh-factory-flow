@@ -1561,6 +1561,29 @@ const MACHINES_V28: Record<string, MachineBehaviour> = {
     power: 0.8,
     parallels: (c) => (c.tier(PIPE) + 1) * 8,
   },
+
+  // -- Renames and formula drift ----------------------------------------
+  // 2.8.4's MTEMultiSolidifier (renamed MTEFluidShaper in 2.9) is IDENTICAL:
+  // (2 + 3 per width expansion) * tier parallels, 0.8x EU, momentum ramp to 3.
+  "Fluid Shaper": {
+    overclock: OVERCLOCK.normal(),
+    speed: 3,
+    power: 0.8,
+    parallels: (c) => c.voltageTier * (2 + 3 * c.value(WIDTH_EXPANSION)),
+    controls: [WIDTH_EXPANSION_CONTROL],
+    note: "Assumes max speed.",
+  },
+  // MTEFuelRefineFactory: field coil tiers 1-4 (converter returns i + 1), each
+  // coil tier above the recipe's own minimum (mSpecialValue, 1-4) is one
+  // PERFECT overclock, exactly like 2.9. BUT 2.8.4 has NO parallel multiplier
+  // - it runs one recipe at a time; 2.9 added 4 x tier parallels.
+  "Naquadah Fuel Refinery": {
+    overclock: (c) =>
+      OVERCLOCK.perfect(Math.max(0, c.tier(FIELD_COIL) + 1 - (c.recipeSpecialValue ?? 1))),
+    unlimitedTierSkip: true,
+    controls: [FIELD_COIL_CONTROL],
+    hidesControls: [COIL],
+  },
 };
 
 function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, MachineBehaviour> {
