@@ -6,9 +6,12 @@ import type {
   Recipe,
 } from "./types";
 import {
+  DEFAULT_MACHINE_MODEL_VERSION,
   getMachineHiddenControlIds,
   getMachineTableControls,
+  machineModelVersionForRecipe,
   machineTableSeedsFromBase,
+  type MachineModelVersion,
 } from "@/lib/machines/machine-table";
 
 export interface MachineConfigTierControl {
@@ -191,7 +194,10 @@ export function applyMachineHandlerToRecipe(
   // recipe pre-multiplied by x0.8 duration and x0.9 EU). Keeping both applies
   // the bonus twice, so a handler whose machine the table covers seeds from
   // the base recipe instead.
-  const seedsFromBase = machineTableSeedsFromBase(handler.machineType);
+  const seedsFromBase = machineTableSeedsFromBase(
+    handler.machineType,
+    machineModelVersionForRecipe(recipe),
+  );
   const handlerDurationTicks = seedsFromBase
     ? steamSingleblockDurationTicks(recipe, handler)
     : (handler.durationTicks ?? steamSingleblockDurationTicks(recipe, handler));
@@ -239,11 +245,18 @@ export function getRecipeCoilTierControl(
   // The coil rides its own legacy path around dropHiddenControls, so the
   // table's hidesControls must be honoured here too - the Large Chemical
   // Reactor's structural coil is any tier and does nothing at runtime.
-  if (getMachineHiddenControlIds(recipe.machineType).includes("heatingCoil")) {
+  if (
+    getMachineHiddenControlIds(recipe.machineType, machineModelVersionForRecipe(recipe)).includes(
+      "heatingCoil",
+    )
+  ) {
     return undefined;
   }
   const control =
-    getMachineTableControls(recipe.machineType).find((entry) => entry.id === "heatingCoil") ??
+    getMachineTableControls(
+      recipe.machineType,
+      machineModelVersionForRecipe(recipe),
+    ).find((entry) => entry.id === "heatingCoil") ??
     findMachineConfigControl(recipe, "heatingCoil");
   return control ? resolveMachineConfigTierControl(control, node.coilTier) : undefined;
 }
@@ -255,9 +268,10 @@ export function getRecipeMachineConfigTierControls(
   const controls = dropHiddenControls(
     mergeMachineConfigControls(
       recipe.machineConfigControls ?? [],
-      getMachineTableControls(recipe.machineType),
+      getMachineTableControls(recipe.machineType, machineModelVersionForRecipe(recipe)),
     ),
     recipe.machineType,
+    machineModelVersionForRecipe(recipe),
   );
 
   return controls
@@ -291,8 +305,9 @@ function mergeMachineConfigControls(
 function dropHiddenControls(
   controls: MachineConfigControl[],
   machineType: string | undefined,
+  version: MachineModelVersion = DEFAULT_MACHINE_MODEL_VERSION,
 ): MachineConfigControl[] {
-  const hidden = getMachineHiddenControlIds(machineType);
+  const hidden = getMachineHiddenControlIds(machineType, version);
   return hidden.length === 0
     ? controls
     : controls.filter((control) => !hidden.includes(control.id));

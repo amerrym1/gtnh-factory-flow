@@ -7,7 +7,11 @@ import {
   isSteamMachineHandler,
 } from "@/lib/model/recipe-rules";
 import { getEnergyHatchType } from "@/lib/machines/energy-hatches";
-import { getMachineBehaviour, STEAM_PRESSURE } from "@/lib/machines/machine-table";
+import {
+  getMachineBehaviour,
+  machineModelVersionForRecipe,
+  STEAM_PRESSURE,
+} from "@/lib/machines/machine-table";
 import {
   getRecipeMinimumVoltageTier,
   getVoltageTierForEuT,
@@ -168,7 +172,10 @@ function getPowerState(
     // above the hatch voltage never runs, however many amps are stacked.
     if (
       rawEuT > getVoltageTierMaxEuT(tier) * 4 &&
-      !getMachineBehaviour(effectiveRecipe.machineType)?.unlimitedTierSkip
+      !getMachineBehaviour(
+        effectiveRecipe.machineType,
+        machineModelVersionForRecipe(effectiveRecipe),
+      )?.unlimitedTierSkip
     ) {
       return "over-tier";
     }

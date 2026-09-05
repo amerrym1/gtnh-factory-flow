@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_MACHINE_MODEL_VERSION,
   getMachineBehaviour,
   HEAT_OVERCLOCK,
+  machineModelVersionForGtnhVersion,
+  machineModelVersionForRecipe,
   machineTableNames,
   normalizeMachineName,
   OVERCLOCK,
@@ -98,6 +101,28 @@ const chemPlant = {
   eut: 480,
   machineConfigControls: [coilControl(), pipeControl()],
 } as unknown as Recipe;
+
+describe("machine model versions", () => {
+  it("reads a 2.8.x stamp as the 2.8 model", () => {
+    expect(machineModelVersionForGtnhVersion("2.8.4")).toBe("2.8");
+    expect(machineModelVersionForGtnhVersion("stable-2.8.4")).toBe("2.8");
+    expect(machineModelVersionForRecipe({ source: { datasetVersionId: "local-2.8.4" } })).toBe(
+      "2.8",
+    );
+  });
+
+  it("defaults everything else to 2.9, the current model", () => {
+    expect(machineModelVersionForGtnhVersion("2.9.0-beta-2")).toBe("2.9");
+    expect(machineModelVersionForGtnhVersion(undefined)).toBe(DEFAULT_MACHINE_MODEL_VERSION);
+    expect(machineModelVersionForRecipe(undefined)).toBe(DEFAULT_MACHINE_MODEL_VERSION);
+    expect(machineModelVersionForRecipe({})).toBe(DEFAULT_MACHINE_MODEL_VERSION);
+  });
+
+  it("answers nothing for 2.8 until that table is filled in", () => {
+    expect(getMachineBehaviour("Chemical Plant", "2.8")).toBeUndefined();
+    expect(machineTableNames("2.8")).toEqual([]);
+  });
+});
 
 describe("curated machine table", () => {
   it("is keyed by our names and by the reference's names", () => {

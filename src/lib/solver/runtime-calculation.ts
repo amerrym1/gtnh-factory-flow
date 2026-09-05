@@ -1,5 +1,5 @@
 import { getVoltageTierIndex, GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
-import { getMachineBehaviour } from "@/lib/machines/machine-table";
+import { getMachineBehaviour, machineModelVersionForRecipe } from "@/lib/machines/machine-table";
 import type {
   FactoryNode,
   MachineTier,
@@ -26,8 +26,10 @@ type VoltageTier = Exclude<MachineTier, "DEMO">;
  * overclocking, and banks sub-tick speed the way the machine does. Everything
  * else still uses the runtime data, which remains the best source we have.
  */
-export function prefersCuratedMachineMath(recipe: { machineType?: string }): boolean {
-  return getMachineBehaviour(recipe.machineType) !== undefined;
+export function prefersCuratedMachineMath(
+  recipe: { machineType?: string; source?: { datasetVersionId?: string } },
+): boolean {
+  return getMachineBehaviour(recipe.machineType, machineModelVersionForRecipe(recipe)) !== undefined;
 }
 
 export function selectRuntimeCalculationVariant(

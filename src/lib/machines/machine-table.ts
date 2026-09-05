@@ -202,6 +202,40 @@ export interface MachineBehaviour {
   note?: string;
 }
 
+/**
+ * Which game version's machine model a recipe answers to. Machine behaviour
+ * (speed, parallels, overclock rules, controls) is hand-transcribed per
+ * version, so a recipe from a 2.8.4 dataset must be read against the 2.8
+ * table, never the 2.9 one. The default is 2.9, so every existing plan and
+ * dataset keeps working unchanged.
+ */
+export type MachineModelVersion = "2.8" | "2.9";
+
+export const DEFAULT_MACHINE_MODEL_VERSION: MachineModelVersion = "2.9";
+
+/**
+ * Maps a dataset version string (`datasetVersionId` or `gtnhVersion`) to the
+ * machine model that version answers to. Anything that is not an explicit
+ * 2.8.x build reads as 2.9: daily builds are all 2.9-line, and an
+ * unrecognised id must not silently answer to the wrong table.
+ */
+export function machineModelVersionForGtnhVersion(
+  version: string | undefined,
+): MachineModelVersion {
+  return version && /2\.8\.\d/.test(version) ? "2.8" : "2.9";
+}
+
+/**
+ * The machine model for a recipe, from its own dataset stamp. Recipes carry
+ * `source.datasetVersionId` through plan JSON, so an old 2.8.4 plan still
+ * answers to the 2.8 table after the dataset that made it has moved on.
+ */
+export function machineModelVersionForRecipe(
+  recipe: { source?: { datasetVersionId?: string } } | undefined,
+): MachineModelVersion {
+  return machineModelVersionForGtnhVersion(recipe?.source?.datasetVersionId);
+}
+
 export function resolveCoefficient(
   coefficient: Coefficient | undefined,
   ctx: MachineContext,
@@ -590,7 +624,7 @@ const NEUTRON_PIPE_CONTROL = countControl(
  * Keyed by the machine name our dataset uses. `aliases` cover the reference's
  * name where it differs, plus any handler name the dataset also emits.
  */
-const MACHINES: Record<string, MachineBehaviour> = {
+const MACHINES_V29: Record<string, MachineBehaviour> = {
   // -- Heat: the machines that overclock on coil heat -----------------------
   // Heat formulas below are transcribed from each machine's setMachineHeat
   // call in GT5-Unofficial, not from the reference, which models none of the
@@ -1200,16 +1234,37 @@ const MACHINES: Record<string, MachineBehaviour> = {
   },
 };
 
-const BY_NAME = new Map<string, MachineBehaviour>();
-for (const [name, behaviour] of Object.entries(MACHINES)) {
-  BY_NAME.set(normalizeMachineName(name), behaviour);
-  for (const alias of behaviour.aliases ?? []) {
-    BY_NAME.set(normalizeMachineName(alias), behaviour);
+function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, MachineBehaviour> {
+  const index = new Map<string, MachineBehaviour>();
+  for (const [name, behaviour] of Object.entries(table)) {
+    index.set(normalizeMachineName(name), behaviour);
+    for (const alias of behaviour.aliases ?? []) {
+      index.set(normalizeMachineName(alias), behaviour);
+    }
   }
+  return index;
 }
 
-export function getMachineBehaviour(machineType: string | undefined): MachineBehaviour | undefined {
-  return machineType ? BY_NAME.get(normalizeMachineName(machineType)) : undefined;
+/**
+ * The curated tables, one per game version. `2.9` is the table transcribed
+ * from the 2.9 sources; `2.8` is filled in as 2.8.4 machine behaviour is
+ * verified, and answers nothing (dataset-baked stats) until then.
+ */
+const MACHINES: Record<MachineModelVersion, Record<string, MachineBehaviour>> = {
+  "2.9": MACHINES_V29,
+  "2.8": {},
+};
+
+const BY_NAME: Record<MachineModelVersion, Map<string, MachineBehaviour>> = {
+  "2.9": buildNameIndex(MACHINES["2.9"]),
+  "2.8": buildNameIndex(MACHINES["2.8"]),
+};
+
+export function getMachineBehaviour(
+  machineType: string | undefined,
+  version: MachineModelVersion = DEFAULT_MACHINE_MODEL_VERSION,
+): MachineBehaviour | undefined {
+  return machineType ? BY_NAME[version].get(normalizeMachineName(machineType)) : undefined;
 }
 
 /**
@@ -1222,21 +1277,30 @@ export function getMachineBehaviour(machineType: string | undefined): MachineBeh
  * power (the Multi Smelter, whose handler carries GT's ABSOLUTE 128t/4EU
  * furnace recipe) keep their handler stats.
  */
-export function machineTableSeedsFromBase(machineType: string | undefined): boolean {
-  const behaviour = getMachineBehaviour(machineType);
+export function machineTableSeedsFromBase(
+  machineType: string | undefined,
+  version: MachineModelVersion = DEFAULT_MACHINE_MODEL_VERSION,
+): boolean {
+  const behaviour = getMachineBehaviour(machineType, version);
   return (
     behaviour !== undefined && (behaviour.speed !== undefined || behaviour.power !== undefined)
   );
 }
 
 /** Config knobs this machine contributes on top of whatever the dataset carries. */
-export function getMachineTableControls(machineType: string | undefined): MachineConfigControl[] {
-  return getMachineBehaviour(machineType)?.controls ?? [];
+export function getMachineTableControls(
+  machineType: string | undefined,
+  version: MachineModelVersion = DEFAULT_MACHINE_MODEL_VERSION,
+): MachineConfigControl[] {
+  return getMachineBehaviour(machineType, version)?.controls ?? [];
 }
 
 /** Dataset control ids this machine does not actually have. */
-export function getMachineHiddenControlIds(machineType: string | undefined): string[] {
-  return getMachineBehaviour(machineType)?.hidesControls ?? [];
+export function getMachineHiddenControlIds(
+  machineType: string | undefined,
+  version: MachineModelVersion = DEFAULT_MACHINE_MODEL_VERSION,
+): string[] {
+  return getMachineBehaviour(machineType, version)?.hidesControls ?? [];
 }
 
 /** Resolves the overclock rule, which for the heat machines depends on the recipe. */
@@ -1251,8 +1315,10 @@ export function resolveOverclockSpec(
 }
 
 /** Every machine name the table answers to, for coverage reporting in tests. */
-export function machineTableNames(): string[] {
-  return Object.keys(MACHINES);
+export function machineTableNames(
+  version: MachineModelVersion = DEFAULT_MACHINE_MODEL_VERSION,
+): string[] {
+  return Object.keys(MACHINES[version]);
 }
 
 /**
@@ -1261,9 +1327,11 @@ export function machineTableNames(): string[] {
  * index so the client can swap the labelled-slot fallback for the block's own
  * icon; `factoryflow:` ids are synthetic and have no texture to find.
  */
-export function machineTableControlResourceIds(): Set<string> {
+export function machineTableControlResourceIds(
+  version: MachineModelVersion = DEFAULT_MACHINE_MODEL_VERSION,
+): Set<string> {
   const ids = new Set<string>();
-  for (const behaviour of Object.values(MACHINES)) {
+  for (const behaviour of Object.values(MACHINES[version])) {
     for (const control of behaviour.controls ?? []) {
       for (const tier of control.tiers) {
         if (!tier.resource.id.startsWith("factoryflow:")) {

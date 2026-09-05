@@ -2,7 +2,12 @@ import {
   getRecipeCoilTierControl,
   getRecipeSpecialValue,
 } from "@/lib/model/recipe-rules";
-import { getMachineBehaviour } from "@/lib/machines/machine-table";
+import {
+  DEFAULT_MACHINE_MODEL_VERSION,
+  getMachineBehaviour,
+  machineModelVersionForRecipe,
+  type MachineModelVersion,
+} from "@/lib/machines/machine-table";
 import { getVoltageTierIndex } from "@/lib/model/tiers";
 import type { FactoryNode, MachineTier, Recipe } from "@/lib/model/types";
 
@@ -41,10 +46,13 @@ export interface HeatOverclockStats {
  * heat capacity whether or not the machine reads it, and every recipe carries
  * a "Special value" line whose meaning depends on the recipe map.
  */
-export function isHeatOverclockMachine(machineType: string | undefined): boolean {
+export function isHeatOverclockMachine(
+  machineType: string | undefined,
+  version: MachineModelVersion = DEFAULT_MACHINE_MODEL_VERSION,
+): boolean {
   // Match the machine, never the recipe map: an Industrial Arc Furnace running
   // a blast furnace recipe overclocks on its electrodes, not on heat.
-  return getMachineBehaviour(machineType)?.overclock === "heat";
+  return getMachineBehaviour(machineType, version)?.overclock === "heat";
 }
 
 export function getHeatOverclockStats(
@@ -79,7 +87,7 @@ export function getHeatOverclockStats(
     specialValue === undefined ||
     specialValue < 0 ||
     !coilControl?.current.heat ||
-    !isHeatOverclockMachine(recipe.machineType)
+    !isHeatOverclockMachine(recipe.machineType, machineModelVersionForRecipe(recipe))
   ) {
     return {
       heatOverclockSteps: 0,
@@ -88,7 +96,10 @@ export function getHeatOverclockStats(
     };
   }
 
-  const heatConfig = getMachineBehaviour(recipe.machineType)?.heat;
+  const heatConfig = getMachineBehaviour(
+    recipe.machineType,
+    machineModelVersionForRecipe(recipe),
+  )?.heat;
   const coilHeat = coilControl.current.heat * (heatConfig?.coilHeatMultiplier ?? 1);
   // Only the blast furnaces and the Exothermic Hearth add 100 K per voltage
   // tier above MV; Volcanus and the Utupu-Tanuri read their coils raw.

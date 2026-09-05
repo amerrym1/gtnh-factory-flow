@@ -17,6 +17,7 @@ import {
 import {
   getMachineBehaviour,
   HEAT_OVERCLOCK,
+  machineModelVersionForRecipe,
   OVERCLOCK,
   resolveOverclockSpec,
   type OverclockRule,
@@ -320,7 +321,10 @@ function canSubTick(recipe: OverclockRecipeInput, effectiveRecipe: OverclockReci
   if ((recipe.machineHandlers?.length ?? 0) > 0) {
     return effectiveRecipe.machineProfile?.kind === "multiblock";
   }
-  const behaviour = getMachineBehaviour(effectiveRecipe.machineType);
+  const behaviour = getMachineBehaviour(
+    effectiveRecipe.machineType,
+    machineModelVersionForRecipe(effectiveRecipe),
+  );
   return behaviour !== undefined && behaviour.kind !== "single";
 }
 
@@ -334,7 +338,7 @@ function resolveOverclockRule(
   node: Pick<FactoryNode, "machineConfigTiers" | "coilTier" | "overclockTier">,
   heatOverclockSteps: number,
 ): OverclockRule {
-  const behaviour = getMachineBehaviour(recipe.machineType);
+  const behaviour = getMachineBehaviour(recipe.machineType, machineModelVersionForRecipe(recipe));
   const spec = behaviour
     ? resolveOverclockSpec(behaviour, buildMachineContext(recipe as Recipe, node))
     : undefined;

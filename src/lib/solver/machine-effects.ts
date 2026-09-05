@@ -33,6 +33,7 @@ import { getHeatDiscountMultiplier } from "./heat";
 import { getEffectiveVoltageOrdinal, getNodeRunTier, getPowerPoolEuT } from "./power";
 import {
   getMachineBehaviour,
+  machineModelVersionForRecipe,
   resolveCoefficient,
   type MachineContext,
 } from "@/lib/machines/machine-table";
@@ -327,7 +328,7 @@ export function getMachineParallelMultiplier(
     1,
     getEffectiveVoltageOrdinal(recipe, node, getNodeRunTier(recipe as Recipe, node)),
   );
-  const behaviour = getMachineBehaviour(recipe.machineType);
+  const behaviour = getMachineBehaviour(recipe.machineType, machineModelVersionForRecipe(recipe));
   const structural = behaviour
     ? Math.max(
         1,
@@ -412,7 +413,7 @@ export function getMachineDurationMultiplier(
 
   // The curated table states speed as a throughput multiplier, so a machine
   // that runs at 200% divides the duration by two.
-  const behaviour = getMachineBehaviour(recipe.machineType);
+  const behaviour = getMachineBehaviour(recipe.machineType, machineModelVersionForRecipe(recipe));
   if (behaviour) {
     const speed = resolveCoefficient(behaviour.speed, buildMachineContext(recipe, node), 1);
     return speed > 0 ? 1 / speed : 1;
@@ -431,7 +432,7 @@ export function getMachineEutMultiplier(
   recipe: MachineEffectRecipe,
   node: MachineEffectNode,
 ): number {
-  const behaviour = getMachineBehaviour(recipe.machineType);
+  const behaviour = getMachineBehaviour(recipe.machineType, machineModelVersionForRecipe(recipe));
   if (behaviour) {
     return resolveCoefficient(behaviour.power, buildMachineContext(recipe, node), 1);
   }

@@ -31,7 +31,10 @@ import {
   isVirtualChoiceResource,
   resourceMatchesInput,
 } from "@/lib/model";
-import { machineTableControlResourceIds } from "@/lib/machines/machine-table";
+import {
+  machineModelVersionForGtnhVersion,
+  machineTableControlResourceIds,
+} from "@/lib/machines/machine-table";
 import { pickRecipeRefMatch, type RecipeContentRef } from "@/lib/import-export/recipe-ref-match";
 import {
   MAX_RECIPE_QUERY_CLAUSES,
@@ -269,7 +272,9 @@ function getMachineConfigResources(catalog: LoadedRecipeIndex): DatasetResourceI
   // The curated machine table names its control blocks by dataset id (field
   // restriction coils); ship those faces too, or the client can only draw
   // its labelled-slot fallback for them.
-  const tableIds = machineTableControlResourceIds();
+  const tableIds = machineTableControlResourceIds(
+    machineModelVersionForGtnhVersion(catalog.version.gtnhVersion),
+  );
   return catalog.resources
     .filter(
       (resource) =>

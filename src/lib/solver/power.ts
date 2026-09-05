@@ -1,5 +1,5 @@
 import { getEnergyHatchType } from "@/lib/machines/energy-hatches";
-import { getMachineBehaviour } from "@/lib/machines/machine-table";
+import { getMachineBehaviour, machineModelVersionForRecipe } from "@/lib/machines/machine-table";
 import {
   getRecipeMinimumVoltageTier,
   getRunVoltageTier,
@@ -12,7 +12,7 @@ import type { FactoryNode, MachineTier, Recipe } from "@/lib/model/types";
 
 type VoltageTier = Exclude<MachineTier, "DEMO">;
 type PowerRecipeInput = Partial<
-  Pick<Recipe, "machineType" | "machineHandlers" | "machineProfile">
+  Pick<Recipe, "machineType" | "machineHandlers" | "machineProfile" | "source">
 >;
 type PowerNodeInput = Partial<Pick<FactoryNode, "energyHatches" | "energyHatchType">>;
 
@@ -29,7 +29,7 @@ export function isMultiblockRecipe(recipe: PowerRecipeInput): boolean {
   if ((recipe.machineHandlers?.length ?? 0) > 0) {
     return recipe.machineProfile?.kind === "multiblock";
   }
-  const behaviour = getMachineBehaviour(recipe.machineType);
+  const behaviour = getMachineBehaviour(recipe.machineType, machineModelVersionForRecipe(recipe));
   return behaviour !== undefined && behaviour.kind !== "single";
 }
 
@@ -90,12 +90,12 @@ export function getNodePowerAmps(recipe: PowerRecipeInput, node: PowerNodeInput)
     const hatches = getNodeEnergyHatches(recipe, node);
     // Mega-style power draws every hatch's whole 2 amps - a lone hatch
     // included, where the base rule clamps it to 1.
-    if (getMachineBehaviour(recipe.machineType)?.fullPowerPool) {
+    if (getMachineBehaviour(recipe.machineType, machineModelVersionForRecipe(recipe))?.fullPowerPool) {
       return 2 * hatches;
     }
     return getHatchAmps(hatches);
   }
-  return getMachineBehaviour(recipe.machineType)?.amperage ?? 1;
+  return getMachineBehaviour(recipe.machineType, machineModelVersionForRecipe(recipe))?.amperage ?? 1;
 }
 
 /** Total EU/t the build can drink: tier voltage times its working amps. */
@@ -122,7 +122,10 @@ export function getEffectiveVoltageOrdinal(
   const hatches = getNodeEnergyHatches(recipe, node);
   // Mega-style machines read `getMaxInputEu()`, which counts each regular
   // hatch's full 2 amps; everything else sums hatch voltages alone.
-  const perHatch = getMachineBehaviour(recipe.machineType)?.fullPowerPool ? 2 : 1;
+  const perHatch = getMachineBehaviour(recipe.machineType, machineModelVersionForRecipe(recipe))
+    ?.fullPowerPool
+    ? 2
+    : 1;
   const summedVoltage = getVoltageTierMaxEuT(tier) * hatches * perHatch;
   if (!Number.isFinite(summedVoltage)) {
     return getVoltageTierIndex(tier);
