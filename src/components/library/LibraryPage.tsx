@@ -49,7 +49,7 @@ import { parsePlanSearch } from "@/lib/community/search-query";
 const POSTS_PAGE_SIZE = 48;
 const POSTS_MAX_PAGES = 6;
 
-type SortKey = "edited" | "name" | "created" | "tier" | "power" | "machines";
+type SortKey = "edited" | "name" | "created" | "tier" | "power" | "lowPower" | "machines";
 
 const SORTS: { value: SortKey; label: string }[] = [
   { value: "edited", label: "Last edited" },
@@ -57,6 +57,7 @@ const SORTS: { value: SortKey; label: string }[] = [
   { value: "created", label: "Newest" },
   { value: "tier", label: "Highest tier" },
   { value: "power", label: "Highest power" },
+  { value: "lowPower", label: "Lowest power" },
   { value: "machines", label: "Most machines" },
 ];
 
@@ -972,6 +973,10 @@ function sortDesignsBy(designs: DesignSummary[], sort: SortKey): DesignSummary[]
       break;
     case "power":
       sorted.sort((a, b) => (b.stats?.euT ?? -1) - (a.stats?.euT ?? -1));
+      break;
+    case "lowPower":
+      // A design with no figure yet goes last, not first.
+      sorted.sort((a, b) => (a.stats?.euT ?? Infinity) - (b.stats?.euT ?? Infinity));
       break;
     case "machines":
       sorted.sort((a, b) => (b.stats?.machines ?? -1) - (a.stats?.machines ?? -1));

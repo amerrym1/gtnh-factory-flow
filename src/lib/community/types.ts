@@ -79,6 +79,7 @@ export type CommunityPlanSort =
   | "machines"
   | "nodes"
   | "power"
+  | "lowPower" // least EU/t first
   | "tier" // highest voltage tier first
   | "comments" // most comments
   | "commented" // latest comment first

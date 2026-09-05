@@ -37,6 +37,7 @@ const SETUP_SORTS: Array<{ value: CommunityPlanSort; label: string }> = [
   { value: "machines", label: "Most machines" },
   { value: "nodes", label: "Most nodes" },
   { value: "power", label: "Highest power" },
+  { value: "lowPower", label: "Lowest power" },
   { value: "tier", label: "Highest tier" },
   { value: "commented", label: "Latest comment" },
   { value: "comments", label: "Most commented" },
