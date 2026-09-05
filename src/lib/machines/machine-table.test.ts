@@ -191,7 +191,18 @@ describe("machine model versions", () => {
     // Naquadah Fuel Refinery lost its parallel multiplier between 2.8.4 and 2.9.
     expect(getMachineBehaviour("Naquadah Fuel Refinery", "2.8")?.parallels).toBeUndefined();
     expect(getMachineBehaviour("Naquadah Fuel Refinery", "2.9")?.parallels).toBeDefined();
-    expect(machineTableNames("2.8")).toHaveLength(59);
+    // Batch 13: flat multiblocks verified against 2.8.4 sources.
+    expect(getMachineBehaviour("Large Electric Compressor", "2.8")?.speed).toBe(2);
+    expect(getMachineBehaviour("Hot Isostatic Pressurization Unit", "2.8")?.speed).toBe(3.5);
+    expect(getMachineBehaviour("Large Sifter", "2.8")?.speed).toBe(5);
+    expect(getMachineBehaviour("Industrial Forming Press", "2.8")?.speed).toBe(6);
+    // The electrolyzer doubles its parallels between 2.8.4 (2) and 2.9 (4).
+    const electro28 = getMachineBehaviour("Multiblock Electrolyzer", "2.8");
+    const electro29 = getMachineBehaviour("Multiblock Electrolyzer", "2.9");
+    expect(electro28?.parallels?.({ voltageTier: 4 } as never)).toBe(8);
+    expect(electro29?.parallels?.({ voltageTier: 4 } as never)).toBe(16);
+    expect(getMachineBehaviour("Bacterial Vat", "2.8")?.overclock).toEqual(OVERCLOCK.normal());
+    expect(machineTableNames("2.8")).toHaveLength(65);
     // Not yet transcribed: falls back to dataset-baked stats.
     expect(getMachineBehaviour("Industrial Coke Oven", "2.8")).toBeUndefined();
   });

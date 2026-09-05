@@ -1584,6 +1584,54 @@ const MACHINES_V28: Record<string, MachineBehaviour> = {
     controls: [FIELD_COIL_CONTROL],
     hidesControls: [COIL],
   },
+
+  // -- Flat multiblocks verified against 2.8.4 sources --------------------
+  // MTEIndustrialCompressor: 2x speed, 0.9x EU, 2 parallels per tier. Identical.
+  "Large Electric Compressor": {
+    overclock: OVERCLOCK.normal(),
+    speed: 2,
+    power: 0.9,
+    parallels: (c) => c.voltageTier * 2,
+  },
+  // MTEHIPCompressor: 3.5x speed, 0.75x EU, 4 parallels per tier when cold
+  // (the overheated 2.5x/1.1x/1x state is a failure mode, not a mode to run).
+  "Hot Isostatic Pressurization Unit": {
+    overclock: OVERCLOCK.normal(),
+    speed: 3.5,
+    power: 0.75,
+    parallels: (c) => c.voltageTier * 4,
+    note: "Assumes it is not overheated.",
+  },
+  // MTEIndustrialSifter: 5x speed, 0.75x EU, 4 parallels per tier. Identical.
+  "Large Sifter": {
+    aliases: ["Large Sifter Control Block"],
+    overclock: OVERCLOCK.normal(),
+    speed: 5,
+    power: 0.75,
+    parallels: (c) => c.voltageTier * 4,
+  },
+  // MTEIndustrialPlatePress: 6x speed, 4 parallels per tier. Identical.
+  "Industrial Forming Press": {
+    aliases: ["Industrial Material Press"],
+    overclock: OVERCLOCK.normal(),
+    speed: 6,
+    parallels: (c) => c.voltageTier * 4,
+  },
+  // MTEndustrialElectrolyzer: 2.8x speed, 0.9x EU, but only 2 parallels per
+  // tier - 2.9 doubled this to 4.
+  "Multiblock Electrolyzer": {
+    aliases: ["Industrial Electrolyzer"],
+    overclock: OVERCLOCK.normal(),
+    speed: 2.8,
+    power: 0.9,
+    parallels: (c) => c.voltageTier * 2,
+  },
+  // MTEBioVat: no ProcessingLogic stats; the fill-rate run state is the only
+  // knob and the table cannot express it, so the dataset-baked stats stand.
+  "Bacterial Vat": {
+    overclock: OVERCLOCK.normal(),
+    note: "Assumes a perfect fill rate.",
+  },
 };
 
 function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, MachineBehaviour> {
