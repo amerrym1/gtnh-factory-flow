@@ -1489,6 +1489,34 @@ const MACHINES_V28: Record<string, MachineBehaviour> = {
     power: 0.75,
     parallels: (c) => c.voltageTier * 8,
   },
+  // MTEIndustrialChisel: 3x speed, 0.75x EU, 16 parallels per voltage tier.
+  // Identical.
+  "Industrial 3D Copying Machine": {
+    overclock: OVERCLOCK.normal(),
+    speed: 3,
+    power: 0.75,
+    parallels: (c) => c.voltageTier * 16,
+  },
+  // MTEMassFabricator: 0.8x EU, perfect OC, 64 parallels in scrap mode and
+  // 8x voltage tier in UU mode. Identical.
+  "Matter Fabricator": {
+    aliases: ["Matter Fabrication CPU"],
+    overclock: OVERCLOCK.perfect(),
+    speed: 1,
+    power: 0.8,
+    parallels: (c) => (c.recipeVoltageTier === 1 ? 64 : 8 * c.voltageTier),
+  },
+  // MTENeutroniumCompressor: normal OC, flat 8 parallels. Identical.
+  "Neutronium Compressor": { overclock: OVERCLOCK.normal(), parallels: 8 },
+  // MTEBlackHoleCompressor: 5x speed, 0.7x EU, 8 parallels per voltage tier;
+  // a fully stable black hole quadruples parallels (not modelled). Identical.
+  "Pseudostable Black Hole Containment Field": {
+    overclock: OVERCLOCK.normal(),
+    speed: 5,
+    power: 0.7,
+    parallels: (c) => c.voltageTier * 8,
+    note: "Parallels also depend on stability, which is not modelled.",
+  },
 };
 
 function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, MachineBehaviour> {

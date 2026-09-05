@@ -172,9 +172,14 @@ describe("machine model versions", () => {
     expect(getMachineBehaviour("Ore Washing Plant", "2.8")?.speed).toBe(5);
     expect(getMachineBehaviour("TurboCan Pro", "2.8")?.speed).toBe(2);
     expect(getMachineBehaviour("Boldarnator", "2.8")?.speed).toBe(3);
-    expect(machineTableNames("2.8")).toHaveLength(47);
+    // Batch 7: more identical flat machines.
+    expect(getMachineBehaviour("Industrial 3D Copying Machine", "2.8")?.speed).toBe(3);
+    expect(getMachineBehaviour("Matter Fabricator", "2.8")?.overclock).toEqual(OVERCLOCK.perfect());
+    expect(getMachineBehaviour("Neutronium Compressor", "2.8")?.parallels).toBe(8);
+    expect(getMachineBehaviour("Pseudostable Black Hole Containment Field", "2.8")?.speed).toBe(5);
+    expect(machineTableNames("2.8")).toHaveLength(51);
     // Not yet transcribed: falls back to dataset-baked stats.
-    expect(getMachineBehaviour("Mega Distillation Tower", "2.8")).toBeUndefined();
+    expect(getMachineBehaviour("Industrial Arc Furnace", "2.8")).toBeUndefined();
   });
 });
 
