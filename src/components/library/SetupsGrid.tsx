@@ -1,9 +1,12 @@
 "use client";
 
 import { LoaderCircle, Plus, Search, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCommunityUser } from "@/components/community/auth";
 import { IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
+import { ItemPickerPopover } from "@/components/ItemPickerPopover";
+import { DEFAULT_DATASET_MANIFEST_URL } from "@/lib/datasets";
+import { queryRecipeDatasetResources } from "@/lib/datasets/browser-loader";
 import { formatRelativeDate } from "@/components/shelf-cards";
 import {
   deleteCommunityPlan,
@@ -95,6 +98,29 @@ export function SetupsGrid({
   const [makes, setMakes] = useState<EntryIcon[]>([]);
   const [takes, setTakes] = useState<EntryIcon[]>([]);
   const [picking, setPicking] = useState<"makes" | "takes">();
+  // The picker searches the dataset the board is on, as the recipe search does.
+  const datasetManifestUrl = useFactoryStore((state) => state.datasetManifestUrl);
+  const datasetManifest = useFactoryStore((state) => state.datasetManifest);
+  const selectedDatasetVersionId = useFactoryStore((state) => state.selectedDatasetVersionId);
+  const selectedDatasetVersion = useMemo(
+    () => datasetManifest?.versions.find((entry) => entry.id === selectedDatasetVersionId),
+    [datasetManifest?.versions, selectedDatasetVersionId],
+  );
+  const searchPickerResources = useCallback(
+    async (pickerQuery: string, signal: AbortSignal) => {
+      if (!selectedDatasetVersion) {
+        return [];
+      }
+      const result = await queryRecipeDatasetResources(
+        datasetManifestUrl ?? DEFAULT_DATASET_MANIFEST_URL,
+        selectedDatasetVersion,
+        { query: pickerQuery, offset: 0, limit: 48 },
+        { signal },
+      );
+      return result.resources;
+    },
+    [datasetManifestUrl, selectedDatasetVersion],
+  );
   /** Highest tier allowed, as an index into GT_VOLTAGE_TIERS; "" is any. */
   const [maxTier, setMaxTier] = useState("");
   const [query, setQuery] = useState("");
@@ -558,16 +584,40 @@ export function SetupsGrid({
           />
         </label>
         {(["makes", "takes"] as const).map((side) => (
-          <div key={side} className="flex shrink-0 items-center gap-1">
+          <div key={side} className="relative flex shrink-0 items-center gap-1">
             <button
               type="button"
-              onClick={() => setPicking(side)}
+              onClick={() => setPicking(picking === side ? undefined : side)}
               title={side === "makes" ? "Only setups that make this" : "Only setups that take this"}
               className="flex h-7 items-center gap-1 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2 text-xs font-bold text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85)] hover:bg-[var(--mc-85)]"
             >
               <Plus className="h-3 w-3" aria-hidden />
               {side === "makes" ? "Makes" : "Takes"}
             </button>
+            {picking === side ? (
+              // The recipe search's own picker, opened downward from the key.
+              <ItemPickerPopover
+                role={side}
+                placement="below"
+                searchPickerResources={searchPickerResources}
+                onPick={(entry) => {
+                  playBoardSound("shelfTick");
+                  const picked: EntryIcon = {
+                    kind: entry.kind === "fluid" ? "fluid" : "item",
+                    resourceId: entry.id,
+                    displayName: entry.displayName,
+                    iconPath: entry.iconPath,
+                    iconAtlas: entry.iconAtlas,
+                    dominantColor: entry.dominantColor,
+                  };
+                  (side === "makes" ? setMakes : setTakes)((list) =>
+                    list.some((item) => item.resourceId === picked.resourceId) ? list : [...list, picked],
+                  );
+                  setPicking(undefined);
+                }}
+                onClose={() => setPicking(undefined)}
+              />
+            ) : null}
             {(side === "makes" ? makes : takes).map((resource) => (
               <span
                 key={resource.kind + ":" + resource.resourceId}
@@ -813,23 +863,6 @@ export function SetupsGrid({
         />
       ) : null}
 
-      {picking ? (
-        <IconPicker
-          title={picking === "makes" ? "Only setups that make" : "Only setups that take"}
-          suggestions={iconSuggestionsFromStats(
-            picking === "takes" ? plans.flatMap((plan) => plan.needs) : [],
-            picking === "makes" ? plans.flatMap((plan) => plan.outputs) : [],
-          )}
-          onPick={(picked) => {
-            playBoardSound("shelfTick");
-            (picking === "makes" ? setMakes : setTakes)((list) =>
-              list.some((entry) => entry.resourceId === picked.resourceId) ? list : [...list, picked],
-            );
-            setPicking(undefined);
-          }}
-          onClose={() => setPicking(undefined)}
-        />
-      ) : null}
       {iconEditId ? (
         <IconPicker
           title="Pick an icon"
