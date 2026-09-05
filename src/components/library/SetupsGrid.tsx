@@ -7,11 +7,9 @@ import { IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
 import { formatRelativeDate } from "@/components/shelf-cards";
 import {
   deleteCommunityPlan,
-  downloadCommunityPlan,
   getCommunityPlan,
   listCommunityPlans,
   patchCommunityPlan,
-  tagPlanWithCommunityId,
   voteCommunityPlan,
 } from "@/lib/community/client";
 import { parsePlanSearch, withAuthor, withTag } from "@/lib/community/search-query";
@@ -19,10 +17,10 @@ import { openCommunityPost } from "@/lib/community/open-post";
 import { sharedPlanLink } from "@/lib/community/shared-link";
 import type { CommunityPlanSort, CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
-import { parseFactoryProjectJson, serializeFactoryProject } from "@/lib/import-export";
+import { serializeFactoryProject } from "@/lib/import-export";
 import { toggleSavedSetup, useSavedSetups } from "@/lib/library/saved-setups";
 import { GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
-import { applyPlanView, capturePlanView } from "@/lib/plan-view";
+import { capturePlanView } from "@/lib/plan-view";
 import { SETUPS_CHANGED_EVENT, type SetupsScope } from "@/lib/setups-tab";
 import { playBoardSound } from "@/lib/board-sounds";
 import { useDesignStore } from "@/store/design-store";
@@ -174,32 +172,29 @@ export function SetupsGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, activePage, scope, sort, maxTier, search, username]);
 
-  // Infinite scroll: when the sentinel under the last row comes into view
-  // and nothing is loading, ask for the next page under the same key.
-  useEffect(() => {
-    const sentinel = moreRef.current;
-    if (!sentinel) {
-      return;
-    }
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        setTarget((current) => {
-          if (current.key === key && current.page !== activePage) {
-            return current;
-          }
-          return { key, page: activePage + 1 };
-        });
-      }
-    });
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [key, activePage, shelf?.plans.length]);
-
   const isCurrent = shelf?.key === key;
   const plans = isCurrent ? shelf.plans : [];
   const needsAccount = scope === "mine" && !username;
   const isLoading = !needsAccount && (!isCurrent || shelf.page !== activePage);
   const hasMore = isCurrent && shelf.plans.length < shelf.total;
+
+  // Infinite scroll: when the sentinel under the last row comes into view
+  // and the page asked for has LANDED, ask for the next one. Asking while a
+  // page is still loading would cancel that fetch and ask again, forever,
+  // with the grid never growing - which is what this used to do.
+  useEffect(() => {
+    const sentinel = moreRef.current;
+    if (!sentinel || isLoading || !hasMore) {
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setTarget({ key, page: activePage + 1 });
+      }
+    });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [key, activePage, isLoading, hasMore]);
   const activeTag = parsePlanSearch(search).tags[0] ?? "";
   const tagOptions = [
     ...new Set([...plans.flatMap((plan) => plan.tags ?? []), ...(activeTag ? [activeTag] : [])]),
