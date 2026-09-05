@@ -108,7 +108,7 @@ export function LibraryPage() {
       turnedRef.current = true;
       return;
     }
-    playBoardSound("pageTurn");
+    playBoardSound("shelfTurn");
   }, [pageKey]);
 
   const closeMenus = useCallback(() => {
@@ -593,7 +593,7 @@ export function LibraryPage() {
                   <select
                     value={maxTier}
                     onChange={(event) => {
-                      playBoardSound("tick");
+                      playBoardSound("shelfTick");
                       setMaxTier(event.target.value);
                     }}
                     aria-label="Highest power tier"
@@ -609,7 +609,7 @@ export function LibraryPage() {
                   <select
                     value={sort}
                     onChange={(event) => {
-                      playBoardSound("tick");
+                      playBoardSound("shelfTick");
                       setSort(event.target.value as SortKey);
                     }}
                     aria-label="Sort designs"

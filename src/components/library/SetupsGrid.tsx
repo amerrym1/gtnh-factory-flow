@@ -492,7 +492,7 @@ export function SetupsGrid({
         <select
           value={maxTier}
           onChange={(event) => {
-            playBoardSound("tick");
+            playBoardSound("shelfTick");
             setMaxTier(event.target.value);
           }}
           aria-label="Highest power tier"
@@ -508,7 +508,7 @@ export function SetupsGrid({
         <select
           value={activeTag}
           onChange={(event) => {
-            playBoardSound("tick");
+            playBoardSound("shelfTick");
             setQuery((current) => (event.target.value ? withTag(current, event.target.value) : ""));
           }}
           aria-label="Filter by tag"
@@ -524,7 +524,7 @@ export function SetupsGrid({
         <select
           value={sort}
           onChange={(event) => {
-            playBoardSound("tick");
+            playBoardSound("shelfTick");
             setSort(event.target.value as CommunityPlanSort);
           }}
           aria-label="Sort setups"

@@ -150,7 +150,11 @@ export type BoardSoundKind =
   | "pageTurn" // a new page while open: a chip clicked, back, forward
   | "tick" // a switch on the page: machine chip, rate pill, any/all/only
   | "stencilAdd" // a condition joins the stencil
-  | "stencilRemove"; // a condition leaves it
+  | "stencilRemove" // a condition leaves it
+  // The library's family (Jack, 2026-09-04): the search's two sounds were
+  // too bright for a room you live in. Lower, quieter, and its own.
+  | "shelfTurn" // a view or a focus page changes: a card slid along the shelf
+  | "shelfTick"; // a filter or sort changes: a low key
 
 let audioContext: AudioContext | undefined;
 let masterGain: GainNode | undefined;
@@ -642,6 +646,20 @@ function schedule(kind: BoardSoundKind, ctx: AudioContext, out: AudioNode, step 
     case "stencilRemove":
       // And leaves: the same step back down - a removal, so down is right.
       blip(ctx, out, { from: 587, to: 523, duration: 0.09, peak: 0.1 });
+      break;
+    case "shelfTurn":
+      // A card slid along the shelf: one low, soft brush, a fainter one
+      // trailing it, and a quiet flat tone underneath for body. An octave
+      // under the page turn, at two thirds of its voice, no pitch motion.
+      puff(ctx, out, { frequency: 520, q: 0.8, duration: 0.1, peak: 0.09 });
+      puff(ctx, out, { frequency: 380, q: 1, duration: 0.06, peak: 0.04, delay: 0.05 });
+      blip(ctx, out, { from: 330, to: 330, duration: 0.09, peak: 0.045, delay: 0.02 });
+      break;
+    case "shelfTick":
+      // A low key: the tick's shape a fifth down and at two thirds of its
+      // voice, with less air on it.
+      blip(ctx, out, { from: 392, to: 392, duration: 0.06, peak: 0.06 });
+      puff(ctx, out, { frequency: 1100, q: 3, duration: 0.02, peak: 0.02 });
       break;
   }
 }
