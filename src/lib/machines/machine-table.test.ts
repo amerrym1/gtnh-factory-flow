@@ -216,7 +216,10 @@ describe("machine model versions", () => {
     expect(getMachineBehaviour("Neutron Activator", "2.8")?.power).toBe(0);
     expect(getMachineBehaviour("Multiblock Dehydrator", "2.8")?.speed).toBe(2.2);
     expect(getMachineBehaviour("Multiblock Dehydrator", "2.8")?.overclock).toBe(HEAT_OVERCLOCK);
-    expect(machineTableNames("2.8")).toHaveLength(74);
+    // Batch 16: 2.8.4-only knobs (anvils and the controller upgrade).
+    expect(getMachineBehaviour("Industrial Sledgehammer", "2.8")?.speed).toBe(2);
+    expect(getMachineBehaviour("Industrial Maceration Stack", "2.8")?.speed).toBe(1.6);
+    expect(machineTableNames("2.8")).toHaveLength(76);
     // Not yet transcribed: falls back to dataset-baked stats.
     expect(getMachineBehaviour("Industrial Coke Oven", "2.8")).toBeUndefined();
   });

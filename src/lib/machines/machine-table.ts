@@ -261,6 +261,10 @@ const SAWBLADE = "sawblade";
 const UPGRADE_CHIP = "maceratorUpgrade";
 const CONTAINMENT = "containmentBlockTier";
 const ELECTROMAGNET = "electromagnet";
+/** 2.8.4-only knobs: the Sledgehammer's anvils and the Maceration Stack's
+ * controller upgrade (2.9 replaced both with solenoids / upgrade chips). */
+const ANVIL = "anvilTier";
+const MACERATION_TIER = "macerationControllerTier";
 
 /**
  * Builds one of our machine config controls from a plain list of option
@@ -364,6 +368,21 @@ const CONTAINMENT_CONTROL = choiceControl(CONTAINMENT, "Containment Block", [
 const UPGRADE_CHIP_CONTROL = choiceControl(UPGRADE_CHIP, "Upgrade Chip", [
   "No Upgrade",
   "Maceration Upgrade Chip",
+]);
+
+/** The Sledgehammer's anvil tiers: vanilla 1, steel 2, dark steel / thaumium
+ * 3, void metal 4 (two anvils share tier 3, so the choice collapses them). */
+const ANVIL_CONTROL = choiceControl(ANVIL, "Anvil", [
+  "Vanilla Anvil",
+  "Steel Anvil",
+  "Dark Steel Anvil",
+  "Void Metal Anvil",
+]);
+
+/** The 2.8.4 Maceration Stack's controller tier, upgraded by right-click. */
+const MACERATION_TIER_CONTROL = choiceControl(MACERATION_TIER, "Controller Tier", [
+  "Tier I",
+  "Tier II",
 ]);
 
 /**
@@ -1712,6 +1731,25 @@ const MACHINES_V28: Record<string, MachineBehaviour> = {
     power: 0.5,
     parallels: 4,
     controls: [HEATING_COIL_CONTROL],
+  },
+
+  // -- 2.8.4-only knobs ----------------------------------------------------
+  // MTEIndustrialForgeHammer: 2x speed, 8 parallels per anvil tier per voltage
+  // tier (vanilla 1 .. void metal 4). 2.9 replaced the anvils with solenoids.
+  "Industrial Sledgehammer": {
+    overclock: OVERCLOCK.normal(),
+    speed: 2,
+    parallels: (c) => (c.tier(ANVIL) + 1) * c.voltageTier * 8,
+    controls: [ANVIL_CONTROL],
+  },
+  // MTEIndustrialMacerator: FLAT 1.6x speed. The controller upgrade (tier I ->
+  // tier II) only raises parallels from 2 to 8 per voltage tier; 2.9's upgrade
+  // chip also buys 6.4x speed.
+  "Industrial Maceration Stack": {
+    overclock: OVERCLOCK.normal(),
+    speed: 1.6,
+    parallels: (c) => (c.tier(MACERATION_TIER) === 1 ? 8 : 2) * c.voltageTier,
+    controls: [MACERATION_TIER_CONTROL],
   },
 };
 
