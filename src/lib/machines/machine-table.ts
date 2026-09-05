@@ -1234,6 +1234,46 @@ const MACHINES_V29: Record<string, MachineBehaviour> = {
   },
 };
 
+/**
+ * The 2.8.4 machine table, transcribed entry-by-entry from the GT5-Unofficial
+ * source at tag 5.09.51.482 (which vendors GT++, Bartworks, TecTech and
+ * GoodGenerator). Entries verified identical to 2.9 are copied verbatim; each
+ * entry names the 2.8.4 class it was checked against. Machines absent here
+ * fall back to dataset-baked stats for 2.8.4.
+ */
+const MACHINES_V28: Record<string, MachineBehaviour> = {
+  // -- Heat: machines that overclock on coil heat --------------------------
+  // MTEElectricBlastFurnace: mHeatingCapacity = coilHeat + 100 * (tier - 2),
+  // setHeatOC(true), setHeatDiscount(true). Identical to 2.9.
+  "Blast Furnace": {
+    overclock: HEAT_OVERCLOCK,
+    heat: { voltageBonus: true },
+    aliases: ["Electric Blast Furnace"],
+  },
+  // MTEMegaBlastFurnace: same heat rule (+100 K per tier above MV), heat OC
+  // and discount; parallels from Configuration.Multiblocks.megaMachinesMax
+  // (256); mega power pool and unlimited tier skips come from the
+  // MegaMultiBlockBase. Identical to 2.9.
+  "Mega Blast Furnace": {
+    overclock: HEAT_OVERCLOCK,
+    heat: { voltageBonus: true },
+    parallels: 256,
+    fullPowerPool: true,
+    unlimitedTierSkip: true,
+    aliases: ["Mega Electric Blast Furnace"],
+  },
+  // MTEAdvEBF: reads its coils raw (no voltage bonus), setHeatOC(true) +
+  // setHeatDiscount(true), setSpeedBonus(1/2.2), setEuModifier(0.9), 8
+  // parallels. Identical to 2.9.
+  Volcanus: {
+    overclock: HEAT_OVERCLOCK,
+    speed: 2.2,
+    power: 0.9,
+    parallels: 8,
+    note: "Blazing pyrotheum is not counted.",
+  },
+};
+
 function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, MachineBehaviour> {
   const index = new Map<string, MachineBehaviour>();
   for (const [name, behaviour] of Object.entries(table)) {
@@ -1247,12 +1287,13 @@ function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, Ma
 
 /**
  * The curated tables, one per game version. `2.9` is the table transcribed
- * from the 2.9 sources; `2.8` is filled in as 2.8.4 machine behaviour is
- * verified, and answers nothing (dataset-baked stats) until then.
+ * from the 2.9 sources; `2.8` is transcribed from the 2.8.4 sources and is
+ * filled in batches - machines not yet verified fall back to dataset-baked
+ * stats.
  */
 const MACHINES: Record<MachineModelVersion, Record<string, MachineBehaviour>> = {
   "2.9": MACHINES_V29,
-  "2.8": {},
+  "2.8": MACHINES_V28,
 };
 
 const BY_NAME: Record<MachineModelVersion, Map<string, MachineBehaviour>> = {

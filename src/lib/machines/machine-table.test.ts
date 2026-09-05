@@ -118,9 +118,14 @@ describe("machine model versions", () => {
     expect(machineModelVersionForRecipe({})).toBe(DEFAULT_MACHINE_MODEL_VERSION);
   });
 
-  it("answers nothing for 2.8 until that table is filled in", () => {
+  it("answers the heat machines on 2.8, and nothing not yet transcribed", () => {
+    // Batch 1: the heat machines are verified identical to 2.9.
+    expect(getMachineBehaviour("Blast Furnace", "2.8")?.overclock).toBe(HEAT_OVERCLOCK);
+    expect(getMachineBehaviour("Mega Blast Furnace", "2.8")?.parallels).toBe(256);
+    expect(getMachineBehaviour("Volcanus", "2.8")?.speed).toBe(2.2);
+    expect(machineTableNames("2.8")).toEqual(["Blast Furnace", "Mega Blast Furnace", "Volcanus"]);
+    // Not yet transcribed: falls back to dataset-baked stats.
     expect(getMachineBehaviour("Chemical Plant", "2.8")).toBeUndefined();
-    expect(machineTableNames("2.8")).toEqual([]);
   });
 });
 
