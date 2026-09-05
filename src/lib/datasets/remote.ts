@@ -48,11 +48,12 @@ export async function fetchRecipeDatasetVersion(
 }
 
 /**
- * 2.8.4 is temporarily withdrawn from the picker (2026-08-23): everyone plays
- * on 2.9 betas and the manifest's order cannot be trusted to keep 2.9 first.
- * Delete the entry to offer it again.
+ * Dataset version ids hidden from the picker. 2.8.4 support is being
+ * re-added, so nothing is hidden: a manifest listing a 2.8.4 dataset offers
+ * it beside the 2.9 ones, and `pickDefaultDatasetVersion` still prefers the
+ * manifest's `latestStableVersion` rather than manifest order.
  */
-export const HIDDEN_DATASET_VERSION_IDS = new Set(["local-2.8.4"]);
+export const HIDDEN_DATASET_VERSION_IDS: ReadonlySet<string> = new Set();
 
 export function listSelectableDatasetVersions(manifest: DatasetManifest): DatasetVersion[] {
   const selectable = manifest.versions.filter(

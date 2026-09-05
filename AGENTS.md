@@ -57,10 +57,12 @@ Working notes for future agents on GTNH Factory Flow.
     build-recipe-index.mjs (recipe index + lookup index + shards), then gzip,
     into `~/gtnh-export/datasets/gtnh/<id>` (2.9) and
     `~/gtnh-export/datasets-284/gtnh/<id>` (2.8.4).
-  - 2.8.4 support is DROPPED (Jack, 2026-08-26): only 2.9 is supported. Its
-    dataset was retired from the droplet to
-    `/opt/shared/gtnh-datasets-retired/` and removed from the manifest and
-    the systemd prewarm. Do not rebuild, republish, or re-prewarm it.
+  - 2.8.4 support was DROPPED (Jack, 2026-08-26) and is being RE-ADDED in this
+    fork (alex, 2026-09-05): the 2.8.4 machine table is transcribed
+    (`MACHINES_V28`, 76/90 families verified against GT5-Unofficial tag
+    5.09.51.482) and `HIDDEN_DATASET_VERSION_IDS` no longer hides
+    `local-2.8.4`. The dataset itself still needs a 2.8.4 oracle export and
+    a rebuild before a 2.8.4 plan loads end to end.
   - `~/copy-datasets.sh` copies the results into the Windows repo's
     `public/datasets/gtnh`.
   - Publish: scp the changed files (gzips, shards, oracle-report) to the
