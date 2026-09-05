@@ -70,11 +70,11 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "2.56.0",
     date: "2026-09-04",
-    headline: "The library: your designs, boards and shared setups in one place",
+    headline: "The library: every design and every shared setup in one place",
     notes: [
-      "The square at the head of the tab strip opens the library: every design you have, in collections, with search and sort.",
-      "Closing a tab keeps the design in the library; the Boards and Setups tabs moved there too, so the left column is just Items.",
+      "The square at the head of the tab strip opens the library: your designs in collections and Favorites, searched, filtered and sorted, and kept in step across your devices when you sign in.",
       "A posted design is its post: every save updates it, and opening someone else's setup makes a copy of your own.",
+      "Public setups have comments, a Saved shelf, sorts by activity, and filters by EU/t and by what a setup makes or takes.",
       "Imported plans find each card's exact recipe again, big plans no longer freeze on every edit, and one broken design no longer hides the rest.",
     ],
   },
