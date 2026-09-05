@@ -182,7 +182,11 @@ describe("machine model versions", () => {
     // Batch 9: singleblocks and flat TecTech machines.
     expect(getMachineBehaviour("Research Station", "2.8")?.overclock).toEqual(OVERCLOCK.normal());
     expect(getMachineBehaviour("Auto Workbench", "2.8")?.kind).toBe("single");
-    expect(machineTableNames("2.8")).toHaveLength(54);
+    // Batch 10: knob machines whose 2.8.4 form has no tool selector.
+    expect(getMachineBehaviour("Industrial Cutting Factory", "2.8")?.speed).toBe(3);
+    expect(getMachineBehaviour("Industrial Mixing Machine", "2.8")?.speed).toBe(3.5);
+    expect(getMachineBehaviour("Industrial Precision Lathe", "2.8")?.speed).toBe(4);
+    expect(machineTableNames("2.8")).toHaveLength(57);
     // Not yet transcribed: falls back to dataset-baked stats.
     expect(getMachineBehaviour("Industrial Coke Oven", "2.8")).toBeUndefined();
   });

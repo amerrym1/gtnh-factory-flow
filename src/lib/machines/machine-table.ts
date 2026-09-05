@@ -1534,6 +1534,33 @@ const MACHINES_V28: Record<string, MachineBehaviour> = {
     kind: "single",
     overclock: OVERCLOCK.perfect(3),
   },
+
+  // -- Knob machines whose 2.8.4 form has no tool selector ----------------
+  // MTEIndustrialCuttingMachine: 2.8.4 has NO sawblades - flat 3x speed,
+  // 0.75x EU, 4 parallels per voltage tier. 2.9 added the sawblade selector.
+  "Industrial Cutting Factory": {
+    overclock: OVERCLOCK.normal(),
+    speed: 3,
+    power: 0.75,
+    parallels: (c) => c.voltageTier * 4,
+  },
+  // MTEIndustrialMixer: 2.8.4 has a FLAT 3.5x speed (no item-pipe knob), 8
+  // parallels per voltage tier. 2.9 changed speed to itemPipeTier + 3.
+  "Industrial Mixing Machine": {
+    overclock: OVERCLOCK.normal(),
+    speed: 3.5,
+    parallels: (c) => c.voltageTier * 8,
+    aliases: ["Multiblock Mixer"],
+    hidesControls: [PIPE],
+  },
+  // MTEMultiLathe: 4x speed, 0.8x EU, 8 parallels per pipe casing tier.
+  // Identical.
+  "Industrial Precision Lathe": {
+    overclock: OVERCLOCK.normal(),
+    speed: 4,
+    power: 0.8,
+    parallels: (c) => (c.tier(PIPE) + 1) * 8,
+  },
 };
 
 function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, MachineBehaviour> {
