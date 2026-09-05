@@ -14,12 +14,10 @@ import { loadResourceHistory, useFactoryStore } from "@/store/factory-store";
 import { useCommunityAuthStore } from "@/store/community-auth-store";
 import { useDesignStore } from "@/store/design-store";
 import { recordResourceTrend, resetResourceTrends } from "@/lib/resource-trends";
-import { applyPlanView } from "@/lib/plan-view";
-import { readWorkspaceViewSnapshot, useWorkspaceView, writeWorkspaceView } from "@/lib/workspace-view";
+import { useWorkspaceView, writeWorkspaceView } from "@/lib/workspace-view";
 import { openCommunityPost } from "@/lib/community/open-post";
 import { retryPendingPostFollows } from "@/lib/community/post-follow";
 import { forgetSharedPlanId, readSharedPlanId } from "@/lib/community/shared-link";
-import { parseFactoryProjectJson } from "@/lib/import-export";
 import { useIsCompactViewport } from "@/lib/compact-view";
 import { startLibrarySync } from "@/lib/library/library-sync";
 import { useLibraryTab } from "@/lib/library/library-tab";
@@ -138,23 +136,6 @@ export function FactoryPlannerApp() {
   // The library follows the account: sign-in starts the sync, sign-out stops
   // it, and every change here reaches the other devices a few seconds later.
   useEffect(() => startLibrarySync(), []);
-
-  // Opening the library folds the items column away (nothing gets placed
-  // while a page covers the board) and leaving it puts the column back if
-  // the library was what folded it.
-  const libraryActive = useLibraryTab().active;
-  const foldedByLibraryRef = useRef(false);
-  useEffect(() => {
-    if (libraryActive) {
-      if (readWorkspaceViewSnapshot().leftPanelOpen) {
-        foldedByLibraryRef.current = true;
-        writeWorkspaceView({ leftPanelOpen: false });
-      }
-    } else if (foldedByLibraryRef.current) {
-      foldedByLibraryRef.current = false;
-      writeWorkspaceView({ leftPanelOpen: true });
-    }
-  }, [libraryActive]);
 
   // Recorded here rather than in the resource panel: the charts must not lose
   // their history because the right column happened to be closed, and every
