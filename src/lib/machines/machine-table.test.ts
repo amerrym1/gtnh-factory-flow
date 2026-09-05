@@ -179,7 +179,10 @@ describe("machine model versions", () => {
     expect(getMachineBehaviour("Pseudostable Black Hole Containment Field", "2.8")?.speed).toBe(5);
     // Batch 8: the Wire Factory change (flat 3x in 2.8.4).
     expect(getMachineBehaviour("Industrial Wire Factory", "2.8")?.speed).toBe(3);
-    expect(machineTableNames("2.8")).toHaveLength(52);
+    // Batch 9: singleblocks and flat TecTech machines.
+    expect(getMachineBehaviour("Research Station", "2.8")?.overclock).toEqual(OVERCLOCK.normal());
+    expect(getMachineBehaviour("Auto Workbench", "2.8")?.kind).toBe("single");
+    expect(machineTableNames("2.8")).toHaveLength(54);
     // Not yet transcribed: falls back to dataset-baked stats.
     expect(getMachineBehaviour("Industrial Coke Oven", "2.8")).toBeUndefined();
   });

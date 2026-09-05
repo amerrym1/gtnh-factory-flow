@@ -1525,6 +1525,15 @@ const MACHINES_V28: Record<string, MachineBehaviour> = {
     power: 0.75,
     parallels: (c) => c.voltageTier * 4,
   },
+  // MTEResearchStation (TecTech): normal overclock, no special coefficients.
+  // Identical.
+  "Research Station": { overclock: OVERCLOCK.normal(), aliases: ["Research station"] },
+  // MTEElectricAutoWorkbench: flat 2048 EU per craft, perfect overclock capped
+  // at three steps (LV -> EV one craft per tick). Identical to 2.9.
+  "Auto Workbench": {
+    kind: "single",
+    overclock: OVERCLOCK.perfect(3),
+  },
 };
 
 function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, MachineBehaviour> {
