@@ -280,6 +280,18 @@ export function LibraryPage() {
           setRenamingFolderId(folder.id);
         })();
         clearSelection();
+      } else if (over === "favorites") {
+        // Dropping on Favorites stars; it never unstars, so a mixed drag ends
+        // with every design starred rather than half of them flipped.
+        const unstarred = ids.filter((id) => !designs.find((d) => d.id === id)?.favorite);
+        void (async () => {
+          for (const id of unstarred) {
+            await toggleFavorite(id);
+          }
+        })();
+        if (ids.length > 1) {
+          clearSelection();
+        }
       } else if (over?.startsWith("folder:")) {
         const folderId = over.slice("folder:".length);
         void (async () => {
@@ -374,6 +386,8 @@ export function LibraryPage() {
               label="Favorites"
               count={designs.filter((design) => design.favorite).length}
               selected={library.view.kind === "favorites"}
+              highlighted={drag?.over === "favorites"}
+              dropTarget="favorites"
               onClick={() => setLibraryView({ kind: "favorites" })}
             />
             {folders.map((folder) => (
