@@ -187,7 +187,7 @@ export function LibraryTile({
             {renaming ? (
               <InlineName initialName={name} onCommit={renaming.onCommit} onCancel={renaming.onCancel} />
             ) : (
-              <span className="min-w-0 flex-1 truncate text-[12px] font-bold leading-tight text-[var(--mc-ink)] group-hover:text-white">
+              <span className="min-w-0 flex-1 truncate text-[13px] font-bold leading-tight text-white">
                 {name}
               </span>
             )}
@@ -207,7 +207,8 @@ export function LibraryTile({
               )
             ) : null}
           </div>
-          <div className="flex items-center gap-1 text-[10px] text-[var(--mc-ink-muted)]">
+          {/* The subline: who, then when. Subtext, a shade under the muted ink. */}
+          <div className="flex items-center gap-1 text-[10px] text-neutral-500">
             <span className="min-w-0 flex-1 truncate">
               {creator ? (
                 onCreator ? (
@@ -216,7 +217,7 @@ export function LibraryTile({
                     onClick={onCreator}
                     aria-label={`Show setups by ${creator}`}
                     title={`Show setups by ${creator}`}
-                    className="text-neutral-300 hover:bg-[var(--mc-61)] hover:text-cyan-200"
+                    className="text-neutral-400 hover:bg-[var(--mc-61)] hover:text-cyan-200"
                   >
                     {creator}
                   </button>

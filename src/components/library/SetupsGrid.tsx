@@ -45,6 +45,14 @@ const SETUP_SORTS: Array<{ value: CommunityPlanSort; label: string }> = [
 
 const PAGE_SIZE = 60;
 
+/** Edited some time after it was posted; a save in the same minute is the post itself. */
+function wasEdited(plan: CommunityPlanSummary): boolean {
+  return Boolean(
+    plan.updatedAt &&
+      new Date(plan.updatedAt).getTime() - new Date(plan.createdAt).getTime() > 60_000,
+  );
+}
+
 /**
  * Pages already fetched, kept across mounts: leaving Public setups and
  * coming back shows what was there at once, while a fresh page 1 is
@@ -470,6 +478,27 @@ export function SetupsGrid({
       ) : (
         <>
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--mc-33)] px-4 compact:gap-1.5 compact:px-2">
+        {/* The one switch, first in the row, in the same inset frame as
+            the boxes beside it. */}
+        {scope === "network" && username ? (
+          <label
+            className={[
+              "flex h-7 shrink-0 cursor-pointer select-none items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]",
+              onlyMine ? "text-cyan-200" : "text-neutral-100",
+            ].join(" ")}
+          >
+            <input
+              type="checkbox"
+              checked={onlyMine}
+              onChange={(event) => {
+                playBoardSound("shelfTick");
+                setOnlyMine(event.target.checked);
+              }}
+              className="h-3 w-3 accent-cyan-400"
+            />
+            My posts
+          </label>
+        ) : null}
         <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
           <Search className="h-3.5 w-3.5 shrink-0 text-[var(--mc-ink-muted)]" aria-hidden />
           <input
@@ -528,27 +557,6 @@ export function SetupsGrid({
             </option>
           ))}
         </select>
-        {scope === "network" && username ? (
-          <label
-            className={[
-              "flex h-7 shrink-0 cursor-pointer select-none items-center gap-1.5 border-2 px-2 text-xs font-bold",
-              onlyMine
-                ? "border-[var(--mc-61)] bg-[var(--mc-47)] text-[var(--mc-ink)]"
-                : "border-[var(--mc-47)] bg-[var(--mc-33)] text-[var(--mc-ink)] opacity-55 hover:opacity-100",
-            ].join(" ")}
-          >
-            <input
-              type="checkbox"
-              checked={onlyMine}
-              onChange={(event) => {
-                playBoardSound("shelfTick");
-                setOnlyMine(event.target.checked);
-              }}
-              className="h-3 w-3 accent-cyan-400"
-            />
-            Mine
-          </label>
-        ) : null}
         <select
           value={sort}
           onChange={(event) => {
@@ -606,7 +614,9 @@ export function SetupsGrid({
                           ? `commented ${formatRelativeDate(plan.lastCommentAt)}`
                           : sort === "active" && plan.lastActivityAt
                             ? `active ${formatRelativeDate(plan.lastActivityAt)}`
-                            : formatRelativeDate(plan.createdAt)
+                            : wasEdited(plan)
+                              ? `edited ${formatRelativeDate(plan.updatedAt ?? plan.createdAt)}`
+                              : `posted ${formatRelativeDate(plan.createdAt)}`
                     }
                     tier={plan.highestTier}
                     onTier={
