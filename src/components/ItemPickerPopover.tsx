@@ -1,7 +1,7 @@
 "use client";
 
 import { Search, Zap } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DatasetResourceIndexEntry } from "@/lib/datasets/types";
 import type { RecipeQueryRole } from "@/lib/datasets/recipe-query";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
@@ -42,6 +42,24 @@ export function ItemPickerPopover({
   const loading = answer?.query !== asked;
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Centred under its key, then nudged back inside the window if that put
+  // an edge off screen. Measured once it is on the page.
+  const [shift, setShift] = useState(0);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root || placement !== "below") {
+      return;
+    }
+    const margin = 8;
+    const rect = root.getBoundingClientRect();
+    const overRight = rect.right - (window.innerWidth - margin);
+    const overLeft = margin - rect.left;
+    if (overRight > 0) {
+      setShift((current) => current - overRight);
+    } else if (overLeft > 0) {
+      setShift((current) => current + overLeft);
+    }
+  }, [placement]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -88,11 +106,10 @@ export function ItemPickerPopover({
   return (
     <div
       ref={rootRef}
+      style={placement === "below" ? { transform: `translateX(calc(-50% + ${shift}px))` } : undefined}
       className={[
-        "absolute z-20 w-full max-w-[640px] border-2 border-[var(--mc-15)] bg-[var(--mc-61)] p-2 shadow-[6px_6px_0_rgba(0,0,0,0.45)] sm:w-[640px]",
-        placement === "above"
-          ? "bottom-full left-1/2 mb-2 -translate-x-1/2"
-          : "left-0 top-full mt-2",
+        "absolute z-20 w-full max-w-[calc(100vw-16px)] border-2 border-[var(--mc-15)] bg-[var(--mc-61)] p-2 shadow-[6px_6px_0_rgba(0,0,0,0.45)] sm:w-[640px] sm:max-w-[640px]",
+        placement === "above" ? "bottom-full left-1/2 mb-2 -translate-x-1/2" : "left-1/2 top-full mt-2",
       ].join(" ")}
     >
       <label className="flex h-9 items-center gap-2 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
