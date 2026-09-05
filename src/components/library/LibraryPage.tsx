@@ -391,6 +391,7 @@ export function LibraryPage() {
             <RailItem
               icon={Star}
               label="Favorites"
+              nested
               count={designs.filter((design) => design.favorite).length}
               selected={library.view.kind === "favorites"}
               highlighted={drag?.over === "favorites"}
@@ -402,6 +403,7 @@ export function LibraryPage() {
                 key={folder.id}
                 icon={Folder}
                 label={folder.name}
+                nested
                 count={perFolder.get(folder.id) ?? 0}
                 selected={viewFolderId === folder.id}
                 highlighted={drag?.over === `folder:${folder.id}`}
@@ -421,7 +423,7 @@ export function LibraryPage() {
               />
             ))}
             {namingFolder ? (
-              <div className="flex h-7 items-center gap-1.5 px-2">
+              <div className="ml-3 flex h-7 items-center gap-1.5 px-2 compact:ml-0">
                 <Folder className="h-3.5 w-3.5 shrink-0 text-[var(--mc-ink-muted)]" aria-hidden />
                 <InlineName
                   initialName=""
@@ -443,7 +445,7 @@ export function LibraryPage() {
               data-drop-target="new"
               onClick={() => setNamingFolder(true)}
               className={[
-                "flex h-8 shrink-0 items-center gap-1.5 border-2 border-dashed px-2 hover:border-[var(--mc-61)] hover:text-[var(--mc-ink)]",
+                "ml-3 flex h-8 shrink-0 items-center gap-1.5 border-2 border-dashed px-2 hover:border-[var(--mc-61)] hover:text-[var(--mc-ink)] compact:ml-0",
                 drag?.over === "new"
                   ? "border-cyan-400 text-[var(--mc-ink)]"
                   : "border-[var(--mc-47)] text-[var(--mc-ink-muted)]",
@@ -463,6 +465,7 @@ export function LibraryPage() {
             <RailItem
               icon={Bookmark}
               label="Saved"
+              nested
               count={savedIds.length}
               selected={library.view.kind === "saved"}
               onClick={() => setLibraryView({ kind: "saved" })}
@@ -1082,6 +1085,7 @@ function RailItem({
   onDoubleClick,
   onMenu,
   dropTarget,
+  nested,
 }: {
   icon: typeof Folder;
   label: string;
@@ -1096,6 +1100,8 @@ function RailItem({
   onMenu?: (left: number, top: number) => void;
   /** Named, the chip takes a dropped tile. */
   dropTarget?: string;
+  /** Under a head entry: stepped in, so the rail reads as a tree. */
+  nested?: boolean;
 }) {
   return (
     <div
@@ -1123,6 +1129,7 @@ function RailItem({
           ? "border-[var(--mc-61)] bg-[var(--mc-47)] text-[var(--mc-ink)]"
           : "border-[var(--mc-47)] bg-[var(--mc-33)] text-[var(--mc-ink)] opacity-55 hover:opacity-100",
         highlighted ? "border-cyan-400 opacity-100" : "",
+        nested ? "ml-3 compact:ml-0" : "",
       ].join(" ")}
     >
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
