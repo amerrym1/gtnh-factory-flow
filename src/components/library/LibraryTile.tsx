@@ -102,6 +102,8 @@ export interface LibraryTileProps {
   renaming?: { onCommit: (name: string) => void; onCancel: () => void };
 }
 
+const LONG_PRESS_MS = 450;
+
 export function LibraryTile({
   icon,
   name,
@@ -129,21 +131,48 @@ export function LibraryTile({
   onSelect,
   renaming,
 }: LibraryTileProps) {
+  // A finger on a tile is a scroll, a tap, or a HELD press for the menu
+  // (iPhones send no contextmenu event). It is never a drag: the drag would
+  // swallow the swipe. Filing into collections is in the menu on a phone.
+  const press = useRef<{ timer: number; x: number; y: number } | undefined>(undefined);
+  const cancelPress = () => {
+    if (press.current) {
+      window.clearTimeout(press.current.timer);
+      press.current = undefined;
+    }
+  };
+  const handlePointerDown = (event: React.PointerEvent) => {
+    if (renaming || (event.target as HTMLElement).closest("button, input, a")) {
+      return;
+    }
+    if (event.pointerType === "touch") {
+      cancelPress();
+      const { clientX, clientY } = event;
+      press.current = {
+        x: clientX,
+        y: clientY,
+        timer: window.setTimeout(() => {
+          press.current = undefined;
+          onMenu(clientX, clientY);
+        }, LONG_PRESS_MS),
+      };
+      return;
+    }
+    if (event.button === 0 && onDragPress) {
+      onDragPress(event);
+    }
+  };
   return (
     <div
-      onPointerDown={
-        onDragPress
-          ? (event) => {
-              if (
-                event.button === 0 &&
-                !renaming &&
-                !(event.target as HTMLElement).closest("button, input, a")
-              ) {
-                onDragPress(event);
-              }
-            }
-          : undefined
-      }
+      onPointerDown={handlePointerDown}
+      onPointerUp={cancelPress}
+      onPointerCancel={cancelPress}
+      onPointerMove={(event) => {
+        // A finger drifts; a scroll travels. Only travel cancels the press.
+        if (press.current && Math.hypot(event.clientX - press.current.x, event.clientY - press.current.y) > 8) {
+          cancelPress();
+        }
+      }}
       role="button"
       tabIndex={0}
       data-selected={selected ? "true" : undefined}
@@ -171,7 +200,7 @@ export function LibraryTile({
         onMenu(event.clientX, event.clientY);
       }}
       className={[
-        "group relative flex h-[84px] cursor-pointer select-none flex-col justify-between border-2 px-2.5 py-2 text-left shadow-[4px_4px_0_rgba(0,0,0,0.4)]",
+        "group relative flex h-[84px] cursor-pointer select-none flex-col justify-between border-2 px-2.5 py-2 text-left shadow-[4px_4px_0_rgba(0,0,0,0.4)] [-webkit-touch-callout:none]",
         selected
           ? "border-cyan-400 bg-[var(--mc-47)]"
           : "border-[var(--mc-33)] bg-[var(--mc-25)] hover:border-[var(--mc-61)] hover:bg-[var(--mc-47)]",

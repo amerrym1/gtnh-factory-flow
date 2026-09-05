@@ -181,14 +181,14 @@ export function LibraryDetail({
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden text-[var(--mc-ink)]">
       {/* THE PHOTOGRAPH: the top half, whole, never cropped. */}
-      <div className="relative h-1/2 w-full shrink-0 bg-[#0b0e12]">
+      <div className="relative h-1/2 w-full shrink-0 bg-[#0b0e12] compact:flex compact:h-auto compact:max-h-[40vh] compact:min-h-0 compact:flex-col">
         {picture === "ok" && entry.previewUrl ? (
           // Not next/image: the picture is served by our own route and
           // changes when the post is re-shared.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={entry.previewUrl} alt="" className="h-full w-full object-contain" />
+          <img src={entry.previewUrl} alt="" className="h-full w-full object-contain compact:h-auto compact:max-h-[36vh]" />
         ) : picture === "loading" ? null : (
-          <div className="flex h-full w-full items-center justify-center gap-2 text-[12px] text-[var(--mc-ink-muted)]">
+          <div className="flex h-full w-full items-center justify-center gap-2 text-[12px] text-[var(--mc-ink-muted)] compact:h-16">
             <ImageIcon className="h-4 w-4 opacity-50" aria-hidden />
             {entry.previewUrl
               ? "No picture of this board yet."
@@ -198,7 +198,7 @@ export function LibraryDetail({
         <button
           type="button"
           onClick={onClose}
-          className="absolute left-3 top-3 flex h-7 items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2 text-xs font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
+          className="absolute left-3 top-3 flex h-7 items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2 text-xs font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)] compact:static compact:order-first compact:mx-2 compact:mt-2 compact:h-9 compact:w-fit compact:text-[13px]"
         >
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
           Back
@@ -209,7 +209,7 @@ export function LibraryDetail({
         <div className="flex flex-col gap-2 px-5 py-3 compact:px-3">
           {/* THE HEAD, full width: who and what it is, Open and the keys. */}
           {/* FACE, NAME, WHO, WHEN, FIGURES; Open and the keys on the right. */}
-          <div className="flex items-start gap-3">
+          <div className="flex items-start gap-3 compact:flex-wrap">
             {entry.onPickIcon && editing ? (
               <button
                 type="button"
@@ -333,15 +333,15 @@ export function LibraryDetail({
 
             {/* OPEN, then the keys: one job each, read by their label. */}
             {editing ? null : (
-              <div className="flex shrink-0 flex-col items-end gap-1">
+              <div className="flex shrink-0 flex-col items-end gap-1 compact:w-full compact:items-stretch">
                 <button
                   type="button"
                   onClick={entry.primary.onClick}
-                  className="flex h-6 items-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2.5 text-[11px] font-bold text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85)] hover:border-cyan-400 hover:text-cyan-200"
+                  className="flex h-6 items-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2.5 text-[11px] font-bold text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85)] hover:border-cyan-400 hover:text-cyan-200 compact:h-9 compact:justify-center compact:text-[13px]"
                 >
                   {entry.primary.label}
                 </button>
-                <div className="flex max-w-[360px] flex-wrap items-center justify-end gap-1">
+                <div className="flex max-w-[360px] flex-wrap items-center justify-end gap-1 compact:max-w-none compact:justify-start">
                   {entry.onEdit ? (
                     <IconKey
                       label="Edit the name, description and tags"

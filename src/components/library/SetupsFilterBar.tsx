@@ -168,8 +168,8 @@ export function SetupsFilterBar({
 
   return (
     <header className="flex shrink-0 flex-col border-b border-[var(--mc-33)]">
-      <div className="flex h-10 items-center gap-2 px-4 compact:gap-1.5 compact:px-2">
-        <div className="relative min-w-0 flex-1">
+      <div className="flex h-10 items-center gap-2 px-4 compact:h-auto compact:flex-wrap compact:gap-1.5 compact:px-2 compact:py-1.5">
+        <div className="relative min-w-0 flex-1 compact:basis-full">
           <label className={`flex h-7 min-w-0 items-center gap-1.5 px-2 text-xs ${INSET}`}>
             <Search className="h-3.5 w-3.5 shrink-0 text-[var(--mc-ink-muted)]" aria-hidden />
             <input
@@ -239,7 +239,7 @@ export function SetupsFilterBar({
         <label
           title="Leave out anything that draws more than this. Shorthand works: 512, 14.3k, 2M, 1.5G"
           className={[
-            `flex h-7 w-[118px] shrink-0 items-center gap-1 px-2 text-xs ${INSET}`,
+            `flex h-7 w-[118px] shrink-0 items-center gap-1 px-2 text-xs compact:w-auto compact:min-w-0 compact:flex-1 ${INSET}`,
             maxEuText && maxEuT === undefined ? "!text-red-300" : "",
           ].join(" ")}
         >
@@ -260,7 +260,7 @@ export function SetupsFilterBar({
             setMaxTier(event.target.value);
           }}
           aria-label="Highest power tier"
-          className={`h-7 shrink-0 px-1 text-xs outline-none ${INSET}`}
+          className={`h-7 shrink-0 px-1 text-xs outline-none compact:min-w-0 compact:flex-1 ${INSET}`}
         >
           <option value="">Any tier</option>
           {GT_VOLTAGE_TIERS.map((entry, index) => (
@@ -276,7 +276,7 @@ export function SetupsFilterBar({
             setSort(event.target.value);
           }}
           aria-label="Sort"
-          className={`h-7 shrink-0 px-1 text-xs outline-none ${INSET}`}
+          className={`h-7 shrink-0 px-1 text-xs outline-none compact:min-w-0 compact:flex-1 ${INSET}`}
         >
           {sortOptions.map((option) => (
             <option key={option.value} value={option.value}>
