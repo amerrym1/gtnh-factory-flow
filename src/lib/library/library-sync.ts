@@ -395,6 +395,7 @@ async function applyDesignAction(action: DesignAction): Promise<void> {
         icon: record.icon ?? null,
         folderId: record.folderId ?? null,
         closed: Boolean(record.closed),
+        favorite: Boolean(record.favorite),
         order: record.order ?? null,
         communityPlanId: record.communityPlanId ?? null,
         createdAt: record.createdAt,
@@ -441,6 +442,9 @@ function remoteMetaToSummary(remote: RemoteDesignMeta): DesignSummary {
   }
   if (remote.closed) {
     summary.closed = true;
+  }
+  if (remote.favorite) {
+    summary.favorite = true;
   }
   if (remote.order !== null) {
     summary.order = remote.order;

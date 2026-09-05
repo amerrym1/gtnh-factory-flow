@@ -2,6 +2,7 @@
 
 import {
   ArrowBigUp,
+  Bookmark,
   Download,
   EyeOff,
   Factory,
@@ -9,6 +10,7 @@ import {
   LayoutGrid,
   Link2,
   LoaderCircle,
+  Star,
   Zap,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -72,6 +74,12 @@ export interface LibraryTileProps {
   euT?: number;
   social?: TileSocial;
   marks?: TileMarks;
+  /** Starred, and the star to click. Your designs only. */
+  favorite?: boolean;
+  onFavorite?: () => void;
+  /** Bookmarked, and the ribbon to click. Public setups only. */
+  saved?: boolean;
+  onSave?: () => void;
   /** Not posted yet: the dim globe posts it. */
   onPost?: () => void;
   /** Posted: the link button copies the share link. */
@@ -104,6 +112,10 @@ export function LibraryTile({
   euT,
   social,
   marks = {},
+  favorite,
+  onFavorite,
+  saved,
+  onSave,
   onPost,
   onCopyLink,
   busy,
@@ -223,6 +235,32 @@ export function LibraryTile({
         ) : null}
         <span className="ml-auto flex items-center gap-2">
           {busy ? <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden /> : null}
+          {onFavorite ? (
+            <button
+              type="button"
+              onClick={onFavorite}
+              aria-label={favorite ? "Take out of Favorites" : "Put in Favorites"}
+              className={[
+                "flex h-4 w-4 items-center justify-center",
+                favorite ? "text-amber-300" : "text-[var(--mc-ink-muted)] opacity-50 hover:opacity-100 hover:text-amber-200",
+              ].join(" ")}
+            >
+              <Star className="h-3.5 w-3.5" fill={favorite ? "currentColor" : "none"} aria-hidden />
+            </button>
+          ) : null}
+          {onSave ? (
+            <button
+              type="button"
+              onClick={onSave}
+              aria-label={saved ? "Take out of Saved" : "Save this setup"}
+              className={[
+                "flex h-4 w-4 items-center justify-center",
+                saved ? "text-cyan-300" : "text-[var(--mc-ink-muted)] opacity-50 hover:opacity-100 hover:text-cyan-200",
+              ].join(" ")}
+            >
+              <Bookmark className="h-3.5 w-3.5" fill={saved ? "currentColor" : "none"} aria-hidden />
+            </button>
+          ) : null}
           {marks.open ? (
             <span
               className="bg-[var(--mc-61)] px-1 text-[9px] font-black uppercase tracking-wide text-neutral-300"

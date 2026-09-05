@@ -52,6 +52,8 @@ export interface DesignSummary {
    */
   metaUpdatedAt?: string;
   remoteUpdatedAt?: string;
+  /** Starred: in the built-in Favorites collection. Synced like any metadata. */
+  favorite?: boolean;
   /** The tile's stat row, stamped at save. Local only; never synced. */
   stats?: DesignStats;
 }
@@ -253,6 +255,9 @@ export function toDesignSummary(record: DesignRecord): DesignSummary {
   }
   if (record.stats) {
     summary.stats = record.stats;
+  }
+  if (record.favorite) {
+    summary.favorite = true;
   }
   if (communityPlanId) {
     summary.communityPlanId = communityPlanId;

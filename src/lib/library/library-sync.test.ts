@@ -19,6 +19,7 @@ function remote(id: string, extra: Partial<RemoteDesignMeta> = {}): RemoteDesign
     icon: null,
     folderId: null,
     closed: false,
+    favorite: false,
     order: null,
     communityPlanId: null,
     createdAt: T0,

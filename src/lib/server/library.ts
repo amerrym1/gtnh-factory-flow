@@ -4,7 +4,7 @@ import { parseEntryIcon } from "./community";
 
 /** Everything the list endpoint returns about a design: no plan. */
 export const DESIGN_META_COLUMNS =
-  "id,name,icon,folder_id,closed,sort_order,community_plan_id,created_at,updated_at,plan_updated_at,deleted_at";
+  "id,name,icon,folder_id,closed,favorite,sort_order,community_plan_id,created_at,updated_at,plan_updated_at,deleted_at";
 
 export const FOLDER_COLUMNS = "id,name,created_at,updated_at,deleted_at";
 
@@ -14,6 +14,7 @@ export interface DesignRow {
   icon: unknown;
   folder_id: string | null;
   closed: boolean;
+  favorite: boolean;
   sort_order: number | null;
   community_plan_id: string | null;
   created_at: string;
@@ -37,6 +38,7 @@ export function rowToDesignMeta(row: DesignRow): RemoteDesignMeta {
     icon: parseEntryIcon(row.icon) as EntryIcon | null,
     folderId: row.folder_id,
     closed: row.closed,
+    favorite: row.favorite === true,
     order: row.sort_order,
     communityPlanId: row.community_plan_id,
     createdAt: row.created_at,

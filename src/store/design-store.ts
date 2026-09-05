@@ -105,6 +105,8 @@ interface DesignStore {
    * State updates first so the drop lands instantly; the writes follow.
    */
   reorderDesigns: (orderedIds: string[]) => Promise<void>;
+  /** Stars or unstars a design (the Favorites collection). */
+  toggleFavorite: (id: string) => Promise<void>;
   /** Files a design in a folder; `undefined` unfiles it. */
   moveDesignToFolder: (id: string, folderId: string | undefined) => Promise<void>;
   createFolder: (name: string) => Promise<DesignFolder>;
@@ -543,6 +545,21 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     for (const summary of stamped) {
       await writeDesignSummary(summary);
     }
+  },
+
+  toggleFavorite: async (id) => {
+    const summary = get().designs.find((design) => design.id === id);
+    if (!summary) {
+      return;
+    }
+    const starred: DesignSummary = touchDesignMeta({ ...summary });
+    if (summary.favorite) {
+      delete starred.favorite;
+    } else {
+      starred.favorite = true;
+    }
+    set({ designs: get().designs.map((design) => (design.id === id ? starred : design)) });
+    await writeDesignSummary(starred);
   },
 
   moveDesignToFolder: async (id, folderId) => {

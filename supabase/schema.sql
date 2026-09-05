@@ -232,3 +232,7 @@ create index if not exists community_comments_plan_idx
   on community_comments (plan_id, created_at);
 
 alter table community_comments enable row level security;
+
+-- A starred design (the built-in Favorites collection). Added after the
+-- library tables first shipped, so it is an idempotent ALTER.
+alter table library_designs add column if not exists favorite boolean not null default false;

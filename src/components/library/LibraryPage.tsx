@@ -1,6 +1,6 @@
 "use client";
 
-import { Factory, Folder, FolderPlus, LayoutGrid, Plus, Search, X } from "lucide-react";
+import { Bookmark, Factory, Folder, FolderPlus, LayoutGrid, Plus, Search, Star, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -21,6 +21,7 @@ import { GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
 import { SETUPS_CHANGED_EVENT, notifySetupsChanged, requestShareDialog } from "@/lib/setups-tab";
 import { setLibraryView, useLibraryTab } from "@/lib/library/library-tab";
 import { playBoardSound } from "@/lib/board-sounds";
+import { useSavedSetups } from "@/lib/library/saved-setups";
 import { useDesignStore } from "@/store/design-store";
 import { LibraryDetail, previewUrlFor } from "./LibraryDetail";
 import { ArmedMenuItem, LibraryMenu, MenuHeading, MenuItem, MenuRule } from "./library-menu";
@@ -66,6 +67,7 @@ export function LibraryPage() {
   const closeDesign = useDesignStore((state) => state.closeDesign);
   const removeDesign = useDesignStore((state) => state.removeDesign);
   const moveDesignToFolder = useDesignStore((state) => state.moveDesignToFolder);
+  const toggleFavorite = useDesignStore((state) => state.toggleFavorite);
   const createFolder = useDesignStore((state) => state.createFolder);
   const renameFolder = useDesignStore((state) => state.renameFolder);
   const deleteFolder = useDesignStore((state) => state.deleteFolder);
@@ -94,6 +96,7 @@ export function LibraryPage() {
   /** The design whose preview page is up, if any. */
   const [detailId, setDetailId] = useState<string>();
   const { posts: myPosts, signedIn } = useMyPosts();
+  const savedIds = useSavedSetups();
 
   // The library has the search's voice for its pages: a page turned for
   // every view and every focus page. Arriving and leaving are silent,
@@ -125,6 +128,7 @@ export function LibraryPage() {
   }, [folders, library.view]);
 
   const viewFolderId = library.view.kind === "folder" ? library.view.folderId : undefined;
+  const favoritesOnly = library.view.kind === "favorites";
   const search = query.trim().toLowerCase();
   const shown = useMemo(() => {
     const tierLimit = maxTier === "" ? undefined : Number(maxTier);
@@ -132,6 +136,7 @@ export function LibraryPage() {
       designs.filter(
         (design) =>
           (!viewFolderId || design.folderId === viewFolderId) &&
+          (!favoritesOnly || design.favorite === true) &&
           (!search || design.name.toLowerCase().includes(search)) &&
           // A design with no stat row yet cannot answer the tier question,
           // so it shows under "any" and hides under a limit.
@@ -140,7 +145,7 @@ export function LibraryPage() {
       ),
       sort,
     );
-  }, [designs, viewFolderId, search, maxTier, sort]);
+  }, [designs, viewFolderId, favoritesOnly, search, maxTier, sort]);
 
   const perFolder = useMemo(
     () =>
@@ -362,6 +367,15 @@ export function LibraryPage() {
               selected={library.view.kind === "all"}
               onClick={() => setLibraryView({ kind: "all" })}
             />
+            {/* Favorites ships with the library: a collection that is a star,
+                not a name, and cannot be deleted or renamed. */}
+            <RailItem
+              icon={Star}
+              label="Favorites"
+              count={designs.filter((design) => design.favorite).length}
+              selected={library.view.kind === "favorites"}
+              onClick={() => setLibraryView({ kind: "favorites" })}
+            />
             {folders.map((folder) => (
               <RailItem
                 key={folder.id}
@@ -425,12 +439,21 @@ export function LibraryPage() {
               selected={library.view.kind === "public"}
               onClick={() => setLibraryView({ kind: "public" })}
             />
+            <RailItem
+              icon={Bookmark}
+              label="Saved"
+              count={savedIds.length}
+              selected={library.view.kind === "saved"}
+              onClick={() => setLibraryView({ kind: "saved" })}
+            />
           </aside>
 
           {/* THE PAGE. */}
           <section className="flex min-h-0 min-w-0 flex-1 flex-col">
             {library.view.kind === "public" ? (
               <SetupsGrid scope="network" presetQuery={library.view.search} />
+            ) : library.view.kind === "saved" ? (
+              <SetupsGrid scope="saved" />
             ) : detailDesign ? (
               <LibraryDetail
                 entry={{
@@ -666,7 +689,9 @@ export function LibraryPage() {
                         ? "No designs match."
                         : viewFolderId
                           ? "Nothing here yet. Drag a design onto this collection, or use Add to collection in its menu."
-                          : "Nothing here yet. Press New design to start one."}
+                          : favoritesOnly
+                            ? "Nothing starred yet. Click the star on a design to put it here."
+                            : "Nothing here yet. Press New design to start one."}
                     </p>
                   ) : (
                     <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-2">
@@ -709,6 +734,8 @@ export function LibraryPage() {
                               privatePost: post ? !post.isPublic : false,
                               behind: Boolean(post && design.communityBehind),
                             }}
+                            favorite={design.favorite === true}
+                            onFavorite={() => void toggleFavorite(design.id)}
                             onPost={
                               !post && signedIn
                                 ? () => void postDesign(design.id)

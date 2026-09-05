@@ -20,8 +20,10 @@ import { leaveWelcomeTab } from "@/lib/welcome/welcome-tab";
  */
 export type LibraryView =
   | { kind: "all" }
+  | { kind: "favorites" }
   | { kind: "folder"; folderId: string }
-  | { kind: "public"; search?: string };
+  | { kind: "public"; search?: string }
+  | { kind: "saved" };
 
 export interface LibraryTabState {
   /** It is the thing being shown, covering the board. */
@@ -45,7 +47,7 @@ function isLibraryView(value: unknown): value is LibraryView {
   if (kind === "folder") {
     return typeof (value as { folderId?: unknown }).folderId === "string";
   }
-  return kind === "all" || kind === "public";
+  return kind === "all" || kind === "favorites" || kind === "public" || kind === "saved";
 }
 
 function readStored(): LibraryTabState {

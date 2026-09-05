@@ -19,6 +19,7 @@ import { sharedPlanLink } from "@/lib/community/shared-link";
 import type { CommunityPlanSort, CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { parseFactoryProjectJson, serializeFactoryProject } from "@/lib/import-export";
+import { toggleSavedSetup, useSavedSetups } from "@/lib/library/saved-setups";
 import { GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
 import { applyPlanView, capturePlanView } from "@/lib/plan-view";
 import { SETUPS_CHANGED_EVENT, type SetupsScope } from "@/lib/setups-tab";
@@ -55,7 +56,14 @@ type Armed = { id: string; what: "takedown" | "overwrite" };
  * posts (MINE), with the owner tools in the menu. Click opens the focus
  * page; from there a setup opens as a COPY in its own tab.
  */
-export function SetupsGrid({ scope, presetQuery }: { scope: SetupsScope; presetQuery?: string }) {
+export function SetupsGrid({
+  scope,
+  presetQuery,
+}: {
+  scope: SetupsScope | "saved";
+  presetQuery?: string;
+}) {
+  const savedIds = useSavedSetups();
   const { user, isLoading: isAuthLoading } = useCommunityUser();
   const [sort, setSort] = useState<CommunityPlanSort>("new");
   /** Highest tier allowed, as an index into GT_VOLTAGE_TIERS; "" is any. */
@@ -97,7 +105,7 @@ export function SetupsGrid({ scope, presetQuery }: { scope: SetupsScope; presetQ
 
   const username = user?.username ?? "";
   const search = debouncedQuery.trim();
-  const key = `${scope}|${sort}|${maxTier}|${search}|${username}|${refreshTick}`;
+  const key = `${scope}|${sort}|${maxTier}|${search}|${username}|${refreshTick}|${scope === "saved" ? savedIds.join(",") : ""}`;
   const activePage = target.key === key ? target.page : 1;
 
   useEffect(() => {
@@ -105,6 +113,29 @@ export function SetupsGrid({ scope, presetQuery }: { scope: SetupsScope; presetQ
       return;
     }
     let cancelled = false;
+    if (scope === "saved") {
+      // The bookmarks, fetched one by one: the list is yours and short.
+      void Promise.all(
+        savedIds.map((id) => getCommunityPlan(id, { countView: false }).catch(() => undefined)),
+      ).then((plans) => {
+        if (cancelled) {
+          return;
+        }
+        const found = plans.filter((plan): plan is CommunityPlanSummary => Boolean(plan));
+        const needle = search.toLowerCase();
+        setShelf({
+          key,
+          page: 1,
+          total: found.length,
+          plans: needle
+            ? found.filter((plan) => plan.name.toLowerCase().includes(needle))
+            : found,
+        });
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
     void listCommunityPlans({
       sort,
       search: search || undefined,
@@ -139,6 +170,7 @@ export function SetupsGrid({ scope, presetQuery }: { scope: SetupsScope; presetQ
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, activePage, scope, sort, maxTier, search, username]);
 
   // Infinite scroll: when the sentinel under the last row comes into view
@@ -413,7 +445,13 @@ export function SetupsGrid({ scope, presetQuery }: { scope: SetupsScope; presetQ
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={scope === "mine" ? "Search my posts (#tag, @name)" : "Search public setups (#tag, @name)"}
+            placeholder={
+              scope === "mine"
+                ? "Search my posts (#tag, @name)"
+                : scope === "saved"
+                  ? "Search saved setups"
+                  : "Search public setups (#tag, @name)"
+            }
             aria-label="Search setups"
             className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[var(--mc-ink-muted)]"
           />
@@ -496,7 +534,9 @@ export function SetupsGrid({ scope, presetQuery }: { scope: SetupsScope; presetQ
               ? "No setups match."
               : scope === "mine"
                 ? "Nothing posted yet. Share a design with the Share button in the header."
-                : "Nothing shared yet."}
+                : scope === "saved"
+                  ? "Nothing saved yet. Click the ribbon on a public setup to keep it here."
+                  : "Nothing shared yet."}
           </p>
         ) : (
           <>
@@ -528,6 +568,8 @@ export function SetupsGrid({ scope, presetQuery }: { scope: SetupsScope; presetQ
                       downloads: plan.downloads,
                     }}
                     marks={{ posted: plan.isMine === true, privatePost: plan.isMine && !plan.isPublic }}
+                    saved={savedIds.includes(plan.id)}
+                    onSave={() => toggleSavedSetup(plan.id)}
                     busy={busyId === plan.id}
                     menuOpen={menu?.id === plan.id}
                     onOpen={() => {

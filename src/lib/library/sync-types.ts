@@ -14,6 +14,7 @@ export interface RemoteDesignMeta {
   icon: EntryIcon | null;
   folderId: string | null;
   closed: boolean;
+  favorite: boolean;
   order: number | null;
   communityPlanId: string | null;
   createdAt: string;
@@ -44,6 +45,7 @@ export interface DesignUpsertBody {
   icon: EntryIcon | null;
   folderId: string | null;
   closed: boolean;
+  favorite: boolean;
   order: number | null;
   communityPlanId: string | null;
   createdAt: string;

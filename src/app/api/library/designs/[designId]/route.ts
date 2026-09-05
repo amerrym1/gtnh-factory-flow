@@ -167,6 +167,7 @@ export async function PUT(request: Request, context: RouteContext) {
     icon: parseEntryIcon(body.icon),
     folder_id: body.folderId ?? null,
     closed: body.closed === true,
+    favorite: body.favorite === true,
     sort_order: Number.isInteger(body.order) ? body.order : null,
     community_plan_id:
       typeof body.communityPlanId === "string" && body.communityPlanId.length <= 64
