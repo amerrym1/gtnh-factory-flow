@@ -62,7 +62,7 @@ export function LibraryMenu({
       role="menu"
       aria-label={label}
       style={{ left: clampedLeft, top: Math.max(8, clampedTop), width: MENU_WIDTH }}
-      className="fixed z-[100] max-h-[340px] overflow-y-auto border-2 border-[var(--mc-61)] bg-[var(--mc-47)] py-0.5 shadow-[0_8px_0_rgba(0,0,0,0.5)]"
+      className="fixed z-[100] max-h-[340px] overflow-y-auto border-2 border-[var(--mc-15)] bg-[var(--mc-47)] py-0.5 shadow-[6px_6px_0_rgba(0,0,0,0.45)]"
     >
       {children}
     </div>,
