@@ -159,7 +159,7 @@ describe("machine model versions", () => {
       source: { datasetVersionId: "stable-2.8.4" },
     } as unknown as Recipe;
     expect(getMachineEutMultiplier(oilCracker, coilNode)).toBeCloseTo(0.9, 10);
-    expect(machineTableNames("2.8")).toHaveLength(24);
+    expect(machineTableNames("2.8")).toHaveLength(34);
     // Not yet transcribed: falls back to dataset-baked stats.
     expect(getMachineBehaviour("Large Fluid Extractor", "2.8")).toBeUndefined();
   });

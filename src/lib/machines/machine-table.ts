@@ -1373,6 +1373,21 @@ const MACHINES_V28: Record<string, MachineBehaviour> = {
       Math.pow(0.95, Math.max(0, c.tier(COIL) + 1 - (c.recipeVoltageTier ?? c.voltageTier))),
     note: "Assumes a matching glass tier.",
   },
+
+  // -- Flat multiblocks (no coefficients, default normal overclock) --------
+  // Each of these 2.8.4 classes carries no speed/EU/parallel coefficients,
+  // matching the 2.9 entries of the same shape.
+  "Alloy Blast Smelter": { overclock: OVERCLOCK.normal() },
+  "Bricked Blast Furnace": { overclock: OVERCLOCK.normal() },
+  "COMET - Compact Cyclotron": { overclock: OVERCLOCK.normal() },
+  "Dissolution Tank": { overclock: OVERCLOCK.normal() },
+  "Distillation Tower": { overclock: OVERCLOCK.normal() },
+  "Implosion Compressor": { overclock: OVERCLOCK.normal() },
+  "Molecular Transformer": { overclock: OVERCLOCK.normal() },
+  "Vacuum Freezer": { overclock: OVERCLOCK.normal() },
+  // The lanthanide beamline chambers bypass ProcessingLogic entirely.
+  "Source Chamber": { overclock: OVERCLOCK.none(), note: "Beam energy is not modelled." },
+  "Target Chamber": { overclock: OVERCLOCK.none(), note: "Beam energy is not modelled." },
 };
 
 function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, MachineBehaviour> {
