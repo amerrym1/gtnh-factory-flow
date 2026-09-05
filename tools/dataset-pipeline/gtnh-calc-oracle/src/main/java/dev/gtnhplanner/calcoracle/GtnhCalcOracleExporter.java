@@ -6,9 +6,6 @@ import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.Loader;
 import dev.gtnhplanner.calcoracle.icons.FluidStackIconExporter;
 import dev.gtnhplanner.calcoracle.icons.ItemStackIconExporter;
-import gregtech.api.enums.StoneType;
-import gregtech.api.interfaces.IOreMaterial;
-import gregtech.api.interfaces.IStoneType;
 import gregtech.api.recipe.RecipeMap;
 import gregtech.api.recipe.RecipeMapBackend;
 import gregtech.api.util.GTRecipe;
@@ -1623,6 +1620,23 @@ public final class GtnhCalcOracleExporter {
         }
     }
 
+    /**
+     * GT's ore-material/stone API (IStoneType, IOreMaterial, StoneType) did not
+     * exist before GT5-Unofficial 5.09.52: it is absent from the 2.8.4 pack
+     * (5.09.51.482). The oracle is compiled against 2.9, so the vein and
+     * small-ore exporters must check for it at runtime and skip on older packs
+     * rather than throw NoClassDefFoundError.
+     */
+    private static boolean hasOreStoneApi() {
+        try {
+            Class.forName("gregtech.api.interfaces.IStoneType");
+            Class.forName("gregtech.api.interfaces.IOreMaterial");
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
     private Map<String, Object> exportMining(List<Map<String, Object>> adapters) {
         Map<String, Object> domain = domain("mining");
         domain.put(
@@ -1658,6 +1672,18 @@ public final class GtnhCalcOracleExporter {
 
     private void exportMiningOreVeins(List<Map<String, Object>> adapters, Map<String, Object> domain) {
         long started = System.currentTimeMillis();
+        if (!hasOreStoneApi()) {
+            adapters.add(
+                adapter(
+                    "gregtech-ore-veins",
+                    "skipped",
+                    true,
+                    0,
+                    0,
+                    started,
+                    "GregTech ore-material/stone API is absent from this pack version; ore vein stone data is not exported."));
+            return;
+        }
         List<Map<String, Object>> veins = new ArrayList<Map<String, Object>>();
         try {
             Map<String, GT5OreLayerHelper.OreLayerWrapper> byName = GT5OreLayerHelper.getOreVeinsByName();
@@ -1740,9 +1766,11 @@ public final class GtnhCalcOracleExporter {
             OreVeinLayer.VEIN_PRIMARY, OreVeinLayer.VEIN_SECONDARY, OreVeinLayer.VEIN_BETWEEN,
             OreVeinLayer.VEIN_SPORADIC
         };
+        Object rawOres = readField(vein, "ores");
+        Object[] veinOres = rawOres instanceof Object[] ? (Object[]) rawOres : null;
         for (int index = 0; index < roles.length; index++) {
-            IOreMaterial material = vein.ores != null && layerIds[index] < vein.ores.length
-                ? vein.ores[layerIds[index]]
+            Object material = veinOres != null && layerIds[index] < veinOres.length
+                ? veinOres[layerIds[index]]
                 : null;
             if (material == null) {
                 continue;
@@ -1757,34 +1785,35 @@ public final class GtnhCalcOracleExporter {
         return exported;
     }
 
-    private ItemStack veinLayerOre(GT5OreLayerHelper.OreLayerWrapper vein, int layer, IOreMaterial material) {
+    private ItemStack veinLayerOre(GT5OreLayerHelper.OreLayerWrapper vein, int layer, Object material) {
         try {
-            IStoneType stone = null;
-            List<IStoneType> validStones = material.getValidStones();
-            if (validStones != null && !validStones.isEmpty()) {
-                stone = validStones.get(0);
+            Object stone = null;
+            Object validStones = invokeBest(material, "getValidStones", new Object[0]);
+            if (validStones instanceof List && !((List<?>) validStones).isEmpty()) {
+                stone = ((List<?>) validStones).get(0);
             }
             if (stone == null) {
-                stone = StoneType.Stone;
+                stone = readStaticField(Class.forName("gregtech.api.enums.StoneType"), "Stone");
             }
-            return vein.getLayerOre(layer, stone);
+            return (ItemStack) invokeBest(vein, "getLayerOre", new Object[] { Integer.valueOf(layer), stone });
         } catch (Throwable ignored) {
             return null;
         }
     }
 
-    private Map<String, Object> oreMaterial(IOreMaterial material) {
+    private Map<String, Object> oreMaterial(Object material) {
         if (material == null) {
             return null;
         }
         Map<String, Object> exported = map();
-        exported.put("id", Integer.valueOf(material.getId()));
-        putIfPresent(exported, "internalName", material.getInternalName());
-        String name;
-        try {
-            name = material.getLocalizedName();
-        } catch (Throwable ignored) {
-            name = material.getDefaultLocalName();
+        Number id = asNumber(invokeBest(material, "getId", new Object[0]));
+        if (id != null) {
+            exported.put("id", Integer.valueOf(id.intValue()));
+        }
+        putIfPresent(exported, "internalName", invokeString(material, "getInternalName"));
+        String name = invokeString(material, "getLocalizedName");
+        if (name == null) {
+            name = invokeString(material, "getDefaultLocalName");
         }
         putIfPresent(exported, "name", name);
         return exported;
@@ -1792,6 +1821,18 @@ public final class GtnhCalcOracleExporter {
 
     private void exportMiningSmallOres(List<Map<String, Object>> adapters, Map<String, Object> domain) {
         long started = System.currentTimeMillis();
+        if (!hasOreStoneApi()) {
+            adapters.add(
+                adapter(
+                    "gregtech-small-ores",
+                    "skipped",
+                    true,
+                    0,
+                    0,
+                    started,
+                    "GregTech ore-material/stone API is absent from this pack version; small-ore data is not exported."));
+            return;
+        }
         List<Map<String, Object>> smallOres = new ArrayList<Map<String, Object>>();
         try {
             Map<String, GT5OreSmallHelper.OreSmallWrapper> byName = GT5OreSmallHelper.SMALL_ORES_BY_NAME;
@@ -1806,7 +1847,8 @@ public final class GtnhCalcOracleExporter {
                 }
                 Map<String, Object> exported = map();
                 exported.put("id", safeString(small.oreGenName));
-                putIfPresent(exported, "material", oreMaterial(small.material));
+                Object smallMaterial = readField(small, "material");
+                putIfPresent(exported, "material", oreMaterial(smallMaterial));
                 putIfPresent(exported, "heightRange", small.worldGenHeightRange);
                 exported.put("amountPerChunk", Integer.valueOf(small.amountPerChunk));
                 if (small.allowedDimWithOrigNames != null) {
@@ -1816,7 +1858,13 @@ public final class GtnhCalcOracleExporter {
                     exported.put("enabledDims", new ArrayList<String>(small.enabledDims));
                 }
                 List<Map<String, Object>> drops = new ArrayList<Map<String, Object>>();
-                List<ItemStack> rawDrops = GT5OreSmallHelper.ORE_MAT_TO_DROPS.get(small.material);
+                List<ItemStack> rawDrops = null;
+                Object dropsByMaterial = readStaticField(GT5OreSmallHelper.class, "ORE_MAT_TO_DROPS");
+                if (dropsByMaterial instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    List<ItemStack> mapped = (List<ItemStack>) ((Map<?, ?>) dropsByMaterial).get(smallMaterial);
+                    rawDrops = mapped;
+                }
                 for (ItemStack drop : rawDrops == null ? Collections.<ItemStack>emptyList() : rawDrops) {
                     Map<String, Object> exportedDrop = itemStack(drop);
                     if (exportedDrop != null) {
