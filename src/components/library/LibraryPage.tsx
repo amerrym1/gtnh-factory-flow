@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Factory, Folder, FolderPlus, LayoutGrid, Plus, Search, Star, X } from "lucide-react";
+import { Bookmark, Factory, Folder, FolderPlus, LayoutGrid, Star } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -17,7 +17,6 @@ import { deleteCommunityPlan, listCommunityPlans, patchCommunityPlan } from "@/l
 import { sharedPlanLink } from "@/lib/community/shared-link";
 import type { CommunityPlanSummary } from "@/lib/community/types";
 import type { DesignSummary } from "@/lib/designs/design-library";
-import { GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
 import { SETUPS_CHANGED_EVENT, notifySetupsChanged, requestShareDialog } from "@/lib/setups-tab";
 import { setLibraryView, useLibraryTab } from "@/lib/library/library-tab";
 import { playBoardSound } from "@/lib/board-sounds";
@@ -27,6 +26,8 @@ import { LibraryDetail, previewUrlFor } from "./LibraryDetail";
 import { ArmedMenuItem, LibraryMenu, MenuHeading, MenuItem, MenuRule } from "./library-menu";
 import { Face, InlineName, LibraryTile } from "./LibraryTile";
 import { SetupsGrid } from "./SetupsGrid";
+import { SetupsFilterBar, useSetupFilters } from "./SetupsFilterBar";
+import { parsePlanSearch } from "@/lib/community/search-query";
 
 /**
  * The Library: everything you have and everything the network has, as one
@@ -48,12 +49,15 @@ import { SetupsGrid } from "./SetupsGrid";
 const POSTS_PAGE_SIZE = 48;
 const POSTS_MAX_PAGES = 6;
 
-type SortKey = "edited" | "name" | "created";
+type SortKey = "edited" | "name" | "created" | "tier" | "power" | "machines";
 
 const SORTS: { value: SortKey; label: string }[] = [
   { value: "edited", label: "Last edited" },
   { value: "name", label: "Name" },
   { value: "created", label: "Newest" },
+  { value: "tier", label: "Highest tier" },
+  { value: "power", label: "Highest power" },
+  { value: "machines", label: "Most machines" },
 ];
 
 export function LibraryPage() {
@@ -61,7 +65,6 @@ export function LibraryPage() {
   const designs = useDesignStore((state) => state.designs);
   const folders = useDesignStore((state) => state.folders);
   const switchToDesign = useDesignStore((state) => state.switchToDesign);
-  const addDesign = useDesignStore((state) => state.addDesign);
   const copyDesign = useDesignStore((state) => state.copyDesign);
   const renameDesign = useDesignStore((state) => state.renameDesign);
   const closeDesign = useDesignStore((state) => state.closeDesign);
@@ -73,12 +76,13 @@ export function LibraryPage() {
   const deleteFolder = useDesignStore((state) => state.deleteFolder);
   const updateDesignIdentity = useDesignStore((state) => state.updateDesignIdentity);
 
-  const [query, setQuery] = useState("");
+  // The same bar and the same fields as Public setups (SetupsFilterBar);
+  // here they are applied in memory over the designs.
+  const filters = useSetupFilters("edited");
+  const { query, maxTier, setMaxTier } = filters;
+  const sort = filters.sort as SortKey;
   /** The design whose icon is being picked on the preview page. */
   const [iconEditId, setIconEditId] = useState<string>();
-  const [sort, setSort] = useState<SortKey>("edited");
-  /** Highest tier allowed, as an index into GT_VOLTAGE_TIERS; "" is any. */
-  const [maxTier, setMaxTier] = useState("");
   const [tileMenu, setTileMenu] = useState<{ designId: string; left: number; top: number }>();
   const [folderMenu, setFolderMenu] = useState<{ folderId: string; left: number; top: number }>();
   const [armed, setArmed] = useState<{ id: string; what: "delete" }>();
@@ -129,7 +133,9 @@ export function LibraryPage() {
 
   const viewFolderId = library.view.kind === "folder" ? library.view.folderId : undefined;
   const favoritesOnly = library.view.kind === "favorites";
-  const search = query.trim().toLowerCase();
+  const parsedSearch = parsePlanSearch(query);
+  const search = parsedSearch.text.toLowerCase();
+  const { maxEuT, makesKeys, takesKeys } = filters;
   const shown = useMemo(() => {
     const tierLimit = maxTier === "" ? undefined : Number(maxTier);
     return sortDesignsBy(
@@ -138,6 +144,14 @@ export function LibraryPage() {
           (!viewFolderId || design.folderId === viewFolderId) &&
           (!favoritesOnly || design.favorite === true) &&
           (!search || design.name.toLowerCase().includes(search)) &&
+          // #tags are the post's: an unposted design has none to match.
+          parsedSearch.tags.every((tag) =>
+            myPosts?.get(design.communityPlanId ?? "")?.tags.includes(tag),
+          ) &&
+          (maxEuT === undefined ||
+            (design.stats?.euT !== undefined && design.stats.euT <= maxEuT)) &&
+          makesKeys.every((key) => design.stats?.makes?.includes(key)) &&
+          takesKeys.every((key) => design.stats?.takes?.includes(key)) &&
           // A design with no stat row yet cannot answer the tier question,
           // so it shows under "any" and hides under a limit.
           (tierLimit === undefined ||
@@ -145,7 +159,11 @@ export function LibraryPage() {
       ),
       sort,
     );
-  }, [designs, viewFolderId, favoritesOnly, search, maxTier, sort]);
+  }, [designs, viewFolderId, favoritesOnly, search, parsedSearch.tags, myPosts, maxEuT, makesKeys, takesKeys, maxTier, sort]);
+  const knownTags = useMemo(
+    () => [...(myPosts?.values() ?? [])].flatMap((post) => post.tags ?? []),
+    [myPosts],
+  );
 
   const perFolder = useMemo(
     () =>
@@ -569,68 +587,12 @@ export function LibraryPage() {
               />
                   ) : (
               <>
-                <header className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--mc-33)] px-4 compact:gap-1.5 compact:px-2">
-                  <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
-                    <Search className="h-3.5 w-3.5 shrink-0 text-[var(--mc-ink-muted)]" aria-hidden />
-                    <input
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Search your designs"
-                      aria-label="Search your designs"
-                      className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[var(--mc-ink-muted)]"
-                    />
-                    {query ? (
-                      <button
-                        type="button"
-                        onClick={() => setQuery("")}
-                        aria-label="Clear search"
-                        className="text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    ) : null}
-                  </label>
-                  <select
-                    value={maxTier}
-                    onChange={(event) => {
-                      playBoardSound("shelfTick");
-                      setMaxTier(event.target.value);
-                    }}
-                    aria-label="Highest power tier"
-                    className="h-7 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
-                  >
-                    <option value="">Any tier</option>
-                    {GT_VOLTAGE_TIERS.map((entry, index) => (
-                      <option key={entry.tier} value={String(index)}>
-                        Up to {entry.tier}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={sort}
-                    onChange={(event) => {
-                      playBoardSound("shelfTick");
-                      setSort(event.target.value as SortKey);
-                    }}
-                    aria-label="Sort designs"
-                    className="h-7 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
-                  >
-                    {SORTS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => void addDesign()}
-                    aria-label="New design"
-                    className="flex h-7 shrink-0 items-center gap-1 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2.5 text-xs font-bold text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85)] hover:border-cyan-400 hover:text-cyan-200"
-                  >
-                    <Plus className="h-3.5 w-3.5" aria-hidden />
-                    <span className="compact:hidden">New design</span>
-                  </button>
-                </header>
+                <SetupsFilterBar
+                  filters={filters}
+                  placeholder="Search your designs (#tag)"
+                  sortOptions={SORTS}
+                  knownTags={knownTags}
+                />
 
                 {visibleSelected.size > 0 ? (
                   <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--mc-33)] bg-cyan-500/10 px-4 text-xs text-[var(--mc-ink)] compact:px-2">
@@ -690,7 +652,7 @@ export function LibraryPage() {
                           ? "Nothing here yet. Drag a design onto this collection, or use Add to collection in its menu."
                           : favoritesOnly
                             ? "Nothing starred yet. Click the star on a design to put it here."
-                            : "Nothing here yet. Press New design to start one."}
+                            : "Nothing here yet. Press + on the tab strip to start one."}
                     </p>
                   ) : (
                     <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-2">
@@ -1004,6 +966,15 @@ function sortDesignsBy(designs: DesignSummary[], sort: SortKey): DesignSummary[]
       break;
     case "created":
       sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      break;
+    case "tier":
+      sorted.sort((a, b) => (b.stats?.tierIndex ?? -1) - (a.stats?.tierIndex ?? -1));
+      break;
+    case "power":
+      sorted.sort((a, b) => (b.stats?.euT ?? -1) - (a.stats?.euT ?? -1));
+      break;
+    case "machines":
+      sorted.sort((a, b) => (b.stats?.machines ?? -1) - (a.stats?.machines ?? -1));
       break;
     case "edited":
     default:

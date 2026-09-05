@@ -1,12 +1,9 @@
 "use client";
 
-import { LoaderCircle, Plus, Search, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LoaderCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useCommunityUser } from "@/components/community/auth";
 import { IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
-import { ItemPickerPopover } from "@/components/ItemPickerPopover";
-import { DEFAULT_DATASET_MANIFEST_URL } from "@/lib/datasets";
-import { queryRecipeDatasetResources } from "@/lib/datasets/browser-loader";
 import { formatRelativeDate } from "@/components/shelf-cards";
 import {
   deleteCommunityPlan,
@@ -15,23 +12,21 @@ import {
   patchCommunityPlan,
   voteCommunityPlan,
 } from "@/lib/community/client";
-import { parsePlanSearch, withAuthor, withTag } from "@/lib/community/search-query";
+import { withAuthor } from "@/lib/community/search-query";
 import { openCommunityPost } from "@/lib/community/open-post";
 import { sharedPlanLink } from "@/lib/community/shared-link";
 import type { CommunityPlanSort, CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
-import { parseEuT } from "@/lib/community/eu-shorthand";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { serializeFactoryProject } from "@/lib/import-export";
 import { toggleSavedSetup, useSavedSetups } from "@/lib/library/saved-setups";
-import { GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
 import { capturePlanView } from "@/lib/plan-view";
 import { SETUPS_CHANGED_EVENT, type SetupsScope } from "@/lib/setups-tab";
-import { playBoardSound } from "@/lib/board-sounds";
 import { useDesignStore } from "@/store/design-store";
 import { useFactoryStore } from "@/store/factory-store";
 import { LibraryDetail, previewUrlFor } from "./LibraryDetail";
 import { ArmedMenuItem, LibraryMenu, MenuItem, MenuRule } from "./library-menu";
-import { Face, LibraryTile, TagEditor } from "./LibraryTile";
+import { LibraryTile, TagEditor } from "./LibraryTile";
+import { SetupsFilterBar, useSetupFilters } from "./SetupsFilterBar";
 
 const SETUP_SORTS: Array<{ value: CommunityPlanSort; label: string }> = [
   { value: "active", label: "Recently active" },
@@ -94,43 +89,11 @@ export function SetupsGrid({
 }) {
   const savedIds = useSavedSetups();
   const { user, isLoading: isAuthLoading } = useCommunityUser();
-  const [sort, setSort] = useState<CommunityPlanSort>("active");
+  const filters = useSetupFilters("active");
+  const { query, setQuery, maxTier, setMaxTier, debouncedMaxEuT, makesKeys, takesKeys } = filters;
+  const sort = filters.sort as CommunityPlanSort;
   /** The public list narrowed to the account's own posts. */
   const [onlyMine, setOnlyMine] = useState(false);
-  /** The EU/t ceiling as typed, and as read; unreadable text is no ceiling. */
-  const [maxEuText, setMaxEuText] = useState("");
-  const maxEuT = maxEuText.trim() ? parseEuT(maxEuText) : undefined;
-  const debouncedMaxEuT = useDebouncedValue(maxEuT, 350);
-  /** What a setup must make and take: every one of these, on that side. */
-  const [makes, setMakes] = useState<EntryIcon[]>([]);
-  const [takes, setTakes] = useState<EntryIcon[]>([]);
-  const [picking, setPicking] = useState<"makes" | "takes">();
-  // The picker searches the dataset the board is on, as the recipe search does.
-  const datasetManifestUrl = useFactoryStore((state) => state.datasetManifestUrl);
-  const datasetManifest = useFactoryStore((state) => state.datasetManifest);
-  const selectedDatasetVersionId = useFactoryStore((state) => state.selectedDatasetVersionId);
-  const selectedDatasetVersion = useMemo(
-    () => datasetManifest?.versions.find((entry) => entry.id === selectedDatasetVersionId),
-    [datasetManifest?.versions, selectedDatasetVersionId],
-  );
-  const searchPickerResources = useCallback(
-    async (pickerQuery: string, signal: AbortSignal) => {
-      if (!selectedDatasetVersion) {
-        return [];
-      }
-      const result = await queryRecipeDatasetResources(
-        datasetManifestUrl ?? DEFAULT_DATASET_MANIFEST_URL,
-        selectedDatasetVersion,
-        { query: pickerQuery, offset: 0, limit: 48 },
-        { signal },
-      );
-      return result.resources;
-    },
-    [datasetManifestUrl, selectedDatasetVersion],
-  );
-  /** Highest tier allowed, as an index into GT_VOLTAGE_TIERS; "" is any. */
-  const [maxTier, setMaxTier] = useState("");
-  const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 250);
   const [shelf, setShelfState] = useState<Shelf>();
   const setShelf = (next: Shelf | ((current: Shelf | undefined) => Shelf | undefined)) =>
@@ -176,9 +139,6 @@ export function SetupsGrid({
   const username = user?.username ?? "";
   const search = debouncedQuery.trim();
   const mineOnly = scope === "mine" || (scope === "network" && onlyMine && Boolean(username));
-  const resourceKey = (resource: EntryIcon) => `${resource.kind}:${resource.resourceId}`;
-  const makesKeys = makes.map(resourceKey);
-  const takesKeys = takes.map(resourceKey);
   const key = `${scope}|${mineOnly ? "mine" : ""}|${sort}|${maxTier}|${debouncedMaxEuT ?? ""}|${makesKeys.join(",")}|${takesKeys.join(",")}|${search}|${username}|${refreshTick}|${scope === "saved" ? savedIds.join(",") : ""}`;
   const activePage = target.key === key ? target.page : 1;
 
@@ -285,23 +245,6 @@ export function SetupsGrid({
       knownTags.add(tag);
     }
   }
-  const [searchFocused, setSearchFocused] = useState(false);
-  const typedTag = /(?:^|\s)#([^\s#]*)$/.exec(query)?.[1];
-  const chosenTags = parsePlanSearch(query).tags;
-  const tagSuggestions =
-    typedTag === undefined
-      ? []
-      : [...knownTags]
-          .filter(
-            (tag) =>
-              tag.startsWith(typedTag.toLowerCase().replace(/_/g, " ")) && !chosenTags.includes(tag),
-          )
-          .sort()
-          .slice(0, 12);
-  const completeTag = (tag: string) => {
-    playBoardSound("shelfTick");
-    setQuery((current) => withTag(current.replace(/#[^\s#]*$/, "").trim(), tag) + " ");
-  };
 
   const patchPlan = (planId: string, patch: (plan: CommunityPlanSummary) => CommunityPlanSummary) =>
     setShelf((current) =>
@@ -544,199 +487,24 @@ export function SetupsGrid({
       ) : (
         <>
       {/* Two rows: what you are looking for, then what it must be. */}
-      <header className="flex shrink-0 flex-col border-b border-[var(--mc-33)]">
-        <div className="flex h-10 items-center gap-2 px-4 compact:gap-1.5 compact:px-2">
-          <div className="relative min-w-0 flex-1">
-          <label className="flex h-7 min-w-0 items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
-            <Search className="h-3.5 w-3.5 shrink-0 text-[var(--mc-ink-muted)]" aria-hidden />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && tagSuggestions[0]) {
-                  event.preventDefault();
-                  completeTag(tagSuggestions[0]);
-                } else if (event.key === "Escape") {
-                  setSearchFocused(false);
-                }
-              }}
-              placeholder={
-                scope === "mine"
-                  ? "Search my posts (#tag, @name)"
-                  : scope === "saved"
-                    ? "Search saved setups"
-                    : "Search public setups (#tag, @name)"
-              }
-              aria-label="Search setups"
-              className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[var(--mc-ink-muted)]"
-            />
-            {query ? (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                aria-label="Clear search"
-                className="text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            ) : null}
-          </label>
-          {/* Typing #... offers the tags the network has used; Enter or a
-              click finishes the word. */}
-          {searchFocused && tagSuggestions.length > 0 ? (
-            <div className="absolute left-0 top-full z-20 mt-1 flex max-w-full flex-wrap gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-61)] p-1.5 shadow-[6px_6px_0_rgba(0,0,0,0.45)]">
-              {tagSuggestions.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => completeTag(tag)}
-                  className="border-2 border-transparent bg-[var(--mc-47)] px-1.5 py-0.5 text-xs font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
-                >
-                  #{tag.replace(/\s+/g, "_")}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          </div>
-          {scope === "network" && username ? (
-            <label
-              className={[
-                "flex h-7 shrink-0 cursor-pointer select-none items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]",
-                onlyMine ? "text-cyan-200" : "text-neutral-100",
-              ].join(" ")}
-            >
-              <input
-                type="checkbox"
-                checked={onlyMine}
-                onChange={(event) => {
-                  playBoardSound("shelfTick");
-                  setOnlyMine(event.target.checked);
-                }}
-                className="h-3 w-3 accent-cyan-400"
-              />
-              My posts
-            </label>
-          ) : null}
-          <label
-            title="Leave out setups that draw more than this. Shorthand works: 512, 14.3k, 2M, 1.5G"
-            className={[
-              "flex h-7 w-[118px] shrink-0 items-center gap-1 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]",
-              maxEuText && maxEuT === undefined ? "text-red-300" : "text-neutral-100",
-            ].join(" ")}
-          >
-            <span className="shrink-0 text-[var(--mc-ink-muted)]">EU/t ≤</span>
-            <input
-              value={maxEuText}
-              onChange={(event) => setMaxEuText(event.target.value)}
-              onBlur={() => playBoardSound("shelfTick")}
-              placeholder="any"
-              aria-label="Highest EU/t to show"
-              className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[var(--mc-ink-muted)]"
-            />
-          </label>
-          <select
-            value={maxTier}
-            onChange={(event) => {
-              playBoardSound("shelfTick");
-              setMaxTier(event.target.value);
-            }}
-            aria-label="Highest power tier"
-            className="h-7 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
-          >
-            <option value="">Any tier</option>
-            {GT_VOLTAGE_TIERS.map((entry, index) => (
-              <option key={entry.tier} value={String(index)}>
-                Up to {entry.tier}
-              </option>
-            ))}
-          </select>
-          <select
-            value={sort}
-            onChange={(event) => {
-              playBoardSound("shelfTick");
-              setSort(event.target.value as CommunityPlanSort);
-            }}
-            aria-label="Sort setups"
-            className="h-7 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
-          >
-            {SETUP_SORTS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          </div>
-        {scope !== "saved" ? (
-          <div className="flex min-h-9 flex-wrap items-center gap-2 border-t border-[var(--mc-33)]/60 bg-[#0c0e11] px-4 py-1 compact:gap-1.5 compact:px-2">
-            <span className="mr-1 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--mc-ink-muted)]">
-              Item filter
-            </span>
-            {(["makes", "takes"] as const).map((side) => (
-              <div key={side} className="relative flex shrink-0 items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setPicking(picking === side ? undefined : side)}
-                  title={side === "makes" ? "Only setups that make this" : "Only setups that take this"}
-                  className="flex h-7 items-center gap-1 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2 text-xs font-bold text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85)] hover:bg-[var(--mc-85)]"
-                >
-                  <Plus className="h-3 w-3" aria-hidden />
-                  {side === "makes" ? "Makes" : "Takes"}
-                </button>
-                {picking === side ? (
-                  // The recipe search's own picker, opened downward from the key.
-                  <ItemPickerPopover
-                    role={side}
-                    placement="below"
-                    searchPickerResources={searchPickerResources}
-                    onPick={(entry) => {
-                      playBoardSound("shelfTick");
-                      const picked: EntryIcon = {
-                        kind: entry.kind === "fluid" ? "fluid" : "item",
-                        resourceId: entry.id,
-                        displayName: entry.displayName,
-                        iconPath: entry.iconPath,
-                        iconAtlas: entry.iconAtlas,
-                        dominantColor: entry.dominantColor,
-                      };
-                      (side === "makes" ? setMakes : setTakes)((list) =>
-                        list.some((item) => item.resourceId === picked.resourceId) ? list : [...list, picked],
-                      );
-                      setPicking(undefined);
-                    }}
-                    onClose={() => setPicking(undefined)}
-                  />
-                ) : null}
-                {(side === "makes" ? makes : takes).map((resource) => (
-                  <span
-                    key={resource.kind + ":" + resource.resourceId}
-                    className="flex h-7 items-center gap-1 border-2 border-[var(--mc-33)] bg-[#17191d] pl-1 pr-1.5 text-xs text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
-                  >
-                    <Face icon={resource} size={18} />
-                    <span className="max-w-[120px] truncate">{resource.displayName ?? resource.resourceId}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        playBoardSound("shelfTick");
-                        (side === "makes" ? setMakes : setTakes)((list) =>
-                          list.filter((entry) => entry.resourceId !== resource.resourceId),
-                        );
-                      }}
-                      aria-label={`Stop filtering by ${resource.displayName ?? resource.resourceId}`}
-                      title="Remove"
-                      className="text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]"
-                    >
-                      <X className="h-3 w-3" aria-hidden />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            ))}
-              </div>
-        ) : null}
-      </header>
+      <SetupsFilterBar
+        filters={filters}
+        placeholder={
+          scope === "mine"
+            ? "Search my posts (#tag, @name)"
+            : scope === "saved"
+              ? "Search saved setups"
+              : "Search public setups (#tag, @name)"
+        }
+        sortOptions={SETUP_SORTS}
+        knownTags={knownTags}
+        myPosts={
+          scope === "network" && username
+            ? { checked: onlyMine, onChange: setOnlyMine }
+            : undefined
+        }
+        itemFilter={scope !== "saved"}
+      />
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 compact:px-2">
         {error ? <p className="mb-2 text-[11px] text-red-400">{error}</p> : null}

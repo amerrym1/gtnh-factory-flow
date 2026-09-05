@@ -1,3 +1,4 @@
+import { computeCommunityPlanStats } from "@/lib/community/plan-stats";
 import { getNodeMachineBuildCount } from "@/lib/model/passive-production";
 import { GT_VOLTAGE_TIERS, getVoltageTierIndex } from "@/lib/model/tiers";
 import type { FactoryProject, MachineTier, ThroughputResult } from "@/lib/model/types";
@@ -16,6 +17,13 @@ export interface DesignStats {
   tier?: VoltageTierName;
   tierIndex: number;
   euT?: number;
+  /**
+   * What the design takes in and gives out, as "kind:resourceId" keys, for
+   * the library's item filter. Needs the books, like EU/t, so present only
+   * for a design saved from the canvas.
+   */
+  takes?: string[];
+  makes?: string[];
 }
 
 function isVoltageTier(value: unknown): value is VoltageTierName {
@@ -24,7 +32,7 @@ function isVoltageTier(value: unknown): value is VoltageTierName {
 
 export function computeDesignStats(
   project: FactoryProject,
-  result?: Pick<ThroughputResult, "totalEuT">,
+  result?: ThroughputResult,
 ): DesignStats {
   let tierIndex = -1;
   let tier: VoltageTierName | undefined;
@@ -53,6 +61,11 @@ export function computeDesignStats(
   }
   if (result && Number.isFinite(result.totalEuT)) {
     stats.euT = result.totalEuT;
+  }
+  if (result) {
+    const flows = computeCommunityPlanStats(project, result);
+    stats.takes = flows.needs.map((stat) => `${stat.kind}:${stat.resourceId}`);
+    stats.makes = flows.outputs.map((stat) => `${stat.kind}:${stat.resourceId}`);
   }
   return stats;
 }
