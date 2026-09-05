@@ -118,7 +118,7 @@ describe("machine model versions", () => {
     expect(machineModelVersionForRecipe({})).toBe(DEFAULT_MACHINE_MODEL_VERSION);
   });
 
-  it("answers the heat and steam machines on 2.8, and nothing not yet transcribed", () => {
+  it("answers the heat, steam and perfect-OC machines on 2.8, and nothing else yet", () => {
     // Batch 1: the heat machines are verified identical to 2.9.
     expect(getMachineBehaviour("Blast Furnace", "2.8")?.overclock).toBe(HEAT_OVERCLOCK);
     expect(getMachineBehaviour("Mega Blast Furnace", "2.8")?.parallels).toBe(256);
@@ -127,18 +127,15 @@ describe("machine model versions", () => {
     expect(getMachineBehaviour("Steam Grinder", "2.8")?.parallels).toBe(8);
     expect(getMachineBehaviour("Steam Grinder", "2.8")?.overclock).toEqual(OVERCLOCK.none());
     expect(getMachineBehaviour("Steam Hearth", "2.8")).toBeUndefined();
-    expect(machineTableNames("2.8")).toEqual([
-      "Blast Furnace",
-      "Mega Blast Furnace",
-      "Volcanus",
-      "Steam Grinder",
-      "Steam Squasher",
-      "Steam Separator",
-      "Steam Purifier",
-      "Steam Presser",
-      "Steam Blender",
-      "Steam Fuser",
-    ]);
+    // Batch 3: the perfect overclockers are unchanged.
+    expect(getMachineBehaviour("Large Chemical Reactor", "2.8")?.overclock).toEqual(
+      OVERCLOCK.perfect(),
+    );
+    expect(getMachineBehaviour("Elemental Duplicator", "2.8")?.speed).toBe(2);
+    expect(getMachineBehaviour("Circuit Assembly Line", "2.8")?.overclock).toEqual(
+      OVERCLOCK.perfect(),
+    );
+    expect(machineTableNames("2.8")).toHaveLength(17);
     // Not yet transcribed: falls back to dataset-baked stats.
     expect(getMachineBehaviour("Chemical Plant", "2.8")).toBeUndefined();
   });

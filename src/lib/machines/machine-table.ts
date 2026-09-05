@@ -1286,6 +1286,34 @@ const MACHINES_V28: Record<string, MachineBehaviour> = {
   "Steam Presser": STEAM_MULTIBLOCK,
   "Steam Blender": STEAM_MULTIBLOCK,
   "Steam Fuser": STEAM_MULTIBLOCK,
+
+  // -- Perfect overclockers ----------------------------------------------
+  // MTELargeChemicalReactor reads its coil only as a structure check; perfect
+  // OC, coil knob hidden. Identical to 2.9.
+  "Large Chemical Reactor": { overclock: OVERCLOCK.perfect(), hidesControls: ["heatingCoil"] },
+  // MTEMegaChemicalReactor (Bartworks): perfect OC, megaMachinesMax (256)
+  // parallels, mega base power pool / tier skips. Identical to 2.9.
+  "Mega Chemical Reactor": {
+    overclock: OVERCLOCK.perfect(),
+    parallels: 256,
+    unlimitedTierSkip: true,
+    hidesControls: ["heatingCoil"],
+  },
+  // MTECircuitAssemblyLine (Bartworks): enablePerfectOverclock(). Identical.
+  "Circuit Assembly Line": { overclock: OVERCLOCK.perfect() },
+  // MTEDigester (GTNH-Lanthanides): enablePerfectOC(). Identical.
+  Digester: { overclock: OVERCLOCK.perfect() },
+  // MTEElementalDuplicator: enablePerfectOverclock(), setSpeedBonus(1/2),
+  // getMaxParallelRecipes() = 8 * voltage tier. Identical to 2.9.
+  "Elemental Duplicator": {
+    overclock: OVERCLOCK.perfect(),
+    speed: 2,
+    parallels: (c) => 8 * c.voltageTier,
+  },
+  // MTEIsaMill: enablePerfectOverclock(). Identical.
+  "IsaMill Grinding Machine": { overclock: OVERCLOCK.perfect() },
+  // MTEFrothFlotationCell: enablePerfectOverclock(). Identical.
+  "Flotation Cell Regulator": { overclock: OVERCLOCK.perfect() },
 };
 
 function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, MachineBehaviour> {
