@@ -30,6 +30,7 @@ import { ArmedMenuItem, LibraryMenu, MenuItem, MenuRule } from "./library-menu";
 import { LibraryTile, TagEditor } from "./LibraryTile";
 
 const SETUP_SORTS: Array<{ value: CommunityPlanSort; label: string }> = [
+  { value: "active", label: "Recently active" },
   { value: "new", label: "Newest" },
   { value: "top", label: "Top voted" },
   { value: "downloads", label: "Most downloaded" },
@@ -37,7 +38,7 @@ const SETUP_SORTS: Array<{ value: CommunityPlanSort; label: string }> = [
   { value: "machines", label: "Most machines" },
   { value: "nodes", label: "Most nodes" },
   { value: "power", label: "Highest power" },
-  { value: "active", label: "Recently active" },
+  { value: "tier", label: "Highest tier" },
   { value: "commented", label: "Latest comment" },
   { value: "comments", label: "Most commented" },
 ];
@@ -74,7 +75,9 @@ export function SetupsGrid({
 }) {
   const savedIds = useSavedSetups();
   const { user, isLoading: isAuthLoading } = useCommunityUser();
-  const [sort, setSort] = useState<CommunityPlanSort>("new");
+  const [sort, setSort] = useState<CommunityPlanSort>("active");
+  /** The public list narrowed to the account's own posts. */
+  const [onlyMine, setOnlyMine] = useState(false);
   /** Highest tier allowed, as an index into GT_VOLTAGE_TIERS; "" is any. */
   const [maxTier, setMaxTier] = useState("");
   const [query, setQuery] = useState("");
@@ -122,7 +125,8 @@ export function SetupsGrid({
 
   const username = user?.username ?? "";
   const search = debouncedQuery.trim();
-  const key = `${scope}|${sort}|${maxTier}|${search}|${username}|${refreshTick}|${scope === "saved" ? savedIds.join(",") : ""}`;
+  const mineOnly = scope === "mine" || (scope === "network" && onlyMine && Boolean(username));
+  const key = `${scope}|${mineOnly ? "mine" : ""}|${sort}|${maxTier}|${search}|${username}|${refreshTick}|${scope === "saved" ? savedIds.join(",") : ""}`;
   const activePage = target.key === key ? target.page : 1;
 
   useEffect(() => {
@@ -157,7 +161,7 @@ export function SetupsGrid({
       sort,
       search: search || undefined,
       maxTier: maxTier || undefined,
-      mine: scope === "mine" || undefined,
+      mine: mineOnly || undefined,
       page: activePage,
       pageSize: PAGE_SIZE,
     }).then(
@@ -524,6 +528,27 @@ export function SetupsGrid({
             </option>
           ))}
         </select>
+        {scope === "network" && username ? (
+          <label
+            className={[
+              "flex h-7 shrink-0 cursor-pointer select-none items-center gap-1.5 border-2 px-2 text-xs font-bold",
+              onlyMine
+                ? "border-[var(--mc-61)] bg-[var(--mc-47)] text-[var(--mc-ink)]"
+                : "border-[var(--mc-47)] bg-[var(--mc-33)] text-[var(--mc-ink)] opacity-55 hover:opacity-100",
+            ].join(" ")}
+          >
+            <input
+              type="checkbox"
+              checked={onlyMine}
+              onChange={(event) => {
+                playBoardSound("shelfTick");
+                setOnlyMine(event.target.checked);
+              }}
+              className="h-3 w-3 accent-cyan-400"
+            />
+            Mine
+          </label>
+        ) : null}
         <select
           value={sort}
           onChange={(event) => {

@@ -79,6 +79,7 @@ export type CommunityPlanSort =
   | "machines"
   | "nodes"
   | "power"
+  | "tier" // highest voltage tier first
   | "comments" // most comments
   | "commented" // latest comment first
   | "active"; // latest edit or comment first

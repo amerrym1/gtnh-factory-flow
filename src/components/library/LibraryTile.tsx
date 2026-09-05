@@ -55,7 +55,7 @@ export interface TileSocial {
   myVote?: 1 | -1;
   onVote?: () => void;
   downloads?: number;
-  /** Live comments; shown only when there are any. */
+  /** Live comments. */
   comments?: number;
 }
 
@@ -303,7 +303,7 @@ export function LibraryTile({
                 <ArrowBigUp className="h-3 w-3" aria-hidden />
                 {social.score}
               </button>
-              {social.comments ? (
+              {social.comments !== undefined ? (
                 <span className="flex items-center gap-0.5" aria-label="Comments" title="Comments">
                   <MessageSquare className="h-3 w-3" aria-hidden />
                   {social.comments}

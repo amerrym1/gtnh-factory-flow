@@ -44,6 +44,7 @@ const SORT_COLUMNS: Record<
   machines: { column: "machine_count", ascending: false },
   nodes: { column: "node_count", ascending: false },
   power: { column: "total_eu_t", ascending: false },
+  tier: { column: "highest_tier_index", ascending: false },
   comments: { column: "comment_count", ascending: false },
   // Posts nobody has commented on or touched sort after every post someone
   // has, whichever way the column is read.
