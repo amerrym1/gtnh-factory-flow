@@ -1272,6 +1272,20 @@ const MACHINES_V28: Record<string, MachineBehaviour> = {
     parallels: 8,
     note: "Blazing pyrotheum is not counted.",
   },
+
+  // -- Steam multiblocks -----------------------------------------------
+  // MTESteamMacerator and its six siblings share one ProcessingLogic: no
+  // overclock, getMaxParallelRecipes() = 8, setEUtDiscount(1.25 * tierMachine)
+  // + setDurationModifier(1.6 / tierMachine) with tierMachine 1 (bronze) / 2
+  // (high pressure) — the same 0.625x / 1.25x throughput as 2.9. Steam Hearth
+  // does not exist in 2.8.4, so it is not here.
+  "Steam Grinder": STEAM_MULTIBLOCK,
+  "Steam Squasher": STEAM_MULTIBLOCK,
+  "Steam Separator": STEAM_MULTIBLOCK,
+  "Steam Purifier": STEAM_MULTIBLOCK,
+  "Steam Presser": STEAM_MULTIBLOCK,
+  "Steam Blender": STEAM_MULTIBLOCK,
+  "Steam Fuser": STEAM_MULTIBLOCK,
 };
 
 function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, MachineBehaviour> {

@@ -118,12 +118,27 @@ describe("machine model versions", () => {
     expect(machineModelVersionForRecipe({})).toBe(DEFAULT_MACHINE_MODEL_VERSION);
   });
 
-  it("answers the heat machines on 2.8, and nothing not yet transcribed", () => {
+  it("answers the heat and steam machines on 2.8, and nothing not yet transcribed", () => {
     // Batch 1: the heat machines are verified identical to 2.9.
     expect(getMachineBehaviour("Blast Furnace", "2.8")?.overclock).toBe(HEAT_OVERCLOCK);
     expect(getMachineBehaviour("Mega Blast Furnace", "2.8")?.parallels).toBe(256);
     expect(getMachineBehaviour("Volcanus", "2.8")?.speed).toBe(2.2);
-    expect(machineTableNames("2.8")).toEqual(["Blast Furnace", "Mega Blast Furnace", "Volcanus"]);
+    // Batch 2: the seven steam multiblocks share STEAM_MULTIBLOCK, unchanged.
+    expect(getMachineBehaviour("Steam Grinder", "2.8")?.parallels).toBe(8);
+    expect(getMachineBehaviour("Steam Grinder", "2.8")?.overclock).toEqual(OVERCLOCK.none());
+    expect(getMachineBehaviour("Steam Hearth", "2.8")).toBeUndefined();
+    expect(machineTableNames("2.8")).toEqual([
+      "Blast Furnace",
+      "Mega Blast Furnace",
+      "Volcanus",
+      "Steam Grinder",
+      "Steam Squasher",
+      "Steam Separator",
+      "Steam Purifier",
+      "Steam Presser",
+      "Steam Blender",
+      "Steam Fuser",
+    ]);
     // Not yet transcribed: falls back to dataset-baked stats.
     expect(getMachineBehaviour("Chemical Plant", "2.8")).toBeUndefined();
   });
