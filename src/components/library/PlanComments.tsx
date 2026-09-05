@@ -106,11 +106,11 @@ export function PlanComments({ planId }: { planId: string }) {
       ) : comments.length === 0 ? (
         <div className="py-1 text-[11px] text-[var(--mc-ink-muted)]">Nothing yet</div>
       ) : (
-        <ul className="flex flex-col">
+        <ul className="flex flex-col gap-1.5">
           {comments.map((comment) => (
             <li
               key={comment.id}
-              className="group flex flex-col gap-0.5 border-t border-[var(--mc-33)] py-2 first:border-t-0 first:pt-1"
+              className="group flex flex-col gap-1 border border-[var(--mc-33)] bg-[#101215] px-2.5 py-2"
             >
               <div className="flex items-center gap-2 text-[11px]">
                 <button
@@ -140,7 +140,7 @@ export function PlanComments({ planId }: { planId: string }) {
                   </button>
                 ) : null}
               </div>
-              <p className="whitespace-pre-wrap break-words text-[12px] leading-relaxed text-neutral-300">
+              <p className="whitespace-pre-wrap break-words pl-3 text-[12px] leading-relaxed text-neutral-300">
                 {comment.body}
               </p>
             </li>
