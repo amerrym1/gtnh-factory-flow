@@ -1434,6 +1434,61 @@ const MACHINES_V28: Record<string, MachineBehaviour> = {
   "Target Chamber": { overclock: OVERCLOCK.none(), note: "Beam energy is not modelled." },
   // MTEVacuumFreezer: normal overclock only. Identical.
   "Vacuum Freezer": { overclock: OVERCLOCK.normal() },
+
+  // 2.8.4's "Cryogenic Freezer" is MTEIndustrialVacuumFreezer: 2.2x speed,
+  // 0.9x EU, flat 8 parallels. 2.9 rewrote it as MTECryogenicFreezer with 3x
+  // speed and 16 parallels.
+  "Cryogenic Freezer": {
+    overclock: OVERCLOCK.normal(),
+    speed: 2.2,
+    power: 0.9,
+    parallels: 8,
+  },
+  // 2.8.4's "Density^2" is MTEAdvImplosionCompressor: 2x speed, floor(voltage
+  // tier / 2) + 1 parallels. Identical to 2.9.
+  "Density^2": {
+    overclock: OVERCLOCK.normal(),
+    speed: 2,
+    parallels: (c) => Math.floor(c.voltageTier / 2) + 1,
+  },
+  // MTEAutoCrafter ("Large Scale Auto-Assembler"): 3x speed, 2 parallels per
+  // voltage tier. Identical.
+  "Large Scale Auto-Assembler v1.01": {
+    overclock: OVERCLOCK.normal(),
+    speed: 3,
+    parallels: (c) => c.voltageTier * 2,
+  },
+  // MTEIndustrialWashPlant: 5x speed, 4 parallels per voltage tier. Identical.
+  "Ore Washing Plant": {
+    overclock: OVERCLOCK.normal(),
+    speed: 5,
+    parallels: (c) => c.voltageTier * 4,
+  },
+  // MTEIndustrialFluidHeater ("Thermic Heating Device"): 2.2x speed, 0.9x EU,
+  // 8 parallels per voltage tier. Identical.
+  "Thermic Heating Device": {
+    overclock: OVERCLOCK.normal(),
+    speed: 2.2,
+    power: 0.9,
+    parallels: (c) => c.voltageTier * 8,
+  },
+  // MTEMultiCanner ("TurboCan Pro"): 2x speed, 8 parallels per voltage tier.
+  // Identical.
+  "TurboCan Pro": { overclock: OVERCLOCK.normal(), speed: 2, parallels: (c) => c.voltageTier * 8 },
+  // MTEIndustrialFishingPond ("Zhuhai - Fishing Port"): (voltage tier + 1) * 2
+  // parallels. Identical.
+  "Zhuhai - Fishing Port": {
+    overclock: OVERCLOCK.normal(),
+    parallels: (c) => (c.voltageTier + 1) * 2,
+  },
+  // MTEIndustrialRockBreaker ("Boldarnator"): 3x speed, 0.75x EU, 8 parallels
+  // per voltage tier. Identical.
+  Boldarnator: {
+    overclock: OVERCLOCK.normal(),
+    speed: 3,
+    power: 0.75,
+    parallels: (c) => c.voltageTier * 8,
+  },
 };
 
 function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, MachineBehaviour> {

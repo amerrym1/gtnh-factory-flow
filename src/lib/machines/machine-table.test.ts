@@ -165,9 +165,16 @@ describe("machine model versions", () => {
     expect(getMachineBehaviour("Large Thermal Refinery", "2.8")?.power).toBe(0.8);
     expect(getMachineBehaviour("Big Barrel Brewery", "2.8")?.speed).toBe(1.5);
     expect(getMachineBehaviour("Source Chamber", "2.8")?.overclock).toEqual(OVERCLOCK.none());
-    expect(machineTableNames("2.8")).toHaveLength(39);
+    // Batch 6: more production multis, including the Cryogenic Freezer rewrite.
+    expect(getMachineBehaviour("Cryogenic Freezer", "2.8")?.speed).toBe(2.2);
+    expect(getMachineBehaviour("Cryogenic Freezer", "2.8")?.parallels).toBe(8);
+    expect(getMachineBehaviour("Density^2", "2.8")?.speed).toBe(2);
+    expect(getMachineBehaviour("Ore Washing Plant", "2.8")?.speed).toBe(5);
+    expect(getMachineBehaviour("TurboCan Pro", "2.8")?.speed).toBe(2);
+    expect(getMachineBehaviour("Boldarnator", "2.8")?.speed).toBe(3);
+    expect(machineTableNames("2.8")).toHaveLength(47);
     // Not yet transcribed: falls back to dataset-baked stats.
-    expect(getMachineBehaviour("Boldarnator", "2.8")).toBeUndefined();
+    expect(getMachineBehaviour("Mega Distillation Tower", "2.8")).toBeUndefined();
   });
 });
 
