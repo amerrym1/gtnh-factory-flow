@@ -1632,6 +1632,56 @@ const MACHINES_V28: Record<string, MachineBehaviour> = {
     overclock: OVERCLOCK.normal(),
     note: "Assumes a perfect fill rate.",
   },
+
+  // -- Knob machines, second batch ----------------------------------------
+  // MTEAmazonPackager: 2.8.4 is FLAT 6x speed, 0.75x EU, 16 parallels per
+  // tier - the item pipe speed knob arrived in 2.9.
+  "Amazon Warehousing Depot": {
+    overclock: OVERCLOCK.normal(),
+    speed: 6,
+    power: 0.75,
+    parallels: (c) => c.voltageTier * 16,
+  },
+  // MTETranscendentPlasmaMixer: no overclock, 10x EU from the wireless
+  // network, parallels set by the player. Identical.
+  "Transcendent Plasma Mixer": {
+    overclock: OVERCLOCK.none(),
+    power: 10,
+    parallels: (c) => c.value("plasmaMixerParallels"),
+    controls: [PLASMA_MIXER_PARALLEL_CONTROL],
+  },
+  // MTEIndustrialExtractor: 3x speed, 0.85x EU, 8 parallels per item pipe
+  // casing tier (tin = 1). Identical.
+  "Dissection Apparatus": {
+    overclock: OVERCLOCK.normal(),
+    speed: 3,
+    power: 0.85,
+    parallels: (c) => (c.tier(ITEM_PIPE) + 1) * 8,
+    controls: [ITEM_PIPE_CONTROL],
+  },
+  // MTEMultiAutoclave: coil speed (1.25 + 0.25 per tier), fluid pipe EU
+  // (11/12 at bronze), item pipe parallels (12 x tier). Identical.
+  "Industrial Autoclave": {
+    overclock: OVERCLOCK.normal(),
+    speed: (c) => 1.25 + c.tier(COIL) * 0.25,
+    power: (c) => (11 - c.tier(PIPE)) / 12,
+    parallels: (c) => c.tier(ITEM_PIPE) * 12 + 12,
+    controls: [ITEM_PIPE_CONTROL],
+  },
+  // MTEIndustrialElectromagneticSeparator: the same five electromagnet tiers
+  // (Iron through Tengam). Identical.
+  "Magnetic Flux Exhibitor": {
+    overclock: OVERCLOCK.normal(),
+    speed: (c) => row(ELECTROMAGNETS, c.tier(ELECTROMAGNET)).speed,
+    power: (c) => row(ELECTROMAGNETS, c.tier(ELECTROMAGNET)).power,
+    parallels: (c) => row(ELECTROMAGNETS, c.tier(ELECTROMAGNET)).parallels,
+    controls: [ELECTROMAGNET_CONTROL],
+  },
+  // MTEImplosionCompressor: 2.8.4 has NO containment blocks - flat normal
+  // overclock, one recipe at a time. 2.9 added the 4^containment parallels.
+  "Electric Implosion Compressor": {
+    overclock: OVERCLOCK.normal(),
+  },
 };
 
 function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, MachineBehaviour> {

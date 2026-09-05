@@ -202,7 +202,16 @@ describe("machine model versions", () => {
     expect(typeof electro28 === "function" ? electro28({ voltageTier: 4 } as never) : electro28).toBe(8);
     expect(typeof electro29 === "function" ? electro29({ voltageTier: 4 } as never) : electro29).toBe(16);
     expect(getMachineBehaviour("Bacterial Vat", "2.8")?.overclock).toEqual(OVERCLOCK.normal());
-    expect(machineTableNames("2.8")).toHaveLength(65);
+    // Batch 14: knob machines, second batch.
+    expect(getMachineBehaviour("Amazon Warehousing Depot", "2.8")?.speed).toBe(6);
+    expect(getMachineBehaviour("Transcendent Plasma Mixer", "2.8")?.power).toBe(10);
+    expect(getMachineBehaviour("Dissection Apparatus", "2.8")?.speed).toBe(3);
+    expect(getMachineBehaviour("Industrial Autoclave", "2.8")?.speed).toBeDefined();
+    expect(getMachineBehaviour("Magnetic Flux Exhibitor", "2.8")?.speed).toBeDefined();
+    // The implosion compressor gains containment parallels only in 2.9.
+    expect(getMachineBehaviour("Electric Implosion Compressor", "2.8")?.parallels).toBeUndefined();
+    expect(getMachineBehaviour("Electric Implosion Compressor", "2.9")?.parallels).toBeDefined();
+    expect(machineTableNames("2.8")).toHaveLength(71);
     // Not yet transcribed: falls back to dataset-baked stats.
     expect(getMachineBehaviour("Industrial Coke Oven", "2.8")).toBeUndefined();
   });
