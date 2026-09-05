@@ -197,10 +197,10 @@ describe("machine model versions", () => {
     expect(getMachineBehaviour("Large Sifter", "2.8")?.speed).toBe(5);
     expect(getMachineBehaviour("Industrial Forming Press", "2.8")?.speed).toBe(6);
     // The electrolyzer doubles its parallels between 2.8.4 (2) and 2.9 (4).
-    const electro28 = getMachineBehaviour("Multiblock Electrolyzer", "2.8");
-    const electro29 = getMachineBehaviour("Multiblock Electrolyzer", "2.9");
-    expect(electro28?.parallels?.({ voltageTier: 4 } as never)).toBe(8);
-    expect(electro29?.parallels?.({ voltageTier: 4 } as never)).toBe(16);
+    const electro28 = getMachineBehaviour("Multiblock Electrolyzer", "2.8")?.parallels;
+    const electro29 = getMachineBehaviour("Multiblock Electrolyzer", "2.9")?.parallels;
+    expect(typeof electro28 === "function" ? electro28({ voltageTier: 4 } as never) : electro28).toBe(8);
+    expect(typeof electro29 === "function" ? electro29({ voltageTier: 4 } as never) : electro29).toBe(16);
     expect(getMachineBehaviour("Bacterial Vat", "2.8")?.overclock).toEqual(OVERCLOCK.normal());
     expect(machineTableNames("2.8")).toHaveLength(65);
     // Not yet transcribed: falls back to dataset-baked stats.
