@@ -41,6 +41,13 @@ const SETUP_SORTS: Array<{ value: CommunityPlanSort; label: string }> = [
 
 const PAGE_SIZE = 60;
 
+/**
+ * Pages already fetched, kept across mounts: leaving Public setups and
+ * coming back shows what was there at once, while a fresh page 1 is
+ * fetched behind it and takes over when it lands.
+ */
+const shelfMemory = new Map<string, Shelf>();
+
 interface Shelf {
   key: string;
   page: number;
@@ -69,7 +76,15 @@ export function SetupsGrid({
   const [maxTier, setMaxTier] = useState("");
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 250);
-  const [shelf, setShelf] = useState<Shelf>();
+  const [shelf, setShelfState] = useState<Shelf>();
+  const setShelf = (next: Shelf | ((current: Shelf | undefined) => Shelf | undefined)) =>
+    setShelfState((current) => {
+      const value = typeof next === "function" ? next(current) : next;
+      if (value) {
+        shelfMemory.set(value.key, value);
+      }
+      return value;
+    });
   const [target, setTarget] = useState<{ key: string; page: number }>({ key: "", page: 1 });
   const [error, setError] = useState<string>();
   const [busyId, setBusyId] = useState<string>();
@@ -172,11 +187,13 @@ export function SetupsGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, activePage, scope, sort, maxTier, search, username]);
 
-  const isCurrent = shelf?.key === key;
-  const plans = isCurrent ? shelf.plans : [];
+  // The remembered pages stand in until the live ones arrive.
+  const remembered = shelf?.key === key ? shelf : shelfMemory.get(key);
+  const isCurrent = remembered !== undefined;
+  const plans = remembered?.plans ?? [];
   const needsAccount = scope === "mine" && !username;
-  const isLoading = !needsAccount && (!isCurrent || shelf.page !== activePage);
-  const hasMore = isCurrent && shelf.plans.length < shelf.total;
+  const isLoading = !needsAccount && (!isCurrent || remembered.page !== activePage);
+  const hasMore = isCurrent && remembered.plans.length < remembered.total;
 
   // Infinite scroll: when the sentinel under the last row comes into view
   // and the page asked for has LANDED, ask for the next one. Asking while a
@@ -187,11 +204,16 @@ export function SetupsGrid({
     if (!sentinel || isLoading || !hasMore) {
       return;
     }
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        setTarget({ key, page: activePage + 1 });
-      }
-    });
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setTarget({ key, page: activePage + 1 });
+        }
+      },
+      // Asked for two screens early, so the next page is usually there
+      // before the last row is.
+      { rootMargin: "1600px 0px" },
+    );
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [key, activePage, isLoading, hasMore]);

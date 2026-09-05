@@ -27,6 +27,7 @@ import {
   rowToPlanSummary,
   type PlanRow,
 } from "@/lib/server/community";
+import { invalidatePlanListCache } from "@/lib/server/plan-list-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -158,6 +159,7 @@ async function refreshStaleStats(
         stats_version: APP_VERSION,
       })
       .eq("id", planId);
+    invalidatePlanListCache();
   } catch {
     // A plan today's solver chokes on keeps its saved card.
   }
@@ -287,6 +289,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ plan
       throw new Error(communityStorageErrorMessage(error, "Updating the plan failed."));
     }
 
+    invalidatePlanListCache();
     return NextResponse.json({ id: planId });
   } catch (error) {
     return NextResponse.json(
@@ -341,6 +344,7 @@ export async function DELETE(
       .remove([`${planId}.png`])
       .catch(() => undefined);
 
+    invalidatePlanListCache();
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json(

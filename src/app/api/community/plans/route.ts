@@ -13,7 +13,6 @@ import {
 import { normalizeBlueprintTags } from "@/lib/blueprints/types";
 import { applyPlanSearch, parsePlanSearch } from "@/lib/community/search-query";
 import {
-  attachMyVotes,
   checkRateLimit,
   communityStorageErrorMessage,
   getCommunityDb,
@@ -26,6 +25,7 @@ import {
   rowToPlanSummary,
   type PlanRow,
 } from "@/lib/server/community";
+import { invalidatePlanListCache, readPlanListCache, writePlanListCache } from "@/lib/server/plan-list-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,57 +64,101 @@ export async function GET(request: Request) {
     const mineOnly = url.searchParams.get("mine") === "1";
     const gameVersion = url.searchParams.get("gameVersion")?.slice(0, 60) ?? "";
     const sessionUser = await getSessionUser(request);
+    if (mineOnly && !sessionUser) {
+      return NextResponse.json({ plans: [], total: 0, page: 1, pageSize, gameVersions: [] });
+    }
 
     const db = getCommunityDb();
-    let query = db.from("community_plans").select(PLAN_SUMMARY_COLUMNS, { count: "exact" });
-    query = applyPlanSearch(query, search);
-    if (Number.isFinite(maxTierIndex) && maxTierIndex >= 0) {
-      query = query.lte("highest_tier_index", maxTierIndex);
-    }
-    if (gameVersion) {
-      query = query.eq("game_version", gameVersion);
-    }
-    if (mineOnly) {
-      if (!sessionUser) {
-        return NextResponse.json({ plans: [], total: 0, page: 1, pageSize, gameVersions: [] });
-      }
-      query = query.eq("user_id", sessionUser.id);
-    } else {
-      // The public shelf: unpublished posts exist only on their owner's
-      // Mine shelf.
-      query = query.eq("is_public", true);
-    }
-
     const { column, ascending } = SORT_COLUMNS[sort];
     const from = (page - 1) * pageSize;
-    const { data, count, error } = await query
-      .order(column, { ascending })
-      .order("created_at", { ascending: false })
-      .range(from, from + pageSize - 1)
-      .returns<PlanRow[]>();
 
-    if (error) {
-      throw new Error(communityStorageErrorMessage(error, "Listing community plans failed."));
+    // The public page is the same rows for every reader, so it is served
+    // from memory for a minute (plan-list-cache.ts); only what is personal
+    // - isMine, myVote - is stamped on below. A reader's own posts are
+    // never cached: that list is theirs alone and changes as they work.
+    const cacheKey = mineOnly
+      ? undefined
+      : ["public", sort, url.searchParams.get("search") ?? "", maxTierIndex, gameVersion, page, pageSize].join("|");
+    const loadPage = async (): Promise<{ rows: PlanRow[]; total: number }> => {
+      let query = db.from("community_plans").select(PLAN_SUMMARY_COLUMNS, { count: "exact" });
+      query = applyPlanSearch(query, search);
+      if (Number.isFinite(maxTierIndex) && maxTierIndex >= 0) {
+        query = query.lte("highest_tier_index", maxTierIndex);
+      }
+      if (gameVersion) {
+        query = query.eq("game_version", gameVersion);
+      }
+      if (mineOnly && sessionUser) {
+        query = query.eq("user_id", sessionUser.id);
+      } else {
+        // The public shelf: unpublished posts exist only on their owner's
+        // Mine shelf.
+        query = query.eq("is_public", true);
+      }
+      const { data, count, error } = await query
+        .order(column, { ascending })
+        .order("created_at", { ascending: false })
+        .range(from, from + pageSize - 1)
+        .returns<PlanRow[]>();
+      if (error) {
+        throw new Error(communityStorageErrorMessage(error, "Listing community plans failed."));
+      }
+      return { rows: data ?? [], total: count ?? data?.length ?? 0 };
+    };
+    // Distinct versions across the whole hub feed the filter dropdown; the
+    // set moves once a release, so it is cached the same way.
+    const loadVersions = async (): Promise<string[]> => {
+      const cached = readPlanListCache<string[]>("versions");
+      if (cached) {
+        return cached;
+      }
+      const { data: versionRows } = await db
+        .from("community_plans")
+        .select("game_version")
+        .limit(1000)
+        .returns<Array<{ game_version: string }>>();
+      const versions = [
+        ...new Set((versionRows ?? []).map((row) => row.game_version).filter(Boolean)),
+      ].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+      writePlanListCache("versions", versions);
+      return versions;
+    };
+
+    let pageData = cacheKey ? readPlanListCache<{ rows: PlanRow[]; total: number }>(cacheKey) : undefined;
+    // What is not cached is fetched at once, side by side, not in turn.
+    const [loaded, gameVersions, voterKey] = await Promise.all([
+      pageData ? Promise.resolve(pageData) : loadPage(),
+      loadVersions(),
+      deviceId ? makeVoterKey(request, deviceId) : Promise.resolve(undefined),
+    ]);
+    if (!pageData && cacheKey) {
+      writePlanListCache(cacheKey, loaded);
     }
+    pageData = loaded;
 
-    const plans = (data ?? []).map((row) => rowToPlanSummary(row, sessionUser?.id));
-    if (deviceId) {
-      await attachMyVotes(plans, await makeVoterKey(request, deviceId));
+    const plans = pageData.rows.map((row) => rowToPlanSummary(row, sessionUser?.id));
+    if (voterKey) {
+      // A reader's votes are few and change only when they vote, which
+      // empties the cache, so they ride the same minute.
+      const votesKey = `votes|${voterKey}`;
+      let votes = readPlanListCache<Map<string, 1 | -1>>(votesKey);
+      if (!votes) {
+        const { data } = await db
+          .from("community_votes")
+          .select("plan_id,value")
+          .eq("voter_key", voterKey)
+          .returns<Array<{ plan_id: string; value: 1 | -1 }>>();
+        votes = new Map((data ?? []).map((vote) => [vote.plan_id, vote.value]));
+        writePlanListCache(votesKey, votes);
+      }
+      for (const plan of plans) {
+        plan.myVote = votes.get(plan.id);
+      }
     }
-
-    // Distinct versions across the whole hub feed the filter dropdown.
-    const { data: versionRows } = await db
-      .from("community_plans")
-      .select("game_version")
-      .limit(1000)
-      .returns<Array<{ game_version: string }>>();
-    const gameVersions = [
-      ...new Set((versionRows ?? []).map((row) => row.game_version).filter(Boolean)),
-    ].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
 
     const response: CommunityPlanListResponse = {
       plans,
-      total: count ?? plans.length,
+      total: pageData.total,
       page,
       pageSize,
       gameVersions,
@@ -231,6 +275,7 @@ export async function POST(request: Request) {
       throw new Error(communityStorageErrorMessage(error, "Insert failed"));
     }
 
+    invalidatePlanListCache();
     return NextResponse.json({ id: data.id }, { status: 201 });
   } catch (error) {
     return NextResponse.json(

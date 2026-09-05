@@ -7,6 +7,7 @@ import {
   makeActorKey,
   makeVoterKey,
 } from "@/lib/server/community";
+import { invalidatePlanListCache } from "@/lib/server/plan-list-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -80,6 +81,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pla
       throw new Error(updateError.message);
     }
 
+    invalidatePlanListCache();
     const response: CommunityVoteResponse = {
       upvotes: upvotes ?? 0,
       downvotes: downvotes ?? 0,
