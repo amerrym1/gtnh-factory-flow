@@ -177,9 +177,11 @@ describe("machine model versions", () => {
     expect(getMachineBehaviour("Matter Fabricator", "2.8")?.overclock).toEqual(OVERCLOCK.perfect());
     expect(getMachineBehaviour("Neutronium Compressor", "2.8")?.parallels).toBe(8);
     expect(getMachineBehaviour("Pseudostable Black Hole Containment Field", "2.8")?.speed).toBe(5);
-    expect(machineTableNames("2.8")).toHaveLength(51);
+    // Batch 8: the Wire Factory change (flat 3x in 2.8.4).
+    expect(getMachineBehaviour("Industrial Wire Factory", "2.8")?.speed).toBe(3);
+    expect(machineTableNames("2.8")).toHaveLength(52);
     // Not yet transcribed: falls back to dataset-baked stats.
-    expect(getMachineBehaviour("Industrial Arc Furnace", "2.8")).toBeUndefined();
+    expect(getMachineBehaviour("Industrial Coke Oven", "2.8")).toBeUndefined();
   });
 });
 

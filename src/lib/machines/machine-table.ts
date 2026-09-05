@@ -1517,6 +1517,14 @@ const MACHINES_V28: Record<string, MachineBehaviour> = {
     parallels: (c) => c.voltageTier * 8,
     note: "Parallels also depend on stability, which is not modelled.",
   },
+  // MTEIndustrialWireMill: 2.8.4 has FLAT 3x speed and no item-pipe knob;
+  // 2.9 changed speed to 0.5 x (item pipe tier + 1).
+  "Industrial Wire Factory": {
+    overclock: OVERCLOCK.normal(),
+    speed: 3,
+    power: 0.75,
+    parallels: (c) => c.voltageTier * 4,
+  },
 };
 
 function buildNameIndex(table: Record<string, MachineBehaviour>): Map<string, MachineBehaviour> {
