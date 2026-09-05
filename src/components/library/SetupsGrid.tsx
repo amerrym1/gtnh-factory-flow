@@ -37,6 +37,9 @@ const SETUP_SORTS: Array<{ value: CommunityPlanSort; label: string }> = [
   { value: "machines", label: "Most machines" },
   { value: "nodes", label: "Most nodes" },
   { value: "power", label: "Highest power" },
+  { value: "active", label: "Recently active" },
+  { value: "commented", label: "Latest comment" },
+  { value: "comments", label: "Most commented" },
 ];
 
 const PAGE_SIZE = 60;
@@ -574,7 +577,11 @@ export function SetupsGrid({
                     when={
                       copiedId === plan.id
                         ? "link copied"
-                        : formatRelativeDate(plan.createdAt)
+                        : sort === "commented" && plan.lastCommentAt
+                          ? `commented ${formatRelativeDate(plan.lastCommentAt)}`
+                          : sort === "active" && plan.lastActivityAt
+                            ? `active ${formatRelativeDate(plan.lastActivityAt)}`
+                            : formatRelativeDate(plan.createdAt)
                     }
                     tier={plan.highestTier}
                     onTier={
@@ -589,6 +596,7 @@ export function SetupsGrid({
                       myVote: plan.myVote,
                       onVote: () => void vote(plan),
                       downloads: plan.downloads,
+                      comments: plan.commentCount,
                     }}
                     marks={{ posted: plan.isMine === true, privatePost: plan.isMine && !plan.isPublic }}
                     saved={savedIds.includes(plan.id)}

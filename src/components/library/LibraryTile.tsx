@@ -10,6 +10,7 @@ import {
   LayoutGrid,
   Link2,
   LoaderCircle,
+  MessageSquare,
   Star,
   Zap,
 } from "lucide-react";
@@ -54,6 +55,8 @@ export interface TileSocial {
   myVote?: 1 | -1;
   onVote?: () => void;
   downloads?: number;
+  /** Live comments; shown only when there are any. */
+  comments?: number;
 }
 
 export interface LibraryTileProps {
@@ -300,6 +303,12 @@ export function LibraryTile({
                 <ArrowBigUp className="h-3 w-3" aria-hidden />
                 {social.score}
               </button>
+              {social.comments ? (
+                <span className="flex items-center gap-0.5" aria-label="Comments" title="Comments">
+                  <MessageSquare className="h-3 w-3" aria-hidden />
+                  {social.comments}
+                </span>
+              ) : null}
               {social.downloads !== undefined ? (
                 <span className="flex items-center gap-0.5" aria-label="Downloads">
                   <Download className="h-3 w-3" aria-hidden />

@@ -21,7 +21,10 @@ import {
   makeActorKey,
   makeVoterKey,
   parseEntryIcon,
+  isMissingColumnError,
+  PLAN_ACTIVITY_COLUMNS,
   PLAN_SUMMARY_COLUMNS,
+  PLAN_SUMMARY_COLUMNS_LEGACY,
   rowToPlanSummary,
   type PlanRow,
 } from "@/lib/server/community";
@@ -30,7 +33,10 @@ import { invalidatePlanListCache, readPlanListCache, writePlanListCache } from "
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const SORT_COLUMNS: Record<CommunityPlanSort, { column: string; ascending: boolean }> = {
+const SORT_COLUMNS: Record<
+  CommunityPlanSort,
+  { column: string; ascending: boolean; nullsLast?: boolean }
+> = {
   new: { column: "created_at", ascending: false },
   top: { column: "score", ascending: false },
   downloads: { column: "downloads", ascending: false },
@@ -38,6 +44,11 @@ const SORT_COLUMNS: Record<CommunityPlanSort, { column: string; ascending: boole
   machines: { column: "machine_count", ascending: false },
   nodes: { column: "node_count", ascending: false },
   power: { column: "total_eu_t", ascending: false },
+  comments: { column: "comment_count", ascending: false },
+  // Posts nobody has commented on or touched sort after every post someone
+  // has, whichever way the column is read.
+  commented: { column: "last_comment_at", ascending: false, nullsLast: true },
+  active: { column: "last_activity_at", ascending: false, nullsLast: true },
 };
 
 export async function GET(request: Request) {
@@ -69,7 +80,7 @@ export async function GET(request: Request) {
     }
 
     const db = getCommunityDb();
-    const { column, ascending } = SORT_COLUMNS[sort];
+    const { column, ascending, nullsLast } = SORT_COLUMNS[sort];
     const from = (page - 1) * pageSize;
 
     // The public page is the same rows for every reader, so it is served
@@ -79,8 +90,14 @@ export async function GET(request: Request) {
     const cacheKey = mineOnly
       ? undefined
       : ["public", sort, url.searchParams.get("search") ?? "", maxTierIndex, gameVersion, page, pageSize].join("|");
-    const loadPage = async (): Promise<{ rows: PlanRow[]; total: number }> => {
-      let query = db.from("community_plans").select(PLAN_SUMMARY_COLUMNS, { count: "exact" });
+    // A database still without the activity columns answers with the old
+    // ones, and a sort that needs them falls back to newest first, so the
+    // list never blanks between a deploy and the schema paste.
+    const loadPage = async (legacy = false): Promise<{ rows: PlanRow[]; total: number }> => {
+      const orderColumn = legacy && PLAN_ACTIVITY_COLUMNS.has(column) ? "created_at" : column;
+      let query = db
+        .from("community_plans")
+        .select(legacy ? PLAN_SUMMARY_COLUMNS_LEGACY : PLAN_SUMMARY_COLUMNS, { count: "exact" });
       query = applyPlanSearch(query, search);
       if (Number.isFinite(maxTierIndex) && maxTierIndex >= 0) {
         query = query.lte("highest_tier_index", maxTierIndex);
@@ -96,10 +113,13 @@ export async function GET(request: Request) {
         query = query.eq("is_public", true);
       }
       const { data, count, error } = await query
-        .order(column, { ascending })
+        .order(orderColumn, { ascending, nullsFirst: nullsLast ? false : undefined })
         .order("created_at", { ascending: false })
         .range(from, from + pageSize - 1)
         .returns<PlanRow[]>();
+      if (error && !legacy && isMissingColumnError(error)) {
+        return loadPage(true);
+      }
       if (error) {
         throw new Error(communityStorageErrorMessage(error, "Listing community plans failed."));
       }
@@ -243,9 +263,7 @@ export async function POST(request: Request) {
     const stats = computeCommunityPlanStats(project, calculateThroughput(project));
 
     const db = getCommunityDb();
-    const { data, error } = await db
-      .from("community_plans")
-      .insert({
+    const row = {
         user_id: sessionUser.id,
         author_name: sessionUser.username,
         name,
@@ -267,9 +285,16 @@ export async function POST(request: Request) {
         highest_tier_index: stats.highestTierIndex,
         stats_version: APP_VERSION,
         uploader_key: actorKey,
-      })
+      };
+    let { data, error } = await db
+      .from("community_plans")
+      .insert({ ...row, last_activity_at: new Date().toISOString() })
       .select("id")
       .single();
+    if (error && isMissingColumnError(error)) {
+      // The activity column is not there yet: the post still lands.
+      ({ data, error } = await db.from("community_plans").insert(row).select("id").single());
+    }
 
     if (error || !data) {
       throw new Error(communityStorageErrorMessage(error, "Insert failed"));

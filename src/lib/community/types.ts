@@ -59,6 +59,11 @@ export interface CommunityPlanSummary extends CommunityPlanStats {
   createdAt: string;
   /** Last touch of any kind: content overwrite or relabel. */
   updatedAt?: string;
+  /** Live comments on it, and when the latest landed. */
+  commentCount: number;
+  lastCommentAt?: string;
+  /** The later of the last edit and the last comment. */
+  lastActivityAt?: string;
   authorName?: string;
   /** True when the signed-in user owns this post. */
   isMine?: boolean;
@@ -73,7 +78,10 @@ export type CommunityPlanSort =
   | "views"
   | "machines"
   | "nodes"
-  | "power";
+  | "power"
+  | "comments" // most comments
+  | "commented" // latest comment first
+  | "active"; // latest edit or comment first
 
 export interface CommunityPlanListRequest {
   sort?: CommunityPlanSort;

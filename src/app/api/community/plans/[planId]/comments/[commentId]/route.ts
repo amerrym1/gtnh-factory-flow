@@ -4,7 +4,9 @@ import {
   getCommunityDb,
   getSessionUser,
   isCommunityConfigured,
+  recountPlanComments,
 } from "@/lib/server/community";
+import { invalidatePlanListCache } from "@/lib/server/plan-list-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,5 +61,7 @@ export async function DELETE(request: Request, context: RouteContext) {
       { status: 500 },
     );
   }
+  await recountPlanComments(planId).catch(() => undefined);
+  invalidatePlanListCache();
   return NextResponse.json({ ok: true });
 }

@@ -190,11 +190,20 @@ export function parseEntryIcon(value: unknown): EntryIcon | null {
 }
 
 /** Columns returned for plan listings (everything except the plan JSON). */
-export const PLAN_SUMMARY_COLUMNS =
+/** The columns before the activity trio: what a database not yet migrated can answer. */
+export const PLAN_SUMMARY_COLUMNS_LEGACY =
   "id,name,description,game_version,dataset_version,tags,is_public,icon,needs,outputs," +
   "total_eu_t,machine_count,node_count,storage_count,edge_count,highest_tier," +
   "highest_tier_index,upvotes,downvotes,score,downloads,views,created_at,updated_at," +
   "user_id,author_name";
+/** The activity columns added 2026-09-04; a sort on one needs them. */
+export const PLAN_ACTIVITY_COLUMNS = new Set(["comment_count", "last_comment_at", "last_activity_at"]);
+
+export const PLAN_SUMMARY_COLUMNS =
+  "id,name,description,game_version,dataset_version,tags,is_public,icon,needs,outputs," +
+  "total_eu_t,machine_count,node_count,storage_count,edge_count,highest_tier," +
+  "highest_tier_index,upvotes,downvotes,score,downloads,views,created_at,updated_at," +
+  "user_id,author_name,comment_count,last_comment_at,last_activity_at";
 
 export interface PlanRow {
   id: string;
@@ -223,6 +232,9 @@ export interface PlanRow {
   updated_at: string | null;
   user_id: string | null;
   author_name: string;
+  comment_count: number | null;
+  last_comment_at: string | null;
+  last_activity_at: string | null;
 }
 
 export function rowToPlanSummary(row: PlanRow, sessionUserId?: string): CommunityPlanSummary {
@@ -253,7 +265,50 @@ export function rowToPlanSummary(row: PlanRow, sessionUserId?: string): Communit
     views: row.views,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? undefined,
+    commentCount: row.comment_count ?? 0,
+    lastCommentAt: row.last_comment_at ?? undefined,
+    lastActivityAt: row.last_activity_at ?? undefined,
   };
+}
+
+/**
+ * Restamps a post's comment figures after a comment lands or goes: the live
+ * count, the latest comment's time, and the post's last activity (the later
+ * of its last edit and that comment). Best effort: a failure here leaves a
+ * sort slightly stale, never a comment unposted.
+ */
+export async function recountPlanComments(planId: string): Promise<void> {
+  const db = getCommunityDb();
+  const { data: rows } = await db
+    .from("community_comments")
+    .select("created_at")
+    .eq("plan_id", planId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .returns<Array<{ created_at: string }>>();
+  const { count } = await db
+    .from("community_comments")
+    .select("id", { count: "exact", head: true })
+    .eq("plan_id", planId)
+    .is("deleted_at", null);
+  const { data: plan } = await db
+    .from("community_plans")
+    .select("created_at,updated_at")
+    .eq("id", planId)
+    .single<{ created_at: string; updated_at: string | null }>();
+  const lastCommentAt = rows?.[0]?.created_at ?? null;
+  const edited = plan?.updated_at ?? plan?.created_at ?? null;
+  const lastActivityAt =
+    lastCommentAt && edited ? (lastCommentAt > edited ? lastCommentAt : edited) : (lastCommentAt ?? edited);
+  await db
+    .from("community_plans")
+    .update({
+      comment_count: count ?? 0,
+      last_comment_at: lastCommentAt,
+      last_activity_at: lastActivityAt,
+    })
+    .eq("id", planId);
 }
 
 /**
@@ -261,6 +316,11 @@ export function rowToPlanSummary(row: PlanRow, sessionUserId?: string): Communit
  * community_plans table predates a column this build reads or writes, and
  * re-running supabase/schema.sql (idempotent ALTERs) fixes it.
  */
+/** PGRST204 / 42703: the table predates a column this build reads or writes. */
+export function isMissingColumnError(error: { code?: string } | null | undefined): boolean {
+  return error?.code === "PGRST204" || error?.code === "42703";
+}
+
 export function communityStorageErrorMessage(
   error: { code?: string; message?: string } | null,
   fallback: string,

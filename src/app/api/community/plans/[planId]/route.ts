@@ -23,7 +23,9 @@ import {
   makeActorKey,
   makeVoterKey,
   parseEntryIcon,
+  isMissingColumnError,
   PLAN_SUMMARY_COLUMNS,
+  PLAN_SUMMARY_COLUMNS_LEGACY,
   rowToPlanSummary,
   type PlanRow,
 } from "@/lib/server/community";
@@ -48,11 +50,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ plan
     const deviceId = url.searchParams.get("deviceId") ?? undefined;
     const db = getCommunityDb();
 
-    const { data, error } = await db
+    let { data, error } = await db
       .from("community_plans")
       .select(PLAN_SUMMARY_COLUMNS)
       .eq("id", planId)
       .single<PlanRow>();
+    if (error && isMissingColumnError(error)) {
+      // The activity columns are not there yet: answer with the rest.
+      ({ data, error } = await db
+        .from("community_plans")
+        .select(PLAN_SUMMARY_COLUMNS_LEGACY)
+        .eq("id", planId)
+        .single<PlanRow>());
+    }
 
     if (error || !data) {
       return NextResponse.json({ error: "Plan not found." }, { status: 404 });
@@ -212,7 +222,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ plan
     // Field-wise update: the share dialog re-sends everything, while the
     // shelf's tag editor sends tags alone — no need to round-trip the plan
     // JSON just to relabel a post.
-    const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const now = new Date().toISOString();
+    const update: Record<string, unknown> = { updated_at: now, last_activity_at: now };
 
     if (body.name !== undefined) {
       const name = typeof body.name === "string" ? body.name.trim() : "";
@@ -283,7 +294,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ plan
       });
     }
 
-    const { error } = await db.from("community_plans").update(update).eq("id", planId);
+    let { error } = await db.from("community_plans").update(update).eq("id", planId);
+    if (error && isMissingColumnError(error) && "last_activity_at" in update) {
+      // The activity column is not there yet: the edit still lands.
+      const { last_activity_at: dropped, ...rest } = update;
+      void dropped;
+      ({ error } = await db.from("community_plans").update(rest).eq("id", planId));
+    }
 
     if (error) {
       throw new Error(communityStorageErrorMessage(error, "Updating the plan failed."));

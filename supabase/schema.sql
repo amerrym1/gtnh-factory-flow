@@ -236,3 +236,22 @@ alter table community_comments enable row level security;
 -- A starred design (the built-in Favorites collection). Added after the
 -- library tables first shipped, so it is an idempotent ALTER.
 alter table library_designs add column if not exists favorite boolean not null default false;
+
+-- Activity on a post, for the library's "most commented", "latest comment"
+-- and "recently active" sorts (2026-09-04). Kept in step by the server on
+-- every comment, delete and edit; the backfill below seeds existing rows.
+alter table community_plans add column if not exists comment_count integer not null default 0;
+alter table community_plans add column if not exists last_comment_at timestamptz;
+alter table community_plans add column if not exists last_activity_at timestamptz;
+update community_plans p
+  set comment_count = c.n, last_comment_at = c.latest
+  from (
+    select plan_id, count(*) as n, max(created_at) as latest
+    from community_comments where deleted_at is null group by plan_id
+  ) c
+  where c.plan_id = p.id;
+update community_plans
+  set last_activity_at = greatest(coalesce(updated_at, created_at), coalesce(last_comment_at, created_at))
+  where last_activity_at is null;
+create index if not exists community_plans_activity_idx on community_plans (last_activity_at desc);
+create index if not exists community_plans_comments_idx on community_plans (comment_count desc);
