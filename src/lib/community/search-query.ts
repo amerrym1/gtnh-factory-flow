@@ -67,7 +67,9 @@ export function withTag(raw: string, tag: string): string {
   if (!clean || parsePlanSearch(raw).tags.includes(clean)) {
     return raw;
   }
-  return `${raw.trim()} #${clean}`.trim();
+  // A tag with a space in it rides as one word: the parser reads the
+  // underscore back as a space (scrub), so "#early_game" finds "early game".
+  return `${raw.trim()} #${clean.replace(/\s+/g, "_")}`.trim();
 }
 
 /** The search with its creator set to `name`, replacing any other @name. */

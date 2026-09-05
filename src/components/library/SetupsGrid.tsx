@@ -49,6 +49,13 @@ const SETUP_SORTS: Array<{ value: CommunityPlanSort; label: string }> = [
 
 const PAGE_SIZE = 60;
 
+/**
+ * Every tag seen on any loaded page, kept for the life of the app: a
+ * half-typed #tag narrows the results to nothing, so the suggestions must
+ * not come from the results alone.
+ */
+const knownTags = new Set<string>();
+
 /** Edited some time after it was posted; a save in the same minute is the post itself. */
 function wasEdited(plan: CommunityPlanSummary): boolean {
   return Boolean(
@@ -273,10 +280,28 @@ export function SetupsGrid({
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [key, activePage, isLoading, hasMore]);
-  const activeTag = parsePlanSearch(search).tags[0] ?? "";
-  const tagOptions = [
-    ...new Set([...plans.flatMap((plan) => plan.tags ?? []), ...(activeTag ? [activeTag] : [])]),
-  ].sort();
+  for (const plan of plans) {
+    for (const tag of plan.tags ?? []) {
+      knownTags.add(tag);
+    }
+  }
+  const [searchFocused, setSearchFocused] = useState(false);
+  const typedTag = /(?:^|\s)#([^\s#]*)$/.exec(query)?.[1];
+  const chosenTags = parsePlanSearch(query).tags;
+  const tagSuggestions =
+    typedTag === undefined
+      ? []
+      : [...knownTags]
+          .filter(
+            (tag) =>
+              tag.startsWith(typedTag.toLowerCase().replace(/_/g, " ")) && !chosenTags.includes(tag),
+          )
+          .sort()
+          .slice(0, 12);
+  const completeTag = (tag: string) => {
+    playBoardSound("shelfTick");
+    setQuery((current) => withTag(current.replace(/#[^\s#]*$/, "").trim(), tag) + " ");
+  };
 
   const patchPlan = (planId: string, patch: (plan: CommunityPlanSummary) => CommunityPlanSummary) =>
     setShelf((current) =>
@@ -521,11 +546,22 @@ export function SetupsGrid({
       {/* Two rows: what you are looking for, then what it must be. */}
       <header className="flex shrink-0 flex-col border-b border-[var(--mc-33)]">
         <div className="flex h-10 items-center gap-2 px-4 compact:gap-1.5 compact:px-2">
-          <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
+          <div className="relative min-w-0 flex-1">
+          <label className="flex h-7 min-w-0 items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
             <Search className="h-3.5 w-3.5 shrink-0 text-[var(--mc-ink-muted)]" aria-hidden />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && tagSuggestions[0]) {
+                  event.preventDefault();
+                  completeTag(tagSuggestions[0]);
+                } else if (event.key === "Escape") {
+                  setSearchFocused(false);
+                }
+              }}
               placeholder={
                 scope === "mine"
                   ? "Search my posts (#tag, @name)"
@@ -547,7 +583,61 @@ export function SetupsGrid({
               </button>
             ) : null}
           </label>
-            <select
+          {/* Typing #... offers the tags the network has used; Enter or a
+              click finishes the word. */}
+          {searchFocused && tagSuggestions.length > 0 ? (
+            <div className="absolute left-0 top-full z-20 mt-1 flex max-w-full flex-wrap gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-61)] p-1.5 shadow-[6px_6px_0_rgba(0,0,0,0.45)]">
+              {tagSuggestions.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => completeTag(tag)}
+                  className="border-2 border-transparent bg-[var(--mc-47)] px-1.5 py-0.5 text-xs font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
+                >
+                  #{tag.replace(/\s+/g, "_")}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          </div>
+          {scope === "network" && username ? (
+            <label
+              className={[
+                "flex h-7 shrink-0 cursor-pointer select-none items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]",
+                onlyMine ? "text-cyan-200" : "text-neutral-100",
+              ].join(" ")}
+            >
+              <input
+                type="checkbox"
+                checked={onlyMine}
+                onChange={(event) => {
+                  playBoardSound("shelfTick");
+                  setOnlyMine(event.target.checked);
+                }}
+                className="h-3 w-3 accent-cyan-400"
+              />
+              My posts
+            </label>
+          ) : null}
+          <label
+            title="Leave out setups that draw more than this. Shorthand works: 512, 14.3k, 2M, 1.5G"
+            className={[
+              "flex h-7 w-[118px] shrink-0 items-center gap-1 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]",
+              maxEuText && maxEuT === undefined ? "text-red-300" : "text-neutral-100",
+            ].join(" ")}
+          >
+            <span className="shrink-0 text-[var(--mc-ink-muted)]">EU/t ≤</span>
+            <input
+              value={maxEuText}
+              onChange={(event) => setMaxEuText(event.target.value)}
+              onBlur={() => playBoardSound("shelfTick")}
+              placeholder="any"
+              aria-label="Highest EU/t to show"
+              className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[var(--mc-ink-muted)]"
+            />
+          </label>
+          <select
             value={maxTier}
             onChange={(event) => {
               playBoardSound("shelfTick");
@@ -560,22 +650,6 @@ export function SetupsGrid({
             {GT_VOLTAGE_TIERS.map((entry, index) => (
               <option key={entry.tier} value={String(index)}>
                 Up to {entry.tier}
-              </option>
-            ))}
-          </select>
-          <select
-            value={activeTag}
-            onChange={(event) => {
-              playBoardSound("shelfTick");
-              setQuery((current) => (event.target.value ? withTag(current, event.target.value) : ""));
-            }}
-            aria-label="Filter by tag"
-            className="h-7 max-w-[140px] shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1 text-xs text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
-          >
-            <option value="">All tags</option>
-            {tagOptions.map((tag) => (
-              <option key={tag} value={tag}>
-                #{tag}
               </option>
             ))}
           </select>
@@ -597,44 +671,9 @@ export function SetupsGrid({
           </div>
         {scope !== "saved" ? (
           <div className="flex min-h-9 flex-wrap items-center gap-2 border-t border-[var(--mc-33)]/60 bg-[#0c0e11] px-4 py-1 compact:gap-1.5 compact:px-2">
-            {/* THE FILTERS, right of the search, all in the search's inset
-                frame: My posts, the EU/t ceiling, then what it makes and takes. */}
-            {scope === "network" && username ? (
-              <label
-                className={[
-                  "flex h-7 shrink-0 cursor-pointer select-none items-center gap-1.5 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]",
-                  onlyMine ? "text-cyan-200" : "text-neutral-100",
-                ].join(" ")}
-              >
-                <input
-                  type="checkbox"
-                  checked={onlyMine}
-                  onChange={(event) => {
-                    playBoardSound("shelfTick");
-                    setOnlyMine(event.target.checked);
-                  }}
-                  className="h-3 w-3 accent-cyan-400"
-                />
-                My posts
-              </label>
-            ) : null}
-            <label
-              title="Leave out setups that draw more than this. Shorthand works: 512, 14.3k, 2M, 1.5G"
-              className={[
-                "flex h-7 w-[118px] shrink-0 items-center gap-1 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-xs shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]",
-                maxEuText && maxEuT === undefined ? "text-red-300" : "text-neutral-100",
-              ].join(" ")}
-            >
-              <span className="shrink-0 text-[var(--mc-ink-muted)]">EU/t ≤</span>
-              <input
-                value={maxEuText}
-                onChange={(event) => setMaxEuText(event.target.value)}
-                onBlur={() => playBoardSound("shelfTick")}
-                placeholder="any"
-                aria-label="Highest EU/t to show"
-                className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[var(--mc-ink-muted)]"
-              />
-            </label>
+            <span className="mr-1 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--mc-ink-muted)]">
+              Item filter
+            </span>
             {(["makes", "takes"] as const).map((side) => (
               <div key={side} className="relative flex shrink-0 items-center gap-1">
                 <button

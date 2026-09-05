@@ -116,6 +116,9 @@ describe("editing the search", () => {
   it("adds a tag once", () => {
     expect(withTag("", "Oil")).toBe("#oil");
     expect(withTag("steel #oil", "oil")).toBe("steel #oil");
+    // A two-word tag travels as one word and parses back to itself.
+    expect(withTag("", "early game")).toBe("#early_game");
+    expect(parsePlanSearch(withTag("", "early game")).tags).toEqual(["early game"]);
     expect(withTag("steel", "diesel")).toBe("steel #diesel");
   });
 
