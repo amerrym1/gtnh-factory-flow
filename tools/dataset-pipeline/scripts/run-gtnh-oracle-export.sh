@@ -121,7 +121,8 @@ else
       ! -name '*-dev.jar' \
       ! -name '*-dev-preshadow.jar' \
       ! -name '*-preshadow.jar' \
-      | sort | tail -n 1
+      -printf '%T@ %p\n' \
+      | sort -n | tail -n 1 | cut -d' ' -f2-
   )"
   if [[ -z "$oracle_jar" ]]; then
     echo "GTNH calculation oracle build did not produce a runtime jar." >&2
@@ -263,6 +264,9 @@ detect_fatal_runtime_log() {
 
 raw_oracle_json=""
 deadline=$((SECONDS + GTNH_EXPORT_TIMEOUT_SECONDS))
+# The runtime log is appended across attempts AND across runs; a crash report from a
+# previous run would otherwise make detect_fatal_runtime_log fail every new run.
+: >"$runtime_log"
 start_runtime
 
 while (( SECONDS < deadline )); do

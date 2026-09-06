@@ -21,8 +21,11 @@ import javax.imageio.ImageIO;
 import dev.gtnhplanner.calcoracle.GtnhCalcOracleMod;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.entity.EntityClientPlayerMP;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.GuiScreen;
+import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.client.network.NetHandlerPlayClient;
 import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.client.renderer.RenderBlocks;
 import net.minecraft.client.renderer.Tessellator;
@@ -30,6 +33,12 @@ import net.minecraft.client.renderer.entity.RenderItem;
 import net.minecraft.client.shader.Framebuffer;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.network.NetworkManager;
+import net.minecraft.stats.StatFileWriter;
+import net.minecraft.util.Session;
+import net.minecraft.world.EnumDifficulty;
+import net.minecraft.world.WorldSettings;
+import net.minecraft.world.WorldType;
 import net.minecraftforge.client.ForgeHooksClient;
 import net.minecraftforge.oredict.OreDictionary;
 import org.lwjgl.BufferUtils;
@@ -129,6 +138,13 @@ public final class ClientItemStackIconRenderer {
             throw new IllegalStateException("Minecraft client is not ready.");
         }
 
+        // GT meta-items read thePlayer.ticksExisted while drawing. Install the fake player
+        // ONLY for the duration of this render and restore the previous value afterwards:
+        // tick handlers run between drawScreen calls and crash on a half-configured player
+        // (NEI on a world transition, OpenMods on a null movementInput).
+        EntityClientPlayerMP previousPlayer = minecraft.thePlayer;
+        minecraft.thePlayer = fakeClientPlayer(minecraft);
+
         Framebuffer framebuffer = new Framebuffer(ICON_SIZE, ICON_SIZE, true);
         ByteBuffer buffer;
         boolean projectionPushed = false;
@@ -196,9 +212,50 @@ public final class ClientItemStackIconRenderer {
             GL11.glMatrixMode(GL11.GL_MODELVIEW);
             framebuffer.unbindFramebuffer();
             framebuffer.deleteFramebuffer();
+            minecraft.thePlayer = previousPlayer;
         }
 
         return imageFromRgbaBuffer(buffer);
+    }
+
+    private static EntityClientPlayerMP fakeClientPlayer;
+
+    /**
+     * The headless export client never joins a world, so {@code Minecraft.thePlayer} stays
+     * null, which crashes GT meta-item rendering. Build a minimal fake client player once and
+     * reuse it. The player keeps its own {@code worldObj}; we deliberately never assign
+     * {@code Minecraft.theWorld} (NEI watches it for world transitions and NPEs on the fake
+     * connection's null socket address).
+     */
+    private static EntityClientPlayerMP fakeClientPlayer(Minecraft minecraft) {
+        if (fakeClientPlayer != null) {
+            return fakeClientPlayer;
+        }
+
+        try {
+            NetworkManager networkManager = new NetworkManager(true);
+            NetHandlerPlayClient netHandler = new NetHandlerPlayClient(minecraft, null, networkManager);
+            WorldSettings settings = new WorldSettings(
+                0L,
+                WorldSettings.GameType.CREATIVE,
+                false,
+                false,
+                WorldType.DEFAULT
+            );
+            WorldClient world = new WorldClient(netHandler, settings, 0, EnumDifficulty.NORMAL, minecraft.mcProfiler);
+            EntityClientPlayerMP player = new EntityClientPlayerMP(
+                minecraft,
+                world,
+                new Session("fake", "", "", "legacy"),
+                netHandler,
+                new StatFileWriter()
+            );
+            fakeClientPlayer = player;
+            GtnhCalcOracleMod.LOG.info("Built a fake client player for headless item rendering.");
+        } catch (Throwable t) {
+            GtnhCalcOracleMod.LOG.warn("Could not build fake client player; some item icons may fail.", t);
+        }
+        return fakeClientPlayer;
     }
 
     private static BufferedImage renderWithContainerBaseIfNeeded(ItemStack stack, BufferedImage overlay) {
@@ -696,6 +753,11 @@ public final class ClientItemStackIconRenderer {
                     + " failures): "
                     + throwable.toString()
             );
+        }
+        if (renderWarnings <= 3) {
+            for (StackTraceElement element : throwable.getStackTrace()) {
+                GtnhCalcOracleMod.LOG.warn("    at " + element);
+            }
         }
     }
 
