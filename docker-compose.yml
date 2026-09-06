@@ -1,0 +1,36 @@
+services:
+  planner:
+    build:
+      context: .
+      # Analytics and other NEXT_PUBLIC_* values are inlined at BUILD time.
+      # Uncomment and fill in to enable them (then rebuild the image):
+      # args:
+      #   NEXT_PUBLIC_UMAMI_SCRIPT_URL: https://analytics.example.com/script.js
+      #   NEXT_PUBLIC_UMAMI_HOST_URL: https://analytics.example.com
+      #   NEXT_PUBLIC_UMAMI_WEBSITE_ID: your-website-id
+    image: gtnh-factory-flow:latest
+    container_name: gtnh-factory-flow
+    restart: unless-stopped
+
+    ports:
+      # Host 8580 matches the production systemd port convention; change the
+      # left side to whatever the target host exposes.
+      - "8580:3000"
+
+    environment:
+      NODE_ENV: production
+      # Production behaviour: warm the dataset cache on startup so the first
+      # recipe/resource API calls are fast. Needs ~1-2 GB of RAM.
+      GTNH_PREWARM_ON_STARTUP: "1"
+
+      # --- Optional: community hub (Supabase). Leave unset to disable it. ---
+      # SUPABASE_URL: https://your-project.supabase.co
+      # SUPABASE_SERVICE_ROLE_KEY: your-service-role-key
+      # COMMUNITY_HASH_SALT: a-long-random-string
+      # COMMUNITY_ADMIN_TOKEN: optional-admin-token
+
+    volumes:
+      # The GTNH dataset is gitignored and excluded from the image on purpose
+      # (same as production's shared volume). Mount the directory that holds
+      # `datasets.manifest.json` and the per-version dataset folders.
+      - ./data/datasets/gtnh:/app/public/datasets/gtnh:ro

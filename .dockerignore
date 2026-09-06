@@ -10,4 +10,7 @@ coverage
 *.log
 .env*
 dev-server*.log
+# The dataset ships as a runtime volume, not inside the image.
 public/datasets/gtnh
+# Gradle oracle project + build artifacts; not needed to build the app.
+tools/dataset-pipeline
