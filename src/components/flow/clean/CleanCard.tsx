@@ -49,6 +49,7 @@ import type {
 import {
   circuitNumber,
   frameTone,
+  LIVE_TYPE_MS,
   parseCountText,
   reasonStripes,
   wheelDraft,
@@ -411,14 +412,40 @@ export function CountBox({
   // Escape closed the box: a blur that follows (a browser may send one as the box goes) sets nothing.
   const cancelled = useRef(false);
   const editing = draft !== undefined;
-  // What the box holds is set when it is let go of (a click anywhere else, Enter); Escape drops it. Zero or nothing
+  // The open box sets what it holds as it goes: each wheel step at once, typing once it rests (`LIVE_TYPE_MS`), so the
+  // plan follows without Enter. Read through refs: the wheel and the timer outlive the render that made them.
+  const latest = useRef({ view, draft });
+  latest.current = { view, draft };
+  const opened = useRef<{ rule: PinRule; set?: number }>({ rule: view.rule });
+  const changed = useRef(false);
+  const typing = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(typing.current), []);
+  // Sets `text` unless it is the card's count already. Typing never clears (an emptied box is a count being retyped);
+  // the wheel below one and a box let go of empty do.
+  const apply = (text: string, clear: boolean) => {
+    const value = parseCountText(text);
+    const now = latest.current.view;
+    if (value === undefined || (!(value > 0) && (!clear || !now.pinned))) return;
+    if (value > 0 && value === now.set) return;
+    changed.current = true;
+    onSet(value > 0 ? value : undefined);
+  };
+  // Let go of (a click anywhere else, Enter): what the box holds is set, if typing has not set it yet. Zero or nothing
   // clears it. A count that is already the card's sets nothing, so opening and leaving the box costs no undo step.
   const commit = () => {
+    clearTimeout(typing.current);
     if (draft === undefined || cancelled.current) return;
     setDraft(undefined);
-    const value = parseCountText(draft);
-    if (value === undefined) return;
-    if (value > 0 ? value !== view.set : view.pinned) onSet(value > 0 ? value : undefined);
+    apply(draft, true);
+  };
+  // Escape: the box closes and the card goes back to the count it had when the box opened.
+  const cancel = () => {
+    clearTimeout(typing.current);
+    cancelled.current = true;
+    setDraft(undefined);
+    if (!changed.current) return;
+    if (opened.current.rule === "any" && opened.current.set === undefined) onRule("any");
+    else onSet(opened.current.set);
   };
   // The wheel steps the count, or the number in the box while it is open; the camera never gets it. Native and
   // non-passive so Ctrl+wheel does not zoom the page.
@@ -427,9 +454,14 @@ export function CountBox({
     event.preventDefault();
     event.stopPropagation();
     const up = event.deltaY < 0;
-    if (draft !== undefined) {
+    const open = latest.current.draft;
+    if (open !== undefined) {
       sfxTick(up);
-      setDraft((now) => (now === undefined ? now : wheelDraft(now, view, up ? 1 : -1)));
+      clearTimeout(typing.current);
+      const next = wheelDraft(open, latest.current.view, up ? 1 : -1);
+      latest.current.draft = next;
+      setDraft(next);
+      apply(next, true);
       return;
     }
     // Each step ticks and claims the edit, so the board's change sound does not play on top.
@@ -459,6 +491,8 @@ export function CountBox({
         if (!editing && wasClick(event) && !checklistLocked()) {
           sfxClick();
           cancelled.current = false;
+          changed.current = false;
+          opened.current = { rule: view.rule, set: view.set };
           setDraft(view.set !== undefined ? view.setText : "");
         }
       }}
@@ -503,17 +537,19 @@ export function CountBox({
           className="nodrag"
           // As wide as the number it replaces, a few characters, growing with what is typed.
           style={{ width: `calc(${Math.max(3, draft.length + 1)}ch + 8px)` }}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            const text = event.target.value;
+            setDraft(text);
+            clearTimeout(typing.current);
+            typing.current = setTimeout(() => apply(text, false), LIVE_TYPE_MS);
+          }}
           onBlur={commit}
           onFocus={(event) => event.currentTarget.select()}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => {
             if (event.key === "Enter") event.currentTarget.blur();
-            if (event.key === "Escape") {
-              cancelled.current = true;
-              setDraft(undefined);
-            }
+            if (event.key === "Escape") cancel();
             event.stopPropagation();
           }}
         />

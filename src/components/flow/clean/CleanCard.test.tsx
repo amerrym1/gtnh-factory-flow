@@ -12,7 +12,7 @@ import type {
   CleanCardView,
   CleanPortView,
 } from "./clean-model";
-import { buildCountView, buildFootView, layoutStrip, reasonStripes } from "./clean-model";
+import { buildCountView, buildFootView, layoutStrip, LIVE_TYPE_MS, reasonStripes } from "./clean-model";
 
 vi.mock("@/lib/compact-view", () => ({ isCompactViewport: () => false }));
 
@@ -283,53 +283,87 @@ it("types a count on a click, steps it on the wheel and goes back to Any on a mi
   expect(actions.setCount).toHaveBeenLastCalledWith(30);
 });
 
-it("steps the number in the open box on the wheel and sets what the box holds when it is let go of", () => {
-  const actions = actionsSpy();
-  const { container } = renderCard(upToView(), actions);
-  const block = container.querySelector(".cc-count")!;
-  const input = () => container.querySelector<HTMLInputElement>(".cc-count input");
-  fireEvent.click(block);
-  // The wheel over the open box is the box's: the page does not zoom and the board's camera never sees it.
-  const wheel = new WheelEvent("wheel", { deltaY: -100, bubbles: true, cancelable: true });
-  fireEvent(input()!, wheel);
-  expect(wheel.defaultPrevented).toBe(true);
-  expect(input()!.value).toBe("25");
-  fireEvent.wheel(input()!, { deltaY: -100 });
-  expect(input()!.value).toBe("26");
-  // Nothing is set while the box is open.
-  expect(actions.stepCount).not.toHaveBeenCalled();
-  expect(actions.setCount).not.toHaveBeenCalled();
-  // A click anywhere else lets go of the box and sets what it shows.
-  fireEvent.blur(input()!);
-  expect(input()).toBeNull();
-  expect(actions.setCount).toHaveBeenCalledWith(26);
+it("sets what the open box holds as it goes: each wheel step at once, typing once it rests", () => {
+  vi.useFakeTimers();
+  try {
+    const actions = actionsSpy();
+    const { container } = renderCard(upToView(), actions);
+    const block = container.querySelector(".cc-count")!;
+    const input = () => container.querySelector<HTMLInputElement>(".cc-count input");
+    fireEvent.click(block);
+    // The wheel over the open box is the box's: the page does not zoom and the board's camera never sees it.
+    const wheel = new WheelEvent("wheel", { deltaY: -100, bubbles: true, cancelable: true });
+    fireEvent(input()!, wheel);
+    expect(wheel.defaultPrevented).toBe(true);
+    expect(input()!.value).toBe("25");
+    expect(actions.setCount).toHaveBeenLastCalledWith(25);
+    fireEvent.wheel(input()!, { deltaY: -100 });
+    expect(input()!.value).toBe("26");
+    expect(actions.setCount).toHaveBeenLastCalledWith(26);
+    // The box stays open for more, and the closed box's own step is never used.
+    expect(input()).not.toBeNull();
+    expect(actions.stepCount).not.toHaveBeenCalled();
 
-  // Typed, stepped, then Escape: nothing is set, and a blur as the box goes sets nothing either.
-  fireEvent.click(block);
-  fireEvent.change(input()!, { target: { value: "7" } });
-  fireEvent.wheel(input()!, { deltaY: 100 });
-  expect(input()!.value).toBe("6");
-  const box = input()!;
-  fireEvent.keyDown(box, { key: "Escape" });
-  fireEvent.blur(box);
-  expect(input()).toBeNull();
-  expect(actions.setCount).toHaveBeenCalledTimes(1);
+    // Typing is set once it rests, not on each key: "1" then "12" sets 12 alone.
+    actions.setCount.mockClear();
+    fireEvent.change(input()!, { target: { value: "1" } });
+    vi.advanceTimersByTime(100);
+    fireEvent.change(input()!, { target: { value: "12" } });
+    expect(actions.setCount).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(LIVE_TYPE_MS);
+    expect(actions.setCount.mock.calls).toEqual([[12]]);
+    // An emptied box is a count being retyped: nothing is cleared while typing.
+    fireEvent.change(input()!, { target: { value: "" } });
+    vi.advanceTimersByTime(LIVE_TYPE_MS);
+    expect(actions.setCount.mock.calls).toEqual([[12]]);
 
-  // Enter sets it; the next box opened after an Escape sets again.
-  fireEvent.click(block);
-  fireEvent.change(input()!, { target: { value: "9" } });
-  fireEvent.keyDown(input()!, { key: "Enter" });
-  expect(input()).toBeNull();
-  expect(actions.setCount).toHaveBeenLastCalledWith(9);
+    // Escape closes the box and puts back the count it opened with; a blur as the box goes sets nothing more.
+    const box = input()!;
+    fireEvent.keyDown(box, { key: "Escape" });
+    fireEvent.blur(box);
+    expect(input()).toBeNull();
+    expect(actions.setCount).toHaveBeenLastCalledWith(24);
+    expect(actions.setCount).toHaveBeenCalledTimes(2);
 
-  // Opened and let go of unchanged: no write. Emptied or zero: Any.
-  fireEvent.click(block);
-  fireEvent.blur(input()!);
-  expect(actions.setCount).toHaveBeenCalledTimes(2);
-  fireEvent.click(block);
-  fireEvent.change(input()!, { target: { value: "0" } });
-  fireEvent.blur(input()!);
-  expect(actions.setCount).toHaveBeenLastCalledWith(undefined);
+    // Enter sets what is typed at once, without waiting for the typing to rest.
+    fireEvent.click(block);
+    fireEvent.change(input()!, { target: { value: "9" } });
+    fireEvent.keyDown(input()!, { key: "Enter" });
+    expect(input()).toBeNull();
+    expect(actions.setCount).toHaveBeenLastCalledWith(9);
+    vi.advanceTimersByTime(LIVE_TYPE_MS);
+    expect(actions.setCount).toHaveBeenCalledTimes(3);
+
+    // Opened and let go of unchanged: no write. Escape with nothing set: no write. Emptied or zero, let go: cleared.
+    fireEvent.click(block);
+    fireEvent.blur(input()!);
+    fireEvent.click(block);
+    fireEvent.keyDown(input()!, { key: "Escape" });
+    expect(actions.setCount).toHaveBeenCalledTimes(3);
+    fireEvent.click(block);
+    fireEvent.change(input()!, { target: { value: "0" } });
+    fireEvent.blur(input()!);
+    expect(actions.setCount).toHaveBeenLastCalledWith(undefined);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("puts an Any card back to Any on Escape after the box set a count", () => {
+  vi.useFakeTimers();
+  try {
+    const actions = actionsSpy();
+    const { container } = renderCard(referenceView(), actions);
+    fireEvent.click(container.querySelector(".cc-count")!);
+    const input = container.querySelector<HTMLInputElement>(".cc-count input")!;
+    fireEvent.change(input, { target: { value: "4" } });
+    vi.advanceTimersByTime(LIVE_TYPE_MS);
+    expect(actions.setCount).toHaveBeenLastCalledWith(4);
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(actions.setRule).toHaveBeenLastCalledWith("any");
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it("steps on the wheel only while Scroll changes values is on; off, the wheel is left for the board to zoom", () => {

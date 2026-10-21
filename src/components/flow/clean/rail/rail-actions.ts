@@ -1,6 +1,6 @@
 import { RECIPE_NODE_WIDTH } from "@/lib/board-grid";
 import { openLibrary } from "@/lib/library/library-tab";
-import type { FactoryProject } from "@/lib/model/types";
+import type { FactoryNode, FactoryProject } from "@/lib/model/types";
 import { nextPinRule, shownPinRule, withPinRule } from "@/lib/model/pin-rule";
 import type { TargetMode } from "@/lib/model/storage-target";
 import { useFactoryStore } from "@/store/factory-store";
@@ -157,6 +157,9 @@ export function pinCount(nodeId: string, count: number): void {
   const node = state().project.nodes.find((n) => n.id === nodeId);
   if (!node) return;
   const rule = shownPinRule(node);
+  // Already so: nothing to write (an open box sets as it goes, then once more as it is let go of).
+  const pinned = (node.solvePin ?? 0) > 0;
+  if (count > 0 ? pinned && node.solvePin === count : !pinned && rule === "upTo") return;
   if (!(count > 0)) {
     const { solvePin, solvePinExact, solvePinAny } = withPinRule(node, "upTo", undefined);
     state().updateNode(nodeId, { solvePin, solvePinExact, solvePinAny });
@@ -169,6 +172,22 @@ export function pinCount(nodeId: string, count: number): void {
     solvePinAny: next.solvePinAny,
     portRates: undefined,
   });
+}
+
+/** A machine's count fields as they are, for `restorePin`. */
+export type PinSnapshot = Pick<FactoryNode, "solvePin" | "solvePinExact" | "solvePinAny">;
+
+export function pinSnapshot(nodeId: string): PinSnapshot | undefined {
+  const node = state().project.nodes.find((n) => n.id === nodeId);
+  return node
+    ? { solvePin: node.solvePin, solvePinExact: node.solvePinExact, solvePinAny: node.solvePinAny }
+    : undefined;
+}
+
+/** Puts a machine's count back as `pinSnapshot` took it (Escape on a box that set as it went). */
+export function restorePin(nodeId: string, snapshot: PinSnapshot | undefined): void {
+  if (locked() || !snapshot) return;
+  state().updateNode(nodeId, snapshot);
 }
 
 /**

@@ -577,6 +577,9 @@ export function wheelCount(
   return next >= 1 ? next : undefined;
 }
 
+/** A count typed into an open box is set once the typing rests this long, so "12" is one edit, not "1" then "12". */
+export const LIVE_TYPE_MS = 300;
+
 /**
  * A count typed into the box: a number, a leading times sign allowed. Zero and an empty box clear it (0); text that
  * is not a count, or a negative one, is undefined (nothing is set).
@@ -590,7 +593,7 @@ export function parseCountText(text: string): number | undefined {
 
 /**
  * The box's text after one wheel step while it is being typed in: the number in it rounded, plus or minus one (below
- * one, empty); with nothing in it, what the wheel gives a card with no count. Nothing is set until the box is.
+ * one, empty); with nothing in it, what the wheel gives a card with no count. The box sets it at once.
  */
 export function wheelDraft(
   draft: string,

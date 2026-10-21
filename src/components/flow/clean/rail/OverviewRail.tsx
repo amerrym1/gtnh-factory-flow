@@ -45,6 +45,9 @@ import { UP_TO_COLOR, UP_TO_WORD, shownReason, upToSentence } from "../up-to-rea
 import { PIN_RULE_LABEL } from "@/lib/model/pin-rule";
 import {
   pinCount,
+  pinSnapshot,
+  restorePin,
+  type PinSnapshot,
   setDrawerRate,
   setDrawerRule,
   setLineRate,
@@ -1092,6 +1095,8 @@ const MachineRow = memo(function MachineRow({
   useFontEpoch();
   const railWidth = useContext(RailWidthContext);
   const [hot, setHot] = useState(false);
+  // The count as it was when its box opened: Escape puts it back, as the box sets as it goes.
+  const opened = useRef<PinSnapshot | undefined>(undefined);
   const colors = entry.tier ? tierChipColors(entry.tier) : undefined;
   const countKey = `count:${entry.nodeId}`;
   const wheeled = state.wheeled[countKey];
@@ -1256,7 +1261,10 @@ const MachineRow = memo(function MachineRow({
             editing={state.editing === countKey}
             // What the box shows, a wheel step not yet set included.
             initial={set ? String(shownPin) : ""}
-            onStartEdit={() => state.edit(countKey)}
+            onStartEdit={() => {
+              opened.current = pinSnapshot(entry.nodeId);
+              state.edit(countKey);
+            }}
             onCommit={(value) => {
               state.edit(null);
               pinCount(entry.nodeId, value);
@@ -1266,8 +1274,10 @@ const MachineRow = memo(function MachineRow({
               if (entry.pinned) pinCount(entry.nodeId, 0);
             }}
             onWheel={(direction) => wheelCount(direction)}
-            // The card's count box steps what it holds the same way.
+            // The card's count box steps what it holds the same way, and sets it as it goes.
             onWheelDraft={(text, direction) => wheelDraft(text, { value: entry.count }, direction)}
+            onLive={(value) => pinCount(entry.nodeId, value)}
+            onRevert={() => restorePin(entry.nodeId, opened.current)}
             tip={() => ({
               title: "Machine count",
               actions: [
