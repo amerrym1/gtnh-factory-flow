@@ -453,10 +453,11 @@
 
 /* ---- A buffer's spill: Forced out, in its row ---------------------------------------------------------------- */
 
-/* What its makers force out beyond what its users take, left of the drawer's own figure on a small Forced tile (the
-   card's flat tint, edge and colours of an output's): its figure over "Forced out", as the row's figure is over its name.
-   The drawer is a cell wider while it has one (136); its words keep their right edge by the icon and give the tile the left (41 px for them, cut and faded past that). Wires
-   dock on the grown edge (its measured size, as a card's). */
+/* What its makers force out beyond what its users take: a Forced tile (the card's flat tint, edge and colours of an
+   output's) down the drawer's left, its figure over "Forced out". The drawer is a cell wider while it has one (136): the
+   tile takes the left column, 4 px in from the frame on three sides and clear of the delete key; the words, rule key and
+   rate box move right of it, 4 px apart, their right edge 4 px short of the icon. Wires dock on the grown edge (its
+   measured size, as a card's). */
 .cd-wrap[data-spill],
 .cd[data-spill] {
   width: 136px;
@@ -466,22 +467,28 @@
   left: 54px;
   width: 41px;
 }
+.cd[data-spill]:not([data-kind="source"]) .cd-key {
+  left: 54px;
+}
+.cd[data-spill]:not([data-kind="source"]) .cd-box {
+  left: 66px;
+  width: 29px;
+}
 .cd-forced {
   position: absolute;
   /* Over the row's wire handle (30), under the rule key and rate box (40): it has its own hover. */
   z-index: 35;
   left: 4px;
-  /* Clear of the delete key (3..13), a pixel above the rule key and rate box (35). */
   top: 14px;
   width: 46px;
-  height: 20px;
+  height: 30px;
   box-sizing: border-box;
-  padding: 0 3px;
+  padding: 0 4px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  gap: 1px;
+  gap: 3px;
   border-radius: 3px;
   background: #322d2e;
   box-shadow:
@@ -498,7 +505,7 @@
 }
 .cd-forced-num {
   font-size: 11px;
-  line-height: 10px;
+  line-height: 12px;
   letter-spacing: -0.6px;
   color: #f2ae81;
   white-space: nowrap;
@@ -512,7 +519,7 @@
 }
 .cd-forced-name {
   font-size: 7px;
-  line-height: 8px;
+  line-height: 9px;
   letter-spacing: -0.3px;
   color: #c39b84;
   white-space: nowrap;
