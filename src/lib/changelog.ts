@@ -41,10 +41,20 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "4.3.3",
-    date: "2026-10-19",
-    headline: "Lighter on the community database",
+    date: "2026-10-20",
+    headline: "Sharper board, clearer counts",
+    warning:
+      "Cards with no count set now say Up to instead of Any. Your numbers did not change: the plan still picks the count until you set one.",
     notes: [
-      "Your plans sync with your account every 2 minutes instead of every 30 seconds, and less often while the database is down. Your own edits still go up a few seconds after you stop.",
+      "No more blurry board. Text and icons stay sharp after a reload and a zoom.",
+      "Inter is the default font now. Want the pixel font back? Settings, Font, Minecraft.",
+      "Every card shows its count rule and a box for the number: Up to 24, Exactly 24, or Up to with an empty Set box.",
+      "New cards start on Up to, and the Set box blinks until you give it a number. Any is still in the rule menu.",
+      "Scroll or type in the count box and the plan updates right away, no Enter needed. Escape puts the old count back.",
+      "Fixed scroll steps in the count box getting lost when you clicked away. Scrolling the overview's open box now changes the number, not the list.",
+      "More than one recipe on a machine: card menu, Add another recipe. The recipe search opens on just that machine's recipes.",
+      "Card menu, Replace the recipe picks a new recipe for a card.",
+      "Your plans sync with your account every 2 minutes instead of every 30 seconds. Your own edits still go up a few seconds after you stop.",
     ],
   },
   {
