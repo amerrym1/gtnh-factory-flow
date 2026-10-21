@@ -556,11 +556,14 @@ textarea {
   z-index: auto !important;
 }
 
-/* Always, not only while a gesture is flagged as moving: that flag flickers
-   per frame on keyboard pans, promoting and dropping the layer. The pan is a
-   scroll offset (scroll-camera.tsx), so this transform only changes on zoom;
-   the retained layer keeps a zoom from repainting the whole board. */
-.factory-flow-board .react-flow__viewport {
+/* Only while the zoom moves (data-zooming, scroll-camera.tsx zoomingMark:
+   zoom steps alone, never pans): the retained layer keeps a zoom step from
+   rastering the whole board again. Chrome keeps such a layer's raster scale
+   as the zoom falls, so worn at rest it would leave a board zoomed out drawn
+   from its old, larger raster, scaled down: soft text and icons. Without the
+   hint the layer stays composited (its translate3d) and rasters at its true
+   scale. */
+.factory-flow-board .react-flow__viewport[data-zooming] {
   will-change: transform;
 }
 
