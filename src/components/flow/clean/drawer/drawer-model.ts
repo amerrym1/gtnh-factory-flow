@@ -5,7 +5,7 @@ import { storageTargetMode, type TargetMode } from "@/lib/model/storage-target";
 import { rateMultiplierForKind, rateSuffixForKind } from "@/lib/model/rate-unit";
 import { RULE_MARK, RULE_NAME, trimFlow } from "../../rate-rule";
 import type { DrawerKind } from "../tokens";
-import { mcTextWidth, measureRowFigure, measureRowName } from "../text-measure";
+import { mcTextWidth, measureClean, measureRowFigure, measureRowName } from "../text-measure";
 import type { TipSpec } from "../interaction/tip-spec";
 
 /**
@@ -24,6 +24,9 @@ const WORDS = 76;
 
 /** The name's own box (drawer.css .cd-name), which cuts what runs past it: a longer name is faded at its edge. */
 const NAME_BOX = 71;
+
+/** The number's own box (drawer.css .cd-num), which the spill shares. */
+const NUMBER_BOX = 71;
 
 /**
  * Whether the clean drawer draws this one: every drawer. A power drawer is the same source or product drawer with
@@ -103,6 +106,11 @@ export interface CleanDrawerView {
   linked: boolean;
   /** The glance pill: a sign and a short figure. */
   glanceRate: string;
+  /**
+   * A buffer whose makers make more than its users take: the extra, forced out at the makers, as "+80" beside the
+   * number. `fits` is false when the number leaves no room; the tip says it either way.
+   */
+  spill?: { text: string; fits: boolean };
   tips: { bar: TipSpec; del: TipSpec; rule: TipSpec; rate: TipSpec; body: TipSpec };
 }
 
@@ -116,7 +124,13 @@ export interface DrawerViewInput {
   /** The plan's `unmetDrawers` includes it. */
   unmet: boolean;
   linked: boolean;
+  /** What the makers of a buffer force out beyond what its users take, per second (the plan's `spills`, summed). */
+  spill?: number;
 }
+
+/** The spill beside a buffer's number: 9 px, 4 px from the number. */
+const SPILL_SIZE = 9;
+const SPILL_GAP = 4;
 
 const KIND_NAME: Record<DrawerKind, string> = {
   source: "Source",
@@ -157,7 +171,7 @@ function ruleMeaning(kind: DrawerKind, rule: TargetMode): string {
 }
 
 export function buildDrawerView(input: DrawerViewInput): CleanDrawerView {
-  const { storage, role, label, result, unanchored, unmet, linked } = input;
+  const { storage, role, label, result, unanchored, unmet, linked, spill } = input;
   const kind = drawerKindFor(role, storage);
   const resourceKind = storage.kind;
   // A buffer's net is zero (in equals out): its figure is what passes through.
@@ -231,8 +245,19 @@ export function buildDrawerView(input: DrawerViewInput): CleanDrawerView {
       { input: "middle", label: "Clear" },
     ],
   };
+  // A buffer never dumps: what its makers make beyond what its users take is forced out at the makers (their forced
+  // rows, lit while the drawer is hovered) and only totalled here.
+  const spilling = kind === "buffer" && spill !== undefined && spill > 0.000005;
+  const spillText = spilling ? formatRateField(spill!, resourceKind) : undefined;
+  const bodyRows: NonNullable<TipSpec["rows"]> = [{ label: flowWord, value: `${number} ${unitLabel}` }];
+  if (spilling) bodyRows.push({ label: "Forced out upstream", value: `${spillText} ${unitLabel}`, tone: "warn" });
   const bodyNotes: NonNullable<TipSpec["notes"]> = [];
-  if (kind === "buffer") bodyNotes.push({ text: "Its makers put in what its users take out.", tone: "muted" });
+  if (spilling)
+    bodyNotes.push({
+      text: `Its makers make ${spillText} ${unitLabel} more than its users take. That extra is forced out at the makers, not here.`,
+      tone: "muted",
+    });
+  else if (kind === "buffer") bodyNotes.push({ text: "Its makers put in what its users take out.", tone: "muted" });
   if (!linked) bodyNotes.push({ text: "Unconnected", tone: "warn" });
   if (isUnmet && hasTarget) {
     bodyNotes.push({
@@ -244,7 +269,7 @@ export function buildDrawerView(input: DrawerViewInput): CleanDrawerView {
     id: `${storage.id}|body`,
     title: label,
     sub: KIND_NAME[kind],
-    rows: [{ label: flowWord, value: `${number} ${unitLabel}` }],
+    rows: bodyRows,
     notes: bodyNotes,
     actions: [
       { input: "drag", label: "Wire to a card" },
@@ -275,6 +300,16 @@ export function buildDrawerView(input: DrawerViewInput): CleanDrawerView {
     tone,
     linked,
     glanceRate: `${sign}${number}`,
+    ...(spilling
+      ? {
+          spill: {
+            text: `+${spillText}`,
+            fits:
+              measureRowFigure(number, unit) + SPILL_GAP + measureClean(`+${spillText}`, SPILL_SIZE) <=
+              NUMBER_BOX,
+          },
+        }
+      : {}),
     tips: {
       bar: {
         id: `${storage.id}|bar`,

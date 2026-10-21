@@ -363,6 +363,8 @@ describe("Up to: a buffer of any rule banks what its takers do not take", () => 
     expect(s.machineCounts["m"]).toBeCloseTo(2, 9);
     expect(s.machineCounts["t"]).toBeCloseTo(1, 9);
     expect(s.drawers.banked).toEqual({ buf: expect.closeTo(1, 9) });
+    // The same, at the maker's port: what the board shows as the maker's forced row.
+    expect(s.drawers.spills).toEqual({ buf: [{ port: ref("m", 0, false), ratePerSecond: expect.closeTo(1, 9) }] });
     expect(s.drawers.rates["buf"]).toBeCloseTo(1, 9);
     expect(s.drawers.ports["buf"]).toEqual([
       { port: ref("m", 0, false), ratePerSecond: expect.closeTo(1, 9) },

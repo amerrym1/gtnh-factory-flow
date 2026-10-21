@@ -96,9 +96,14 @@ With Up to pools a BUFFER drawer with rule ANY is a bank, as old Build's overflo
 may put into it what its takers do not take (`SolveContext.bankPorts`). That crossing is the buffer's: never a forced
 flow (`gatedSinks`), never a gate for the trades or the alternatives' swaps, outside the guard, and as little as it can
 be in the sink stage, after the push has shipped all it can to the takers. `DrawerReadout.banked` gives each such
-buffer's banked rate (absent without Up to pools or such buffers). A buffer with a rule keeps today's meaning: its rule
-is a row over what passes through, and it banks nothing (a maker whose takers are full slows down). Without Up to pools
-a buffer is wiring only, as before.
+buffer's banked rate (absent without Up to pools or such buffers), and `DrawerReadout.spills` the same per maker port. A
+buffer with a rule keeps today's meaning: its rule is a row over what passes through, and it banks nothing (a maker
+whose takers are full slows down). Without Up to pools a buffer is wiring only, as before.
+
+On the board the bank is the makers', never the drawer's: each maker port's spill (`PlanSolveExtras.spills`) is drawn
+as that card's forced row, and the buffer totals them in orange beside its own number (what passes through), with a
+tip saying the extra is forced out at the makers; hovering the drawer lights them. A website read-out only: the mod's
+balancer computes the same bank and needs no change for it.
 
 ### The read-out (`SolutionView.upTo`)
 

@@ -74,14 +74,18 @@ function pinsKey(pins: unknown): string {
   return key;
 }
 
-type PlanLike = { forced: Array<{ nodeId: string; portKey: string }> };
+type PlanLike = {
+  forced: Array<{ nodeId: string; portKey: string }>;
+  spills?: Array<{ nodeId: string; portKey: string }>;
+};
 const forcedKeys = new WeakMap<object, Map<string, string>>();
+/** The card's forced rows (spills into buffers among them), as a key: a row that comes or goes changes its height. */
 function forcedKeyOf(plan: PlanLike | undefined, nodeId: string): string {
   if (!plan) return "";
   let byNode = forcedKeys.get(plan);
   if (!byNode) {
     const grouped = new Map<string, string[]>();
-    for (const entry of plan.forced) {
+    for (const entry of [...plan.forced, ...(plan.spills ?? [])]) {
       const list = grouped.get(entry.nodeId);
       if (list) list.push(entry.portKey);
       else grouped.set(entry.nodeId, [entry.portKey]);

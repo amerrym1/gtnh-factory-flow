@@ -209,19 +209,18 @@ export function useSharedCardModel(data: RecipeNodeData, selected: boolean): Spe
     [liveRecipes, projectNode],
   );
 
-  // The forced entries of every section, filed under the card and the section's prefixed handle.
+  // The forced entries of every section (spills into buffers among them), filed under the card and the section's
+  // prefixed handle.
   const forcedAt = new Map<string, number>();
-  for (const entry of plan?.forced ?? []) {
+  for (const entry of [...(plan?.forced ?? []), ...(plan?.spills ?? [])]) {
     const parsed = parsePortKey(entry.portKey);
     if (!parsed) continue;
     const owner = entry.nodeId.split("#r")[0]!;
     if (owner !== projectNode.id) continue;
     const at = entry.nodeId.indexOf("#r");
     const section = at < 0 ? 0 : Number(entry.nodeId.slice(at + 2));
-    forcedAt.set(
-      `${projectNode.id}|${parsed.side}|${sectionHandleId(section, parsed.handle)}`,
-      entry.perSecond,
-    );
+    const key = `${projectNode.id}|${parsed.side}|${sectionHandleId(section, parsed.handle)}`;
+    forcedAt.set(key, (forcedAt.get(key) ?? 0) + entry.perSecond);
   }
 
   const sections: SpecialSection[] = [section0(base)];

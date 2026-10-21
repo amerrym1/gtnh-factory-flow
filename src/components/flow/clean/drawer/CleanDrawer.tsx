@@ -115,6 +115,13 @@ export function CleanDrawer({
   const unmet = useFactoryStore(
     (state) => state.lastResult?.plan?.unmetDrawers?.includes(storage.id) === true,
   );
+  // A buffer's makers' spills (their forced rows), totalled here: a number, so the selector is stable.
+  const spill = useFactoryStore((state) => {
+    let total = 0;
+    for (const entry of state.lastResult?.plan?.spills ?? [])
+      if (entry.drawerId === storage.id) total += entry.perSecond;
+    return total;
+  });
   const readOnly = useFactoryStore((state) => state.isReadOnly);
   const browseResource = useFactoryStore((state) => state.browseResource);
   const deleteStorage = useFactoryStore((state) => state.deleteStorage);
@@ -128,10 +135,10 @@ export function CleanDrawer({
   );
   const view = useMemo(
     () =>
-      buildDrawerView({ storage, role, label, result, unanchored, unmet, linked: role !== "idle" }),
+      buildDrawerView({ storage, role, label, result, unanchored, unmet, linked: role !== "idle", spill }),
     // The rate and power dials change the strings (the units are read inside).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [storage, role, label, result, unanchored, unmet, rateUnit, powerUnit, fontEpoch],
+    [storage, role, label, result, unanchored, unmet, spill, rateUnit, powerUnit, fontEpoch],
   );
   // "Set rate" blinks off the board's one clock (virtual/prompt-phase.ts).
   useEffect(() => {
@@ -443,6 +450,11 @@ export function CleanDrawer({
           >
             {view.number}
           </span>
+          {view.spill?.fits ? (
+            <span className="cd-spill" aria-label={`${view.spill.text} forced out upstream`}>
+              {view.spill.text}
+            </span>
+          ) : null}
           <span
             className="cd-name"
             data-small={view.nameSmall || undefined}

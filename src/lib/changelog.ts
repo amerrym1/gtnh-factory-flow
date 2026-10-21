@@ -54,6 +54,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Fixed scroll steps in the count box getting lost when you clicked away. Scrolling the overview's open box now changes the number, not the list.",
       "More than one recipe on a machine: card menu, Add another recipe. The recipe search opens on just that machine's recipes.",
       "Card menu, Replace the recipe picks a new recipe for a card.",
+      "Buffers show their spillover again. What the makers make beyond what the users take is a forced row on each maker, and the buffer shows the total in orange. Hover the buffer to light those makers.",
       "Your plans sync with your account every 2 minutes instead of every 30 seconds. Your own edits still go up a few seconds after you stop.",
     ],
   },

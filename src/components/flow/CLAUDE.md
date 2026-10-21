@@ -73,6 +73,8 @@ The board must stay smooth with 100+ cards on weak PCs.
   Exactly / At most) and a sunken rate box (`RuleInput`, `useRateRule`, `setStorageRule`).
   Any is `targetMode: "ignore"` or no number. Pool's table uses the same `RuleButton`
   in its "table" dress (`rate-rule.tsx`).
+- A buffer's spills (Up to makers making more than its users take, `plan.spills`) are the makers' forced rows; the
+  buffer only totals them beside its number (`.cd-spill`, dropped when the number leaves no room) and in its tip.
 - Sources have no role switch (it would drop their wires). Buffer modes: overflow (banks
   surplus), strict (clogs), ratio (percent splits edited in `StorageRatioEditor.tsx`, a
   non-modal panel; branch percentages ride the wires near the drawer).

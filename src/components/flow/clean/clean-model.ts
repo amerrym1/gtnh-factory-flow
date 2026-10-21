@@ -985,10 +985,12 @@ export function useCleanCardModel(
   );
   const plan = lastResult?.plan;
 
-  // Only this card's forced entries; the plan list is short, so no memo.
+  // Only this card's forced entries, and its spills into buffers, which it forces out the same way; the plan lists are
+  // short, so no memo.
   const forcedAt = new Map<string, number>();
-  for (const entry of plan?.forced ?? []) {
-    if (entry.nodeId === projectNode.id) forcedAt.set(entry.portKey, entry.perSecond);
+  for (const entry of [...(plan?.forced ?? []), ...(plan?.spills ?? [])]) {
+    if (entry.nodeId === projectNode.id)
+      forcedAt.set(entry.portKey, (forcedAt.get(entry.portKey) ?? 0) + entry.perSecond);
   }
 
   const { selectedMachineHandler, machineHandlers, tierControl, powerReport, steamReport } =

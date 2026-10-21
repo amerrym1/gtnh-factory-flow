@@ -286,6 +286,19 @@
   margin-left: 0;
   color: inherit;
 }
+/* A buffer's makers force out more than its users take: that extra, in the forced row's orange, at the far end of the
+   number's line (the number sits by the icon). It happens at the makers; the tip says so and the hover lights them. */
+.cd-spill {
+  position: absolute;
+  top: 5px;
+  left: 4px;
+  font-size: 9px;
+  line-height: 10px;
+  letter-spacing: -0.6px;
+  color: #f2ae81;
+  white-space: nowrap;
+  pointer-events: none;
+}
 .cd-name {
   position: absolute;
   top: 16px;

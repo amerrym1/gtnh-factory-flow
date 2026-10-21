@@ -85,11 +85,14 @@ export function drawerReadout(ctx: SolveContext, point: StageOutcome): DrawerRea
   if (ctx.bankPorts.size === 0) return { rates, unmet, shortfalls: [...ctx.shortfalls], ports };
   // With Up to pools a buffer of rule ANY banks what its takers do not take (docs/up-to.md, "Buffers").
   const banked: Record<string, number> = {};
+  const spills: Record<string, External[]> = {};
   for (const [p, d] of ctx.bankPorts) {
     const id = ctx.model.drawers[d]!.id;
-    banked[id] = (banked[id] ?? 0) + point.externals[p]!;
+    const rate = point.externals[p]!;
+    banked[id] = (banked[id] ?? 0) + rate;
+    (spills[id] ??= []).push({ port: ctx.refOf(p), ratePerSecond: rate });
   }
-  return { rates, unmet, shortfalls: [...ctx.shortfalls], ports, banked };
+  return { rates, unmet, shortfalls: [...ctx.shortfalls], ports, banked, spills };
 }
 
 /**
