@@ -37,7 +37,8 @@
   --cc-pulse: 1.9s;
   --cc-accept-pulse: 1.43s;
   --cc-prompt: 1s;
-  /* The mod's pixel typeface; sizes below are the mod's: x1.5 (12) figures, x1 (8) text, x0.75 (6) small. */
+  /* The app's font (Inter unless the setting says otherwise); sizes below are the mod's: x1.5 (12) figures, x1 (8)
+     text, x0.75 (6) small. */
   --cc-font: var(--app-font);
 }
 
@@ -58,9 +59,9 @@
   line-height: 10px;
   font-weight: 400;
   letter-spacing: 0;
-  /* The game's text shadow (Hyb.text draws every word with it): a quarter of the colour, a pixel down and right. */
-  text-shadow: 1px 1px 0 color-mix(in srgb, currentColor 25%, #000);
-  -webkit-font-smoothing: none;
+  /* The game's text shadow (Hyb.text draws every word with it) under the pixel font alone (globals.css --pixel-text-shadow). */
+  text-shadow: var(--pixel-text-shadow);
+  -webkit-font-smoothing: var(--pixel-font-smoothing);
   /* The frame is an inset shadow, never a border: a border would push rows off the grid. A card with a problem draws
      it in its bar's tone (--cc-frame). */
   box-shadow:
@@ -481,10 +482,10 @@
 }
 
 /*
- * Monocraft is shorter and wider than the game's font: at 14 px its capitals are the mod's x1.5 figures' 10.5 px, and a
- * letter spacing of -0.8 px keeps each figure as wide as at 13 px (what the fit checks measure). The same holds below:
- * names at 9 px (-0.6 px) stand as tall as the game's 8 px. Line 13: the name's glyphs start 14 px under the number's,
- * as the mod's (12 px figures, 2 px gap).
+ * The pixel font is shorter and wider than the game's font: at 14 px its capitals are the mod's x1.5 figures' 10.5 px,
+ * and a letter spacing of -0.8 px keeps each figure as wide as at 13 px. The same holds below: names at 9 px (-0.6 px)
+ * stand as tall as the game's 8 px. Line 13: the name's glyphs start 14 px under the number's, as the mod's (12 px
+ * figures, 2 px gap). The fit checks measure these sizes and spacings as drawn (text-measure.ts ROW_TYPE).
  */
 .cc-num {
   display: block;

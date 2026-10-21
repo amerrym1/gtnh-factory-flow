@@ -114,6 +114,9 @@ The board has its own notes in `flow/CLAUDE.md`, the Pool worksheet in `pool/CLA
 - Build heavy hover content lazily (pass a thunk).
 - Rendered item textures keep the art in the middle half of the image; draw them at 2x
   the box.
+- The font is a setting (`src/lib/app-font.ts`), Inter by default. The pixel font's hard
+  text shadow and unsmoothed edges are `--pixel-text-shadow` / `--pixel-font-smoothing`,
+  set only under it (globals.css); never hard-code them on a component.
 - `DesignTabs` effects that grab refs must depend on `isHydrated`.
 - Sounds are the in-game planner's own files played by its rules (`src/lib/sound/`, its
   `CLAUDE.md` has what plays where). Firefox flushes audio at the end of a task, so the

@@ -28,8 +28,8 @@
   font-family: var(--cc-font);
   font-size: 13px;
   line-height: 17px;
-  /* The game's text shadow, as the mod's overview draws its words: a quarter of the colour, a pixel down and right. */
-  text-shadow: 1px 1px 0 color-mix(in srgb, currentColor 25%, #000);
+  /* The game's text shadow, as the mod's overview draws its words, under the pixel font alone (globals.css --pixel-text-shadow). */
+  text-shadow: var(--pixel-text-shadow);
   user-select: none;
   overflow: hidden;
 }

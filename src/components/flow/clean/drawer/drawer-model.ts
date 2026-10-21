@@ -5,7 +5,7 @@ import { storageTargetMode, type TargetMode } from "@/lib/model/storage-target";
 import { rateMultiplierForKind, rateSuffixForKind } from "@/lib/model/rate-unit";
 import { RULE_MARK, RULE_NAME, trimFlow } from "../../rate-rule";
 import type { DrawerKind } from "../tokens";
-import { mcTextWidth, measureClean } from "../text-measure";
+import { mcTextWidth, measureRowFigure, measureRowName } from "../text-measure";
 import type { TipSpec } from "../interaction/tip-spec";
 
 /**
@@ -21,6 +21,9 @@ export const TO_PRODUCT = "Keep it (product)";
 
 /** The words column of the drawer: 76 px at the row's 14 px figure and 9 px name. */
 const WORDS = 76;
+
+/** The name's own box (drawer.css .cd-name), which cuts what runs past it: a longer name is faded at its edge. */
+const NAME_BOX = 71;
 
 /**
  * Whether the clean drawer draws this one: every drawer. A power drawer is the same source or product drawer with
@@ -256,10 +259,10 @@ export function buildDrawerView(input: DrawerViewInput): CleanDrawerView {
     number,
     unit,
     zero,
-    numberSmall: measureClean(number, 13) + 2 + measureClean(unit, 8) > WORDS,
+    numberSmall: measureRowFigure(number, unit) > WORDS,
     // The mod's rule, as the card's (CardPaint.words).
     nameSmall: mcTextWidth(label) > 71,
-    nameClipped: measureClean(label, mcTextWidth(label) > 71 ? 6 : 8) > WORDS,
+    nameClipped: measureRowName(label, mcTextWidth(label) > 71) > NAME_BOX,
     hasRule,
     rule,
     ruleMark: kind === "trash" ? "×" : RULE_MARK[rule],

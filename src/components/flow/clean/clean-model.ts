@@ -62,7 +62,7 @@ import { UP_TO_COLOR } from "./up-to-reason";
 import { cardLoop, LOOP_WORD, type LoopTone } from "./loops";
 import { glanceBar, type GlanceBar } from "./glance";
 import { isPinned, pinMachineKey, settingControls } from "./menus/settings-model";
-import { mcTextWidth, measureClean, useFontEpoch } from "./text-measure";
+import { mcTextWidth, measureClean, measureRowFigure, measureRowName, useFontEpoch } from "./text-measure";
 
 type VoltageTier = Parameters<typeof getVoltageTierIndex>[0];
 
@@ -386,11 +386,11 @@ export function buildPortView(
     zero: !(shown > 0),
     gold: node.portRates?.[port.handleId] !== undefined,
     rate: node.portRates?.[port.handleId],
-    numberSmall: measureClean(number, 13) + 2 + measureClean(unit, 8) > WORDS,
+    numberSmall: measureRowFigure(number, unit) > WORDS,
     // The mod's rule (CardPaint.words): full size when it fits in the game font (its 71 px), else 0.75; what still runs
-    // past the row in Monocraft is cut and faded.
+    // past the row in the app's face is cut and faded.
     nameSmall: mcTextWidth(port.displayName) > 71,
-    nameClipped: measureClean(port.displayName, mcTextWidth(port.displayName) > 71 ? 6 : 8) > WORDS,
+    nameClipped: measureRowName(port.displayName, mcTextWidth(port.displayName) > 71) > WORDS,
     wired: port.connected,
     choice: (port.resource?.alternatives?.length ?? 0) > 1,
     resourceKey: makeResourceKey(port.kind, port.resourceId),
