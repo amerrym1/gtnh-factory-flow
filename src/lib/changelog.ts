@@ -40,6 +40,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "4.4.1",
+    date: "2026-10-21",
+    headline: "Big power plans solve again",
+    notes: [
+      "Fixed plans with a huge power maker, like a naquadah reactor, saying the planner couldn't solve them.",
+      "When a plan can't be solved, the message now points to Feedback in the top bar instead of a log you can't see.",
+    ],
+  },
+  {
     version: "4.4.0",
     date: "2026-10-21",
     headline: "Sharper board, clearer counts",
