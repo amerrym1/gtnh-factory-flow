@@ -41,7 +41,7 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "4.3.3",
-    date: "2026-10-20",
+    date: "2026-10-21",
     headline: "Sharper board, clearer counts",
     warning:
       "Cards with no count set now say Up to instead of Any. Your numbers did not change: the plan still picks the count until you set one.",
