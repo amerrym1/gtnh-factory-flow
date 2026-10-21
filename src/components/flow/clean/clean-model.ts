@@ -574,6 +574,34 @@ export function wheelCount(
   return next >= 1 ? next : undefined;
 }
 
+/**
+ * A count typed into the box: a number, a leading times sign allowed. Zero and an empty box mean Any (0); text that
+ * is not a count, or a negative one, is undefined (nothing is set).
+ */
+export function parseCountText(text: string): number | undefined {
+  const trimmed = text.trim().replace(/^[×x]\s*/, "");
+  if (trimmed === "") return 0;
+  const value = Number.parseFloat(trimmed);
+  return Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+/**
+ * The box's text after one wheel step while it is being typed in: the number in it rounded, plus or minus one (below
+ * one, empty for Any); with nothing in it, what the wheel gives an Any card. Nothing is set until the box is.
+ */
+export function wheelDraft(
+  draft: string,
+  count: Pick<CleanCountView, "value">,
+  direction: -1 | 1,
+): string {
+  const typed = parseCountText(draft);
+  const next =
+    typed !== undefined && typed > 0
+      ? wheelCount({ rule: "upTo", set: typed, value: count.value }, direction)
+      : wheelCount({ rule: "any", set: undefined, value: count.value }, direction);
+  return next === undefined ? "" : formatSetCount(next);
+}
+
 /** The patch that gives a card `rule` and `count` (every write of a count goes through `withPinRule`). */
 export function pinPatch(
   node: Pick<FactoryNode, "solvePin" | "solvePinExact">,

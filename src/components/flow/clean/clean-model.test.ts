@@ -15,11 +15,13 @@ import {
   cardCountState,
   circuitNumber,
   frameTone,
+  parseCountText,
   pinActions,
   pinPatch,
   reasonStripes,
   stateFrameTone,
   wheelCount,
+  wheelDraft,
   withReasonPorts,
   type CleanPortView,
 } from "./clean-model";
@@ -137,6 +139,29 @@ describe("the count", () => {
     expect(wheelCount({ rule: "upTo", set: 24, value: 18.2 }, 1)).toBe(25);
     expect(wheelCount({ rule: "exact", set: 2.5, value: 2.5 }, -1)).toBe(2);
     expect(wheelCount({ rule: "upTo", set: 1, value: 1 }, -1)).toBeUndefined();
+  });
+
+  it("reads a typed count: a number, zero or nothing for Any, anything else sets nothing", () => {
+    expect(parseCountText("24")).toBe(24);
+    expect(parseCountText(" ×2.5 ")).toBe(2.5);
+    expect(parseCountText("x3")).toBe(3);
+    expect(parseCountText("")).toBe(0);
+    expect(parseCountText("0")).toBe(0);
+    expect(parseCountText("-2")).toBeUndefined();
+    expect(parseCountText("lots")).toBeUndefined();
+  });
+
+  it("steps the number in an open box on the wheel, from what is typed", () => {
+    // What is typed, rounded, then by one: the box shows the step, nothing is set yet.
+    expect(wheelDraft("24", { value: 18.2 }, 1)).toBe("25");
+    expect(wheelDraft("3", { value: 18.2 }, -1)).toBe("2");
+    expect(wheelDraft("2.6", { value: 1 }, 1)).toBe("4");
+    // Below one is an empty box: Any once set.
+    expect(wheelDraft("1", { value: 1 }, -1)).toBe("");
+    // An empty box starts where the wheel starts an Any card: what runs, rounded up.
+    expect(wheelDraft("", { value: 18.2 }, 1)).toBe("19");
+    expect(wheelDraft("", { value: 18.2 }, -1)).toBe("19");
+    expect(wheelDraft("", { value: 0 }, 1)).toBe("1");
   });
 });
 

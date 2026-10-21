@@ -262,6 +262,55 @@ it("types a count on a click, steps it on the wheel and goes back to Any on a mi
   expect(actions.setCount).toHaveBeenLastCalledWith(30);
 });
 
+it("steps the number in the open box on the wheel and sets what the box holds when it is let go of", () => {
+  const actions = actionsSpy();
+  const { container } = renderCard(upToView(), actions);
+  const block = container.querySelector(".cc-count")!;
+  const input = () => container.querySelector<HTMLInputElement>(".cc-count input");
+  fireEvent.click(block);
+  // The wheel over the open box is the box's: the page does not zoom and the board's camera never sees it.
+  const wheel = new WheelEvent("wheel", { deltaY: -100, bubbles: true, cancelable: true });
+  fireEvent(input()!, wheel);
+  expect(wheel.defaultPrevented).toBe(true);
+  expect(input()!.value).toBe("25");
+  fireEvent.wheel(input()!, { deltaY: -100 });
+  expect(input()!.value).toBe("26");
+  // Nothing is set while the box is open.
+  expect(actions.stepCount).not.toHaveBeenCalled();
+  expect(actions.setCount).not.toHaveBeenCalled();
+  // A click anywhere else lets go of the box and sets what it shows.
+  fireEvent.blur(input()!);
+  expect(input()).toBeNull();
+  expect(actions.setCount).toHaveBeenCalledWith(26);
+
+  // Typed, stepped, then Escape: nothing is set, and a blur as the box goes sets nothing either.
+  fireEvent.click(block);
+  fireEvent.change(input()!, { target: { value: "7" } });
+  fireEvent.wheel(input()!, { deltaY: 100 });
+  expect(input()!.value).toBe("6");
+  const box = input()!;
+  fireEvent.keyDown(box, { key: "Escape" });
+  fireEvent.blur(box);
+  expect(input()).toBeNull();
+  expect(actions.setCount).toHaveBeenCalledTimes(1);
+
+  // Enter sets it; the next box opened after an Escape sets again.
+  fireEvent.click(block);
+  fireEvent.change(input()!, { target: { value: "9" } });
+  fireEvent.keyDown(input()!, { key: "Enter" });
+  expect(input()).toBeNull();
+  expect(actions.setCount).toHaveBeenLastCalledWith(9);
+
+  // Opened and let go of unchanged: no write. Emptied or zero: Any.
+  fireEvent.click(block);
+  fireEvent.blur(input()!);
+  expect(actions.setCount).toHaveBeenCalledTimes(2);
+  fireEvent.click(block);
+  fireEvent.change(input()!, { target: { value: "0" } });
+  fireEvent.blur(input()!);
+  expect(actions.setCount).toHaveBeenLastCalledWith(undefined);
+});
+
 it("steps on the wheel only while Scroll changes values is on; off, the wheel is left for the board to zoom", () => {
   const wheelOver = (element: Element) => {
     const event = new WheelEvent("wheel", { deltaY: -100, bubbles: true, cancelable: true });

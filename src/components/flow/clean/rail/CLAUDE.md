@@ -15,7 +15,8 @@ modes keep it.
   (350 ms), so a spin is one undo step.
 - A control under the pointer takes the wheel unless the list was scrolled by the wheel in the last 400 ms: one
   native non-passive listener on the list (`rail-controls.tsx`, `wheelHandlerFor`). With "Scroll changes values" off
-  no control takes it and the list always scrolls.
+  no control takes it and the list always scrolls. An open box given `onWheelDraft` steps the text it holds, set when
+  the box is let go of (the machine count does, as the card's box does).
 - Rows hang `data-resource-row`; hovering one sets `hoveredFlowResourceKey` (the board lights the resource), a spare's
   place sets `hoveredFlowScope` on its ports. Controls stop their clicks so the row (walk to the next card that makes or
   uses the resource) never sees them.

@@ -37,7 +37,7 @@ import { useFactoryStore, useRateDisplayUnits } from "@/store/factory-store";
 import { useWorkspaceView, writeWorkspaceView } from "@/lib/workspace-view";
 import { formatAmountWithSuffix, RULE_MARK, RULE_NAME, RULE_STEPS } from "../../rate-rule";
 import { AmpsChip, TierChip } from "../CleanCard";
-import { useCleanCardModel } from "../clean-model";
+import { useCleanCardModel, wheelDraft } from "../clean-model";
 import { powerPanelTip } from "../interaction/tips";
 import type { RecipeNodeData } from "../../RecipeNode";
 import { CC, tierChipColors } from "../tokens";
@@ -1246,7 +1246,8 @@ const MachineRow = memo(function MachineRow({
             text={machinesText(shownPin)}
             gold={set}
             editing={state.editing === countKey}
-            initial={entry.pinned ? String(entry.pin) : ""}
+            // What the box shows, a wheel step not yet set included.
+            initial={set ? String(shownPin) : ""}
             onStartEdit={() => state.edit(countKey)}
             onCommit={(value) => {
               state.edit(null);
@@ -1257,6 +1258,8 @@ const MachineRow = memo(function MachineRow({
               if (entry.pinned) pinCount(entry.nodeId, 0);
             }}
             onWheel={(direction) => wheelCount(direction)}
+            // The card's count box steps what it holds the same way.
+            onWheelDraft={(text, direction) => wheelDraft(text, { value: entry.count }, direction)}
             tip={() => ({
               title: "Machine count",
               actions: [

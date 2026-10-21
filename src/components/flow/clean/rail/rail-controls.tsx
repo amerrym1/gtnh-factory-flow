@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { parseRateInput } from "./rail-math";
 import { tipProps, type TipContent } from "./rail-tip";
-import { playEditSfx, sfxClick } from "@/lib/sound/sfx";
+import { playEditSfx, sfxClick, sfxTick } from "@/lib/sound/sfx";
 
 /**
  * The small controls every rail row shares: the rule key (`~ = >= <=`) and the
@@ -113,6 +113,7 @@ export function RateBox({
   onCancel,
   onMiddle,
   onWheel,
+  onWheelDraft,
   tip,
   label,
   width,
@@ -132,6 +133,8 @@ export function RateBox({
   onCancel: () => void;
   onMiddle?: () => void;
   onWheel?: WheelHandler;
+  /** The wheel over the open box: the text it holds after one step (set, as typed text is, when the box is let go of). */
+  onWheelDraft?: DraftWheel;
   tip: () => TipContent;
   label: string;
   width?: number;
@@ -143,6 +146,7 @@ export function RateBox({
         initial={initial}
         onCommit={onCommit}
         onCancel={onCancel}
+        onWheelDraft={onWheelDraft}
         style={style}
         label={label}
       />
@@ -186,22 +190,40 @@ export function RateBox({
   );
 }
 
+/** One wheel step over an open box: the text it holds now, to the text it holds after. */
+export type DraftWheel = (text: string, direction: 1 | -1, ctrl: boolean, shift: boolean) => string;
+
 function RateEditor({
   initial,
   onCommit,
   onCancel,
+  onWheelDraft,
   style,
   label,
 }: {
   initial: string;
   onCommit: (value: number) => void;
   onCancel: () => void;
+  onWheelDraft?: DraftWheel;
   style?: { width: number };
   label: string;
 }) {
   const [value, setValue] = useState(initial);
   const input = useRef<HTMLInputElement>(null);
   const done = useRef(false);
+  // The rail's one wheel listener finds the open box by `data-wheel` and steps what it holds. Nothing is set until the
+  // box is let go of, and Escape drops the steps with the typing.
+  useEffect(() => {
+    const element = input.current;
+    if (!element || !onWheelDraft) return undefined;
+    wheelHandlers.set(element, (direction, ctrl, shift) => {
+      sfxTick(direction > 0);
+      setValue((text) => onWheelDraft(text, direction, ctrl, shift));
+    });
+    return () => {
+      wheelHandlers.delete(element);
+    };
+  }, [onWheelDraft]);
   useEffect(() => {
     input.current?.focus();
     input.current?.select();
@@ -231,6 +253,7 @@ function RateEditor({
       value={value}
       inputMode="decimal"
       spellCheck={false}
+      data-wheel={onWheelDraft ? "" : undefined}
       onChange={(event) => setValue(event.target.value)}
       onBlur={() => finish(true)}
       onClick={(event) => event.stopPropagation()}

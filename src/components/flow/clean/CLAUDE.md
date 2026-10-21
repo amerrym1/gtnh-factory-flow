@@ -26,6 +26,8 @@ holder, a crop card. Bees, the Extreme Entity Crusher and every other machine ar
   An Up to card has one foot bar (`.cc-foot`): fill reached / count, the reason word in its tone, a plain line,
   the fraction, a bottleneck's striped run-on to what the line wants; an Exactly card with a forced input says
   FORCED IN. The read-out is `PlanSolveExtras.upTo`; the overview's words and colours are `up-to-reason.ts`.
+  The wheel (a native non-passive listener) steps the count at rest and the number in the open box (`wheelDraft`); the
+  box is set when let go of (a click elsewhere, Enter), Escape drops it. The overview's count box does the same.
 - DOM budget: at most 70 elements for the reference card, pinned by `CleanCard.test.tsx`. Rings,
   glows, hairlines, chevron, glyphs, units, notes are pseudo-elements and `attr()` content; the
   glance layer is one element. Do not add wrappers around icons or rows.
