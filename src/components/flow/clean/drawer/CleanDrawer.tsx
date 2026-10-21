@@ -36,6 +36,7 @@ import { TO_PRODUCT, TO_TRASH, bufferThroughput, buildDrawerView } from "./drawe
 import { DrawerIcon } from "./DrawerIcon";
 import { BoardMenu, MenuLine, MenuRow } from "../menus/BoardMenu";
 import { ensureInteractionHost, tipAttrs } from "../interaction";
+import { setSpillHover, useSpillHover } from "../interaction/spill-hover";
 import { startPromptClock } from "../../virtual/prompt-phase";
 import type { TargetMode } from "@/lib/model/storage-target";
 import { playEditSfx } from "@/lib/sound/sfx";
@@ -115,6 +116,8 @@ export function CleanDrawer({
   const unmet = useFactoryStore(
     (state) => state.lastResult?.plan?.unmetDrawers?.includes(storage.id) === true,
   );
+  // The buffer's Forced tile lights with its makers' when one of them, or the tile itself, is under the pointer.
+  const spillLit = useSpillHover((state) => state.drawerId === storage.id);
   // A buffer's makers' spills (their forced rows), totalled here: a number, so the selector is stable.
   const spill = useFactoryStore((state) => {
     let total = 0;
@@ -355,6 +358,7 @@ export function CleanDrawer({
       data-storage-node-id={storage.id}
       data-storage-kind={storage.kind}
       data-storage-resource-id={storage.resourceId}
+      data-spill={view.spill ? "" : undefined}
     >
       {/* Wires dock on the drawer's perimeter: both anchors span the whole drawer, the router picks the side. */}
       <span
@@ -376,6 +380,7 @@ export function CleanDrawer({
         data-selected={selected ? "" : undefined}
         data-lit={lit ? "" : undefined}
         data-unset={view.prompt ? "" : undefined}
+        data-spill={view.spill ? "" : undefined}
       >
         <div
           className="cd-edge"
@@ -450,11 +455,6 @@ export function CleanDrawer({
           >
             {view.number}
           </span>
-          {view.spill?.fits ? (
-            <span className="cd-spill" aria-label={`${view.spill.text} forced out upstream`}>
-              {view.spill.text}
-            </span>
-          ) : null}
           <span
             className="cd-name"
             data-small={view.nameSmall || undefined}
@@ -548,6 +548,20 @@ export function CleanDrawer({
             </div>
           ) : null}
         </div>
+        {view.spill ? (
+          <div
+            className="cd-forced"
+            data-lit={spillLit ? "" : undefined}
+            {...tipAttrs(view.spill.tip)}
+            onPointerEnter={() => setSpillHover(storage.id)}
+            onPointerLeave={() => setSpillHover(undefined)}
+          >
+            <span className="cd-forced-num" data-unit={view.spill.unit}>
+              {view.spill.number}
+            </span>
+            <span className="cd-forced-name">Forced upstream</span>
+          </div>
+        ) : null}
         {rowBrowse.menu}
       </div>
       {menu ? (

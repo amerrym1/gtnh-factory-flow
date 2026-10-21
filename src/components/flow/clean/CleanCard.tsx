@@ -62,6 +62,7 @@ import { syncPromptPhase } from "../virtual/prompt-phase";
 import { ensureInteractionHost, useClickSlop, tipAttrs, type TipSpec } from "./interaction";
 import { PortRateControls } from "./interaction/PortRateControls";
 import { useNativeWheel } from "./interaction/native-wheel";
+import { setSpillHover, useSpillHover } from "./interaction/spill-hover";
 import { forcedTip, menuTip, portTip, powerPanelTip } from "./interaction/tips";
 import { gearTip } from "./menus/card-tips";
 import { openSparePopupForPort } from "./rail/SparePopup";
@@ -114,6 +115,8 @@ export function CleanPortRow({
   const resourceLit = useFactoryStore(
     (state) => (state.hoveredFlowResourceKey ?? state.selectedFlowResourceKey) === p.resourceKey,
   );
+  // This row's Forced tile lights with the rest of its spill (the buffer's tile and its other makers').
+  const spillLit = useSpillHover((state) => p.spillTo !== undefined && state.drawerId === p.spillTo);
   const [mobOpen, setMobOpen] = useState(false);
   const { port } = p;
   const isInput = p.side === "input";
@@ -222,11 +225,13 @@ export function CleanPortRow({
           setHoveredFlowScope(
             buildPortFlowScope(useFactoryStore.getState().project, p.nodeId, port),
           );
+          if (p.spillTo !== undefined) setSpillHover(p.spillTo);
         }
       }}
       onPointerLeave={() => {
         rowBrowse.handlers.onPointerLeave();
         setHoveredFlowScope(undefined);
+        if (p.spillTo !== undefined) setSpillHover(undefined);
       }}
       onPointerDown={rowBrowse.handlers.onPointerDown}
       onPointerMove={rowBrowse.handlers.onPointerMove}
@@ -266,6 +271,7 @@ export function CleanPortRow({
         <div
           className="cc-forced"
           data-kind={isInput ? "in" : "out"}
+          data-lit={spillLit ? "" : undefined}
           {...tipAttrs(forcedTip(p))}
           onClick={(event) => {
             // A leftover with somewhere else to go opens its split (rail/SparePopup.tsx).

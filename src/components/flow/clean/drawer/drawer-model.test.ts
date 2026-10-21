@@ -58,7 +58,7 @@ describe("a buffer drawer (docs/buffer-drawers.md)", () => {
     expect(view.reaches).toBe("10 /s");
     expect(view.tips.rule.notes).toEqual([{ text: "The plan passes at least the rate through it.", tone: "muted" }]);
   });
-  it("totals what its makers force out upstream beside its number, and says it happens at the makers", () => {
+  it("totals what its makers force out upstream on a Forced tile of its own, and says it happens at the makers", () => {
     const view = buildDrawerView({
       ...base,
       storage: storage(),
@@ -66,19 +66,24 @@ describe("a buffer drawer (docs/buffer-drawers.md)", () => {
       result: { netPerSecond: 0, producedPerSecond: 20 } as never,
       spill: 80,
     });
-    // Its own number is still what passes through.
+    // Its own row is still what passes through.
     expect(view.number).toBe("20");
-    expect(view.spill).toEqual({ text: "+80", fits: true });
-    expect(view.tips.body.rows).toEqual([
-      { label: "Passes", value: "20 /s" },
-      { label: "Forced out upstream", value: "80 /s", tone: "warn" },
-    ]);
-    expect(view.tips.body.notes).toEqual([
-      {
-        text: "Its makers make 80 /s more than its users take. That extra is forced out at the makers, not here.",
-        tone: "muted",
+    expect(view.tips.body.rows).toEqual([{ label: "Passes", value: "20 /s" }]);
+    expect(view.spill).toEqual({
+      number: "80",
+      unit: "/s",
+      tip: {
+        id: "s|spill",
+        title: "Forced upstream",
+        rows: [{ label: "Forced out at its makers", value: "80 /s" }],
+        notes: [
+          {
+            text: "Its makers make 80 /s more than its users take. The makers force that out themselves; this adds it up.",
+            tone: "muted",
+          },
+        ],
       },
-    ]);
+    });
     // Nothing spilled, nothing shown; only a buffer totals spills.
     expect(buildDrawerView({ ...base, storage: storage(), role: "buffer", result: undefined, spill: 0 }).spill).toBeUndefined();
     expect(buildDrawerView({ ...base, storage: storage(), role: "product", result: undefined, spill: 5 }).spill).toBeUndefined();

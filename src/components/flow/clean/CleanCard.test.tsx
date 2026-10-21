@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { setSpillHover, useSpillHover } from "./interaction/spill-hover";
 import { ReactFlowProvider } from "@xyflow/react";
 import type { FactoryNode, Recipe, ResourceKind } from "@/lib/model/types";
 import type { RailPort } from "../node-verdict";
@@ -177,6 +178,29 @@ function renderCard(view: CleanCardView, actions: CleanCardActions = actionsSpy(
     </ReactFlowProvider>,
   );
 }
+
+it("lights a spill's Forced tile with the rest of the spill, and lights the rest from its own row", () => {
+  const view = referenceView();
+  view.outputs = [
+    { ...view.outputs[0]!, forced: { number: "5", unit: "/s" }, spillTo: "buf" },
+    ...view.outputs.slice(1),
+  ];
+  const { container } = renderCard(view);
+  const tile = () => container.querySelector(".cc-forced")!;
+  expect(tile().hasAttribute("data-lit")).toBe(false);
+  // The buffer's own tile (or another maker's row) under the pointer.
+  act(() => setSpillHover("buf"));
+  expect(tile().hasAttribute("data-lit")).toBe(true);
+  act(() => setSpillHover("other"));
+  expect(tile().hasAttribute("data-lit")).toBe(false);
+  act(() => setSpillHover(undefined));
+  // This row under the pointer names its buffer.
+  const row = container.querySelector(".cc-row[data-forced]")!;
+  fireEvent.pointerEnter(row);
+  expect(useSpillHover.getState().drawerId).toBe("buf");
+  fireEvent.pointerLeave(row);
+  expect(useSpillHover.getState().drawerId).toBeUndefined();
+});
 
 it("costs at most 70 elements for the reference card", () => {
   const { container } = renderCard(referenceView());

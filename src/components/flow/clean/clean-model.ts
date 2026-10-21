@@ -94,6 +94,8 @@ export interface CleanPortView {
   resourceKey: string;
   /** What the solve sends out of / brings into the plan at this port with no drawer. */
   forced?: { number: string; unit: string };
+  /** The buffer this port's forced row spills into (a maker making more than the buffer's users take). */
+  spillTo?: string;
   /** The row an Up to card's reason names (STARVED, CLOGGED, UNUSED): lit in the reason's colour. */
   why?: FootTone;
 }
@@ -355,10 +357,11 @@ export function buildPortView(
   port: RailPort,
   node: Pick<FactoryNode, "portRates">,
   forcedAt: ReadonlyMap<string, number> | undefined,
+  spillAt?: ReadonlyMap<string, string>,
 ): CleanPortView {
-  const forcedRate = forcedAt?.get(
-    makePortKey(nodeId, port.side === "input" ? "i" : "o", port.handleId),
-  );
+  const portKey = makePortKey(nodeId, port.side === "input" ? "i" : "o", port.handleId);
+  const forcedRate = forcedAt?.get(portKey);
+  const spillTo = spillAt?.get(portKey);
   const shown = portRowPerSecond(port, forcedRate);
   let number: string;
   let unit: string;
@@ -401,6 +404,7 @@ export function buildPortView(
             unit: rateSuffixForKind(port.kind).trim(),
           }
         : undefined,
+    ...(spillTo !== undefined && forcedRate !== undefined && forcedRate > 0 ? { spillTo } : {}),
   };
 }
 
@@ -988,9 +992,11 @@ export function useCleanCardModel(
   // Only this card's forced entries, and its spills into buffers, which it forces out the same way; the plan lists are
   // short, so no memo.
   const forcedAt = new Map<string, number>();
+  const spillAt = new Map<string, string>();
   for (const entry of [...(plan?.forced ?? []), ...(plan?.spills ?? [])]) {
-    if (entry.nodeId === projectNode.id)
-      forcedAt.set(entry.portKey, (forcedAt.get(entry.portKey) ?? 0) + entry.perSecond);
+    if (entry.nodeId !== projectNode.id) continue;
+    forcedAt.set(entry.portKey, (forcedAt.get(entry.portKey) ?? 0) + entry.perSecond);
+    if ("drawerId" in entry) spillAt.set(entry.portKey, entry.drawerId);
   }
 
   const { selectedMachineHandler, machineHandlers, tierControl, powerReport, steamReport } =
@@ -1091,11 +1097,11 @@ export function useCleanCardModel(
 
   // The rows an Up to card's reason names are lit in its colour (only while the card is Up to: `upTo` is its own).
   const inputs = withReasonPorts(
-    rails.inputs.map((port) => buildPortView(projectNode.id, port, projectNode, forcedAt)),
+    rails.inputs.map((port) => buildPortView(projectNode.id, port, projectNode, forcedAt, spillAt)),
     countState.upTo,
   );
   const outputs = withReasonPorts(
-    rails.outputs.map((port) => buildPortView(projectNode.id, port, projectNode, forcedAt)),
+    rails.outputs.map((port) => buildPortView(projectNode.id, port, projectNode, forcedAt, spillAt)),
     countState.upTo,
   );
   const loop = cardLoop(plan?.loops, projectNode.id);

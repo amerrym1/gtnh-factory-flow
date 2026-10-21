@@ -5,7 +5,7 @@ import { storageTargetMode, type TargetMode } from "@/lib/model/storage-target";
 import { rateMultiplierForKind, rateSuffixForKind } from "@/lib/model/rate-unit";
 import { RULE_MARK, RULE_NAME, trimFlow } from "../../rate-rule";
 import type { DrawerKind } from "../tokens";
-import { mcTextWidth, measureClean, measureRowFigure, measureRowName } from "../text-measure";
+import { mcTextWidth, measureRowFigure, measureRowName } from "../text-measure";
 import type { TipSpec } from "../interaction/tip-spec";
 
 /**
@@ -24,9 +24,6 @@ const WORDS = 76;
 
 /** The name's own box (drawer.css .cd-name), which cuts what runs past it: a longer name is faded at its edge. */
 const NAME_BOX = 71;
-
-/** The number's own box (drawer.css .cd-num), which the spill shares. */
-const NUMBER_BOX = 71;
 
 /**
  * Whether the clean drawer draws this one: every drawer. A power drawer is the same source or product drawer with
@@ -107,10 +104,10 @@ export interface CleanDrawerView {
   /** The glance pill: a sign and a short figure. */
   glanceRate: string;
   /**
-   * A buffer whose makers make more than its users take: the extra, forced out at the makers, as "+80" beside the
-   * number. `fits` is false when the number leaves no room; the tip says it either way.
+   * A buffer whose makers make more than its users take: the extra, forced out at the makers, totalled on a Forced
+   * tile of the drawer's own under its row (the drawer grows by it).
    */
-  spill?: { text: string; fits: boolean };
+  spill?: { number: string; unit: string; tip: TipSpec };
   tips: { bar: TipSpec; del: TipSpec; rule: TipSpec; rate: TipSpec; body: TipSpec };
 }
 
@@ -127,10 +124,6 @@ export interface DrawerViewInput {
   /** What the makers of a buffer force out beyond what its users take, per second (the plan's `spills`, summed). */
   spill?: number;
 }
-
-/** The spill beside a buffer's number: 9 px, 4 px from the number. */
-const SPILL_SIZE = 9;
-const SPILL_GAP = 4;
 
 const KIND_NAME: Record<DrawerKind, string> = {
   source: "Source",
@@ -245,19 +238,12 @@ export function buildDrawerView(input: DrawerViewInput): CleanDrawerView {
       { input: "middle", label: "Clear" },
     ],
   };
-  // A buffer never dumps: what its makers make beyond what its users take is forced out at the makers (their forced
-  // rows, lit while the drawer is hovered) and only totalled here.
+  // A buffer never dumps: what its makers make beyond what its users take is forced out at the makers (their Forced
+  // tiles) and only totalled here, on a Forced tile of its own under the row.
   const spilling = kind === "buffer" && spill !== undefined && spill > 0.000005;
   const spillText = spilling ? formatRateField(spill!, resourceKind) : undefined;
-  const bodyRows: NonNullable<TipSpec["rows"]> = [{ label: flowWord, value: `${number} ${unitLabel}` }];
-  if (spilling) bodyRows.push({ label: "Forced out upstream", value: `${spillText} ${unitLabel}`, tone: "warn" });
   const bodyNotes: NonNullable<TipSpec["notes"]> = [];
-  if (spilling)
-    bodyNotes.push({
-      text: `Its makers make ${spillText} ${unitLabel} more than its users take. That extra is forced out at the makers, not here.`,
-      tone: "muted",
-    });
-  else if (kind === "buffer") bodyNotes.push({ text: "Its makers put in what its users take out.", tone: "muted" });
+  if (kind === "buffer") bodyNotes.push({ text: "Its makers put in what its users take out.", tone: "muted" });
   if (!linked) bodyNotes.push({ text: "Unconnected", tone: "warn" });
   if (isUnmet && hasTarget) {
     bodyNotes.push({
@@ -269,7 +255,7 @@ export function buildDrawerView(input: DrawerViewInput): CleanDrawerView {
     id: `${storage.id}|body`,
     title: label,
     sub: KIND_NAME[kind],
-    rows: bodyRows,
+    rows: [{ label: flowWord, value: `${number} ${unitLabel}` }],
     notes: bodyNotes,
     actions: [
       { input: "drag", label: "Wire to a card" },
@@ -303,10 +289,19 @@ export function buildDrawerView(input: DrawerViewInput): CleanDrawerView {
     ...(spilling
       ? {
           spill: {
-            text: `+${spillText}`,
-            fits:
-              measureRowFigure(number, unit) + SPILL_GAP + measureClean(`+${spillText}`, SPILL_SIZE) <=
-              NUMBER_BOX,
+            number: spillText!,
+            unit,
+            tip: {
+              id: `${storage.id}|spill`,
+              title: "Forced upstream",
+              rows: [{ label: "Forced out at its makers", value: `${spillText} ${unitLabel}` }],
+              notes: [
+                {
+                  text: `Its makers make ${spillText} ${unitLabel} more than its users take. The makers force that out themselves; this adds it up.`,
+                  tone: "muted",
+                },
+              ],
+            },
           },
         }
       : {}),

@@ -212,6 +212,7 @@ export function useSharedCardModel(data: RecipeNodeData, selected: boolean): Spe
   // The forced entries of every section (spills into buffers among them), filed under the card and the section's
   // prefixed handle.
   const forcedAt = new Map<string, number>();
+  const spillAt = new Map<string, string>();
   for (const entry of [...(plan?.forced ?? []), ...(plan?.spills ?? [])]) {
     const parsed = parsePortKey(entry.portKey);
     if (!parsed) continue;
@@ -221,6 +222,7 @@ export function useSharedCardModel(data: RecipeNodeData, selected: boolean): Spe
     const section = at < 0 ? 0 : Number(entry.nodeId.slice(at + 2));
     const key = `${projectNode.id}|${parsed.side}|${sectionHandleId(section, parsed.handle)}`;
     forcedAt.set(key, (forcedAt.get(key) ?? 0) + entry.perSecond);
+    if ("drawerId" in entry) spillAt.set(key, entry.drawerId);
   }
 
   const sections: SpecialSection[] = [section0(base)];
@@ -242,10 +244,10 @@ export function useSharedCardModel(data: RecipeNodeData, selected: boolean): Spe
     sections.push({
       section: entry.section,
       inputs: rails.inputs.map((port) =>
-        buildPortView(projectNode.id, port, projectNode, forcedAt),
+        buildPortView(projectNode.id, port, projectNode, forcedAt, spillAt),
       ),
       outputs: rails.outputs.map((port) =>
-        buildPortView(projectNode.id, port, projectNode, forcedAt),
+        buildPortView(projectNode.id, port, projectNode, forcedAt, spillAt),
       ),
     });
   }

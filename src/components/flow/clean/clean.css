@@ -644,6 +644,14 @@
 .cc-forced[data-kind="out"] .cc-pname {
   color: #c39b84;
 }
+/* Lit with the rest of its spill (the buffer's Forced tile, its other makers'): the lit row's gold ring. */
+.cc-forced[data-lit] {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 210, 87, 0.75),
+    inset 0 0 0 2px rgba(255, 210, 87, 0.18),
+    inset 0 0 0 3px rgba(255, 210, 87, 0.12),
+    inset 0 0 0 4px rgba(255, 210, 87, 0.06);
+}
 
 /* The row an Up to card's reason names (STARVED's short input, CLOGGED's or UNUSED's output, and the rows tied with
    it): striped in the reason's colour as a free end is in its own (body and stripe mixed in clean-model reasonStripes,

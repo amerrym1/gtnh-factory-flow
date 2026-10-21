@@ -74,7 +74,9 @@ The board must stay smooth with 100+ cards on weak PCs.
   Any is `targetMode: "ignore"` or no number. Pool's table uses the same `RuleButton`
   in its "table" dress (`rate-rule.tsx`).
 - A buffer's spills (Up to makers making more than its users take, `plan.spills`) are the makers' forced rows; the
-  buffer only totals them beside its number (`.cd-spill`, dropped when the number leaves no room) and in its tip.
+  buffer only totals them on a Forced tile of its own under its row (`.cd-forced`; the drawer grows to 80 by it, and
+  routing and arrange read the measured size). Hovering any tile of a spill, or a maker's row, lights every tile of that
+  spill and nothing else (`clean/interaction/spill-hover.ts`, a store of its own).
 - Sources have no role switch (it would drop their wires). Buffer modes: overflow (banks
   surplus), strict (clogs), ratio (percent splits edited in `StorageRatioEditor.tsx`, a
   non-modal panel; branch percentages ride the wires near the drawer).

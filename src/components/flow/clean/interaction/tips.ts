@@ -80,6 +80,15 @@ export function openBoxTip(p: CleanPortView, pinned: boolean): TipSpec {
 
 export function forcedTip(p: CleanPortView): TipSpec {
   const input = p.side === "input";
+  // A spill into a buffer: more than the buffer's users take. Nothing else can take it, so no choice to offer.
+  if (p.spillTo !== undefined) {
+    return {
+      id: `${p.nodeId}|forced|${p.handleId}`,
+      title: `Forced output: ${p.name}`,
+      rows: [{ label: "Ships out here", value: p.forced ? rate(p.forced.number, p.forced.unit) : "" }],
+      notes: [{ text: "The buffer's users take less than this makes. The extra is forced out here.", tone: "muted" }],
+    };
+  }
   return {
     id: `${p.nodeId}|forced|${p.handleId}`,
     title: `Forced ${input ? "input" : "output"}: ${p.name}`,
