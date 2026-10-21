@@ -36,7 +36,7 @@ import { portKey } from "./model";
 import { keptUpTo, levelOf } from "./push";
 import { tradeModel, type Trades } from "./trade";
 import type { Id, PortRef, UpToLoop, UpToReadout, UpToReason } from "./types";
-import { NUMERICS } from "./validate";
+import { dustScales, NUMERICS } from "./validate";
 
 /** The read-out's models per island, at the least... */
 export const MAX_READOUT_LPS = 96;
@@ -197,8 +197,10 @@ export function findLoops(ctx: SolveContext, read: ReadonlyMap<number, UpToReado
 /** Whether every machine of a pool stands still at the committed point (within the solve's dust). */
 function idle(ctx: SolveContext, pool: number): boolean {
   const point = ctx.point!;
-  const dust = NUMERICS.dust * ctx.solutionScaleOf(point);
-  return ctx.model.pools[pool]!.machines.every((m) => point.extents[m]! <= dust);
+  const scales = dustScales(ctx.model, point.extents, point.flows, point.externals);
+  return ctx.model.pools[pool]!.machines.every(
+    (m) => point.extents[m]! <= NUMERICS.dust * scales.machines[m]!,
+  );
 }
 
 /** A STARVED pool's short port (its `port` or a `tied` one), as a connected port: unwired ones have no network. */
@@ -402,7 +404,7 @@ function isExact(ctx: SolveContext, m: number): boolean {
 function forcedDemand(ctx: SolveContext, pool: number): number {
   const model = ctx.model;
   const point = ctx.point!;
-  const dust = NUMERICS.dust * ctx.solutionScaleOf(point);
+  const scales = dustScales(model, point.extents, point.flows, point.externals);
   const drawn = ctx.drawnPorts;
   const counted = new Set<number>();
   let demand = 0;
@@ -415,7 +417,11 @@ function forcedDemand(ctx: SolveContext, pool: number): number {
       model.connectedPorts.forEach((port, q) => {
         if (!port.input || model.portComponent[q] !== network || counted.has(q) || drawn.has(q))
           return;
-        if (!isExact(ctx, port.machine) || !(point.externals[q]! > dust)) return;
+        if (
+          !isExact(ctx, port.machine) ||
+          !(point.externals[q]! > NUMERICS.dust * scales.ports[q]!)
+        )
+          return;
         counted.add(q);
         demand += point.externals[q]! / perMachine;
       });

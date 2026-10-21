@@ -26,6 +26,8 @@ nowhere or goes nowhere except through a source, a drawer or trash. Longer versi
 - Engines: `lp-engine.ts` uses HiGHS (WASM) when loaded, else the homegrown simplex
   (`simplex.ts`). Big or slow boards solve in a worker (`src/store/solve-books.ts`);
   nothing that size may run on the main thread.
+- Plan solver dust (`plan/validate.ts` `dustScales`) is judged per network, never over the whole point: a
+  reactor's billions of EU a second must not zero a 0.03/s item wire (the answer then fails its own check).
 - Node rates in results are FULL SPEED; actual = nameplate x `min(1, max(0, utilization))`.
 - Only synchronous solves write `lastSolveDurationMs` in `solve-books.ts`; worker timings
   never un-slow a plan.

@@ -26,7 +26,7 @@ import type {
   UpToLoop,
   UpToReadout,
 } from "./types";
-import { NUMERICS } from "./validate";
+import { dustScales, NUMERICS, type DustScales } from "./validate";
 
 /** What a pass of the chain came to. */
 export type Settlement = { kind: "solved" } | { kind: "stalled"; reason: Note };
@@ -193,7 +193,7 @@ export function settle(
 const noteKey = (n: Note): string => JSON.stringify(n);
 
 /** Flags externals that look like missing edges rather than intent (spec 3.9.4). */
-function wiringDiagnostics(ctx: SolveContext, tol: number, terminalIn: External[]): Note[] {
+function wiringDiagnostics(ctx: SolveContext, scales: DustScales, terminalIn: External[]): Note[] {
   const model = ctx.model;
   const point = ctx.point!;
   const refKey = (r: PortRef) => `${r.node}|${r.input ? 1 : 0}|${r.port}`;
@@ -253,7 +253,7 @@ function wiringDiagnostics(ctx: SolveContext, tol: number, terminalIn: External[
     }
   }
   model.connectedPorts.forEach((port, p) => {
-    if (!port.input || !(point.externals[p]! > tol)) return;
+    if (!port.input || !(point.externals[p]! > NUMERICS.dust * scales.ports[p]!)) return;
     const ref = ctx.refOf(p);
     if (supplied.has(refKey(ref))) return;
     const md = model.machines[port.machine]!;
@@ -289,7 +289,7 @@ export function buildSolutionView(
 ): SolutionView {
   const model = ctx.model;
   const point = ctx.point!;
-  const tol = NUMERICS.dust * ctx.solutionScaleOf(point);
+  const scales = dustScales(model, point.extents, point.flows, point.externals);
   const extentsPerSecond: Record<string, number> = {};
   const machineCounts: Record<string, number> = {};
   const edgeFlowsPerSecond: Record<string, number> = {};
@@ -300,7 +300,11 @@ export function buildSolutionView(
   model.machines.forEach((md, m) => {
     extentsPerSecond[md.spec.id] = point.extents[m]!;
     machineCounts[md.spec.id] = (point.extents[m]! * md.durTicks) / TICKS_PER_SECOND;
-    if (Number.isNaN(ctx.pinnedExtent[m]!) && !upToMachine.has(m) && point.extents[m]! <= tol)
+    if (
+      Number.isNaN(ctx.pinnedExtent[m]!) &&
+      !upToMachine.has(m) &&
+      point.extents[m]! <= NUMERICS.dust * scales.machines[m]!
+    )
       unneeded.push(md.spec.id);
   });
   // The plan's own wires only: a buffer's edges are the solver's, read out per port on the drawer.
@@ -312,7 +316,7 @@ export function buildSolutionView(
   model.connectedPorts.forEach((port, p) => {
     const ext = point.externals[p]!;
     // What a buffer banks is the buffer's (`DrawerReadout.banked`), not a forced flow.
-    if (!(ext > tol) || ctx.bankPorts.has(p)) return;
+    if (!(ext > NUMERICS.dust * scales.ports[p]!) || ctx.bankPorts.has(p)) return;
     (port.input ? gatedSources : gatedSinks).push({ port: ctx.refOf(p), ratePerSecond: ext });
     externalQuantity += ext;
   });
@@ -324,7 +328,7 @@ export function buildSolutionView(
       qtys.forEach((qty, i) => {
         if (!(qty > 0) || model.portLookup.has(portKey(m, i, input))) return;
         const rate = point.extents[m]! * qty;
-        if (!(rate > tol)) return;
+        if (!(rate > NUMERICS.dust * scales.machines[m]!)) return;
         (input ? terminalInputs : terminalOutputs).push({
           port: { node: md.spec.id, port: i, input },
           ratePerSecond: rate,
@@ -348,7 +352,7 @@ export function buildSolutionView(
     openGates: point.support.size,
     externalQuantity,
     totalInternalFlow,
-    notes: [...ctx.notes, ...ctx.stageNotes, ...wiringDiagnostics(ctx, tol, terminalInputs)],
+    notes: [...ctx.notes, ...ctx.stageNotes, ...wiringDiagnostics(ctx, scales, terminalInputs)],
     key: ctx.keyOf(point.support),
     drawers: drawerReadout(ctx, point),
     spares,
