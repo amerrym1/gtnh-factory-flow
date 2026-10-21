@@ -112,7 +112,7 @@
 .cd-fill {
   inset: 1px;
   overflow: hidden;
-  background: repeating-linear-gradient(135deg, var(--cd-stripe) 0 3px, var(--cd-body) 3px 8px);
+  background: var(--cd-body);
   border-radius: calc(var(--cd-radius) - 1px);
 }
 /* A bin narrows 4 px a side to its base (the mod's 3 of 48). Box shadows ignore a clip, so a bin's rings are a drop-shadow list. */
@@ -263,10 +263,10 @@
   white-space: nowrap;
   pointer-events: none;
 }
-/* The unit small beside the number, a space and 2 px after it, its foot a pixel above the number's (CardPaint.words). */
+/* The unit small beside the number, snug against it (a pixel), its foot a pixel above the number's. */
 .cd-num::after {
   content: attr(data-unit);
-  margin-left: 6px;
+  margin-left: 1px;
   font-size: 9px;
   letter-spacing: -0.6px;
   font-weight: 400;
@@ -454,7 +454,7 @@
 /* ---- A buffer's spill: Forced out, in its row ---------------------------------------------------------------- */
 
 /* What its makers force out beyond what its users take, left of the drawer's own figure on a small Forced tile (the
-   card's stripes, edge and colours of an output's): its figure over "Forced out", as the row's figure is over its name.
+   card's flat tint, edge and colours of an output's): its figure over "Forced out", as the row's figure is over its name.
    The drawer is a cell wider while it has one (136); its words keep their right edge by the icon and give the tile the left (41 px for them, cut and faded past that). Wires
    dock on the grown edge (its measured size, as a card's). */
 .cd-wrap[data-spill],
@@ -476,14 +476,14 @@
   width: 46px;
   height: 20px;
   box-sizing: border-box;
-  padding: 0 4px;
+  padding: 0 3px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
   gap: 1px;
   border-radius: 3px;
-  background: repeating-linear-gradient(135deg, #3e3431 0 3px, #322d2e 3px 8px);
+  background: #322d2e;
   box-shadow:
     inset 0 0 0 1px #815e49,
     inset 1px 1px 0 1px #4b3f39,
@@ -502,6 +502,13 @@
   letter-spacing: -0.6px;
   color: #f2ae81;
   white-space: nowrap;
+}
+.cd-forced-num::after {
+  content: attr(data-unit);
+  margin-left: 1px;
+  font-size: 7px;
+  letter-spacing: -0.3px;
+  color: var(--cc-muted);
 }
 .cd-forced-name {
   font-size: 7px;

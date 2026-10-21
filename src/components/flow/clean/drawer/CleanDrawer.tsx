@@ -556,7 +556,7 @@ export function CleanDrawer({
             onPointerEnter={() => setSpillHover(storage.id)}
             onPointerLeave={() => setSpillHover(undefined)}
           >
-            <span className="cd-forced-num">
+            <span className="cd-forced-num" data-unit={view.spill.unit}>
               {view.spill.number}
             </span>
             <span className="cd-forced-name">Forced out</span>

@@ -40,8 +40,8 @@ describe("a port row's fit check", () => {
     expect(measureRowName("Copper Dust", false)).toBeCloseTo(measureClean("Copper Dust", 9) - 0.6 * 11);
     expect(measureRowName("Copper Dust", true)).toBeCloseTo(measureClean("Copper Dust", 7) - 0.45 * 11);
     expect(measureRowFigure("0.045", "/s")).toBeCloseTo(
-      measureClean("0.045", 14) - 0.8 * 5 + 6 + measureClean("/s", 9) - 0.6 * 2,
+      measureClean("0.045", 14) - 0.8 * 5 + 1 + measureClean("/s", 9) - 0.6 * 2,
     );
-    expect(measureRowFigure("12", "")).toBeCloseTo(measureClean("12", 14) - 0.8 * 2 + 6);
+    expect(measureRowFigure("12", "")).toBeCloseTo(measureClean("12", 14) - 0.8 * 2 + 1);
   });
 });

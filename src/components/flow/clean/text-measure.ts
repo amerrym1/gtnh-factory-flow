@@ -112,7 +112,7 @@ export function measureClean(text: string, size: number, weight = 400): number {
  */
 export const ROW_TYPE = {
   figure: { size: 14, spacing: -0.8 },
-  unit: { size: 9, spacing: -0.6, gap: 6 },
+  unit: { size: 9, spacing: -0.6, gap: 1 },
   name: { size: 9, spacing: -0.6 },
   smallName: { size: 7, spacing: -0.45 },
 } as const;

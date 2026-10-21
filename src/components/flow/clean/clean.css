@@ -381,14 +381,10 @@
 .cc-row[data-port]:hover {
   --cc-tile: #31343a;
 }
-/* An unwired port the plan runs through anyway is a free end of it: the striped tile of a source (blue, a tank) or a
-   product (orange, a crate). */
+/* An unwired port the plan runs through anyway is a free end of it: the tile of a source (blue, a tank) or a product
+   (orange, a crate), a flat tint of it. */
 .cc-row[data-open] {
-  background: repeating-linear-gradient(
-    135deg,
-    var(--cc-open-stripe) 0 3px,
-    var(--cc-open-body) 3px 8px
-  );
+  background: var(--cc-open-body);
 }
 .cc-row[data-open][data-side="input"] {
   --cc-open-body: #292f38;
@@ -497,10 +493,10 @@
   color: var(--cc-ink);
   white-space: nowrap;
 }
-/* The unit small beside the number, a space and 2 px after it, its foot a pixel above the number's (CardPaint.words). */
+/* The unit small beside the number, snug against it (a pixel), its foot a pixel above the number's. */
 .cc-num::after {
   content: attr(data-unit);
-  margin-left: 6px;
+  margin-left: 1px;
   font-size: 9px;
   letter-spacing: -0.6px;
   font-weight: 400;
@@ -592,7 +588,8 @@
   right: 30px;
 }
 
-/* A forced row: the plan sends material out (or brings it in) here with no drawer. A tile of the same shape, striped. */
+/* A forced row: the plan sends material out (or brings it in) here with no drawer. A tile of the same shape on a flat
+   tint of the side's colour, its edge in that colour. */
 .cc-forced {
   position: relative;
   box-sizing: border-box;
@@ -604,11 +601,7 @@
   justify-content: center;
   gap: 2px;
   border-radius: 3px;
-  background: repeating-linear-gradient(
-    135deg,
-    var(--cc-forced-stripe) 0 3px,
-    var(--cc-forced-body) 3px 8px
-  );
+  background: var(--cc-forced-body);
   box-shadow:
     inset 0 0 0 1px var(--cc-forced-edge),
     inset 1px 1px 0 1px var(--cc-forced-hi),
@@ -654,16 +647,12 @@
 }
 
 /* The row an Up to card's reason names (STARVED's short input, CLOGGED's or UNUSED's output, and the rows tied with
-   it): striped in the reason's colour as a free end is in its own (body and stripe mixed in clean-model reasonStripes,
+   it): a flat tint of the reason's colour as a free end is of its own (the body mixed in clean-model reasonStripes,
    set inline), its edge and its name in that colour, the foot bar's tones. After the free ends' colours so it wins
-   over them; on a free end or a forced row its stripes replace theirs. */
+   over them; on a free end or a forced row its tint replaces theirs. */
 .cc-card .cc-row[data-why] {
   --cc-tile-edge: var(--cc-why);
-  background: repeating-linear-gradient(
-    135deg,
-    var(--cc-why-stripe) 0 3px,
-    var(--cc-why-body) 3px 8px
-  );
+  background: var(--cc-why-body);
 }
 .cc-card .cc-row[data-why][data-forced] {
   background: none;
@@ -671,11 +660,7 @@
 .cc-card .cc-row[data-why] > .cc-line,
 .cc-card .cc-row[data-why] > .cc-forced {
   --cc-forced-edge: var(--cc-why);
-  background: repeating-linear-gradient(
-    135deg,
-    var(--cc-why-stripe) 0 3px,
-    var(--cc-why-body) 3px 8px
-  );
+  background: var(--cc-why-body);
 }
 .cc-card .cc-row[data-why] > .cc-pname,
 .cc-card .cc-row[data-why] > .cc-line > .cc-pname {

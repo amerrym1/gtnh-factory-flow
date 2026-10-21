@@ -178,7 +178,7 @@
 }
 .cc-prb[data-set]::after {
   content: attr(data-unit);
-  margin-left: 2px;
+  margin-left: 1px;
   color: #8a8e97;
 }
 .cc-prb[data-prompt] {
