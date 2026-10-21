@@ -384,8 +384,8 @@ function Words({ p, iconProps }: { p: CleanPortView; iconProps: Record<string, u
 /**
  * The count under the machine (docs/up-to.md): what runs, big and white (`::before`, from `data-run`), and under it
  * what is set, as the overview's machine lines say it: the rule word, always (a click opens Any, Up to, Exactly), and
- * the set box (`::after`, from `data-set`): the number in gold, or "Set" on Any. A click anywhere else types a count
- * (Any becomes Up to), the wheel steps it, the middle button goes back to Any. Two elements: the block and the rule
+ * the set box (`::after`, from `data-set`): the number in gold, or "Set" with no count. A click anywhere else types a
+ * count (Any becomes Up to), the wheel steps it, the middle button clears it (Up to, waiting). Two elements: the block and the rule
  * word.
  */
 export function CountBox({
@@ -411,8 +411,8 @@ export function CountBox({
   // Escape closed the box: a blur that follows (a browser may send one as the box goes) sets nothing.
   const cancelled = useRef(false);
   const editing = draft !== undefined;
-  // What the box holds is set when it is let go of (a click anywhere else, Enter); Escape drops it. Zero or nothing is
-  // Any. A count that is already the card's sets nothing, so opening and leaving the box costs no undo step.
+  // What the box holds is set when it is let go of (a click anywhere else, Enter); Escape drops it. Zero or nothing
+  // clears it. A count that is already the card's sets nothing, so opening and leaving the box costs no undo step.
   const commit = () => {
     if (draft === undefined || cancelled.current) return;
     setDraft(undefined);
@@ -462,7 +462,7 @@ export function CountBox({
           setDraft(view.set !== undefined ? view.setText : "");
         }
       }}
-      // The middle button goes back to Any: the plan decides the count again.
+      // The middle button clears the count: Up to, waiting for one, while the plan decides it again.
       onMouseDown={(event) => {
         if (event.button === 1) event.preventDefault();
       }}

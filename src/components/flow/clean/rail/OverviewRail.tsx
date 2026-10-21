@@ -1135,7 +1135,7 @@ const MachineRow = memo(function MachineRow({
   };
   const lines: TipContent = {
     title: entry.label,
-    sub: upTo
+    sub: upTo && entry.pinned
       ? `${machinesText(entry.count)} of ${machinesText(entry.pin!)} machines`
       : `${machinesText(entry.count)} machines${entry.pinned ? " (exactly)" : ""}`,
     notes: [
@@ -1206,7 +1206,8 @@ const MachineRow = memo(function MachineRow({
         </span>
         <div className="rail-controls" onClick={(event) => event.stopPropagation()}>
           <RuleKey
-            mark={set ? (upTo ? "≤" : "=") : "~"}
+            // ≤ Up to (grey while it waits for a count; a count wheeled onto Any is Up to), = Exactly, ~ Any.
+            mark={entry.rule === "exact" ? "=" : upTo || set ? "≤" : "~"}
             tone={set ? "gold" : "muted"}
             label={`Pin the ${entry.label}`}
             onClick={(event) => {
@@ -1235,8 +1236,15 @@ const MachineRow = memo(function MachineRow({
                     ],
                   }
                 : {
-                    title: "Any",
-                    notes: [{ text: "The plan decides how many.", tone: "muted" }],
+                    title: PIN_RULE_LABEL[entry.rule],
+                    notes: [
+                      {
+                        text: upTo
+                          ? "Set how many you have. Until then the plan picks."
+                          : "The plan decides how many.",
+                        tone: "muted",
+                      },
+                    ],
                     actions: [{ input: "left", label: `Pin it at ${base}` }],
                   }
             }

@@ -1,7 +1,7 @@
 import { isCustomRateRecipe } from "@/lib/model/custom-rate";
 import { isFluidTankRecipe } from "@/lib/model/fluid-tank";
 import { buildMachineList, type MachineListEntry } from "@/lib/model/machine-list";
-import { pinRuleOf, type PinRule } from "@/lib/model/pin-rule";
+import { pinRuleOf, shownPinRule, type PinRule } from "@/lib/model/pin-rule";
 import type { PlanUpTo } from "@/lib/solver/plan/types";
 import { makeResourceKey } from "@/lib/model/resources";
 import { getStorageRoles, type StorageRole } from "@/lib/model/storage-role";
@@ -87,7 +87,7 @@ export interface RailLine {
 export interface RailMachine extends MachineListEntry {
   /** A count is set (Up to or Exactly). */
   pinned: boolean;
-  /** The count rule: Any, Up to or Exactly. */
+  /** The count rule as the card shows it: Any, Up to (with or without a count) or Exactly. */
   rule: PinRule;
   /** The set count when pinned. */
   pin?: number;
@@ -234,10 +234,12 @@ export function buildRailModel(
     .filter((entry) => !isFluidTankRecipe(recipes.get(nodesById.get(entry.nodeId)?.recipeId ?? "")))
     .map((entry) => {
       const node = nodesById.get(entry.nodeId);
-      const rule = node ? pinRuleOf(node) : "any";
+      const solved = node ? pinRuleOf(node) : "any";
+      // The rule as the card shows it: with no count, Up to unless the player picked Any.
+      const rule = node ? shownPinRule(node) : "any";
       const pin = node?.solvePin;
-      const pinned = rule !== "any" && pin !== undefined && pin > 0;
-      const upTo = rule === "upTo" ? result.plan?.upTo?.[entry.nodeId] : undefined;
+      const pinned = solved !== "any" && pin !== undefined && pin > 0;
+      const upTo = solved === "upTo" ? result.plan?.upTo?.[entry.nodeId] : undefined;
       // An Up to card lists what runs, not what is set.
       const count = upTo ? Math.max(0, upTo.reached) : entry.count;
       return {

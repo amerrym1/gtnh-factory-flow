@@ -1,7 +1,7 @@
 import { RECIPE_NODE_WIDTH } from "@/lib/board-grid";
 import { openLibrary } from "@/lib/library/library-tab";
 import type { FactoryProject } from "@/lib/model/types";
-import { nextPinRule, pinRuleOf, withPinRule } from "@/lib/model/pin-rule";
+import { nextPinRule, shownPinRule, withPinRule } from "@/lib/model/pin-rule";
 import type { TargetMode } from "@/lib/model/storage-target";
 import { useFactoryStore } from "@/store/factory-store";
 import { liveUndoHandler, quietly } from "@/store/live-edit-gate";
@@ -149,37 +149,44 @@ export function setLineRate(line: RailLine, source: boolean, perSecond: number):
 // ---------------------------------------------------------------------------
 
 /**
- * Sets a machine's count, or (0 or less) lets the plan decide how many. The rule stays as it is; a card on Any
- * becomes Up to, as on the card.
+ * Sets a machine's count, or (0 or less) clears it: Up to, waiting for a count, while the plan decides how many. The
+ * rule stays as it is; a card on Any becomes Up to, as on the card.
  */
 export function pinCount(nodeId: string, count: number): void {
   if (locked()) return;
   const node = state().project.nodes.find((n) => n.id === nodeId);
   if (!node) return;
-  const rule = pinRuleOf(node);
+  const rule = shownPinRule(node);
   if (!(count > 0)) {
-    const { solvePin, solvePinExact } = withPinRule(node, "any", undefined);
-    state().updateNode(nodeId, { solvePin, solvePinExact });
+    const { solvePin, solvePinExact, solvePinAny } = withPinRule(node, "upTo", undefined);
+    state().updateNode(nodeId, { solvePin, solvePinExact, solvePinAny });
     return;
   }
   const next = withPinRule(node, rule === "any" ? "upTo" : rule, count);
   state().updateNode(nodeId, {
     solvePin: next.solvePin,
     solvePinExact: next.solvePinExact,
+    solvePinAny: next.solvePinAny,
     portRates: undefined,
   });
 }
 
-/** Steps a machine's count rule (Any, Up to, Exactly); `count` is what a card on Any is set to. */
+/**
+ * Steps a machine's count rule (Any, Up to, Exactly); `count` is what a card with no count is set to. Up to waiting
+ * for a count steps to Up to at `count`.
+ */
 export function stepPinRule(nodeId: string, count: number): void {
   if (locked()) return;
   const node = state().project.nodes.find((n) => n.id === nodeId);
   if (!node) return;
-  const rule = nextPinRule(pinRuleOf(node));
+  const shown = shownPinRule(node);
+  const waiting = shown === "upTo" && !((node.solvePin ?? 0) > 0);
+  const rule = waiting ? "upTo" : nextPinRule(shown);
   const next = withPinRule(node, rule, rule === "any" ? undefined : (node.solvePin ?? count));
   state().updateNode(nodeId, {
     solvePin: next.solvePin,
     solvePinExact: next.solvePinExact,
+    solvePinAny: next.solvePinAny,
     ...(rule === "any" ? {} : { portRates: undefined }),
   });
 }

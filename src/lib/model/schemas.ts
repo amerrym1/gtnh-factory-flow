@@ -421,9 +421,11 @@ export const factoryNodeSchema = z.object({
       }),
     )
     .optional(),
-  // The machine count the player set: Up to by default, Exactly with solvePinExact; absent = the solver's choice.
+  // The machine count the player set: Up to by default, Exactly with solvePinExact; absent = the solver's choice,
+  // shown as Up to waiting for a count, or as Any with solvePinAny.
   solvePin: z.number().nonnegative().optional(),
   solvePinExact: z.boolean().optional(),
+  solvePinAny: z.boolean().optional(),
   // Plan mode's port-rate pins by canonical handle id, units per second.
   portRates: z
     .record(z.string().min(1).max(512), z.number().positive().finite())

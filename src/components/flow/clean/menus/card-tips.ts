@@ -238,7 +238,9 @@ export function ruleTip(view: Pick<CleanCardView, "nodeId" | "count">): TipSpec 
               : "Always this many. A gap comes in or goes out forced."
             : count.rule === "any"
               ? "The plan decides how many."
-              : "As many as the plan lets it run. Never more.",
+              : count.pinned
+                ? "As many as the plan lets it run. Never more."
+                : "Set how many you have. Until then the plan picks.",
         tone: "muted",
       },
     ],
