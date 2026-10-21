@@ -451,41 +451,43 @@
   left: 16px;
 }
 
-/* ---- A buffer's spill: a Forced tile of its own under the row ----------------------------------------------------- */
+/* ---- A buffer's spill: Forced out, in its row ---------------------------------------------------------------- */
 
-/* What its makers force out beyond what its users take, on the card's Forced tile (stripes, edge and colours of an
-   output's), smaller. The drawer grows to 80 while it has one; wires dock on the grown edge (its measured size, as a
-   card's). The row keeps its 41 px so the tile is not part of it: hovering the tile lights the spill alone. */
+/* What its makers force out beyond what its users take, left of the drawer's own figure on a small Forced tile (the
+   card's stripes, edge and colours of an output's): its figure over "Forced out", as the row's figure is over its name.
+   The drawer is a cell wider while it has one (136); its words keep their right edge by the icon and give the tile the left (41 px for them, cut and faded past that). Wires
+   dock on the grown edge (its measured size, as a card's). */
 .cd-wrap[data-spill],
 .cd[data-spill] {
-  height: 80px;
+  width: 136px;
 }
-.cd[data-spill] .cd-body {
-  bottom: auto;
-  height: 41px;
+.cd[data-spill]:not([data-kind="source"]) .cd-num,
+.cd[data-spill]:not([data-kind="source"]) .cd-name {
+  left: 54px;
+  width: 41px;
 }
 .cd-forced {
   position: absolute;
+  /* Over the row's wire handle (30), under the rule key and rate box (40): it has its own hover. */
+  z-index: 35;
   left: 4px;
-  right: 4px;
-  top: 47px;
-  height: 28px;
+  /* Clear of the delete key (3..13), a pixel above the rule key and rate box (35). */
+  top: 14px;
+  width: 46px;
+  height: 20px;
   box-sizing: border-box;
-  padding: 0 7px;
+  padding: 0 4px;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: center;
-  gap: 2px;
+  gap: 1px;
   border-radius: 3px;
   background: repeating-linear-gradient(135deg, #3e3431 0 3px, #322d2e 3px 8px);
   box-shadow:
     inset 0 0 0 1px #815e49,
     inset 1px 1px 0 1px #4b3f39,
     inset -1px -1px 0 1px #2a2425;
-}
-.cd[data-kind="source"] .cd-forced {
-  align-items: flex-start;
 }
 .cd-forced[data-lit] {
   box-shadow:
@@ -495,22 +497,16 @@
     inset 0 0 0 4px rgba(255, 210, 87, 0.06);
 }
 .cd-forced-num {
-  font-size: 12px;
-  line-height: 12px;
+  font-size: 11px;
+  line-height: 10px;
   letter-spacing: -0.6px;
   color: #f2ae81;
   white-space: nowrap;
 }
-.cd-forced-num::after {
-  content: attr(data-unit);
-  margin-left: 4px;
-  font-size: 8px;
-  letter-spacing: -0.4px;
-  color: var(--cc-muted);
-}
 .cd-forced-name {
-  font-size: 8px;
-  line-height: 9px;
+  font-size: 7px;
+  line-height: 8px;
+  letter-spacing: -0.3px;
   color: #c39b84;
   white-space: nowrap;
 }

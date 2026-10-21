@@ -25,6 +25,9 @@ const WORDS = 76;
 /** The name's own box (drawer.css .cd-name), which cuts what runs past it: a longer name is faded at its edge. */
 const NAME_BOX = 71;
 
+/** The words beside a spill's Forced out tile (drawer.css .cd[data-spill] .cd-num and .cd-name). */
+const SPILL_WORDS = 41;
+
 /**
  * Whether the clean drawer draws this one: every drawer. A power drawer is the same source or product drawer with
  * EU in it (its picture the bolt in its amber box); a buffer is its own kind. The classic drawer is no longer
@@ -104,8 +107,8 @@ export interface CleanDrawerView {
   /** The glance pill: a sign and a short figure. */
   glanceRate: string;
   /**
-   * A buffer whose makers make more than its users take: the extra, forced out at the makers, totalled on a Forced
-   * tile of the drawer's own under its row (the drawer grows by it).
+   * A buffer whose makers make more than its users take: the extra, forced out at the makers, totalled on a small
+   * Forced out tile left of the drawer's own figure (the drawer grows a cell wider by it).
    */
   spill?: { number: string; unit: string; tip: TipSpec };
   tips: { bar: TipSpec; del: TipSpec; rule: TipSpec; rate: TipSpec; body: TipSpec };
@@ -270,10 +273,10 @@ export function buildDrawerView(input: DrawerViewInput): CleanDrawerView {
     number,
     unit,
     zero,
-    numberSmall: measureRowFigure(number, unit) > WORDS,
+    numberSmall: measureRowFigure(number, unit) > (spilling ? SPILL_WORDS : WORDS),
     // The mod's rule, as the card's (CardPaint.words).
     nameSmall: mcTextWidth(label) > 71,
-    nameClipped: measureRowName(label, mcTextWidth(label) > 71) > NAME_BOX,
+    nameClipped: measureRowName(label, mcTextWidth(label) > 71) > (spilling ? SPILL_WORDS : NAME_BOX),
     hasRule,
     rule,
     ruleMark: kind === "trash" ? "×" : RULE_MARK[rule],
@@ -293,11 +296,11 @@ export function buildDrawerView(input: DrawerViewInput): CleanDrawerView {
             unit,
             tip: {
               id: `${storage.id}|spill`,
-              title: "Forced upstream",
-              rows: [{ label: "Forced out at its makers", value: `${spillText} ${unitLabel}` }],
+              title: "Forced out",
+              rows: [{ label: "At its makers", value: `${spillText} ${unitLabel}` }],
               notes: [
                 {
-                  text: `Its makers make ${spillText} ${unitLabel} more than its users take. The makers force that out themselves; this adds it up.`,
+                  text: `Its makers make ${spillText} ${unitLabel} more than its users take. They force it out themselves; this adds it up.`,
                   tone: "muted",
                 },
               ],

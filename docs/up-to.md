@@ -101,7 +101,7 @@ buffer with a rule keeps today's meaning: its rule is a row over what passes thr
 whose takers are full slows down). Without Up to pools a buffer is wiring only, as before.
 
 On the board the bank is the makers', never the drawer's: each maker port's spill (`PlanSolveExtras.spills`) is drawn
-as that card's forced row, and the buffer totals them on a Forced tile of its own under its row (its number is still
+as that card's forced row, and the buffer totals them on a small Forced out tile left of its figure (its figure is still
 what passes through), with a tip saying the makers force it out themselves; hovering any of those tiles lights them all. A website read-out only: the mod's
 balancer computes the same bank and needs no change for it.
 

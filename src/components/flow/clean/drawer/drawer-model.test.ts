@@ -58,7 +58,7 @@ describe("a buffer drawer (docs/buffer-drawers.md)", () => {
     expect(view.reaches).toBe("10 /s");
     expect(view.tips.rule.notes).toEqual([{ text: "The plan passes at least the rate through it.", tone: "muted" }]);
   });
-  it("totals what its makers force out upstream on a Forced tile of its own, and says it happens at the makers", () => {
+  it("totals what its makers force out on a Forced out tile, and says it happens at the makers", () => {
     const view = buildDrawerView({
       ...base,
       storage: storage(),
@@ -74,11 +74,11 @@ describe("a buffer drawer (docs/buffer-drawers.md)", () => {
       unit: "/s",
       tip: {
         id: "s|spill",
-        title: "Forced upstream",
-        rows: [{ label: "Forced out at its makers", value: "80 /s" }],
+        title: "Forced out",
+        rows: [{ label: "At its makers", value: "80 /s" }],
         notes: [
           {
-            text: "Its makers make 80 /s more than its users take. The makers force that out themselves; this adds it up.",
+            text: "Its makers make 80 /s more than its users take. They force it out themselves; this adds it up.",
             tone: "muted",
           },
         ],
