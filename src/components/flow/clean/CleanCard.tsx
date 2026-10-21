@@ -1109,6 +1109,7 @@ export function CleanCard({ view, actions, context, recipe, node }: CleanCardPro
       {menu?.kind === "actions" ? (
         <CardActionsMenu
           anchor={{ left: menu.x, top: menu.top, bottom: menu.bottom }}
+          nodeId={node.id}
           onClose={() => setMenu(undefined)}
           onClone={() => cloneWithSound(duplicateNode, node.id)}
           onDelete={() => deleteNode(node.id)}

@@ -65,8 +65,11 @@ The board has its own notes in `flow/CLAUDE.md`, the Pool worksheet in `pool/CLA
   re-docking wires whose resource survives; if none would survive, it lands beside instead.
 - The tier ceiling also filters generator cards by their `unlock` chip, client side
   (`powerUnlockWithinTier`); a source with no chip is never filtered.
-- A machine pin (`recipeBrowserMachinePin`) scopes the maps to one machine and adds a
-  recipe section to an existing card (`addRecipeToNode`).
+- A machine pin (`recipeBrowserMachinePin`, a card's "Add another recipe") scopes the maps to one machine and adds the
+  pick as a section of that card (`addRecipeToNode`). It sits on the stencil with its unpin key (`clearMachinePin`; the
+  stencil's conditions stay); a browse inside the open search keeps it, closing drops it. With an empty stencil and no
+  name typed nothing is asked: the machine is the one tab and the page asks for an item on Takes or Makes. Exam:
+  `RecipeBrowser.pin.test.tsx`.
 ## Inspector and panels
 
 - Right resource column 234 shell px, left items panel 256 (classic boards and the phone's drawers; fixed).

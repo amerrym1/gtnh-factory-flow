@@ -11,7 +11,7 @@ import { dissolveProductionGroup, productionGroupDescendants } from "@/lib/model
 import type { ProductionGroup, PoolResourceRule } from "@/lib/model/types";
 
 import { normalizeFullFarms } from "@/lib/model/full-farms";
-import { isEecRecipe } from "@/lib/machines/extreme-entity-crusher";
+import { ownsItsRecipe } from "@/lib/model/owns-recipe";
 
 import { carryMachineVoltage, normalizeProjectHatchInputs } from "@/lib/solver/hatch-input";
 
@@ -1447,20 +1447,25 @@ export const useFactoryStore = create<FactoryStore>(withViewerGuard((set, get, w
         mode,
         seedNonce: state.recipeBrowserSeedNonce,
       });
+      // A machine pin holds while the search stays open: a browse made inside
+      // it (an item from the items column, a slot's "find what makes it")
+      // still asks only that machine, and the pick still joins its card. The
+      // stencil's unpin key and closing the search are what lift it.
+      const pin = state.recipeBrowserResource ? state.recipeBrowserMachinePin : undefined;
       return {
         recipeBrowserResource: resource,
         recipeBrowserMode: mode,
         // A plain browse is not a refactor: the stencil seeds from this one
-        // resource and an add places a new card.
+        // resource and an add places a new card (or joins the pinned one).
         recipeBrowserSeed: undefined,
         recipeBrowserRefactorNodeId: undefined,
-        recipeBrowserMachinePin: undefined,
+        recipeBrowserMachinePin: pin,
         recipeBrowserBack: repeat
           ? state.recipeBrowserBack
           : pushBrowserPage(state.recipeBrowserBack, leaving),
         recipeBrowserForward: repeat ? state.recipeBrowserForward : [],
         recipeResourceHistory,
-        selectedNodeId: resource.anchorNodeId,
+        selectedNodeId: resource.anchorNodeId ?? pin?.nodeId,
       };
     });
 
@@ -1892,17 +1897,8 @@ export const useFactoryStore = create<FactoryStore>(withViewerGuard((set, get, w
         return state;
       }
       const primary = state.project.recipes.find((entry) => entry.id === node.recipeId);
-      // Generators, crop farms and custom rate cards own their recipe and
-      // run nothing else; the same goes for the pick. So does an EEC: its
-      // controller holds one spawner.
-      const ownsRecipe = (entry: Recipe | undefined) =>
-        !entry ||
-        isPowerRecipe(entry) ||
-        isCropFarmRecipe(entry) ||
-        isCustomRateRecipe(entry) ||
-        isFluidTankRecipe(entry) ||
-        isEecRecipe(entry);
-      if (ownsRecipe(primary) || ownsRecipe(recipe)) {
+      // A card that owns its recipe runs nothing else; the same goes for the pick.
+      if (!primary || ownsItsRecipe(primary) || ownsItsRecipe(recipe)) {
         return state;
       }
       const lookup = (id: string) =>

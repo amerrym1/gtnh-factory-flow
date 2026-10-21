@@ -16,6 +16,12 @@ holder, a crop card. Bees, the Extreme Entity Crusher and every other machine ar
   (`lib/datasets/tank-recipe.ts`, `lib/model/fluid-tank.ts`) and lets go when unwired. A generator's pinned settings
   are the plan's `settingPins["power:<source>"]`.
 
+- A card's menu (`menus/CardActionsMenu.tsx` `CardRows`, from its actions key and a right click on it) is the mod's
+  order: Clone node, Add another recipe, Replace the recipe, Add to a task, then Delete node in red. The recipe rows
+  follow the classic card's rules (`menus/card-recipe-rows.ts`: none while calm or locked; another recipe unless the
+  card owns its recipe, `lib/model/owns-recipe.ts`; no replace on a holder, an empty crop farm or a shared card).
+  Exam: `menus/card-recipe-rows.test.tsx`.
+
 - `tokens.ts` + `clean.css` own the palette and geometry. Others read them; `colors.ts` has `mixHex`
   (the mod's float32 `Hyb.mix`, so drawer and forced-row mixes match their Java twins).
 - `clean-model.ts` turns a node and the solve into a `CleanCardView` (every string final) and the

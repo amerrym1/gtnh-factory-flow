@@ -47,8 +47,9 @@ Types, Zod schemas, resource keys, recipe rules, and the load funnel
   Anything resolving "the recipe at this handle" reads the section (`sectionNodeView`),
   never `node.recipeId` alone.
 - `removeRecipeSection` (a factory-store action) drops the section's wires and renumbers
-  later ones; removing section 0 promotes the next. Generators, crop farms and custom rate
-  cards never share. Exam: `shared-machine.test.ts`.
+  later ones; removing section 0 promotes the next. A card that owns its recipe never
+  shares (`ownsItsRecipe`: generators, crop farms, custom rate, fluid tanks, the EEC).
+  Exam: `shared-machine.test.ts`.
 
 ## Boards and lists
 
