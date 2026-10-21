@@ -26,7 +26,9 @@ holder, a crop card. Bees, the Extreme Entity Crusher and every other machine ar
   (the mod's float32 `Hyb.mix`, so drawer and forced-row mixes match their Java twins).
 - `clean-model.ts` turns a node and the solve into a `CleanCardView` (every string final) and the
   actions; `CleanCard.tsx` only draws it. The card's height is a pure function of the data: the strip
-  lays its chips out itself (`layoutStrip`, `text-measure.ts`), nothing is measured from the DOM.
+  lays its chips out itself (`layoutStrip`, `text-measure.ts`), nothing is measured from the DOM. A row's fit
+  checks measure its words as drawn (`ROW_TYPE`, pinned to clean.css and drawer.css by `text-measure.test.ts`), and
+  every width is measured again when a face of the app's font loads.
 - The count (`docs/up-to.md`): under the machine's art what runs, big (`data-run`), and what is set, as the overview's
   machine lines say it: the rule word on every rule and the set box (`::after`: the number in gold, "Set" on Any; Any,
   Up to, Exactly through `lib/model/pin-rule.ts`; `menus/CountRuleMenu.tsx`).

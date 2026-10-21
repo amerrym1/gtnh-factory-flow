@@ -29,7 +29,9 @@ The board must stay smooth with 100+ cards on weak PCs.
 8. Round every DOM-measured routing input; sub-pixel jitter breaks determinism.
 9. The scroll camera: only the wrapper scrolls. React rewrites the board's className,
    so hang CSS on data attributes. Per-frame CSS variables go on the smallest element;
-   under the shell zoom animate left/width, not transforms.
+   under the shell zoom animate left/width, not transforms. The viewport wears
+   `will-change: transform` only while the zoom moves (`zoomingMark`, `data-zooming`):
+   worn at rest, Chrome draws a board zoomed out from its old, larger raster (soft text).
 10. Profile with Playwright + CDP Profiler (CPU throttle 6-20x) on a cloned stress plan. If
    route scoring shows up during pan, zoom or hover, a cache is being invalidated.
 

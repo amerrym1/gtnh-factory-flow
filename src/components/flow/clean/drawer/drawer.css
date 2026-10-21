@@ -24,9 +24,9 @@
   line-height: 10px;
   font-weight: 400;
   letter-spacing: 0;
-  /* The game's text shadow (Hyb.text draws every word with it): a quarter of the colour, a pixel down and right. */
-  text-shadow: 1px 1px 0 color-mix(in srgb, currentColor 25%, #000);
-  -webkit-font-smoothing: none;
+  /* The game's text shadow (Hyb.text draws every word with it) under the pixel font alone (globals.css --pixel-text-shadow). */
+  text-shadow: var(--pixel-text-shadow);
+  -webkit-font-smoothing: var(--pixel-font-smoothing);
   --cd-radius: 6px;
 }
 
@@ -254,7 +254,7 @@
   position: absolute;
   top: 3px;
   width: 71px;
-  /* As the card's: Monocraft at 14 px, -0.8 px apart, stands as tall as the mod's figures (clean.css .cc-num). */
+  /* As the card's: 14 px, -0.8 px apart, as tall as the mod's figures in the pixel font (clean.css .cc-num). */
   font-size: 14px;
   letter-spacing: -0.8px;
   font-weight: 400;
@@ -576,7 +576,7 @@
   font-family: var(--cc-font);
   font-size: 14px;
   line-height: 17px;
-  -webkit-font-smoothing: none;
+  -webkit-font-smoothing: var(--pixel-font-smoothing);
 }
 .cd-menu-row {
   display: flex;
