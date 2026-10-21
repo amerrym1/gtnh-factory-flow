@@ -305,17 +305,17 @@ it("sets what the open box holds as it goes: each wheel step at once, typing onc
     expect(actions.stepCount).not.toHaveBeenCalled();
 
     // Typing is set once it rests, not on each key: "1" then "12" sets 12 alone.
-    actions.setCount.mockClear();
+    vi.mocked(actions.setCount).mockClear();
     fireEvent.change(input()!, { target: { value: "1" } });
     vi.advanceTimersByTime(100);
     fireEvent.change(input()!, { target: { value: "12" } });
     expect(actions.setCount).not.toHaveBeenCalled();
     vi.advanceTimersByTime(LIVE_TYPE_MS);
-    expect(actions.setCount.mock.calls).toEqual([[12]]);
+    expect(vi.mocked(actions.setCount).mock.calls).toEqual([[12]]);
     // An emptied box is a count being retyped: nothing is cleared while typing.
     fireEvent.change(input()!, { target: { value: "" } });
     vi.advanceTimersByTime(LIVE_TYPE_MS);
-    expect(actions.setCount.mock.calls).toEqual([[12]]);
+    expect(vi.mocked(actions.setCount).mock.calls).toEqual([[12]]);
 
     // Escape closes the box and puts back the count it opened with; a blur as the box goes sets nothing more.
     const box = input()!;
