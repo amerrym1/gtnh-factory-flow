@@ -35,7 +35,8 @@ afterEach(cleanup);
 
 /**
  * The most elements one reference card may cost: 3 inputs + power + 2 outputs + 2 chips + 3 strip chips + the circuit
- * badge in the well (68). An Up to card with its bar along the foot costs two more (the rule word and the bar): 70.
+ * badge in the well + the count's rule word, which every rule shows (69). An Up to card with its bar along the foot
+ * costs one more: 70. The set box is the count's `::after`, no element.
  */
 const BUDGET = 70;
 
@@ -198,13 +199,21 @@ it("keeps every control a div, so the button font rule cannot reach it", () => {
   expect(container.querySelectorAll("button, input, select, textarea").length).toBe(0);
 });
 
-it("says what runs big and what is set small, through data attributes", () => {
+it("says what runs big, and under it the rule and the set box for every rule, through data attributes", () => {
   const { container } = renderCard(referenceView());
   const any = container.querySelector(".cc-count")!;
   expect(any.getAttribute("data-run")).toBe("×1.2");
-  expect(any.getAttribute("data-set")).toBe("(set count)");
+  // Any says so, with an empty box asking for a count while nothing sets this part of the plan.
+  expect(any.querySelector(".cc-rule")!.textContent).toBe("Any");
+  expect(any.getAttribute("data-set")).toBe("Set");
+  expect(any.hasAttribute("data-pinned")).toBe(false);
   expect(any.hasAttribute("data-prompt")).toBe(true);
-  expect(any.querySelector(".cc-rule")).toBeNull();
+  cleanup();
+  const quiet = renderCard({ ...referenceView(), unset: false, count: count("any", undefined, 1.2) });
+  const settled = quiet.container.querySelector(".cc-count")!;
+  expect(settled.querySelector(".cc-rule")!.textContent).toBe("Any");
+  expect(settled.getAttribute("data-set")).toBe("Set");
+  expect(settled.hasAttribute("data-prompt")).toBe(false);
   cleanup();
 
   const upTo = renderCard(upToView()).container.querySelector(".cc-count")!;
@@ -213,7 +222,7 @@ it("says what runs big and what is set small, through data attributes", () => {
   expect(upTo.getAttribute("data-rule")).toBe("upTo");
   expect(upTo.hasAttribute("data-pinned")).toBe(true);
   expect(upTo.hasAttribute("data-prompt")).toBe(false);
-  expect(upTo.querySelector(".cc-rule")!.textContent).toBe("up to");
+  expect(upTo.querySelector(".cc-rule")!.textContent).toBe("Up to");
   cleanup();
 
   const exact = renderCard({
@@ -221,10 +230,22 @@ it("says what runs big and what is set small, through data attributes", () => {
     unset: false,
     count: count("exact", 24, 24),
   }).container;
-  expect(exact.querySelector(".cc-rule")!.textContent).toBe("exactly");
+  expect(exact.querySelector(".cc-rule")!.textContent).toBe("Exactly");
   expect(exact.querySelector(".cc-count")!.getAttribute("data-set")).toBe("24");
   // An Exactly card with nothing forced has no bar; neither has an Any card.
   expect(exact.querySelector(".cc-foot")).toBeNull();
+});
+
+it("types a count into an Any card's box, which opens empty", () => {
+  const actions = actionsSpy();
+  const { container } = renderCard(referenceView(), actions);
+  fireEvent.click(container.querySelector(".cc-count")!);
+  const input = container.querySelector<HTMLInputElement>(".cc-count input")!;
+  expect(input.value).toBe("");
+  fireEvent.change(input, { target: { value: "4" } });
+  fireEvent.blur(input);
+  // The card's own rule for a typed count decides Up to (pinActions), as the overview's box does (pinCount).
+  expect(actions.setCount).toHaveBeenCalledWith(4);
 });
 
 it("opens Any, Up to, Exactly from the rule word and sends the pick", () => {
@@ -260,6 +281,55 @@ it("types a count on a click, steps it on the wheel and goes back to Any on a mi
   fireEvent.change(input, { target: { value: "30" } });
   fireEvent.blur(input);
   expect(actions.setCount).toHaveBeenLastCalledWith(30);
+});
+
+it("steps the number in the open box on the wheel and sets what the box holds when it is let go of", () => {
+  const actions = actionsSpy();
+  const { container } = renderCard(upToView(), actions);
+  const block = container.querySelector(".cc-count")!;
+  const input = () => container.querySelector<HTMLInputElement>(".cc-count input");
+  fireEvent.click(block);
+  // The wheel over the open box is the box's: the page does not zoom and the board's camera never sees it.
+  const wheel = new WheelEvent("wheel", { deltaY: -100, bubbles: true, cancelable: true });
+  fireEvent(input()!, wheel);
+  expect(wheel.defaultPrevented).toBe(true);
+  expect(input()!.value).toBe("25");
+  fireEvent.wheel(input()!, { deltaY: -100 });
+  expect(input()!.value).toBe("26");
+  // Nothing is set while the box is open.
+  expect(actions.stepCount).not.toHaveBeenCalled();
+  expect(actions.setCount).not.toHaveBeenCalled();
+  // A click anywhere else lets go of the box and sets what it shows.
+  fireEvent.blur(input()!);
+  expect(input()).toBeNull();
+  expect(actions.setCount).toHaveBeenCalledWith(26);
+
+  // Typed, stepped, then Escape: nothing is set, and a blur as the box goes sets nothing either.
+  fireEvent.click(block);
+  fireEvent.change(input()!, { target: { value: "7" } });
+  fireEvent.wheel(input()!, { deltaY: 100 });
+  expect(input()!.value).toBe("6");
+  const box = input()!;
+  fireEvent.keyDown(box, { key: "Escape" });
+  fireEvent.blur(box);
+  expect(input()).toBeNull();
+  expect(actions.setCount).toHaveBeenCalledTimes(1);
+
+  // Enter sets it; the next box opened after an Escape sets again.
+  fireEvent.click(block);
+  fireEvent.change(input()!, { target: { value: "9" } });
+  fireEvent.keyDown(input()!, { key: "Enter" });
+  expect(input()).toBeNull();
+  expect(actions.setCount).toHaveBeenLastCalledWith(9);
+
+  // Opened and let go of unchanged: no write. Emptied or zero: Any.
+  fireEvent.click(block);
+  fireEvent.blur(input()!);
+  expect(actions.setCount).toHaveBeenCalledTimes(2);
+  fireEvent.click(block);
+  fireEvent.change(input()!, { target: { value: "0" } });
+  fireEvent.blur(input()!);
+  expect(actions.setCount).toHaveBeenLastCalledWith(undefined);
 });
 
 it("steps on the wheel only while Scroll changes values is on; off, the wheel is left for the board to zoom", () => {

@@ -27,11 +27,14 @@ holder, a crop card. Bees, the Extreme Entity Crusher and every other machine ar
 - `clean-model.ts` turns a node and the solve into a `CleanCardView` (every string final) and the
   actions; `CleanCard.tsx` only draws it. The card's height is a pure function of the data: the strip
   lays its chips out itself (`layoutStrip`, `text-measure.ts`), nothing is measured from the DOM.
-- The count (`docs/up-to.md`): under the machine's art what runs, big (`data-run`), and what is set, the rule
-  word and the number in gold (Any, Up to, Exactly through `lib/model/pin-rule.ts`; `menus/CountRuleMenu.tsx`).
+- The count (`docs/up-to.md`): under the machine's art what runs, big (`data-run`), and what is set, as the overview's
+  machine lines say it: the rule word on every rule and the set box (`::after`: the number in gold, "Set" on Any; Any,
+  Up to, Exactly through `lib/model/pin-rule.ts`; `menus/CountRuleMenu.tsx`).
   An Up to card has one foot bar (`.cc-foot`): fill reached / count, the reason word in its tone, a plain line,
   the fraction, a bottleneck's striped run-on to what the line wants; an Exactly card with a forced input says
   FORCED IN. The read-out is `PlanSolveExtras.upTo`; the overview's words and colours are `up-to-reason.ts`.
+  The wheel (a native non-passive listener) steps the count at rest and the number in the open box (`wheelDraft`); the
+  box is set when let go of (a click elsewhere, Enter), Escape drops it. The overview's count box does the same.
 - DOM budget: at most 70 elements for the reference card, pinned by `CleanCard.test.tsx`. Rings,
   glows, hairlines, chevron, glyphs, units, notes are pseudo-elements and `attr()` content; the
   glance layer is one element. Do not add wrappers around icons or rows.

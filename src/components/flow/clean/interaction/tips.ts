@@ -162,7 +162,7 @@ export function countTip(view: CleanCardView): TipSpec {
       { label: count.pinned ? "Pinned" : "Calculated", value: count.text.replace(/^×/, "x") },
       ...(!count.pinned && count.value > 0 ? [{ label: "Whole machines", value: String(Math.ceil(count.value - 0.000001)) }] : []),
     ],
-    notes: count.note === "(set count)" ? [{ text: "No rate or pinned count in the plan needs this machine yet.", tone: "muted" }] : [],
+    notes: count.prompt ? [{ text: "No rate or pinned count in the plan needs this machine yet.", tone: "muted" }] : [],
     actions: [
       { input: "left", label: count.pinned ? "Change or unpin" : "Pin count" },
       { input: "wheel", label: "+1 / -1" },

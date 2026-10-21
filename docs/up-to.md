@@ -160,8 +160,10 @@ card ids), each ring to `PlanUpToLoop`, and every shortfall to `PlanShortfall` w
 `NodeThroughputResult.utilization` is reached / capacity for an Up to card; `status` is `bottleneck` for BOTTLENECK,
 `underutilized` below the count.
 
-The card (pass 3): under the machine what runs, big and white ("×18.2"), and what you set, small, the number gold ("up
-to 24"; click the number to type, the wheel steps it, click the rule word for Any, Up to, Exactly). Along the foot one
+The card (pass 3): under the machine what runs, big and white ("×18.2"), and what you set, small, as the overview's
+machine lines say it: the rule word, always, and the set box ("Up to [24]", "Exactly [24]", "Any [Set]", the Set
+blinking while nothing sets that part of the plan). Click the box to type (a count typed on Any is Up to, as in the
+overview), the wheel steps it, click the rule word for Any, Up to, Exactly. Along the foot one
 bar for an Up to card: its fill is reached / capacity, then one word in the reason's colour, one plain line, and a
 fraction on the right ("18.2 / 24"); a bottleneck's bar runs on, striped, to what the line wants ("24 / 31"). An
 Exactly card with a forced input says FORCED IN with the resource and rate. No bar for Any, or Exactly with nothing

@@ -742,9 +742,9 @@
 
 /*
  * The count under the machine (docs/up-to.md): what runs, big and white (`::before`, its own line), and under it what
- * you set: the rule word (`.cc-rule`, opens Any, Up to, Exactly) and the number in gold (`::after`). With nothing set
- * the line under says "(set count)" while nothing sets this part of the plan, else nothing; it always keeps its
- * height so the block never moves.
+ * is set, as the overview's machine lines say it: the rule word (`.cc-rule`, opens Any, Up to, Exactly) and the set
+ * box (`::after`, the overview's sunken box at the card's size): the number in gold, or "Set" in grey on Any, gold and
+ * blinking while nothing sets this part of the plan. Every rule draws both, so the block never moves.
  */
 .cc-count {
   position: relative;
@@ -776,11 +776,19 @@
 .cc-count[data-zero]::before {
   color: var(--cc-idle);
 }
+/* The set box: as wide as what it says, at least the box an open editor starts at. */
 .cc-count::after {
   content: attr(data-set);
-  min-width: 1px;
-  height: 10px;
-  color: var(--cc-muted);
+  box-sizing: border-box;
+  min-width: calc(3ch + 8px);
+  height: 12px;
+  padding: 0 3px;
+  border: 1px solid #5a5e68;
+  background: #0f1114;
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.7);
+  line-height: 10px;
+  text-align: center;
+  color: #6f737c;
 }
 .cc-count[data-pinned]::after,
 .cc-count[data-prompt]::after {
@@ -790,12 +798,10 @@
 :root[data-cc-blink] .cc-count[data-prompt]::after {
   color: var(--cc-prompt-off);
 }
-/* What a click types into: the gold number when a count is set, else what runs. */
-.cc-count:not([data-pinned]):not([data-editing]):hover::before,
-.cc-count[data-pinned]:not([data-editing]):not(:has(.cc-rule:hover)):hover::after {
-  text-decoration: underline dotted;
-  text-decoration-color: var(--cc-muted);
-  text-underline-offset: 2px;
+/* What a click types into: the box. */
+.cc-count:not([data-editing]):not(:has(.cc-rule:hover)):hover::after {
+  border-color: var(--cc-gold);
+  background: #15171c;
 }
 .cc-count[data-editing]::after {
   display: none;
@@ -813,17 +819,18 @@
   border-bottom-color: transparent;
   cursor: text;
 }
-/* The count's box: as wide as the number it replaces (set inline in ch), never wider than the well. */
+/* The open box: the set box's size (its width set inline in ch, growing with what is typed), never wider than the
+   well. */
 .cc-count input {
   box-sizing: border-box;
-  min-width: 0;
+  min-width: calc(3ch + 8px);
   max-width: 100%;
   height: 12px;
   margin: 0;
   padding: 0 3px;
   border: 1px solid var(--cc-gold);
   outline: 0;
-  background: #0f1114;
+  background: #15171c;
   color: var(--cc-gold);
   font: inherit;
   font-size: 8px;

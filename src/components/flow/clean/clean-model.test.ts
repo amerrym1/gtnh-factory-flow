@@ -15,11 +15,13 @@ import {
   cardCountState,
   circuitNumber,
   frameTone,
+  parseCountText,
   pinActions,
   pinPatch,
   reasonStripes,
   stateFrameTone,
   wheelCount,
+  wheelDraft,
   withReasonPorts,
   type CleanPortView,
 } from "./clean-model";
@@ -98,27 +100,35 @@ describe("the count", () => {
     expect(state.value).toBe(18.2);
     const view = buildCountView(state);
     expect(view.text).toBe("×18.2");
-    expect(view.ruleWord).toBe("up to");
+    expect(view.ruleWord).toBe("Up to");
     expect(view.setText).toBe("24");
-    expect(view.note).toBe("");
+    expect(view.box).toBe("24");
     // A read-out left over from before the card went Exactly is not this card's.
     expect(cardCountState(result(24), node(24, true), plan(upTo)).value).toBe(24);
   });
 
-  it("prints Exactly's words, Any's prompt or nothing, and a crop's own line", () => {
+  it("always says the rule and fills the set box: the count, or Set on Any, asking while nothing sets it", () => {
     const exact = buildCountView(cardCountState(result(24), node(24, true), plan()));
-    expect([exact.text, exact.ruleWord, exact.setText]).toEqual(["×24", "exactly", "24"]);
+    expect([exact.text, exact.ruleWord, exact.setText, exact.box]).toEqual([
+      "×24",
+      "Exactly",
+      "24",
+      "24",
+    ]);
     const unset = buildCountView(
       cardCountState(result(0), node(), plan(undefined, { unanchored: ["n"] })),
     );
-    expect([unset.ruleWord, unset.note, unset.prompt]).toEqual(["", "(set count)", true]);
+    expect([unset.ruleWord, unset.box, unset.prompt]).toEqual(["Any", "Set", true]);
     const any = buildCountView(cardCountState(result(1.2), node(), plan()));
-    expect([any.text, any.note, any.prompt]).toEqual(["×1.2", "", false]);
-    const crop = buildCountView(cardCountState(result(12), node(), plan()), {
-      noTimes: true,
-      anyNote: "crops planted",
-    });
-    expect([crop.text, crop.note]).toEqual(["12", "crops planted"]);
+    expect([any.text, any.ruleWord, any.setText, any.box, any.prompt]).toEqual([
+      "×1.2",
+      "Any",
+      "",
+      "Set",
+      false,
+    ]);
+    const crop = buildCountView(cardCountState(result(12), node(), plan()), { noTimes: true });
+    expect([crop.text, crop.ruleWord, crop.box]).toEqual(["12", "Any", "Set"]);
     // An idle Up to card is not asked for a count: it says UNUSED in its bar.
     const idle = buildCountView(
       cardCountState(
@@ -137,6 +147,29 @@ describe("the count", () => {
     expect(wheelCount({ rule: "upTo", set: 24, value: 18.2 }, 1)).toBe(25);
     expect(wheelCount({ rule: "exact", set: 2.5, value: 2.5 }, -1)).toBe(2);
     expect(wheelCount({ rule: "upTo", set: 1, value: 1 }, -1)).toBeUndefined();
+  });
+
+  it("reads a typed count: a number, zero or nothing for Any, anything else sets nothing", () => {
+    expect(parseCountText("24")).toBe(24);
+    expect(parseCountText(" ×2.5 ")).toBe(2.5);
+    expect(parseCountText("x3")).toBe(3);
+    expect(parseCountText("")).toBe(0);
+    expect(parseCountText("0")).toBe(0);
+    expect(parseCountText("-2")).toBeUndefined();
+    expect(parseCountText("lots")).toBeUndefined();
+  });
+
+  it("steps the number in an open box on the wheel, from what is typed", () => {
+    // What is typed, rounded, then by one: the box shows the step, nothing is set yet.
+    expect(wheelDraft("24", { value: 18.2 }, 1)).toBe("25");
+    expect(wheelDraft("3", { value: 18.2 }, -1)).toBe("2");
+    expect(wheelDraft("2.6", { value: 1 }, 1)).toBe("4");
+    // Below one is an empty box: Any once set.
+    expect(wheelDraft("1", { value: 1 }, -1)).toBe("");
+    // An empty box starts where the wheel starts an Any card: what runs, rounded up.
+    expect(wheelDraft("", { value: 18.2 }, 1)).toBe("19");
+    expect(wheelDraft("", { value: 18.2 }, -1)).toBe("19");
+    expect(wheelDraft("", { value: 0 }, 1)).toBe("1");
   });
 });
 

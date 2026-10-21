@@ -198,7 +198,7 @@ contents. Read `virtual/card-virtualizer.ts` first (pure, tested); budgets and n
   `edges` prop only changes with the plan, and the memo in FactoryFlow applies the current choice.
 - `--board-zoom` is written on the board only at the glance step and on each sticky note directly (`zoom-var.ts`):
   an inherited property written per step restyles every element under it.
-- The prompts ("(set count)", "Set rate") blink off one clock: `data-cc-blink` on the root, flipped twice a second
+- The prompts (a count's "Set" box, "Set rate") blink off one clock: `data-cc-blink` on the root, flipped twice a second
   by `prompt-phase.ts` while a prompt is mounted, and their colour follows it in CSS. Never a CSS animation per
   prompt: one running animation keeps the page drawing and restyling every frame. The acceptance glow (a wire in
   hand) is still an animation, pinned to the shared phase by one `document.getAnimations()` a frame.

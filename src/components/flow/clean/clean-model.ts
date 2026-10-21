@@ -123,9 +123,9 @@ export interface CleanPowerView {
 }
 
 /**
- * The count under the machine (docs/up-to.md): what runs, big, and under it what you set, small: the rule's word and
- * the number in gold ("up to 24", "exactly 24"). Nothing set (Any) shows "(set count)" while nothing sets this part
- * of the plan, else nothing (a crop says what it counts).
+ * The count under the machine (docs/up-to.md): what runs, big, and under it what is set, small: the rule's word and
+ * the set box, as the overview's machine lines have them ("Up to [24]", "Exactly [24]", "Any [Set]"). The box asks
+ * for a count while nothing sets this part of the plan.
  */
 export interface CleanCountView {
   /** What runs, as printed: "×18.2" (a crop's has no times sign). */
@@ -135,7 +135,7 @@ export interface CleanCountView {
   /** A count is set: Up to or Exactly. */
   pinned: boolean;
   rule: PinRule;
-  /** The rule's word on the card, lower case: "up to", "exactly"; empty for Any. */
+  /** The rule's word on the card: "Any", "Up to", "Exactly". */
   ruleWord: string;
   /** The rule cannot change here: a custom rate card is always Exactly. */
   ruleFixed: boolean;
@@ -143,9 +143,9 @@ export interface CleanCountView {
   set?: number;
   /** The count you set as printed ("24"); empty for Any. */
   setText: string;
-  /** Under what runs when nothing is set: "(set count)", a crop's "crops planted", or empty. */
-  note: string;
-  /** The note asks for a count (it pulses with every prompt on the board). */
+  /** What the set box shows: the count you set, or "Set" for Any. */
+  box: string;
+  /** The box asks for a count (it blinks with every prompt on the board). */
   prompt: boolean;
   /** Nothing runs. */
   zero: boolean;
@@ -529,8 +529,6 @@ export function buildCountView(
   opts: {
     /** A crop's count has no times sign. */
     noTimes?: boolean;
-    /** What an Any card says under its count when nothing asks for one (a crop's "crops planted"). */
-    anyNote?: string;
     /** A custom rate card: always Exactly, no rule menu. */
     ruleFixed?: boolean;
     title?: string;
@@ -538,16 +536,17 @@ export function buildCountView(
 ): CleanCountView {
   const { rule, pinned, value, unset, needed } = state;
   const set = pinned ? (state.pin as number) : undefined;
+  const setText = set !== undefined ? formatSetCount(set) : "";
   return {
     text: `${opts.noTimes ? "" : "×"}${formatSolvedMachines(value)}`,
     value,
     pinned,
     rule,
-    ruleWord: pinned ? PIN_RULE_LABEL[rule].toLowerCase() : "",
+    ruleWord: PIN_RULE_LABEL[rule],
     ruleFixed: opts.ruleFixed === true,
     set,
-    setText: set !== undefined ? formatSetCount(set) : "",
-    note: pinned ? "" : unset ? "(set count)" : (opts.anyNote ?? ""),
+    setText,
+    box: pinned ? setText : "Set",
     prompt: !pinned && unset,
     zero: state.upTo ? state.upTo.reached <= 0.0000005 : !pinned && needed <= 0.0000005,
     title:
@@ -572,6 +571,34 @@ export function wheelCount(
     return Math.max(1, Math.ceil(count.value - 0.000001));
   const next = Math.round(count.set) + direction;
   return next >= 1 ? next : undefined;
+}
+
+/**
+ * A count typed into the box: a number, a leading times sign allowed. Zero and an empty box mean Any (0); text that
+ * is not a count, or a negative one, is undefined (nothing is set).
+ */
+export function parseCountText(text: string): number | undefined {
+  const trimmed = text.trim().replace(/^[×x]\s*/, "");
+  if (trimmed === "") return 0;
+  const value = Number.parseFloat(trimmed);
+  return Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+/**
+ * The box's text after one wheel step while it is being typed in: the number in it rounded, plus or minus one (below
+ * one, empty for Any); with nothing in it, what the wheel gives an Any card. Nothing is set until the box is.
+ */
+export function wheelDraft(
+  draft: string,
+  count: Pick<CleanCountView, "value">,
+  direction: -1 | 1,
+): string {
+  const typed = parseCountText(draft);
+  const next =
+    typed !== undefined && typed > 0
+      ? wheelCount({ rule: "upTo", set: typed, value: count.value }, direction)
+      : wheelCount({ rule: "any", set: undefined, value: count.value }, direction);
+  return next === undefined ? "" : formatSetCount(next);
 }
 
 /** The patch that gives a card `rule` and `count` (every write of a count goes through `withPinRule`). */

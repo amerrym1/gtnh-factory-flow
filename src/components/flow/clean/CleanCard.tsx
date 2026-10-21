@@ -46,7 +46,13 @@ import type {
   CleanFootView,
   CleanPortView,
 } from "./clean-model";
-import { circuitNumber, frameTone, reasonStripes } from "./clean-model";
+import {
+  circuitNumber,
+  frameTone,
+  parseCountText,
+  reasonStripes,
+  wheelDraft,
+} from "./clean-model";
 import { glanceFace } from "./glance";
 import type { PinRule } from "@/lib/model/pin-rule";
 import { CountRuleMenu } from "./menus/CountRuleMenu";
@@ -54,6 +60,7 @@ import { tierChipColors } from "./tokens";
 import { syncPromptPhase } from "../virtual/prompt-phase";
 import { ensureInteractionHost, useClickSlop, tipAttrs, type TipSpec } from "./interaction";
 import { PortRateControls } from "./interaction/PortRateControls";
+import { useNativeWheel } from "./interaction/native-wheel";
 import { forcedTip, menuTip, portTip, powerPanelTip } from "./interaction/tips";
 import { gearTip } from "./menus/card-tips";
 import { openSparePopupForPort } from "./rail/SparePopup";
@@ -64,7 +71,7 @@ import { OptionListMenu } from "./menus/OptionListMenu";
 import { SettingsSheet } from "./menus/SettingsSheet";
 import { useDeviceSettings } from "@/lib/device-settings";
 import { anchorOf, type MenuAnchor } from "./menus/MenuPortal";
-import { cloneWithSound, playEditSfx, sfxClick } from "@/lib/sound/sfx";
+import { cloneWithSound, playEditSfx, sfxClick, sfxTick } from "@/lib/sound/sfx";
 import {
   countRowsTip,
   footTip,
@@ -376,9 +383,10 @@ function Words({ p, iconProps }: { p: CleanPortView; iconProps: Record<string, u
 
 /**
  * The count under the machine (docs/up-to.md): what runs, big and white (`::before`, from `data-run`), and under it
- * what you set: the rule word (a click opens Any, Up to, Exactly) and the number in gold (`::after`, from `data-set`).
- * A click anywhere else types a count (Any becomes Up to), the wheel steps it, the middle button goes back to Any.
- * Two elements: the block and the rule word.
+ * what is set, as the overview's machine lines say it: the rule word, always (a click opens Any, Up to, Exactly), and
+ * the set box (`::after`, from `data-set`): the number in gold, or "Set" on Any. A click anywhere else types a count
+ * (Any becomes Up to), the wheel steps it, the middle button goes back to Any. Two elements: the block and the rule
+ * word.
  */
 export function CountBox({
   view,
@@ -399,32 +407,46 @@ export function CountBox({
 }) {
   const [draft, setDraft] = useState<string>();
   const [ruleMenu, setRuleMenu] = useState<MenuAnchor>();
+  const [block, setBlock] = useState<HTMLDivElement | null>(null);
+  // Escape closed the box: a blur that follows (a browser may send one as the box goes) sets nothing.
+  const cancelled = useRef(false);
   const editing = draft !== undefined;
+  // What the box holds is set when it is let go of (a click anywhere else, Enter); Escape drops it. Zero or nothing is
+  // Any. A count that is already the card's sets nothing, so opening and leaving the box costs no undo step.
   const commit = () => {
-    if (draft === undefined) return;
-    const text = draft.trim();
+    if (draft === undefined || cancelled.current) return;
     setDraft(undefined);
-    if (text === "") {
-      onSet(undefined);
+    const value = parseCountText(draft);
+    if (value === undefined) return;
+    if (value > 0 ? value !== view.set : view.pinned) onSet(value > 0 ? value : undefined);
+  };
+  // The wheel steps the count, or the number in the box while it is open; the camera never gets it. Native and
+  // non-passive so Ctrl+wheel does not zoom the page.
+  useNativeWheel(block, (event) => {
+    if (event.deltaY === 0 || checklistLocked() || !wheelChangesValues()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const up = event.deltaY < 0;
+    if (draft !== undefined) {
+      sfxTick(up);
+      setDraft((now) => (now === undefined ? now : wheelDraft(now, view, up ? 1 : -1)));
       return;
     }
-    const value = Number.parseFloat(text.replace(/^[×x]/, ""));
-    if (Number.isFinite(value) && value > 0) onSet(value);
-  };
+    // Each step ticks and claims the edit, so the board's change sound does not play on top.
+    playEditSfx("ui.tick", 1, up ? 1.12 : 0.9);
+    onStep(up ? 1 : -1);
+  });
   return (
     <div
+      ref={setBlock}
       role="button"
       tabIndex={0}
       className="cc-count nowheel"
       data-wheel-value=""
-      aria-label={
-        view.pinned
-          ? `${view.text} running, ${view.ruleWord} ${view.setText}`
-          : `${view.text} machines`
-      }
+      aria-label={`${view.text} running, ${view.ruleWord.toLowerCase()}${view.pinned ? ` ${view.setText}` : ""}`}
       data-rule={view.rule}
       data-run={view.text}
-      data-set={view.pinned ? view.setText : view.note}
+      data-set={view.box}
       data-pinned={view.pinned ? "" : undefined}
       data-zero={view.zero ? "" : undefined}
       data-prompt={view.prompt ? "" : undefined}
@@ -436,16 +458,9 @@ export function CountBox({
         glyph(event);
         if (!editing && wasClick(event) && !checklistLocked()) {
           sfxClick();
+          cancelled.current = false;
           setDraft(view.set !== undefined ? view.setText : "");
         }
-      }}
-      onWheel={(event: WheelEvent) => {
-        if (checklistLocked() || !wheelChangesValues()) return;
-        event.stopPropagation();
-        const up = event.deltaY < 0;
-        // Each step ticks and claims the edit, so the board's change sound does not play on top.
-        playEditSfx("ui.tick", 1, up ? 1.12 : 0.9);
-        onStep(up ? 1 : -1);
       }}
       // The middle button goes back to Any: the plan decides the count again.
       onMouseDown={(event) => {
@@ -459,27 +474,25 @@ export function CountBox({
         onSet(undefined);
       }}
     >
-      {view.ruleWord ? (
-        <div
-          role={view.ruleFixed ? undefined : "button"}
-          tabIndex={view.ruleFixed ? undefined : 0}
-          className="cc-rule"
-          data-fixed={view.ruleFixed ? "" : undefined}
-          data-open={ruleMenu ? "" : undefined}
-          data-menu-anchor=""
-          aria-haspopup={view.ruleFixed ? undefined : "menu"}
-          aria-expanded={view.ruleFixed ? undefined : ruleMenu !== undefined}
-          {...(ruleTipSpec ? tipAttrs(ruleTipSpec) : {})}
-          onClick={(event) => {
-            glyph(event);
-            if (view.ruleFixed || !wasClick(event) || checklistLocked()) return;
-            sfxClick();
-            setRuleMenu(ruleMenu ? undefined : anchorOf(event.currentTarget));
-          }}
-        >
-          {view.ruleWord}
-        </div>
-      ) : null}
+      <div
+        role={view.ruleFixed ? undefined : "button"}
+        tabIndex={view.ruleFixed ? undefined : 0}
+        className="cc-rule"
+        data-fixed={view.ruleFixed ? "" : undefined}
+        data-open={ruleMenu ? "" : undefined}
+        data-menu-anchor=""
+        aria-haspopup={view.ruleFixed ? undefined : "menu"}
+        aria-expanded={view.ruleFixed ? undefined : ruleMenu !== undefined}
+        {...(ruleTipSpec ? tipAttrs(ruleTipSpec) : {})}
+        onClick={(event) => {
+          glyph(event);
+          if (view.ruleFixed || !wasClick(event) || checklistLocked()) return;
+          sfxClick();
+          setRuleMenu(ruleMenu ? undefined : anchorOf(event.currentTarget));
+        }}
+      >
+        {view.ruleWord}
+      </div>
       {editing ? (
         <input
           autoFocus
@@ -497,7 +510,10 @@ export function CountBox({
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => {
             if (event.key === "Enter") event.currentTarget.blur();
-            if (event.key === "Escape") setDraft(undefined);
+            if (event.key === "Escape") {
+              cancelled.current = true;
+              setDraft(undefined);
+            }
             event.stopPropagation();
           }}
         />
