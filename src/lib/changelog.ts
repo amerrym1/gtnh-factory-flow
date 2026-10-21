@@ -40,7 +40,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "4.3.3",
+    version: "4.4.0",
     date: "2026-10-21",
     headline: "Sharper board, clearer counts",
     warning:
