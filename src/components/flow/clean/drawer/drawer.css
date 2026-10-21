@@ -249,7 +249,7 @@
 }
 
 /* The words: the number's glyphs 8 px under the bar (the mod's 3 under its 8 px bar in a 40 px box, centred in 50
-   here), the name 2 px under the number, both 41 px in from the icon's side and 75 wide. */
+   here), the name 2 px under the number, in a 71 px column beside the icon. */
 .cd-num {
   position: absolute;
   top: 3px;
@@ -307,6 +307,12 @@
   -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 10px), transparent);
   mask-image: linear-gradient(90deg, #000 calc(100% - 10px), transparent);
 }
+/* Centred in their column beside the icon, so a short figure leaves no empty side. A word too long for the column starts
+   at its left edge and is cut and faded at its right (the browser start-aligns an overflowing centred line). */
+.cd-num,
+.cd-name {
+  text-align: center;
+}
 .cd[data-kind="source"] .cd-num,
 .cd[data-kind="source"] .cd-name {
   left: 41px;
@@ -314,7 +320,6 @@
 .cd:not([data-kind="source"]) .cd-num,
 .cd:not([data-kind="source"]) .cd-name {
   left: 4px;
-  text-align: right;
 }
 
 /* The rule key 10 x 10 and the rate box 63 x 10, a pair 2 px apart under the words (CardLayout.CTRL_*: the mod's box
