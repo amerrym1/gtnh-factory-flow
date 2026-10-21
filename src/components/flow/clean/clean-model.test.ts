@@ -100,27 +100,35 @@ describe("the count", () => {
     expect(state.value).toBe(18.2);
     const view = buildCountView(state);
     expect(view.text).toBe("×18.2");
-    expect(view.ruleWord).toBe("up to");
+    expect(view.ruleWord).toBe("Up to");
     expect(view.setText).toBe("24");
-    expect(view.note).toBe("");
+    expect(view.box).toBe("24");
     // A read-out left over from before the card went Exactly is not this card's.
     expect(cardCountState(result(24), node(24, true), plan(upTo)).value).toBe(24);
   });
 
-  it("prints Exactly's words, Any's prompt or nothing, and a crop's own line", () => {
+  it("always says the rule and fills the set box: the count, or Set on Any, asking while nothing sets it", () => {
     const exact = buildCountView(cardCountState(result(24), node(24, true), plan()));
-    expect([exact.text, exact.ruleWord, exact.setText]).toEqual(["×24", "exactly", "24"]);
+    expect([exact.text, exact.ruleWord, exact.setText, exact.box]).toEqual([
+      "×24",
+      "Exactly",
+      "24",
+      "24",
+    ]);
     const unset = buildCountView(
       cardCountState(result(0), node(), plan(undefined, { unanchored: ["n"] })),
     );
-    expect([unset.ruleWord, unset.note, unset.prompt]).toEqual(["", "(set count)", true]);
+    expect([unset.ruleWord, unset.box, unset.prompt]).toEqual(["Any", "Set", true]);
     const any = buildCountView(cardCountState(result(1.2), node(), plan()));
-    expect([any.text, any.note, any.prompt]).toEqual(["×1.2", "", false]);
-    const crop = buildCountView(cardCountState(result(12), node(), plan()), {
-      noTimes: true,
-      anyNote: "crops planted",
-    });
-    expect([crop.text, crop.note]).toEqual(["12", "crops planted"]);
+    expect([any.text, any.ruleWord, any.setText, any.box, any.prompt]).toEqual([
+      "×1.2",
+      "Any",
+      "",
+      "Set",
+      false,
+    ]);
+    const crop = buildCountView(cardCountState(result(12), node(), plan()), { noTimes: true });
+    expect([crop.text, crop.ruleWord, crop.box]).toEqual(["12", "Any", "Set"]);
     // An idle Up to card is not asked for a count: it says UNUSED in its bar.
     const idle = buildCountView(
       cardCountState(

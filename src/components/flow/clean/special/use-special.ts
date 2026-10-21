@@ -140,7 +140,6 @@ export function countView(
   plan: Parameters<typeof cardCountState>[2],
   opts?: {
     noTimes?: boolean;
-    anyNote?: string;
     title?: string;
     recipe?: Pick<Recipe, "machineType">;
   },
@@ -148,7 +147,6 @@ export function countView(
   const state = cardCountState(undefined, node, plan, opts?.recipe, needed);
   const count = buildCountView(state, {
     noTimes: opts?.noTimes,
-    anyNote: opts?.anyNote,
     title: opts?.title,
     ruleFixed: isCustomRateRecipe(opts?.recipe),
   });
@@ -591,11 +589,8 @@ export function useCropCardModel(data: RecipeNodeData, selected: boolean): Speci
 
   const needed = result?.theoreticalMachinesRequired ?? 0;
   const crops = Math.max(0, Math.round(needed));
-  // The count is crops planted: no times sign, and with nothing set the line under it says so.
-  const { count, unset: countUnset } = countView(projectNode, needed, plan, {
-    noTimes: true,
-    anyNote: Math.round(needed) === 1 ? "crop planted" : "crops planted",
-  });
+  // The count is crops planted: no times sign, and its tip says what it counts.
+  const { count, unset: countUnset } = countView(projectNode, needed, plan, { noTimes: true });
   if (!count.pinned) count.title = "How many crops the plan plants.";
 
   // The harvester's draw: the Industrial Farm burns whole farms, the Crop Manager spends per harvest. Zero by hand.

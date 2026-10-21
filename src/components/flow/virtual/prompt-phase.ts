@@ -1,5 +1,5 @@
 /**
- * Every pulsing prompt on the board ("(set count)", "Set rate") blinks off ONE clock: a timer flips
+ * Every pulsing prompt on the board (a count's "Set" box, "Set rate") blinks off ONE clock: a timer flips
  * `data-cc-blink` on the root element twice a second and the prompts' colour follows it in CSS
  * (clean.css, drawer.css, interaction.css). A CSS animation per prompt kept the page drawing at 60 frames a second
  * and restyling every frame for as long as one prompt was on the board (131 recalcs in a 2 s idle at 200 cards);

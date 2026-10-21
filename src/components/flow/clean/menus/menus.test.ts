@@ -81,10 +81,10 @@ const view = (count: Partial<CleanCardView["count"]>): CleanCardView =>
       value: 0.001,
       pinned: false,
       rule: "any",
-      ruleWord: "",
+      ruleWord: "Any",
       ruleFixed: false,
       setText: "",
-      note: "",
+      box: "Set",
       prompt: false,
       zero: false,
       title: "",
@@ -105,9 +105,10 @@ it("count tip carries the mod's rows, and what runs against what is set", () => 
     view({
       pinned: true,
       rule: "upTo",
-      ruleWord: "up to",
+      ruleWord: "Up to",
       set: 24,
       setText: "24",
+      box: "24",
       text: "×18",
       value: 18,
       title: "As many as it can.",
@@ -129,9 +130,10 @@ it("count tip carries the mod's rows, and what runs against what is set", () => 
     view({
       pinned: true,
       rule: "exact",
-      ruleWord: "exactly",
+      ruleWord: "Exactly",
       set: 3,
       setText: "3",
+      box: "3",
       text: "×3",
       value: 3,
     }),
@@ -141,7 +143,11 @@ it("count tip carries the mod's rows, and what runs against what is set", () => 
   expect(exact.rows?.map((r) => r.label)).toEqual(["Running", "Exactly"]);
 });
 
-it("rule tip: what the rule does, and no menu on a custom rate card", () => {
+it("rule tip: what the rule does, Any's too, and no menu on a custom rate card", () => {
+  const any = ruleTip(view({}));
+  expect(any.title).toBe("Any");
+  expect(any.notes?.map((n) => n.text)).toEqual(["The plan decides how many."]);
+  expect(any.actions?.map((a) => a.label)).toEqual(["Any, Up to, Exactly"]);
   expect(ruleTip(view({ pinned: true, rule: "upTo" })).actions?.map((a) => a.label)).toEqual([
     "Any, Up to, Exactly",
   ]);

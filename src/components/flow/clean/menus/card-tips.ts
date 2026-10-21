@@ -192,6 +192,8 @@ export function countRowsTip(
     notes.push({ text: count.title, tone: "muted" });
   } else {
     rows.push({ label: "Calculated", value: times(count.text) });
+    // What the number counts (a crop card's are crops).
+    notes.push({ text: count.title, tone: "muted" });
     const whole = Math.ceil(count.value - 1e-9);
     if (count.value > 0 && whole !== count.value) {
       rows.push({ label: "Whole machines", value: `×${whole}` });
@@ -234,7 +236,9 @@ export function ruleTip(view: Pick<CleanCardView, "nodeId" | "count">): TipSpec 
             ? count.ruleFixed
               ? "A custom rate always runs at its dial."
               : "Always this many. A gap comes in or goes out forced."
-            : "As many as the plan lets it run. Never more.",
+            : count.rule === "any"
+              ? "The plan decides how many."
+              : "As many as the plan lets it run. Never more.",
         tone: "muted",
       },
     ],

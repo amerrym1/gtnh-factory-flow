@@ -383,9 +383,10 @@ function Words({ p, iconProps }: { p: CleanPortView; iconProps: Record<string, u
 
 /**
  * The count under the machine (docs/up-to.md): what runs, big and white (`::before`, from `data-run`), and under it
- * what you set: the rule word (a click opens Any, Up to, Exactly) and the number in gold (`::after`, from `data-set`).
- * A click anywhere else types a count (Any becomes Up to), the wheel steps it, the middle button goes back to Any.
- * Two elements: the block and the rule word.
+ * what is set, as the overview's machine lines say it: the rule word, always (a click opens Any, Up to, Exactly), and
+ * the set box (`::after`, from `data-set`): the number in gold, or "Set" on Any. A click anywhere else types a count
+ * (Any becomes Up to), the wheel steps it, the middle button goes back to Any. Two elements: the block and the rule
+ * word.
  */
 export function CountBox({
   view,
@@ -442,14 +443,10 @@ export function CountBox({
       tabIndex={0}
       className="cc-count nowheel"
       data-wheel-value=""
-      aria-label={
-        view.pinned
-          ? `${view.text} running, ${view.ruleWord} ${view.setText}`
-          : `${view.text} machines`
-      }
+      aria-label={`${view.text} running, ${view.ruleWord.toLowerCase()}${view.pinned ? ` ${view.setText}` : ""}`}
       data-rule={view.rule}
       data-run={view.text}
-      data-set={view.pinned ? view.setText : view.note}
+      data-set={view.box}
       data-pinned={view.pinned ? "" : undefined}
       data-zero={view.zero ? "" : undefined}
       data-prompt={view.prompt ? "" : undefined}
@@ -477,27 +474,25 @@ export function CountBox({
         onSet(undefined);
       }}
     >
-      {view.ruleWord ? (
-        <div
-          role={view.ruleFixed ? undefined : "button"}
-          tabIndex={view.ruleFixed ? undefined : 0}
-          className="cc-rule"
-          data-fixed={view.ruleFixed ? "" : undefined}
-          data-open={ruleMenu ? "" : undefined}
-          data-menu-anchor=""
-          aria-haspopup={view.ruleFixed ? undefined : "menu"}
-          aria-expanded={view.ruleFixed ? undefined : ruleMenu !== undefined}
-          {...(ruleTipSpec ? tipAttrs(ruleTipSpec) : {})}
-          onClick={(event) => {
-            glyph(event);
-            if (view.ruleFixed || !wasClick(event) || checklistLocked()) return;
-            sfxClick();
-            setRuleMenu(ruleMenu ? undefined : anchorOf(event.currentTarget));
-          }}
-        >
-          {view.ruleWord}
-        </div>
-      ) : null}
+      <div
+        role={view.ruleFixed ? undefined : "button"}
+        tabIndex={view.ruleFixed ? undefined : 0}
+        className="cc-rule"
+        data-fixed={view.ruleFixed ? "" : undefined}
+        data-open={ruleMenu ? "" : undefined}
+        data-menu-anchor=""
+        aria-haspopup={view.ruleFixed ? undefined : "menu"}
+        aria-expanded={view.ruleFixed ? undefined : ruleMenu !== undefined}
+        {...(ruleTipSpec ? tipAttrs(ruleTipSpec) : {})}
+        onClick={(event) => {
+          glyph(event);
+          if (view.ruleFixed || !wasClick(event) || checklistLocked()) return;
+          sfxClick();
+          setRuleMenu(ruleMenu ? undefined : anchorOf(event.currentTarget));
+        }}
+      >
+        {view.ruleWord}
+      </div>
       {editing ? (
         <input
           autoFocus
