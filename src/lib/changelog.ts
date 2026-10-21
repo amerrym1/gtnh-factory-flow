@@ -56,6 +56,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Card menu, Replace the recipe picks a new recipe for a card.",
       "Buffers show their spillover again. What the makers make beyond what the users take is a Forced row on each maker, and the buffer adds it up as Forced out. Hover any of them to light the rest.",
       "Buffers no longer take a rate. They pass what their users take, nothing more.",
+      "Hover an input or output drawer for a switch key top right. It turns an input into an output or back, and takes its wires off.",
       "Your plans sync with your account every 2 minutes instead of every 30 seconds. Your own edits still go up a few seconds after you stop.",
     ],
   },

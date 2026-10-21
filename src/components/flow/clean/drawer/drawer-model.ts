@@ -112,6 +112,8 @@ export interface CleanDrawerView {
    */
   spill?: { number: string; unit: string; tip: TipSpec };
   tips: { bar: TipSpec; del: TipSpec; rule: TipSpec; rate: TipSpec; body: TipSpec };
+  /** The key that makes an input drawer an output one or the reverse (its wires come off); absent on a buffer. */
+  flip?: TipSpec;
 }
 
 export interface DrawerViewInput {
@@ -278,6 +280,16 @@ export function buildDrawerView(input: DrawerViewInput): CleanDrawerView {
     tone,
     linked,
     glanceRate: `${sign}${number}`,
+    ...(kind === "buffer"
+      ? {}
+      : {
+          flip: {
+            id: `${storage.id}|flip`,
+            title: kind === "source" ? "Make it an output" : "Make it an input",
+            notes: [{ text: "Its wires come off.", tone: "muted" as const }],
+            actions: [{ input: "left" as const, label: "Switch" }],
+          },
+        }),
     ...(spilling
       ? {
           spill: {

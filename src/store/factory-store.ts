@@ -501,6 +501,11 @@ interface FactoryStore {
   ) => void;
   /** Drains only: flip between pulling the feeder flat out and catching the extra. */
   setStorageDrainMode: (storageId: string, drainMode: StorageDrainMode) => void;
+  /**
+   * An input drawer becomes an output one, or an output one an input: its wires come off (a card that made the
+   * resource seldom uses it too) and its rate goes (a supply's rate is not a demand's). One undo step. Not a buffer.
+   */
+  flipStorageSide: (storageId: string) => void;
   /** Shared Solve/Pool rate on a source or product; undefined clears it. */
   setStorageTarget: (storageId: string, targetPerSecond: number | undefined) => void;
   setStorageTargetMode: (storageId: string, mode: TargetMode) => void;
@@ -2735,6 +2740,25 @@ export const useFactoryStore = create<FactoryStore>(withViewerGuard((set, get, w
         project,
         lastResult: solveBooks(project),
       });
+    });
+  },
+  flipStorageSide: (storageId) => {
+    set((state) => {
+      if (state.isReadOnly) return state;
+      const storage = (state.project.storages ?? []).find((entry) => entry.id === storageId);
+      const role = getStorageRoles(state.project).get(storageId);
+      if (!storage || role === "buffer") return state;
+      // Unwired, the declared side is the drawer's role (storageRoleFor), and it keeps the drawer from being an orphan.
+      const toSource = role !== "source";
+      const { targetPerSecond: _rate, targetMode: _mode, drainMode: _drain, ...rest } = storage;
+      const project = touchProject({
+        ...state.project,
+        edges: state.project.edges.filter((edge) => edge.source !== storageId && edge.target !== storageId),
+        storages: (state.project.storages ?? []).map((entry) =>
+          entry.id === storageId ? { ...rest, poolSide: toSource ? "source" : "drain" } : entry,
+        ),
+      });
+      return withProjectHistory(state, { project, lastResult: solveBooks(project) });
     });
   },
   setStorageTarget: (storageId, targetPerSecond) => {

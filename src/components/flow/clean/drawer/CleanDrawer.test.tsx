@@ -19,8 +19,8 @@ beforeAll(() => {
 });
 afterEach(cleanup);
 
-/** The most elements one drawer may cost (the classic drawer is 42 to 55). */
-const BUDGET = 18;
+/** The most elements one drawer may cost (the classic drawer is 42 to 55): 18, and the side key an input or output has. */
+const BUDGET = 19;
 
 function storage(patch: Partial<FactoryStorage> = {}): FactoryStorage {
   return {
@@ -60,7 +60,7 @@ beforeEach(() => {
 });
 
 describe("the clean drawer", () => {
-  it("costs at most 18 elements", () => {
+  it("costs at most 19 elements", () => {
     load(storage({ targetPerSecond: 2, targetMode: "at-least" }));
     const { container } = renderDrawer(stored(), "product");
     const count = container.querySelector(".cd-wrap")!.querySelectorAll("*").length;

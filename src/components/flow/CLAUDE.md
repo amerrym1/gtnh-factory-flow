@@ -78,7 +78,9 @@ The board must stay smooth with 100+ cards on weak PCs.
   buffer only totals them on a small Forced out tile left of its figure (`.cd-forced`; the drawer grows a cell wider
   by it, and routing and arrange read the measured size). Hovering any tile of a spill, or a maker's row, lights every tile of that
   spill and nothing else (`clean/interaction/spill-hover.ts`, a store of its own).
-- Sources have no role switch (it would drop their wires). Buffer modes: overflow (banks
+- The side key (`.cd-flip`, the delete key's twin at the top right, on hover) makes an input drawer an output one or
+  the reverse (`flipStorageSide`): its wires come off and its rate goes, and its declared `poolSide` keeps it on the
+  board unwired. Never on a buffer. Buffer modes: overflow (banks
   surplus), strict (clogs), ratio (percent splits edited in `StorageRatioEditor.tsx`, a
   non-modal panel; branch percentages ride the wires near the drawer).
 - Traps: `.storage-chip-text` must not set a z-index; drawer content is not clipped so

@@ -128,6 +128,7 @@ export function CleanDrawer({
   const readOnly = useFactoryStore((state) => state.isReadOnly);
   const browseResource = useFactoryStore((state) => state.browseResource);
   const deleteStorage = useFactoryStore((state) => state.deleteStorage);
+  const flipStorageSide = useFactoryStore((state) => state.flipStorageSide);
   const setDrainMode = useFactoryStore((state) => state.setStorageDrainMode);
 
   const resourceKey = makeResourceKey(storage.kind, storage.resourceId);
@@ -405,6 +406,20 @@ export function CleanDrawer({
             if (wasClick(event) && !locked) deleteStorage(storage.id);
           }}
         />
+        {view.flip && !locked ? (
+          <div
+            role="button"
+            tabIndex={0}
+            className="cd-flip"
+            {...tipAttrs(view.flip)}
+            aria-label={view.flip.title}
+            onPointerDownCapture={pressed}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (wasClick(event) && !rule.locked && !checklistLocked()) flipStorageSide(storage.id);
+            }}
+          />
+        ) : null}
         <div
           className="cd-body"
           data-lit={lit ? "" : undefined}
