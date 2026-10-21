@@ -270,7 +270,7 @@ export function CleanDrawer({
       muted: boolean;
       run: () => void;
     }> = [];
-    if (view.kind !== "trash") {
+    if (view.hasRule) {
       for (const step of RULE_STEPS) {
         rows.push({
           mark: RULE_MARK[step],

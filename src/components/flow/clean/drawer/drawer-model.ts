@@ -141,18 +141,6 @@ export function bufferThroughput(result: Pick<StorageThroughputResult, "produced
 }
 
 function ruleMeaning(kind: DrawerKind, rule: TargetMode): string {
-  if (kind === "buffer") {
-    switch (rule) {
-      case "ignore":
-        return "No target: the plan passes whatever its users take.";
-      case "at-least":
-        return "The plan passes at least the rate through it.";
-      case "exact":
-        return "The plan passes exactly the rate through it.";
-      case "at-most":
-        return "The plan passes no more than the rate through it.";
-    }
-  }
   const flow = kind === "source" ? "draws from it" : "puts in it";
   switch (rule) {
     case "ignore":
@@ -174,7 +162,8 @@ export function buildDrawerView(input: DrawerViewInput): CleanDrawerView {
   const net = kind === "buffer" ? bufferThroughput(result) : Math.abs(result?.netPerSecond ?? 0);
   const { number, unit } = formatRateParts(net, resourceKind);
   const zero = !(net > 0.000005);
-  const hasRule = kind !== "trash";
+  // A buffer has no rule: it passes what its users take. Trash has its key but no rate.
+  const hasRule = kind !== "trash" && kind !== "buffer";
   const target = storage.targetPerSecond;
   // A byproduct is a product with no rule: whatever its stored rule, it reads as Any until it is made a product.
   const inert = role === "byproduct" || role === "trash";

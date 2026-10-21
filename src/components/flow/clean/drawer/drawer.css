@@ -451,37 +451,42 @@
   left: 16px;
 }
 
-/* ---- A buffer's spill: Forced out, in its row ---------------------------------------------------------------- */
+/* ---- A buffer: no rule, so no rule key or rate box; its row centres in the body ------------------------------------ */
 
-/* What its makers force out beyond what its users take: a Forced tile (the card's flat tint, edge and colours of an
-   output's) down the drawer's left, its figure over "Forced out". The drawer is a cell wider while it has one (136): the
-   tile takes the left column, 4 px in from the frame on three sides and clear of the delete key; the words, rule key and
-   rate box move right of it, 4 px apart, their right edge 4 px short of the icon. Wires dock on the grown edge (its
-   measured size, as a card's). */
+/* A buffer passes what its users take and asks for nothing, so the row has the body to itself: the icon and the
+   words (figure over name, 23 px) centre on the body's middle (abs 27.5). */
+.cd[data-kind="buffer"] .cd-icon {
+  top: 11px;
+}
+.cd[data-kind="buffer"] .cd-num {
+  top: 9px;
+}
+.cd[data-kind="buffer"] .cd-name {
+  top: 22px;
+}
+
+/* Its spill: what its makers force out beyond what its users take, on a Forced tile (the card's flat tint, edge and
+   colours of an output's) down the drawer's left, its figure over "Forced out". The drawer is a cell wider while it has
+   one (136): the tile takes the left column, centred with the row and clear of the delete key; the words move right of
+   it, 4 px apart, their right edge 4 px short of the icon. Wires dock on the grown edge (its measured size, as a
+   card's). */
 .cd-wrap[data-spill],
 .cd[data-spill] {
   width: 136px;
 }
-.cd[data-spill]:not([data-kind="source"]) .cd-num,
-.cd[data-spill]:not([data-kind="source"]) .cd-name {
+.cd[data-spill] .cd-num,
+.cd[data-spill] .cd-name {
   left: 54px;
   width: 41px;
 }
-.cd[data-spill]:not([data-kind="source"]) .cd-key {
-  left: 54px;
-}
-.cd[data-spill]:not([data-kind="source"]) .cd-box {
-  left: 66px;
-  width: 29px;
-}
 .cd-forced {
   position: absolute;
-  /* Over the row's wire handle (30), under the rule key and rate box (40): it has its own hover. */
+  /* Over the row's wire handle (30): it has its own hover. */
   z-index: 35;
   left: 4px;
   top: 14px;
   width: 46px;
-  height: 30px;
+  height: 28px;
   box-sizing: border-box;
   padding: 0 4px;
   display: flex;

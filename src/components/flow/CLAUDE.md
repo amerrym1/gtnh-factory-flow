@@ -70,7 +70,8 @@ The board must stay smooth with 100+ cards on weak PCs.
   wire) and a port chip that answers exactly like a port row (`usePortRowBrowse`). Keep
   the two zones separate.
 - Solve mode: source and product drawers show a rule row, a rule button (Any / At least /
-  Exactly / At most) and a sunken rate box (`RuleInput`, `useRateRule`, `setStorageRule`).
+  Exactly / At most) and a sunken rate box (`RuleInput`, `useRateRule`, `setStorageRule`). A buffer has none: it passes
+  what its users take, and the adapter sends it as Any whatever it stores (`docs/buffer-drawers.md`).
   Any is `targetMode: "ignore"` or no number. Pool's table uses the same `RuleButton`
   in its "table" dress (`rate-rule.tsx`).
 - A buffer's spills (Up to makers making more than its users take, `plan.spills`) are the makers' forced rows; the

@@ -311,10 +311,10 @@ describe("buffers", () => {
     expect(result.storages["buf"]!.producedPerSecond).toBeCloseTo(4, 9);
   });
 
-  it("a buffer's rule is a product's: at least, exactly or at most what passes through", () => {
+  it("a buffer has no rule: a stored one (an older plan's, or from when it was a product) waits, and it is Any", () => {
     const ruled = { ...p, storages: [{ ...p.storages![0]!, targetPerSecond: 3, targetMode: "at-most" as const }] };
     const { input } = run(ruled);
-    expect(input.drawers.map((d) => [d.kind, d.rule, d.rate])).toEqual([["BUFFER", "AT_MOST", 3]]);
+    expect(input.drawers.map((d) => [d.kind, d.rule, d.rate])).toEqual([["BUFFER", "ANY", 0]]);
   });
 
   it("a buffer wired to another drawer is still joined away", () => {

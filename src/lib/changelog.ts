@@ -55,6 +55,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "More than one recipe on a machine: card menu, Add another recipe. The recipe search opens on just that machine's recipes.",
       "Card menu, Replace the recipe picks a new recipe for a card.",
       "Buffers show their spillover again. What the makers make beyond what the users take is a Forced row on each maker, and the buffer adds it up as Forced out. Hover any of them to light the rest.",
+      "Buffers no longer take a rate. They pass what their users take, nothing more.",
       "Your plans sync with your account every 2 minutes instead of every 30 seconds. Your own edits still go up a few seconds after you stop.",
     ],
   },

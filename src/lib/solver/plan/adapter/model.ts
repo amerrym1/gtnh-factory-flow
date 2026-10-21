@@ -114,13 +114,13 @@ function drawerKindAndRule(
 ): { kind: DrawerKind; rule: DrawerRule; rate: number } {
   const kind: DrawerKind =
     role === "source" ? "SOURCE" : role === "trash" ? "TRASH" : role === "buffer" ? "BUFFER" : "PRODUCT";
-  // A byproduct or trash drawer's number is dormant: it asks for nothing. A buffer's rule is on what passes through:
-  // a product's (at least unless it says otherwise).
-  const ruleRole: StorageRole = role === "buffer" ? "product" : role;
-  if (role === "byproduct" || role === "trash" || !hasStorageTarget(storage, ruleRole)) {
+  // A byproduct or trash drawer's number is dormant: it asks for nothing. So is a buffer's: a buffer only passes what
+  // its users take (the website has no rule on it; a stored one, from an older plan or a drawer that was a product,
+  // waits until it is a product again).
+  if (role === "byproduct" || role === "trash" || role === "buffer" || !hasStorageTarget(storage, role)) {
     return { kind, rule: "ANY", rate: 0 };
   }
-  const mode = storageTargetMode(storage, ruleRole);
+  const mode = storageTargetMode(storage, role);
   const rule: DrawerRule =
     mode === "at-least"
       ? "AT_LEAST"

@@ -40,23 +40,28 @@ describe("a buffer drawer (docs/buffer-drawers.md)", () => {
     expect(view.kind).toBe("buffer");
     expect(view.number).toBe("12");
     expect(view.glanceRate).toBe("12");
-    expect(view.hasRule).toBe(true);
+    // No rule key or rate box: a buffer passes what its users take.
+    expect(view.hasRule).toBe(false);
     expect(view.tips.body.sub).toBe("Buffer");
     expect(view.tips.body.rows).toEqual([{ label: "Passes", value: "12 /s" }]);
     expect(drawerMixes("buffer").tint).toBe("#2E9C8F");
   });
-  it("holds its rule on what passes through", () => {
+  it("has no rule: a stored one (an older plan's, or from when it was a product) shows nothing and asks for nothing", () => {
     const view = buildDrawerView({
       ...base,
       storage: storage({ targetPerSecond: 20, targetMode: "at-least" }),
       role: "buffer",
       result: { netPerSecond: 0, producedPerSecond: 10 } as never,
       unmet: true,
+      unanchored: true,
     });
-    expect(view.rule).toBe("at-least");
-    expect(view.unmet).toBe(true);
-    expect(view.reaches).toBe("10 /s");
-    expect(view.tips.rule.notes).toEqual([{ text: "The plan passes at least the rate through it.", tone: "muted" }]);
+    expect([view.hasRule, view.rule, view.target, view.unmet, view.prompt]).toEqual([
+      false,
+      "ignore",
+      undefined,
+      false,
+      false,
+    ]);
   });
   it("totals what its makers force out on a Forced out tile, and says it happens at the makers", () => {
     const view = buildDrawerView({
