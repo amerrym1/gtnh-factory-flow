@@ -40,6 +40,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "4.4.2",
+    date: "2026-10-22",
+    headline: "No more invisible wires",
+    notes: [
+      "Fixed wires disappearing from a card the plan ran at almost nothing while the plan still used them. Its rows and wires now stay on the board.",
+    ],
+  },
+  {
     version: "4.4.1",
     date: "2026-10-21",
     headline: "Big power plans solve again",
