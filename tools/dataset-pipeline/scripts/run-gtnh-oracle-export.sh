@@ -10,8 +10,22 @@ set -euo pipefail
 
 export GTNH_EXPORT_PACK_KIND="${GTNH_EXPORT_PACK_KIND:-client}"
 export GTNH_EXPORT_TIMEOUT_SECONDS="${GTNH_EXPORT_TIMEOUT_SECONDS:-21600}"
+export GTNH_PACK_KIND="${GTNH_EXPORT_PACK_KIND:-client}"
+# A split server/client rebuild downloads one zip per phase; let each phase
+# name its own local archive instead of sharing GTNH_PACK_LOCAL_ZIP.
+if [[ -n "${GTNH_SERVER_PACK_LOCAL_ZIP:-}" && "$GTNH_PACK_KIND" == "server" ]]; then
+  export GTNH_PACK_LOCAL_ZIP="$GTNH_SERVER_PACK_LOCAL_ZIP"
+fi
+if [[ -n "${GTNH_CLIENT_PACK_LOCAL_ZIP:-}" && "$GTNH_PACK_KIND" == "client" ]]; then
+  export GTNH_PACK_LOCAL_ZIP="$GTNH_CLIENT_PACK_LOCAL_ZIP"
+fi
 export GTNH_EXPORT_MAX_MEMORY="${GTNH_EXPORT_MAX_MEMORY:-6G}"
 export GTNH_EXPORT_MIN_MEMORY="${GTNH_EXPORT_MIN_MEMORY:-4G}"
+# A 2.8.4 dataset normalizes to about 1 GB of JSON; Node's default old-space
+# limit aborts on it. The index builders and normalizer are the only Node work
+# in this runner, so give them the room the dataset needs.
+export GTNH_PIPELINE_NODE_MAX_OLD_SPACE_MB="${GTNH_PIPELINE_NODE_MAX_OLD_SPACE_MB:-6144}"
+export NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=${GTNH_PIPELINE_NODE_MAX_OLD_SPACE_MB}"
 export GTNH_RENDER_STACK_ICONS="${GTNH_RENDER_STACK_ICONS:-true}"
 export GTNH_ICON_EXPORT_BATCH_SIZE="${GTNH_ICON_EXPORT_BATCH_SIZE:-64}"
 export GTNH_ATLAS_ICON_SIZE="${GTNH_ATLAS_ICON_SIZE:-256}"
@@ -190,6 +204,9 @@ else
 
   chmod +x "$start_script"
   start_script="$(realpath "$start_script")"
+  # GTNH's bundled start script hardcodes 6G. Honour the runner's memory knobs
+  # so a smaller machine can run the server export without editing the pack.
+  sed -i -E "s/-Xms[0-9]+[GgMm]/-Xms${GTNH_EXPORT_MIN_MEMORY}/g; s/-Xmx[0-9]+[GgMm]/-Xmx${GTNH_EXPORT_MAX_MEMORY}/g" "$start_script"
   runtime_command="bash '$start_script'"
 fi
 

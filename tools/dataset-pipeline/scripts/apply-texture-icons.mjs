@@ -21,28 +21,12 @@ if (!existsSync(datasetPath)) {
 
 const maxDatasetBytes = positiveIntEnv("GTNH_TEXTURE_ICON_MAX_DATASET_BYTES", 450_000_000);
 const datasetSizeBytes = (await fs.stat(datasetPath)).size;
+// A 2.8.4 dataset is around 1 GB, larger than Node's maximum string length, so
+// the whole-file JSON path cannot read it. The line-delimited writer puts one
+// array entry per line, which lets the streaming pass rewrite it in place
+// without ever holding the dataset in memory.
 if (datasetSizeBytes > maxDatasetBytes) {
-  const versionId = path.basename(outDir);
-  const textureOutDir = path.join(outDir, "textures");
-  await fs.mkdir(textureOutDir, { recursive: true });
-  await fs.writeFile(
-    path.join(textureOutDir, "icon-report.json"),
-    `${JSON.stringify(
-      {
-        schemaVersion: 1,
-        datasetVersionId: versionId,
-        generatedAt: new Date().toISOString(),
-        source: "minecraft-asset-pngs",
-        skipped: true,
-        reason: `Dataset is ${datasetSizeBytes} bytes, above GTNH_TEXTURE_ICON_MAX_DATASET_BYTES=${maxDatasetBytes}.`,
-      },
-      null,
-      2,
-    )}\n`,
-  );
-  console.log(
-    `Skipping texture icon enrichment for ${versionId}: dataset is ${datasetSizeBytes} bytes.`,
-  );
+  await applyTextureIconsStreaming();
   process.exit(0);
 }
 
@@ -388,6 +372,159 @@ function parseResourceId(id) {
 function resourceKey(resource) {
   return `${resource.kind}:${resource.id}`;
 }
+
+/**
+ * Streaming twin of the whole-dataset path above, for datasets past Node's
+ * string limit. Every array entry is one line (dataset-json-writer.mjs), so a
+ * line is parsed, given its icon, and written back. Icon work is cached per
+ * resource key because the same item appears in hundreds of recipes.
+ */
+async function applyTextureIconsStreaming() {
+  const readline = (await import("node:readline")).default;
+  const { createReadStream, createWriteStream } = await import("node:fs");
+  const versionId = path.basename(outDir);
+  const textureOutDir = path.join(outDir, "textures");
+  const publicTextureBase = `/datasets/gtnh/${versionId}/textures`;
+  const bundledAspectIcons = await readBundledAspectIconNames();
+
+  console.log("Indexing real GTNH texture assets from mod jars.");
+  const textureIndex = await buildTextureIndex(instanceRoot);
+  console.log(`Indexed ${textureIndex.byPath.size} texture PNGs from ${textureIndex.jarCount} jars.`);
+
+  await fs.mkdir(textureOutDir, { recursive: true });
+  await fs.rm(path.join(textureOutDir, "item"), { recursive: true, force: true });
+  await fs.rm(path.join(textureOutDir, "fluid"), { recursive: true, force: true });
+
+  const iconByKey = new Map();
+  const counters = { matched: 0, missing: 0, preserved: 0 };
+  let parsedLines = 0;
+
+  async function iconFor(resource) {
+    if (!resource || typeof resource !== "object" || typeof resource.id !== "string") {
+      return undefined;
+    }
+    const key = resourceKey(resource);
+    if (iconByKey.has(key)) {
+      return iconByKey.get(key);
+    }
+
+    clearMissingBundledAspectIcon(resource, bundledAspectIcons);
+    const hintedTexture = findIconPathTextureHint(resource, textureIndex);
+    if (hintedTexture) {
+      const iconPath = await extractTexture(resource, hintedTexture, textureOutDir, publicTextureBase);
+      iconByKey.set(key, iconPath);
+      counters.matched += 1;
+      return iconPath;
+    }
+
+    clearUnresolvedIconPathTextureHint(resource);
+    if (resource.iconPath) {
+      iconByKey.set(key, undefined);
+      counters.preserved += 1;
+      return undefined;
+    }
+
+    const match = findTexture(resource, textureIndex);
+    if (!match) {
+      iconByKey.set(key, undefined);
+      counters.missing += 1;
+      return undefined;
+    }
+
+    const iconPath = await extractTexture(resource, match, textureOutDir, publicTextureBase);
+    iconByKey.set(key, iconPath);
+    counters.matched += 1;
+    return iconPath;
+  }
+
+  async function iconForLineValue(value) {
+    if (!value || typeof value !== "object") {
+      return;
+    }
+    if (Array.isArray(value.inputs) || Array.isArray(value.outputs)) {
+      for (const resource of [...(value.inputs ?? []), ...(value.outputs ?? [])]) {
+        const iconPath = await iconFor(resource);
+        if (iconPath && !resource.iconPath) {
+          resource.iconPath = iconPath;
+        }
+      }
+      return;
+    }
+    if (value.resource && typeof value.resource === "object") {
+      const iconPath = await iconFor(value.resource);
+      if (iconPath && !value.resource.iconPath) {
+        value.resource.iconPath = iconPath;
+      }
+      return;
+    }
+    if (value.kind && value.id) {
+      const iconPath = await iconFor(value);
+      if (iconPath && !value.iconPath) {
+        value.iconPath = iconPath;
+      }
+    }
+  }
+
+  const tempPath = `${datasetPath}.icons-tmp`;
+  const input = createReadStream(datasetPath, { encoding: "utf8" });
+  const output = createWriteStream(tempPath);
+  const lines = readline.createInterface({ input, crlfDelay: Infinity });
+
+  try {
+    for await (const rawLine of lines) {
+      const trimmed = rawLine.trim();
+      if (!trimmed.startsWith("{\"") || !trimmed.endsWith("}") && !trimmed.endsWith("},")) {
+        output.write(`${rawLine}\n`);
+        continue;
+      }
+      const hasComma = trimmed.endsWith(",");
+      const body = hasComma ? trimmed.slice(0, -1) : trimmed;
+      let value;
+      try {
+        value = JSON.parse(body);
+      } catch {
+        output.write(`${rawLine}\n`);
+        continue;
+      }
+      parsedLines += 1;
+      await iconForLineValue(value);
+      const indent = rawLine.slice(0, rawLine.length - rawLine.trimStart().length);
+      output.write(`${indent}${JSON.stringify(value)}${hasComma ? "," : ""}\n`);
+    }
+  } finally {
+    await new Promise((resolve, reject) => {
+      output.on("error", reject);
+      output.end(resolve);
+    });
+    input.destroy();
+  }
+
+  await fs.rename(tempPath, datasetPath);
+  await fs.writeFile(
+    path.join(textureOutDir, "icon-report.json"),
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        datasetVersionId: versionId,
+        generatedAt: new Date().toISOString(),
+        source: "minecraft-asset-pngs",
+        streaming: true,
+        matchedResources: counters.matched,
+        missingResources: counters.missing,
+        preservedRenderedIcons: counters.preserved,
+        parsedEntries: parsedLines,
+        notes:
+          "Only real PNG files extracted from the GTNH instance/mod jars or rendered by the GTNH client from real ItemStacks are used. Missing icons are intentionally left blank; no generated or guessed item art is published.",
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  console.log(
+    `Applied ${counters.matched} real texture icons and preserved ${counters.preserved} rendered stack icons. ${counters.missing} resources remain iconless.`,
+  );
+}
+
 
 async function readBundledAspectIconNames() {
   const aspectDir = path.resolve("public", "nei", "thaumcraft", "aspects");
