@@ -471,7 +471,12 @@ function IconImage({
     return <PowerIconGlyph iconPixelSize={iconPixelSize} />;
   }
 
-  const iconPath = resource.iconPath ?? getFallbackIconPath(resource);
+  // `asset:` is an unresolved jar-texture hint written by the oracle. It is
+  // not a URL, so letting it through makes the browser attempt a cross-origin
+  // request and leaves the slot blank with a console error. A dataset that
+  // still carries hints simply shows no art for that resource.
+  const directIconPath = resource.iconPath?.startsWith("asset:") ? undefined : resource.iconPath;
+  const iconPath = directIconPath ?? getFallbackIconPath(resource);
   if (!iconPath) {
     // The dataset ships no art for fluids at all — not one of the thousands of
     // fluid references carries an iconPath or an atlas entry — so without this

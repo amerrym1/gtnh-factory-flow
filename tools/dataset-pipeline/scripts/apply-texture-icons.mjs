@@ -389,11 +389,11 @@ async function applyTextureIconsStreaming() {
 
   console.log("Indexing real GTNH texture assets from mod jars.");
   const textureIndex = await buildTextureIndex(instanceRoot);
-  console.log(`Indexed ${textureIndex.byPath.size} texture PNGs from ${textureIndex.jarCount} jars.`);
+  console.log(
+    `Indexed ${textureIndex.byPath.size} texture PNGs from ${textureIndex.jarCount} jars.`,
+  );
 
   await fs.mkdir(textureOutDir, { recursive: true });
-  await fs.rm(path.join(textureOutDir, "item"), { recursive: true, force: true });
-  await fs.rm(path.join(textureOutDir, "fluid"), { recursive: true, force: true });
 
   const iconByKey = new Map();
   const counters = { matched: 0, missing: 0, preserved: 0 };
@@ -405,13 +405,45 @@ async function applyTextureIconsStreaming() {
     }
     const key = resourceKey(resource);
     if (iconByKey.has(key)) {
-      return iconByKey.get(key);
+      const cached = iconByKey.get(key);
+      // The same resource appears in many recipes. The first occurrence may
+      // have carried a bundled icon while a later slot still names an
+      // unresolved jar texture; clear that stale hint here as well.
+      if (
+        !cached &&
+        typeof resource.iconPath === "string" &&
+        resource.iconPath.startsWith("asset:")
+      ) {
+        delete resource.iconPath;
+      }
+      return cached;
     }
 
     clearMissingBundledAspectIcon(resource, bundledAspectIcons);
+    // A previous pass may have written an item/fluid texture that a later
+    // pass removed. Keep only icon paths whose PNG is actually on disk; a
+    // dangling one would render as a broken image forever.
+    if (
+      typeof resource.iconPath === "string" &&
+      resource.iconPath.startsWith(`/datasets/gtnh/${versionId}/textures/`) &&
+      !existsSync(
+        path.join(
+          outDir,
+          "textures",
+          resource.iconPath.split(`/datasets/gtnh/${versionId}/textures/`)[1],
+        ),
+      )
+    ) {
+      delete resource.iconPath;
+    }
     const hintedTexture = findIconPathTextureHint(resource, textureIndex);
     if (hintedTexture) {
-      const iconPath = await extractTexture(resource, hintedTexture, textureOutDir, publicTextureBase);
+      const iconPath = await extractTexture(
+        resource,
+        hintedTexture,
+        textureOutDir,
+        publicTextureBase,
+      );
       iconByKey.set(key, iconPath);
       counters.matched += 1;
       return iconPath;
@@ -473,7 +505,7 @@ async function applyTextureIconsStreaming() {
   try {
     for await (const rawLine of lines) {
       const trimmed = rawLine.trim();
-      if (!trimmed.startsWith("{\"") || !trimmed.endsWith("}") && !trimmed.endsWith("},")) {
+      if (!trimmed.startsWith('{"') || (!trimmed.endsWith("}") && !trimmed.endsWith("},"))) {
         output.write(`${rawLine}\n`);
         continue;
       }
@@ -524,7 +556,6 @@ async function applyTextureIconsStreaming() {
     `Applied ${counters.matched} real texture icons and preserved ${counters.preserved} rendered stack icons. ${counters.missing} resources remain iconless.`,
   );
 }
-
 
 async function readBundledAspectIconNames() {
   const aspectDir = path.resolve("public", "nei", "thaumcraft", "aspects");

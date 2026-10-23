@@ -40,6 +40,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "4.5.0",
+    date: "2026-10-22",
+    headline: "GTNH 2.8.4 is back",
+    notes: [
+      "Pick 2.8.4 beside Game in the top bar and its own recipes, machines and power figures load.",
+      "Machine speed, parallels and power follow the 2.8.4 game files, including the Large Fluid Extractor's solenoid ladder.",
+      "A plan keeps the pack version it was made with, so an old 2.8.4 plan reads the same after a reload.",
+    ],
+  },
+  {
     version: "4.4.2",
     date: "2026-10-22",
     headline: "No more invisible wires",

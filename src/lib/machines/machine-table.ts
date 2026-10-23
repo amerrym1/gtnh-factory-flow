@@ -280,6 +280,25 @@ const SAWBLADE = "sawblade";
 const UPGRADE_CHIP = "maceratorUpgrade";
 const CONTAINMENT = "containmentBlockTier";
 const ELECTROMAGNET = "electromagnet";
+/**
+ * The Large Fluid Extractor's solenoid ladder, MV through UMV. The structure
+ * reads the block's voltage tier as the parallel multiplier (MV is ordinal 2),
+ * so the option position plus 2 is what the table's formula reads.
+ */
+const SOLENOID_COIL_TIERS = ["MV", "HV", "EV", "IV", "LuV", "ZPM", "UV", "UHV", "UEV", "UIV", "UMV"];
+const SOLENOID_CONTROL = choiceControl(
+  SOLENOID,
+  "Solenoid",
+  SOLENOID_COIL_TIERS.map((tier, index) => ({
+    label: tier,
+    icon:
+      index === 0
+        ? "gregtech:gt.blockcasings.cyclotron_coils"
+        : `gregtech:gt.blockcasings.cyclotron_coils@${index}`,
+    name: `${tier} Solenoid Superconductor Coil`,
+  })),
+);
+
 /** 2.8.4-only knobs: the Sledgehammer's anvils and the Maceration Stack's
  * controller upgrade (2.9 replaced both with solenoids / upgrade chips). */
 const ANVIL = "anvilTier";
@@ -1609,6 +1628,17 @@ const MACHINES_V28: Record<string, MachineBehaviour> = {
     speed: 2.5,
     power: 0.8,
     parallels: (c) => c.voltageTier * 8,
+  },
+  // MTELargeFluidExtractor: 1.5 + 0.1 per coil tier speed, 0.8 x 0.9^coil EU,
+  // and 8 parallels per solenoid voltage tier. The solenoid is the structure's
+  // own block tier (MV = 2), so option position plus 2. Identical in 2.9; the
+  // 2.8 table states the controls because its dataset carries none.
+  "Large Fluid Extractor": {
+    overclock: OVERCLOCK.normal(),
+    speed: (c) => 1.5 + 0.1 * c.tier(COIL),
+    power: (c) => 0.8 * Math.pow(0.9, c.tier(COIL)),
+    parallels: (c) => (c.tier(SOLENOID) + 2) * 8,
+    controls: [HEATING_COIL_CONTROL, SOLENOID_CONTROL],
   },
   // MTEAlloyBlastSmelter: normal overclock, no special coefficients. Identical.
   "Alloy Blast Smelter": { overclock: OVERCLOCK.normal() },

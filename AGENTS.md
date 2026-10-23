@@ -89,7 +89,8 @@ Scratch harnesses are `*.local.test.ts` (excluded from the suite); run one with
   selects its machine model (`2.8` or `2.9`) through `machineModelVersionForRecipe`; the
   2.8 table is `MACHINES_V28`, transcribed from GT5-Unofficial tag 5.09.51.482. A 2.8.4
   dataset is built by the same pipeline into `~/gtnh-export/datasets-284/gtnh/<id>` and
-  published beside the 2.9 datasets. Do not assume the upstream's 2.9-only rule here.
+  published beside the 2.9 datasets. `docs/2.8.4-support.md` has the full build and its
+  known gaps. Do not assume the upstream's 2.9-only rule here.
 
 ## Invariants across the app
 

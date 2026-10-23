@@ -1002,7 +1002,14 @@ export function useCleanCardModel(
   const { selectedMachineHandler, machineHandlers, tierControl, powerReport, steamReport } =
     derived;
   const { machineIcon, art } = cardPicture(recipe, projectNode, derived, machineIcons, mapIcons);
-  const name = machineIcon?.displayName ?? selectedMachineHandler.label;
+  // A multiblock names itself. The map picture is only a stand-in when the
+  // dataset has no handler icon, and its name is the map's default machine
+  // (a Large Fluid Extractor card must not read "Basic Fluid Extractor").
+  // Tiered singleblocks keep the tier variant's own item name.
+  const name =
+    selectedMachineHandler.kind === "multiblock"
+      ? selectedMachineHandler.label
+      : (machineIcon?.displayName ?? selectedMachineHandler.label);
 
   const hasPicker = machineHandlers.length > 1;
   const tierLabel = powerReport?.isMultiblock ? powerReport.tier : tierControl?.current;

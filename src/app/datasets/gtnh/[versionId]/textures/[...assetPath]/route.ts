@@ -6,7 +6,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const datasetRoot = path.join(process.cwd(), "public", "datasets", "gtnh");
-const textureRoots = new Set(["rendered", "icons", "atlas", "nei-layouts"]);
+// `item`, `fluid` and `aspect` are the texture-extraction pass's roots
+// (`apply-texture-icons.mjs`); the rendered pass uses `rendered`.
+const textureRoots = new Set(["rendered", "icons", "atlas", "nei-layouts", "item", "fluid", "aspect"]);
 
 export async function GET(
   _request: Request,

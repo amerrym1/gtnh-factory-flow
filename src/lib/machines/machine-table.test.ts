@@ -220,7 +220,28 @@ describe("machine model versions", () => {
     // Batch 16: 2.8.4-only knobs (anvils and the controller upgrade).
     expect(getMachineBehaviour("Industrial Sledgehammer", "2.8")?.speed).toBe(2);
     expect(getMachineBehaviour("Industrial Maceration Stack", "2.8")?.speed).toBe(1.6);
-    expect(machineTableNames("2.8")).toHaveLength(76);
+    // Batch 17: the Large Fluid Extractor, whose 2.8.4 dataset has no controls
+    // of its own. 8 parallels per solenoid voltage tier, MV being ordinal 2.
+    const largeFluidExtractor = {
+      ...chemPlant,
+      machineType: "Large Fluid Extractor",
+      source: { datasetVersionId: "stable-2.8.4" },
+    } as unknown as Recipe;
+    expect(getMachineBehaviour("Large Fluid Extractor", "2.8")?.speed).toBeTypeOf("function");
+    expect(
+      getMachineStructuralParallels(largeFluidExtractor, {
+        overclockTier: "HV",
+        machineConfigTiers: { solenoidCoil: "mv" },
+      }),
+    ).toBe(16);
+    // The 2.8.4 dataset ships no controls for this machine, so the table must
+    // supply both knobs the card and the solver read.
+    expect(
+      getRecipeMachineConfigTierControls(largeFluidExtractor, { machineConfigTiers: {} }).map(
+        (control) => control.id,
+      ),
+    ).toEqual(expect.arrayContaining(["solenoidCoil"]));
+    expect(machineTableNames("2.8")).toHaveLength(77);
     // Not yet transcribed: falls back to dataset-baked stats.
     expect(getMachineBehaviour("Industrial Coke Oven", "2.8")).toBeUndefined();
   });

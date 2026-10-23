@@ -1166,7 +1166,13 @@ function RecipeNodeComponent({ data, selected, controlsOnly = false, renderEdito
   // themselves.
   const machineDisplayName =
     !powerInfo && !isCustomRateNode && previewMachineIcon?.displayName
-      ? previewMachineIcon.displayName
+      ? // A multiblock names itself. The map's picture is only a stand-in when
+        // the dataset has no handler icon, and its name is the map's default
+        // machine (a Large Fluid Extractor card must not read "Basic Fluid
+        // Extractor"). Tiered singleblocks still take the tier variant's name.
+        previewHandler.kind === "multiblock" && previewHandler.label
+        ? previewHandler.label
+        : previewMachineIcon.displayName
       : previewHandler.label;
   const titleRef = useFitTitle(machineDisplayName);
   const hasPowerPicture = Boolean(
