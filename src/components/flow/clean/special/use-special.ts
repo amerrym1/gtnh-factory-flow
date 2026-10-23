@@ -53,6 +53,7 @@ import { getNodePowerReport, getNodeSteamReport, hasPowerReport } from "@/lib/so
 import { parsePortKey } from "@/lib/solver/plan/port-key";
 import { getPowerSource } from "@/lib/power/registry";
 import { getPowerStructureArt } from "@/lib/power/structure-art";
+import { machineModelVersionForGtnhVersion } from "@/lib/machines/machine-table";
 import { getPowerMachineIcon } from "@/lib/power/planner-data";
 import { useFactoryStore } from "@/store/factory-store";
 import { useWorkspaceView } from "@/lib/workspace-view";
@@ -452,7 +453,10 @@ export function usePowerCardModel(data: RecipeNodeData, selected: boolean): Spec
 
   const name = recipe.machineType || base.view.name;
   const icon = getPowerMachineIcon(info.sourceId);
-  const art = getPowerStructureArt(info.sourceId);
+  const art = getPowerStructureArt(
+    info.sourceId,
+    machineModelVersionForGtnhVersion(useFactoryStore.getState().dataset?.gtnhVersion),
+  );
   const needed = data.result?.theoreticalMachinesRequired ?? 0;
   const plan = useFactoryStore.getState().lastResult?.plan;
   const { count, unset } = countView(projectNode, needed, plan);

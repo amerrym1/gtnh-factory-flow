@@ -3,6 +3,12 @@
  * as static assets (public/power-art/<sourceId>.png). Singleblocks have no
  * structure to show and fall back to their machine item icon.
  */
+import {
+  DEFAULT_MACHINE_MODEL_VERSION,
+  type MachineModelVersion,
+} from "@/lib/machines/machine-table";
+import { MACHINE_STRUCTURE_ART_IDS_28, getMachine284StructureArt } from "./structure-art-284";
+
 const STRUCTURE_ART_IDS = new Set([
   "large-steam-turbine",
   "large-hp-steam-turbine",
@@ -47,8 +53,16 @@ const STRUCTURE_ART_ALIASES: Record<string, string> = {
   "xl-turbo-sc-steam-turbine": "xl-turbo-steam-turbine",
 };
 
-export function getPowerStructureArt(sourceId: string): string | undefined {
+export function getPowerStructureArt(
+  sourceId: string,
+  version: MachineModelVersion = DEFAULT_MACHINE_MODEL_VERSION,
+): string | undefined {
   const id = STRUCTURE_ART_ALIASES[sourceId] ?? sourceId;
+  // A 2.8.4 deck was shot separately; a 2.9 generator render is not evidence
+  // of the same structure, so an absent 2.8 render falls back to the icon.
+  if (version === "2.8") {
+    return MACHINE_STRUCTURE_ART_IDS_28.has(id) ? `/power-art/2.8/${id}.png` : undefined;
+  }
   return STRUCTURE_ART_IDS.has(id) ? `/power-art/${id}.png` : undefined;
 }
 
@@ -105,14 +119,24 @@ const MACHINE_TO_POWER_ART: Record<string, string> = {
   "thorium-high-temperature-reactor": "thtr",
 };
 
-export function getMachineStructureArt(handlerId: string | undefined): string | undefined {
+export function getMachineStructureArt(
+  handlerId: string | undefined,
+  version: MachineModelVersion = DEFAULT_MACHINE_MODEL_VERSION,
+): string | undefined {
   if (!handlerId) {
     return undefined;
+  }
+  if (version === "2.8") {
+    const own = getMachine284StructureArt(handlerId);
+    if (own) {
+      return own;
+    }
+    return getPowerStructureArt(MACHINE_TO_POWER_ART[handlerId] ?? handlerId, version);
   }
   if (MACHINE_STRUCTURE_ART_IDS.has(handlerId)) {
     return `/power-art/${handlerId}.png`;
   }
   // A power source's render serves its recipe-card handler too (the Large
   // Naquadah Reactor, the boilers, the heat exchangers share their ids).
-  return getPowerStructureArt(MACHINE_TO_POWER_ART[handlerId] ?? handlerId);
+  return getPowerStructureArt(MACHINE_TO_POWER_ART[handlerId] ?? handlerId, version);
 }

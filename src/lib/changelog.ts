@@ -40,6 +40,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "4.5.1",
+    date: "2026-10-23",
+    headline: "2.8.4 machines wear their own pictures",
+    notes: [
+      "2.8.4 multiblock cards now show the 2.8.4 structure instead of the 2.9 one.",
+      "All 40 2.8.4 multiblock families have a preview.",
+      "A machine with no 2.8.4 preview shows its controller icon rather than a 2.9 picture.",
+    ],
+  },
+  {
     version: "4.5.0",
     date: "2026-10-22",
     headline: "GTNH 2.8.4 is back",

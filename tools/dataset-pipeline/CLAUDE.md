@@ -92,3 +92,20 @@ prefix included); bees, crops, veins, mobs and underground fluids keep theirs by
 - Borrowed icons from a published sibling dataset are recorded in
   `textures/rendered/icon-borrow-report.json`. Rebuild the indexes after the borrow pass.
 - Ore veins and small ores are skipped on 2.8.4: the exporter targets 2.9's ore/stone API.
+
+## Structure renders
+
+- The 2.9 art is not pipeline output: the 34 power renders were mined from the
+  Power Planner workbook's xlsx drawing anchors, and the processing multiblock
+  renders are hand-shot 1254px captures re-encoded to 640px palette PNGs.
+- 2.8.4 renders come from `StructureIconExporter`: the client runs
+  BlockRenderer6343's dummy-world builder, frames each multiblock's bounding
+  box and reads a 640x640 transparent framebuffer. Run it with
+  `GTNH_RENDER_STRUCTURES=true` through `run-gtnh-oracle-export.sh`.
+- `apply-structure-art.mjs` maps the exporter's `<name>-<item>_<meta>.png`
+  index to the dataset's 40 multiblock handler ids; `crop-structure-art.mjs`
+  trims the transparent margin to the same framing as the 2.9 art. Commit the
+  PNGs under `public/power-art/2.8/` and keep `structure-art-284.ts` in step.
+- `structure-art-284.test.ts` checks files, 640x640 size, orphans and the
+  version routing; `getMachineStructureArt(id, "2.8")` never falls back to a
+  2.9 render.

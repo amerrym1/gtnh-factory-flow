@@ -187,6 +187,10 @@ import {
 import { PowerConfigPanel } from "./PowerConfigPanel";
 import { getPowerSource } from "@/lib/power/registry";
 import { getMachineStructureArt, getPowerStructureArt } from "@/lib/power/structure-art";
+import {
+  machineModelVersionForGtnhVersion,
+  machineModelVersionForRecipe,
+} from "@/lib/machines/machine-table";
 import { getPowerMachineIcon } from "@/lib/power/planner-data";
 import type { PowerSelectSetting } from "@/lib/power/types";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
@@ -756,12 +760,16 @@ function RecipeNodeComponent({ data, selected, controlsOnly = false, renderEdito
     selectedMachineHandler.id === CROP_HARVESTER_INDUSTRIAL_FARM_ID
       ? "/power-art/industrial-farm.png"
       : undefined;
+  const structureModelVersion = machineModelVersionForGtnhVersion(dataset?.gtnhVersion);
   const powerArt =
-    (powerInfo ? getPowerStructureArt(powerInfo.sourceId) : undefined) ??
+    (powerInfo ? getPowerStructureArt(powerInfo.sourceId, structureModelVersion) : undefined) ??
     cropStructureArt ??
     // A processing multiblock with a render of its own wears the same window
     // as a generator; the rest keep the controller icon.
-    getMachineStructureArt(selectedMachineHandler.id);
+    getMachineStructureArt(
+      selectedMachineHandler.id,
+      machineModelVersionForRecipe(effectiveRecipe),
+    );
   const powerMachineIcon = powerInfo ? getPowerMachineIcon(powerInfo.sourceId) : undefined;
 
   // A generator's EU rides the output rail as its first row (a real port,

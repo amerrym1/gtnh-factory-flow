@@ -1,7 +1,9 @@
 package dev.gtnhplanner.calcoracle;
 
+import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
+import dev.gtnhplanner.calcoracle.structures.StructureIconExporter;
 import net.minecraft.client.Minecraft;
 
 public final class ClientAutorunHandler {
@@ -27,6 +29,10 @@ public final class ClientAutorunHandler {
 
         started = true;
         GtnhCalcOracleMod.LOG.info("GTNH calculation oracle client is ready after {} ticks.", Integer.valueOf(ticks));
+        if (Boolean.getBoolean("gtnh.oracle.renderStructures")) {
+            StructureIconExporter.exportAllThen(() -> FMLCommonHandler.instance().exitJava(0, false));
+            return;
+        }
         GtnhCalcOracleMod.requestAutorunExport("client-tick");
     }
 }

@@ -12,6 +12,7 @@ import { getPowerMachineIcon } from "@/lib/power/planner-data";
 import { hitPlacementSettings, searchPowerSources, type PowerSearchHit } from "@/lib/power/power-search";
 import { POWER_GROUPS, POWER_SOURCES } from "@/lib/power/registry";
 import { getPowerStructureArt } from "@/lib/power/structure-art";
+import { machineModelVersionForGtnhVersion } from "@/lib/machines/machine-table";
 import type { PowerGroupId } from "@/lib/power/types";
 import { useFactoryStore } from "@/store/factory-store";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
@@ -384,7 +385,11 @@ function MachineArt({ entry, size }: { entry: Entry; size: number }) {
     if (entry.card.id === "crop-farm") return <SproutArt size={size} />;
     return entry.card.id === "custom-rate" ? <Gauge scale={size >= 40 ? 4 : 2} /> : <TankArt size={size} />;
   }
-  const art = getPowerStructureArt(entry.hit.source.id);
+  const gtnhVersion = useFactoryStore((state) => state.dataset?.gtnhVersion);
+  const art = getPowerStructureArt(
+    entry.hit.source.id,
+    machineModelVersionForGtnhVersion(gtnhVersion),
+  );
   if (art) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={art} alt="" draggable={false} className="mp-img" />;

@@ -44,6 +44,7 @@ import { parseSectionNodeId, sectionHandleId } from "@/lib/model/shared-machine"
 import type { PlanUpTo, UpToReason } from "@/lib/solver/plan/types";
 import { PIN_RULE_LABEL, pinRuleOf, shownPinRule, withPinRule, type PinRule } from "@/lib/model/pin-rule";
 import { getMachineStructureArt } from "@/lib/power/structure-art";
+import { machineModelVersionForRecipe } from "@/lib/machines/machine-table";
 import { useFactoryStore, useRateDisplayUnits } from "@/store/factory-store";
 import { useWorkspaceView } from "@/lib/workspace-view";
 import { formatEnergyPerUnitParts, formatSlotRateBare, portReadsEnergy } from "../flow-explainers";
@@ -480,7 +481,10 @@ export function cardPicture(
   const machineIcon =
     machineIconAtTier(machineIcons.get(face.selectedMachineHandler.id), pictureTier) ??
     recipeMapIcon;
-  const art = getMachineStructureArt(face.selectedMachineHandler.id);
+  const art = getMachineStructureArt(
+    face.selectedMachineHandler.id,
+    machineModelVersionForRecipe(recipe),
+  );
   return { machineIcon, art };
 }
 
