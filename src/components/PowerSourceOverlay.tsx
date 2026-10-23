@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, ArrowRight, Search, X, Zap } from "lucide-react";
 import { useIsCompactViewport } from "@/lib/compact-view";
+import { getUiScale } from "@/lib/ui-scale";
 import { useWorkspaceView } from "@/lib/workspace-view";
 import { getPowerMachineIcon } from "@/lib/power/planner-data";
 import {
@@ -18,16 +19,16 @@ import { GT_VOLTAGE_TIERS } from "@/lib/model";
 import { GT_TIER_COLORS } from "@/components/flow/tier-colors";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
 import { useFactoryStore } from "@/store/factory-store";
+import { overlayInsets } from "@/lib/workspace-columns";
 import type { MachineTier } from "@/lib/model/types";
 
 /**
- * The power source picker: the recipe search's sibling, at the recipe
- * search's size. Browsing lays the catalog out one GROUP PER COLUMN -
- * generators, engines, boilers, turbines side by side, wrapping when the
- * panel runs out of width. Typing searches the machines AND everything they
- * take or make under any setting - so "benzene" finds every machine that
- * burns it, and picking one places the card with that fuel already dialed
- * in. Multiblocks wear the workbook's full structure renders.
+ * The power source picker, sized like the recipe search. Browsing lays the
+ * catalog out one GROUP PER COLUMN (generators, engines, boilers, turbines),
+ * wrapping as needed. Typing searches the machines AND what they take or make
+ * under any setting, so "benzene" finds every machine that burns it and the
+ * pick places the card with that fuel set. Multiblocks show full structure
+ * renders.
  */
 /** Every unlock tier the catalog actually holds, in the game's own order. */
 const TIER_FILTER_OPTIONS = GT_VOLTAGE_TIERS.map((entry) => entry.tier).filter((tier) =>
@@ -107,14 +108,16 @@ export function PowerSourceOverlay() {
   return createPortal(
     <div
       className={[
-        "pointer-events-auto fixed inset-0 flex items-center justify-center bg-black/70",
+        // ui-zoom: a body portal is outside the zoomed shell, so the picker
+        // zooms itself; the viewport it is laid out in is read in shell px.
+        "ui-zoom pointer-events-auto fixed inset-0 flex items-center justify-center bg-black/70",
         compact ? "z-[90]" : "z-50",
         layout.sheet ? "" : "px-3 py-2",
       ].join(" ")}
       onPointerDown={closePowerMenu}
       // Like the recipe search: the dim starts where the item browser ends,
       // so the left column stays bright beside it.
-      style={{ left: layout.sheet ? 0 : layout.leftInset }}
+      style={{ left: layout.sheet ? 0 : layout.leftInset, right: layout.sheet ? 0 : layout.rightInset }}
     >
       <section
         className="pointer-events-auto relative flex flex-col font-mono"
@@ -133,11 +136,9 @@ export function PowerSourceOverlay() {
           className="relative flex min-h-0 flex-1 flex-col overflow-hidden border-4 border-[#23262d] bg-[#101215] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_rgba(255,255,255,0.05),inset_-2px_-2px_0_rgba(0,0,0,0.6)]"
           onPointerDown={(event) => event.stopPropagation()}
         >
-          {/* One row on a desktop. On a phone the title takes the first line
-              with the close button at its end, and the search and its two
-              filters take the second: the single row used to push the close
-              button past the right edge of the screen, and a phone has no
-              Escape key to fall back on. */}
+          {/* One row on a desktop. On a phone the title and close button take
+              the first line and the search and filters the second, so the
+              close button never falls off screen. */}
           <div
             className={[
               "flex gap-2 border-b-2 border-[#23262d] p-2 pl-3",
@@ -235,12 +236,10 @@ export function PowerSourceOverlay() {
                           // leaving a bare right half.
                           className="flex min-w-[220px] max-w-[300px] flex-1 basis-[220px] flex-col gap-2"
                         >
-                          {/* The column's title BAR, the way a board window
-                              caps what it owns - but in the power AMBER
-                              with dark ink, because a grey plate over grey
-                              card strips read as one more card. No letter
-                              tracking: BOILERS AND EXCHANGERS must hold one
-                              line at the narrowest column. */}
+                          {/* The column's title bar in power AMBER with dark
+                              ink, so it does not read as another grey card.
+                              No letter tracking: BOILERS AND EXCHANGERS must
+                              fit one line at the narrowest column. */}
                           <div
                             className="flex items-center gap-1.5 border-2 border-[var(--mc-15)] px-2 py-2.5 shadow-[inset_2px_2px_0_rgba(255,255,255,0.18),inset_-2px_-2px_0_rgba(0,0,0,0.35)]"
                             // Between the first grey plate and the full
@@ -279,7 +278,7 @@ export function PowerSourceOverlay() {
 /** The machine catalog up top; solar and endgame on the shelf below. */
 const GROUP_SHELVES: PowerGroupId[][] = [
   ["burners", "turbines", "steam", "engines", "reactors"],
-  ["passive", "endgame"],
+  ["passive", "endgame", "other"],
 ];
 
 /** The same tier badge the machine list and card headers wear. */
@@ -360,7 +359,6 @@ function PowerSourceCard({
           <Zap className="h-10 w-10 text-amber-300" aria-hidden />
         )}
       </span>
-      {/* Tighter than the old p-2: one name line does not need a landing. */}
       <span className="flex min-w-0 flex-col gap-0.5 px-2 py-1">
         <span className="flex items-center gap-1.5">
           <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-[var(--mc-ink)]">
@@ -399,30 +397,35 @@ const PICKER_SHEET_BELOW = 700;
 interface PickerViewport {
   sheet: boolean;
   leftInset: number;
+  rightInset: number;
   width: number;
   height: number;
 }
 
+/** In SHELL px: the picker draws zoomed, so the window is measured in its units. */
 function readPickerViewport(): PickerViewport {
   if (typeof window === "undefined") {
-    return { sheet: false, leftInset: PICKER_RAIL_LEFT, width: 960, height: 760 };
+    return { sheet: false, leftInset: PICKER_RAIL_LEFT, rightInset: 0, width: 960, height: 760 };
   }
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
+  const scale = getUiScale();
+  const viewportWidth = window.innerWidth / scale;
+  const viewportHeight = window.innerHeight / scale;
   if (viewportWidth < PICKER_SHEET_BELOW) {
-    return { sheet: true, leftInset: 0, width: viewportWidth, height: viewportHeight };
+    return { sheet: true, leftInset: 0, rightInset: 0, width: viewportWidth, height: viewportHeight };
   }
   // A closed item panel UNMOUNTS the aside and leaves the rail, so absence
   // means the rail's width, not the panel's.
   const browser = document.querySelector('aside[data-help-anchor="browser"]');
-  const leftInset = browser
-    ? Math.round(browser.getBoundingClientRect().width)
-    : PICKER_RAIL_LEFT;
+  // Real px -> shell px.
+  const { left: leftInset, right: rightInset } = overlayInsets(scale, () =>
+    browser ? Math.round(browser.getBoundingClientRect().width / scale) : PICKER_RAIL_LEFT,
+  );
   return {
     sheet: false,
     leftInset,
+    rightInset,
     // No width cap: a wide screen gets more columns, not a wrapped shelf.
-    width: Math.max(PICKER_MIN_WIDTH, viewportWidth - leftInset - 24),
+    width: Math.max(PICKER_MIN_WIDTH, viewportWidth - leftInset - rightInset - 24),
     height: Math.min(PICKER_MAX_HEIGHT, Math.max(360, viewportHeight - 20)),
   };
 }

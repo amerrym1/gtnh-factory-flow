@@ -1,5 +1,11 @@
-import { getVoltageTierIndex, GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
+import {
+  getRecipeMaximumVoltageTier,
+  getRunVoltageTier,
+  getVoltageTierIndex,
+  GT_VOLTAGE_TIERS,
+} from "@/lib/model/tiers";
 import { getMachineBehaviour, machineModelVersionForRecipe } from "@/lib/machines/machine-table";
+import { isFusionRecipe } from "@/lib/machines/fusion";
 import type {
   FactoryNode,
   MachineTier,
@@ -16,26 +22,51 @@ type VoltageTier = Exclude<MachineTier, "DEMO">;
  * `GTParallelHelper`, so every variant in the dataset reports `parallel: 1`,
  * and its duration bottoms out at a single tick.
  *
- * For a singleblock that is the whole truth. For a multiblock it is most of
- * the answer missing its most important half: a Boldarnator's exported ladder
- * runs 16, 8, 4, 2, 1, 1, 1 ticks, so the planner showed cobble stalling at
- * 20/s from IV upward while the parallel count on the card kept climbing.
- *
- * So a machine we have verified in the curated table is calculated by our own
- * engine instead, which knows its parallels, spends the voltage on them before
- * overclocking, and banks sub-tick speed the way the machine does. Everything
- * else still uses the runtime data, which remains the best source we have.
+ * For a singleblock that is the whole truth. For a multiblock it misses the
+ * parallels (an exported ladder flatlines at one tick while real throughput
+ * keeps climbing). So a machine verified in the curated table is calculated
+ * by our own engine instead, which knows its parallels, spends the voltage on
+ * them before overclocking, and banks sub-tick speed the way the machine
+ * does. Everything else still uses the runtime data.
  */
 export function prefersCuratedMachineMath(
   recipe: { machineType?: string; source?: { datasetVersionId?: string } },
 ): boolean {
-  return getMachineBehaviour(recipe.machineType, machineModelVersionForRecipe(recipe)) !== undefined;
+  return (
+    isFusionRecipe(recipe) ||
+    getMachineBehaviour(recipe.machineType, machineModelVersionForRecipe(recipe)) !== undefined
+  );
 }
 
 export function selectRuntimeCalculationVariant(
-  recipe: Pick<Recipe, "runtimeCalculation"> & { machineType?: string },
-  node: Pick<FactoryNode, "machineHandlerId" | "overclockTier" | "coilTier" | "machineConfigTiers">,
+  recipe: Pick<Recipe, "runtimeCalculation"> &
+    Partial<Pick<Recipe, "machineType" | "machineProfile" | "maximumTier" | "availableTiers" | "minimumTier" | "eut">>,
+  node: Pick<
+    FactoryNode,
+    "machineHandlerId" | "overclockTier" | "coilTier" | "machineConfigTiers"
+  > &
+    Partial<Pick<FactoryNode, "hatchVoltageTier" | "hatchAmps">>,
 ): RuntimeCalculationVariant | undefined {
+  // The oracle's generic ladder never called FusionOverclockDescriber.
+  if (isFusionRecipe(recipe)) return undefined;
+  // Exported variants never saw the user's power pool or parallel helper.
+  // Explicitly supplied multiblocks must use the live power calculation.
+  if (
+    node.hatchVoltageTier &&
+    recipe.machineProfile?.kind === "multiblock"
+  )
+    return undefined;
+  if (node.hatchVoltageTier) node = { ...node, overclockTier: node.hatchVoltageTier };
+  // The generic runtime calculator exports voltage steps beyond the last
+  // registered singleblock. Use the same physical-machine cap as our solver,
+  // including when an old plan still stores MAX on a family ending at UMV.
+  const maximum = getRecipeMaximumVoltageTier(recipe);
+  if (
+    (maximum || recipe.availableTiers?.length) &&
+    recipe.machineProfile?.kind !== "multiblock"
+  ) {
+    node = { ...node, overclockTier: getRunVoltageTier({ ...recipe, minimumTier: recipe.minimumTier ?? "ULV", eut: recipe.eut ?? 0 }, node.overclockTier) };
+  }
   const variants = recipe.runtimeCalculation?.variants ?? [];
   if (recipe.runtimeCalculation?.status !== "computed" || variants.length === 0) {
     return undefined;
@@ -88,6 +119,7 @@ export function runtimeCalculationWarning(
   recipe: Pick<Recipe, "runtimeCalculation" | "name"> & { machineType?: string },
   node: Pick<FactoryNode, "machineHandlerId" | "overclockTier" | "coilTier" | "machineConfigTiers">,
 ): string | undefined {
+  if (isFusionRecipe(recipe)) return undefined;
   const runtimeCalculation = recipe.runtimeCalculation;
   if (!runtimeCalculation?.oracleEligible || !runtimeCalculation.strict) {
     return undefined;

@@ -31,7 +31,8 @@ const lnr: PowerSourceDefinition = {
   id: "large-naquadah-reactor",
   name: "Large Naquadah Reactor",
   group: "endgame",
-  unlock: "UHV",
+  // goodgenerator assembles the controller on the assembly line at RECIPE_UV.
+  unlock: "UV",
   blurb: "Naquadah fuel times coolant and booster.",
   settings: [
     {
@@ -75,15 +76,24 @@ const lnr: PowerSourceDefinition = {
     const coolantEfficiency = coolant?.efficiency ?? 1;
     const boostMultiplier = booster?.multiplier ?? 1;
     const euPerTick = fuel.euPerTick * coolantEfficiency * boostMultiplier;
-    // 1000 L of fuel lasts secondsPerCell; boosters burn it that much faster.
-    const fuelPerSecond = (1000 * boostMultiplier) / fuel.secondsPerCell;
+    // FuelRecipeLoader registers every LNR fuel as getFluidOrGas(1) (= 1 L);
+    // MTELargeNaquadahReactor consumes pall litres per recipe (pall = booster
+    // multiplier, or 1), lasting secondsPerCell seconds. So L/s = boost / seconds:
+    // the workbook's "cell" is that 1 L recipe, not 1000 L.
+    const fuelPerSecond = boostMultiplier / fuel.secondsPerCell;
+    // MTELargeNaquadahReactor.onRunningTick draws liquid air, coolant and
+    // booster whenever the recipe's progress is a multiple of 20 ticks, so a
+    // recipe of d ticks draws ceil(d/20) times: Mk-II (70 ticks) draws 4 times
+    // in 3.5 s.
+    const recipeTicks = Math.round(fuel.secondsPerCell * 20);
+    const drawsPerSecond = Math.ceil(recipeTicks / 20) / (recipeTicks / 20);
 
-    const inputs = [liters(fuel.name, fuelPerSecond), liters("Liquid Air", 2400)];
+    const inputs = [liters(fuel.name, fuelPerSecond), liters("Liquid Air", 2400 * drawsPerSecond)];
     if (coolant && coolant.litersPerSecond > 0) {
-      inputs.push(liters(coolant.name, coolant.litersPerSecond));
+      inputs.push(liters(coolant.name, coolant.litersPerSecond * drawsPerSecond));
     }
     if (booster && booster.litersPerSecond > 0) {
-      inputs.push(liters(booster.name, booster.litersPerSecond));
+      inputs.push(liters(booster.name, booster.litersPerSecond * drawsPerSecond));
     }
     const depleted = LNR_DEPLETED[fuel.name];
     return {
@@ -101,7 +111,7 @@ function buildFusion(compact: boolean): PowerSourceDefinition {
     id: compact ? "compact-fusion-reactor" : "fusion-reactor",
     name: compact ? "Compact Fusion Reactor" : "Fusion Reactor",
     group: "endgame",
-    unlock: compact ? "UEV" : "LuV",
+    unlock: "LuV",
     blurb: compact
       ? "The fusion recipes at 64x the scale."
       : "Makes plasma; charges its own drain.",
@@ -159,15 +169,14 @@ function buildFusion(compact: boolean): PowerSourceDefinition {
 
 /**
  * Eye of Harmony, simplified: expected EU over a cycle at base upgrade
- * tiers, success chance shown as a stat. Almost always a net EU cost - the
- * EOH is a materials machine; this card exists so its bill lands in the
- * power summary honestly.
+ * tiers, success chance shown as a stat. Almost always a net EU cost (the
+ * EOH is a materials machine); the card puts that bill in the power summary.
  */
 const eoh: PowerSourceDefinition = {
   id: "eye-of-harmony",
   name: "Eye of Harmony",
   group: "endgame",
-  unlock: "UV",
+  unlock: "UMV",
   blurb: "A materials machine with a power bill.",
   settings: [
     {
@@ -184,13 +193,20 @@ const eoh: PowerSourceDefinition = {
       powerPlannerData.eohStars[0];
     // Base upgrade tiers: EU-output efficiency 0.6, no overclocks.
     const netPerCycle = star.euOutput * 0.6 - star.euInput;
-    const euPerTick = netPerCycle / star.durationTicks;
+    // EyeOfHarmonyRecipeStorage.timeCalculator returns seconds
+    // (18,000 x 1.4^tier); the recipe runs that many seconds x 20 ticks.
+    const euPerTick = netPerCycle / (star.durationSeconds * 20);
+    // Each craft needs BILLION x (rocket tier + 1) L of hydrogen and of
+    // helium, and MTEEyeOfHarmony consumes all it holds when the craft
+    // starts. The Deep Dark is the sheet's T10 but runs at rocket tier 9.
+    const gasPerCraft = 1e9 * (Math.min(9, star.tier) + 1);
+    const gasPerSecond = gasPerCraft / star.durationSeconds;
     return {
       euPerTick,
-      inputs: [],
+      inputs: [liters("Hydrogen", gasPerSecond), liters("Helium", gasPerSecond)],
       outputs: [],
       stats: [
-        stat("Cycle", `${formatAmount(star.durationTicks / 20)}s`),
+        stat("Cycle", `${formatAmount(star.durationSeconds / 3600)}h`),
         stat("Success", `${Math.round(star.baseSuccess * 100)}%`),
         stat("EU in", formatAmount(star.euInput)),
         stat("EU out", formatAmount(star.euOutput * 0.6)),
@@ -208,11 +224,24 @@ const eoh: PowerSourceDefinition = {
  * workbook's defaults (Tengam / Spacetime / Shirabon / Depleted Mk-V).
  */
 const AM_K = { magnetic: 0.1, gravity: 0.05, containment: 0.05, activation: 0.05 };
+/**
+ * The most EU one burn can bank. AntimatterGenerator clamps a wireless burn
+ * to its exotic dynamo hatches' storage, V x 24 x amps each
+ * (MTEHatchDynamoTunnel.maxEUStore); this is 64 UIV hatches at 1,048,576 A.
+ * The hatch tier is the player's build, not a game constant.
+ */
 const AM_BURN_EU = Math.min(2 ** 63 - 1, 3.3554432e7 * 64 * 1048576 * 24);
+/** AntimatterGenerator's exponent for Molten Superconductor Base UMV, the only wireless catalyst. */
 const AM_PER_BURN_EXPONENT = 1.03;
+const AM_CATALYST = "Molten Superconductor Base UMV";
+
+/** AntimatterForge's expected antimatter gain a 20-tick cycle, one cycle a second. */
+function antimatterGainPerSecond(amPerSsass: number): number {
+  return Math.pow(amPerSsass, 0.5 + AM_K.containment) * (0.2 + AM_K.activation);
+}
 
 function antimatterNetEuT(amPerSsass: number): number {
-  const gainPerSecond = Math.pow(amPerSsass, 0.5 + AM_K.containment) * (0.2 + AM_K.activation);
+  const gainPerSecond = antimatterGainPerSecond(amPerSsass);
   const amountPerBurn = Math.pow(AM_BURN_EU / 1e12, 1 / AM_PER_BURN_EXPONENT);
   const secondsPerBurn = amountPerBurn / gainPerSecond;
   const passiveCost = -(1e7 + Math.pow(amPerSsass * 1000, 1.5 - AM_K.magnetic));
@@ -241,6 +270,7 @@ const antimatter: PowerSourceDefinition = {
   id: "antimatter",
   name: "Antimatter Forge",
   group: "endgame",
+  // The controller's assembly line recipe runs at RECIPE_UMV.
   unlock: "UMV",
   blurb: "Grows and burns antimatter.",
   settings: [
@@ -260,6 +290,11 @@ const antimatter: PowerSourceDefinition = {
     const optimum = (cachedOptimum ??= antimatterOptimum());
     const amount = requested > 0 ? requested : optimum;
     const euPerTick = antimatterNetEuT(amount);
+    // At steady state every litre grown is burned. AntimatterForge depletes
+    // one litre of Protomatter per litre of antimatter it adds, and
+    // AntimatterGenerator runs at full efficiency with catalyst equal to the
+    // antimatter it annihilates.
+    const gainPerSecond = antimatterGainPerSecond(amount);
     return {
       euPerTick,
       inputs: [
@@ -267,6 +302,8 @@ const antimatter: PowerSourceDefinition = {
         liters("Molten SpaceTime", Math.pow(amount, 0.5)),
         liters("Molten Shirabon", Math.pow(amount, 2 / 7)),
         liters("Naquadah Based Liquid Fuel MkV (Depleted)", Math.pow(amount, 1 / 3)),
+        liters("Protomatter", gainPerSecond),
+        liters(AM_CATALYST, gainPerSecond),
       ],
       outputs: [],
       stats: [
@@ -293,7 +330,7 @@ const dysonSwarm: PowerSourceDefinition = {
   id: "dyson-swarm",
   name: "Dyson Swarm",
   group: "endgame",
-  unlock: "UEV",
+  unlock: "UIV",
   blurb: "Orbital modules beaming power down.",
   settings: [
     {

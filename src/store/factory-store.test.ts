@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { getStorageRole } from "@/lib/model/storage-role";
 import { PROJECT_SCHEMA_VERSION, type FactoryProject } from "@/lib/model/types";
 import { makeResourceHandleId } from "@/components/flow/resource-handles";
 import { captureBoardSelection, useFactoryStore } from "./factory-store";
+import { allowLegacyModesForTests } from "@/lib/model/project-normalize";
+
+// These tests exercise the old Build, Solve and Pool code, which the app no longer reaches.
+allowLegacyModesForTests();
 
 describe("factory resource links", () => {
   beforeEach(() => {
@@ -41,7 +46,7 @@ describe("factory resource links", () => {
         source: "stick-source",
         target: "stick-oredict-target",
         sourceHandle: "output:item:minecraft%3Astick%400:0",
-        targetHandle: "input:item:oredict%3AstickWood:0",
+        targetHandle: "input:item:minecraft%3Astick%400",
         resourceKind: "item",
         resourceId: "minecraft:stick@0",
       }),
@@ -276,7 +281,7 @@ describe("factory resource links", () => {
         source: "screwdriver-source",
         target: "screwdriver-oredict-target",
         sourceHandle: "output:item:gregtech%3Ascrewdriver.lv%400:0",
-        targetHandle: "input:item:oredict%3AcraftingToolScrewdriver:0",
+        targetHandle: "input:item:gregtech%3Ascrewdriver.lv%400",
         resourceKind: "item",
         resourceId: "gregtech:screwdriver.lv@0",
       }),
@@ -410,6 +415,87 @@ describe("factory resource links", () => {
       targetHandle: makeResourceHandleId("input", { kind: "item", id: "dust" }),
     });
     expect(useFactoryStore.getState().project.edges).toHaveLength(0);
+  });
+
+  it("wires the neighbours straight together when a pass-through drawer is deleted", () => {
+    // The undo of the board menu's "Add a drawer here": scrub the drawer
+    // away and the wire it stood in the middle of is back.
+    const base = useFactoryStore.getState().project;
+    const out = makeResourceHandleId("output", { kind: "item", id: "dust" });
+    const into = makeResourceHandleId("input", { kind: "item", id: "dust" });
+    const drawer = (id: string, x: number) => ({
+      id,
+      kind: "item" as const,
+      resourceId: "dust",
+      displayName: "Dust",
+      position: { x, y: 0 },
+    });
+    const wire = (id: string, source: string, target: string) => ({
+      id,
+      source,
+      target,
+      sourceHandle: out,
+      targetHandle: into,
+      resourceKind: "item" as const,
+      resourceId: "dust",
+    });
+    useFactoryStore.getState().setProject({
+      ...base,
+      storages: [drawer("dust-a", 0), drawer("dust-b", 200), drawer("dust-c", 400)],
+      edges: [wire("a-b", "dust-a", "dust-b"), wire("b-c", "dust-b", "dust-c")],
+    });
+
+    useFactoryStore.getState().deleteStorage("dust-b");
+
+    const project = useFactoryStore.getState().project;
+    expect((project.storages ?? []).map((entry) => entry.id)).toEqual(["dust-a", "dust-c"]);
+    expect(project.edges).toEqual([
+      expect.objectContaining({ source: "dust-a", target: "dust-c", resourceId: "dust" }),
+    ]);
+  });
+
+  it("heals nothing when the deleted drawer was a junction", () => {
+    // Two feeders AND two takers: there is no one wire that says what the
+    // drawer meant, so its neighbours are left unwired rather than guessed.
+    const base = useFactoryStore.getState().project;
+    const out = makeResourceHandleId("output", { kind: "item", id: "dust" });
+    const into = makeResourceHandleId("input", { kind: "item", id: "dust" });
+    const drawer = (id: string, x: number) => ({
+      id,
+      kind: "item" as const,
+      resourceId: "dust",
+      displayName: "Dust",
+      position: { x, y: 0 },
+    });
+    const wire = (id: string, source: string, target: string) => ({
+      id,
+      source,
+      target,
+      sourceHandle: out,
+      targetHandle: into,
+      resourceKind: "item" as const,
+      resourceId: "dust",
+    });
+    useFactoryStore.getState().setProject({
+      ...base,
+      storages: [
+        drawer("in-1", 0),
+        drawer("in-2", 0),
+        drawer("hub", 200),
+        drawer("out-1", 400),
+        drawer("out-2", 400),
+      ],
+      edges: [
+        wire("i1", "in-1", "hub"),
+        wire("i2", "in-2", "hub"),
+        wire("o1", "hub", "out-1"),
+        wire("o2", "hub", "out-2"),
+      ],
+    });
+
+    useFactoryStore.getState().deleteStorage("hub");
+
+    expect(useFactoryStore.getState().project.edges).toEqual([]);
   });
 
   it("refuses a drawer wired to a drawer of a different resource, or to itself", () => {
@@ -990,6 +1076,84 @@ describe("factory resource links", () => {
     expect(useFactoryStore.getState().project.storages).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "water-tank" })]),
     );
+  });
+
+  it("keeps a pool-made product drawer through other edits and the trip back to build", () => {
+    useFactoryStore.getState().setBoardMode("pool");
+    useFactoryStore.getState().addStorageForConnection(
+      { kind: "item", id: "dust", displayName: "Dust" },
+      "item-source",
+      "output",
+      { x: 600, y: 300 },
+      makeResourceHandleId("output", { kind: "item", id: "dust" }, 0),
+    );
+    const drawer = useFactoryStore
+      .getState()
+      .project.storages?.find((storage) => storage.poolSide === "drain");
+    expect(drawer).toBeDefined();
+    expect(useFactoryStore.getState().project.edges).toHaveLength(0);
+
+    // Any edit on any card used to sweep it as an orphan: it has no wires,
+    // because in pool mode the declared side is the whole link.
+    useFactoryStore.getState().updateNode("item-target", { overclockTier: "HV" });
+    expect(useFactoryStore.getState().project.storages).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: drawer!.id, poolSide: "drain" })]),
+    );
+
+    // Back in build or solve it lingers as the product it was made as.
+    useFactoryStore.getState().setBoardMode("solve");
+    expect(useFactoryStore.getState().project.storages).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: drawer!.id })]),
+    );
+    expect(getStorageRole(useFactoryStore.getState().project, drawer!.id)).toBe("product");
+
+    const { nodes, recipes, edges, storages, productionGroups, poolResourceRules } = useFactoryStore.getState().project;
+    for (const mode of ["build", "pool", "solve", "pool"] as const) {
+      useFactoryStore.getState().setBoardMode(mode);
+      expect(useFactoryStore.getState().project).toMatchObject({ nodes, recipes, edges, storages });
+      expect(useFactoryStore.getState().project.productionGroups).toEqual(productionGroups);
+      expect(useFactoryStore.getState().project.poolResourceRules).toEqual(poolResourceRules);
+    }
+  });
+
+  it("migrates a stored recipe to its content match and moves the node onto the new id", () => {
+    const before = useFactoryStore.getState().project;
+    const stored = before.recipes.find((recipe) => recipe.id === "item-recipe") ?? before.recipes[0]!;
+    const node = before.nodes.find((entry) => entry.recipeId === stored.id)!;
+    const rekeyed = { ...stored, id: stored.id + "-content", machineHandlers: [{ id: "fam", label: "Fam", machineType: "Fam", minimumTier: "LV", maximumTier: "HV" }] };
+    useFactoryStore.getState().refreshProjectRecipes([rekeyed], { [stored.id]: rekeyed.id });
+    const after = useFactoryStore.getState().project;
+    expect(after.recipes.some((recipe) => recipe.id === rekeyed.id)).toBe(true);
+    expect(after.recipes.some((recipe) => recipe.id === stored.id)).toBe(false);
+    expect(after.nodes.find((entry) => entry.id === node.id)?.recipeId).toBe(rekeyed.id);
+    expect(after.recipes.find((recipe) => recipe.id === rekeyed.id)?.machineHandlers?.[0]?.maximumTier).toBe("HV");
+  });
+
+  it("keeps the machine a game recipe names when the dataset's body lacks it", () => {
+    const before = useFactoryStore.getState().project;
+    const original = before.recipes.find((recipe) => recipe.id === "item-recipe") ?? before.recipes[0]!;
+    const node = before.nodes.find((entry) => entry.recipeId === original.id)!;
+    // The game writes its card's recipe under its own id with the housing it runs in first (the plain Apiary).
+    const apiary = { id: "apiary", label: "Apiary", machineType: "Apiary", minimumTier: "LV", maximumTier: "LV" };
+    const magic = { id: "magic-apiary", label: "Magic Apiary", machineType: "Magic Apiary", minimumTier: "LV", maximumTier: "LV" };
+    const game = { ...original, id: `gtnhplanner:${node.id}`, machineHandlers: [apiary] };
+    useFactoryStore.getState().setProject({
+      ...before,
+      recipes: [...before.recipes.filter((recipe) => recipe.id !== original.id), game],
+      nodes: before.nodes.map((entry) =>
+        entry.id === node.id ? { ...entry, recipeId: game.id, machineHandlerId: "apiary" } : entry,
+      ),
+    });
+    const dataset = { ...original, id: "dataset-bee", machineHandlers: [magic] };
+    useFactoryStore.getState().refreshProjectRecipes([dataset], { [game.id]: dataset.id });
+    const after = useFactoryStore.getState().project;
+    const card = after.nodes.find((entry) => entry.id === node.id)!;
+    expect(card.recipeId).toBe("dataset-bee");
+    expect(card.machineHandlerId).toBe("apiary");
+    expect(after.recipes.find((recipe) => recipe.id === "dataset-bee")?.machineHandlers?.map((h) => h.id)).toEqual([
+      "apiary",
+      "magic-apiary",
+    ]);
   });
 
   it("undoes and redoes structural project edits", () => {
@@ -4267,6 +4431,25 @@ describe("boards (pockets standing open)", () => {
     expect(reopened.pockets?.find((pocket) => pocket.id === pocketId)?.size).toEqual(openedSize);
   });
 
+  it("opens a collapsed group with a frame as it closed: members stay where they were", () => {
+    const base = createSelectionEditingProject();
+    base.nodes = base.nodes.map((node) =>
+      node.id === "alpha" ? { ...node, pocketId: "game-group", position: { x: 40, y: 100 } } : node,
+    );
+    base.pockets = [
+      { id: "game-group", name: "Group 1", position: { x: 120, y: 60 }, size: { width: 500, height: 400 } },
+    ];
+    useFactoryStore.getState().setProject(base);
+    useFactoryStore.getState().expandPocket("game-group");
+
+    const project = useFactoryStore.getState().project;
+    const group = project.pockets?.find((pocket) => pocket.id === "game-group");
+    expect(group?.expanded).toBe(true);
+    expect(group?.position).toEqual({ x: 120, y: 60 });
+    expect(group?.size).toEqual({ width: 500, height: 400 });
+    expect(project.nodes.find((node) => node.id === "alpha")?.position).toEqual({ x: 40, y: 100 });
+  });
+
   it("re-homes a dropped card through moveBoardItems and never resizes the board", () => {
     const boardId = useFactoryStore.getState().createBoard({
       position: { x: 600, y: 200 },
@@ -4485,5 +4668,121 @@ describe("cycled input picks", () => {
     });
 
     expect(useFactoryStore.getState().project.nodes[0]?.recipeInputOverrides).toBeUndefined();
+  });
+});
+
+describe("swapping the mob in an Extreme Entity Crusher", () => {
+  const eecMeta = (mob: string) => ({
+    eec: { mob, maxHealth: 20, baseEut: 1920, outputs: [] as unknown[] },
+  });
+  const mob = (id: string, outputs: Array<{ kind: "item" | "fluid"; id: string; amount: number }>) => ({
+    id,
+    name: `Extreme Entity Crusher: ${id}`,
+    machineType: "Extreme Entity Crusher",
+    minimumTier: "EV" as const,
+    durationTicks: 55,
+    eut: 1920,
+    inputs: [{ kind: "item" as const, id: `factoryflow:eec_mob:${id}`, amount: 1, consumed: false }],
+    outputs,
+    metadata: eecMeta(id),
+  });
+  const ZOMBIE = mob("zombie", [
+    { kind: "item", id: "minecraft:rotten_flesh", amount: 1 },
+    { kind: "fluid", id: "xpjuice", amount: 120 },
+  ]);
+  const SKELETON = mob("skeleton", [
+    { kind: "item", id: "minecraft:arrow", amount: 1 },
+    { kind: "item", id: "minecraft:bone", amount: 1 },
+    { kind: "fluid", id: "xpjuice", amount: 120 },
+  ]);
+  const taker = (id: string, resource: { kind: "item" | "fluid"; id: string }) => ({
+    id,
+    name: id,
+    machineType: "Taker",
+    minimumTier: "LV" as const,
+    durationTicks: 20,
+    eut: 8,
+    inputs: [{ ...resource, amount: 1 }],
+    outputs: [{ kind: "item" as const, id: `${id}-out`, amount: 1 }],
+  });
+  const card = (id: string, recipeId: string, x: number, extra: object = {}) => ({
+    id,
+    recipeId,
+    machineCount: 1,
+    parallel: 1,
+    overclockTier: "LV" as const,
+    enabled: true,
+    position: { x, y: 0 },
+    ...extra,
+  });
+  const PROJECT = (): FactoryProject => ({
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    id: "eec-swap",
+    name: "EEC swap",
+    fuelProfiles: [],
+    recipes: [
+      ZOMBIE,
+      taker("flesh-eater", { kind: "item", id: "minecraft:rotten_flesh" }),
+      taker("xp-user", { kind: "fluid", id: "xpjuice" }),
+    ],
+    nodes: [
+      card("eec", "zombie", 0, {
+        machineCount: 3,
+        overclockTier: "IV",
+        hatchVoltageTier: "IV",
+        hatchAmps: 4,
+        machineConfigTiers: { eecLooting: "3", eecWeaponDamage: "13.25", eecInfernal: "off" },
+      }),
+      card("eater", "flesh-eater", 440),
+      card("xp", "xp-user", 440),
+    ],
+    edges: [
+      { id: "e-flesh", source: "eec", target: "eater", resourceKind: "item", resourceId: "minecraft:rotten_flesh" },
+      { id: "e-xp", source: "eec", target: "xp", resourceKind: "fluid", resourceId: "xpjuice" },
+    ],
+    storages: [],
+    metadata: { createdAt: "2026-09-24T00:00:00.000Z", updatedAt: "2026-09-24T00:00:00.000Z" },
+  });
+
+  it("changes the mob in place and keeps the machine exactly as built", () => {
+    useFactoryStore.getState().setProject(PROJECT());
+    const before = useFactoryStore.getState().project.nodes.find((entry) => entry.id === "eec")!;
+
+    useFactoryStore.getState().swapMachineRecipe("eec", SKELETON);
+
+    const state = useFactoryStore.getState();
+    const eec = state.project.nodes.find((entry) => entry.id === "eec")!;
+    expect(state.project.nodes).toHaveLength(3);
+    expect(eec.recipeId).toBe("skeleton");
+    expect({ ...eec, recipeId: before.recipeId }).toEqual(before);
+    // The XP wire still has a port; rotten flesh does not.
+    expect(state.project.edges.map((edge) => edge.id)).toEqual(["e-xp"]);
+    expect(state.project.edges[0].sourceHandle).toBe(
+      makeResourceHandleId("output", SKELETON.outputs[2], 2),
+    );
+  });
+
+  it("swaps even when no wire survives, and undoes in one step", () => {
+    const project = PROJECT();
+    project.edges = project.edges.filter((edge) => edge.id === "e-flesh");
+    useFactoryStore.getState().setProject(project);
+
+    useFactoryStore.getState().swapMachineRecipe("eec", SKELETON);
+    expect(useFactoryStore.getState().project.nodes.map((entry) => entry.recipeId)).toEqual([
+      "skeleton",
+      "flesh-eater",
+      "xp-user",
+    ]);
+    expect(useFactoryStore.getState().project.edges).toEqual([]);
+
+    useFactoryStore.getState().undo();
+    const restored = useFactoryStore.getState().project;
+    expect(restored.nodes.find((entry) => entry.id === "eec")?.recipeId).toBe("zombie");
+    expect(restored.edges.map((edge) => edge.id)).toEqual(["e-flesh"]);
+  });
+
+  it("never takes a second recipe: the controller holds one spawner", () => {
+    useFactoryStore.getState().setProject(PROJECT());
+    expect(useFactoryStore.getState().addRecipeToNode("eec", SKELETON)).toBe(false);
   });
 });

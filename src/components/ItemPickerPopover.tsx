@@ -1,47 +1,36 @@
 "use client";
 
-import { Search, Zap } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { getUiScale } from "@/lib/ui-scale";
+import { useDropdownDismiss } from "@/lib/hooks/use-dropdown-dismiss";
+
+import { useLayoutEffect, useRef, useState } from "react";
 import type { DatasetResourceIndexEntry } from "@/lib/datasets/types";
 import type { RecipeQueryRole } from "@/lib/datasets/recipe-query";
-import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
-import { POWER_EU_CLAUSE_ID, queryAsksForPower } from "@/lib/power/power-search";
-import { machineArtPixels } from "./flow/MachinePicker";
-import { ResourceIcon } from "./nei/ResourceIcon";
+import { ResourceIndexPane, type IndexedResource } from "./ResourceIndexPane";
 
 /**
- * The item picker behind the stencil's "+ takes" / "+ makes" keys: one
- * search box over a two-column list of dataset resources, first result on
- * Enter, a click anywhere else closes it. The recipe search opens it ABOVE
- * the stencil (the stencil sits at the bottom of the screen); the library
- * opens it BELOW its header keys. Same picker, one `placement`.
+ * THE ITEM PANEL (ResourceIndexPane) in a popover, where a tile click picks
+ * the item and a click elsewhere closes it. Used by the stencil's "+ takes" /
+ * "+ makes" keys (opens ABOVE, since the stencil is at the bottom), the
+ * library filter and Pool's product button (BELOW); see `placement`.
  */
 export function ItemPickerPopover({
   role,
   placement = "above",
+  align = "center",
   onPick,
   onClose,
-  searchPickerResources,
 }: {
   role: RecipeQueryRole;
   placement?: "above" | "below";
+  align?: "center" | "start";
   onPick: (entry: DatasetResourceIndexEntry, role: RecipeQueryRole) => void;
   onClose: () => void;
-  searchPickerResources: (
-    query: string,
-    signal: AbortSignal,
-  ) => Promise<DatasetResourceIndexEntry[]>;
+  /** Kept for callers that still pass it; the pane queries the dataset itself. */
+  searchPickerResources?: unknown;
 }) {
-  const [pickerQuery, setPickerQuery] = useState("");
-  // Results remember the query they answer, so "loading" is simply
-  // "the answer on screen is not for the query being asked".
-  const [answer, setAnswer] = useState<{ query: string; entries: DatasetResourceIndexEntry[] }>();
-  const debouncedQuery = useDebouncedValue(pickerQuery, 125);
-  const asked = debouncedQuery.trim();
-  const results = answer?.entries ?? [];
-  const loading = answer?.query !== asked;
+  const [search, setSearch] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   // Centred under its key, then nudged back inside the window if that put
   // an edge off screen. Measured once it is on the page.
   const [shift, setShift] = useState(0);
@@ -51,121 +40,58 @@ export function ItemPickerPopover({
       return;
     }
     const margin = 8;
+    // Real px in, shell px out: the shift is a translate inside the zoomed shell.
+    const scale = getUiScale();
     const rect = root.getBoundingClientRect();
-    const overRight = rect.right - (window.innerWidth - margin);
-    const overLeft = margin - rect.left;
+    const overRight = (rect.right - (window.innerWidth - margin)) / scale;
+    const overLeft = (margin - rect.left) / scale;
     if (overRight > 0) {
       setShift((current) => current - overRight);
     } else if (overLeft > 0) {
       setShift((current) => current + overLeft);
     }
-  }, [placement]);
+  }, [placement, align]);
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  // The one dropdown rule (use-dropdown-dismiss.ts); its Escape is consumed
+  // so the search behind the picker stays open.
+  useDropdownDismiss(true, { refs: [rootRef], onClose, fade: true });
 
-  // A click elsewhere closes the picker.
-  useEffect(() => {
-    const onPointerDown = (event: globalThis.PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        onClose();
-      }
-    };
-    window.addEventListener("pointerdown", onPointerDown, true);
-    return () => window.removeEventListener("pointerdown", onPointerDown, true);
-  }, [onClose]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    searchPickerResources(asked, controller.signal)
-      .then((entries) => setAnswer({ query: asked, entries }))
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setAnswer({ query: asked, entries: [] });
-        }
-      });
-    return () => controller.abort();
-  }, [asked, searchPickerResources]);
-
-  // Power is not a dataset resource, but it IS something machines make: the
-  // makes side offers it as a condition, and generators answer it.
-  const displayResults: DatasetResourceIndexEntry[] =
-    role === "makes" && queryAsksForPower(pickerQuery)
-      ? [
-          {
-            kind: "fluid",
-            id: POWER_EU_CLAUSE_ID,
-            displayName: "Power (EU)",
-            dominantColor: "#d99a2b",
-          } as DatasetResourceIndexEntry,
-          ...results,
-        ]
-      : results;
+  const pick = (resource: IndexedResource) => {
+    onPick(
+      {
+        kind: resource.kind,
+        id: resource.id,
+        displayName: resource.displayName,
+        iconPath: resource.iconPath,
+        iconAtlas: resource.iconAtlas,
+        dominantColor: resource.dominantColor,
+        tooltip: resource.tooltip,
+      } as DatasetResourceIndexEntry,
+      role,
+    );
+  };
 
   return (
     <div
       ref={rootRef}
-      style={placement === "below" ? { transform: `translateX(calc(-50% + ${shift}px))` } : undefined}
+      style={placement === "below" ? { transform: `translateX(calc(${align === "start" ? "0px" : "-50%"} + ${shift}px))` } : undefined}
+      // The items column's own shell: same ground, same border. Tall enough
+      // for the paged grid to show a few rows; the pane sizes its page to it.
       className={[
-        "absolute z-20 w-full max-w-[calc(100vw-16px)] border-2 border-[var(--mc-15)] bg-[var(--mc-61)] p-2 shadow-[6px_6px_0_rgba(0,0,0,0.45)] sm:w-[640px] sm:max-w-[640px]",
-        placement === "above" ? "bottom-full left-1/2 mb-2 -translate-x-1/2" : "left-1/2 top-full mt-2",
+        // pointer-events-auto: the board's toolbars are pointer-events-none
+        // layers and the picker inherits that; nowheel/nodrag keep the wheel
+        // paging the list instead of zooming the board under it.
+        "pointer-events-auto nodrag nowheel absolute z-20 flex h-[min(560px,calc(100*var(--ui-vh)-120px))] w-full max-w-[calc(100*var(--ui-vw)-16px)] flex-col overflow-hidden border border-neutral-800 bg-[#25272c] text-neutral-100 shadow-[0_8px_24px_rgba(0,0,0,0.5)] sm:w-[380px] sm:max-w-[380px]",
+        placement === "above" ? "bottom-full left-1/2 mb-2 -translate-x-1/2" : `${align === "start" ? "left-0" : "left-1/2"} top-full mt-2`,
       ].join(" ")}
+      data-item-picker={role}
     >
-      <label className="flex h-9 items-center gap-2 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
-        <Search className="h-4 w-4 shrink-0 text-neutral-500" />
-        <input
-          ref={inputRef}
-          value={pickerQuery}
-          onChange={(event) => setPickerQuery(event.target.value)}
-          placeholder={role === "takes" ? "Add an input..." : "Add an output..."}
-          className="min-w-0 flex-1 bg-transparent text-neutral-100 outline-none placeholder:text-neutral-500"
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.stopPropagation();
-              onClose();
-            }
-            if (event.key === "Enter" && displayResults[0]) {
-              onPick(displayResults[0], role);
-            }
-          }}
-        />
-      </label>
-      <div className="recipe-search-scroll mt-2 grid max-h-[460px] grid-cols-1 gap-1 overflow-y-auto compact:max-h-[max(140px,calc(100vh-320px))] sm:grid-cols-2">
-        {loading && displayResults.length === 0 ? (
-          <div className="p-2 text-sm text-[var(--mc-ink-muted)]">Searching...</div>
-        ) : displayResults.length === 0 ? (
-          <div className="p-2 text-sm text-[var(--mc-ink-muted)]">No matching items.</div>
-        ) : (
-          displayResults.map((entry) => (
-            <button
-              key={`${entry.kind}:${entry.id}`}
-              type="button"
-              onClick={() => onPick(entry, role)}
-              className="flex w-full items-center gap-2 border-2 border-transparent bg-[var(--mc-47)] px-1.5 py-1 text-left hover:bg-[var(--mc-61)]"
-            >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden">
-                {entry.id === POWER_EU_CLAUSE_ID ? (
-                  <Zap className="h-4 w-4 fill-current text-amber-300" aria-hidden />
-                ) : (
-                  <ResourceIcon
-                    resource={{ ...entry, amount: 1 }}
-                    size="sm"
-                    bare
-                    showAmount={false}
-                    tooltip={false}
-                    className="!h-full !w-full"
-                    iconPixelSize={machineArtPixels(32)}
-                  />
-                )}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-[14px] font-bold text-[var(--mc-ink)]">
-                {entry.displayName ?? entry.id}
-              </span>
-            </button>
-          ))
-        )}
-      </div>
+      <ResourceIndexPane
+        search={search}
+        onSearchChange={setSearch}
+        onBrowse={pick}
+        autoFocus
+      />
     </div>
   );
 }

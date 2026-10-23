@@ -28,6 +28,58 @@ export const entryIconSchema = z.object({
   dominantColor: z.string().max(32).optional(),
 });
 
+/** The in-game planner's data on one thing, serialized: what one card may carry. */
+export const GTNHPLANNER_DATA_MAX_BYTES = 64 * 1024;
+
+const utf8 = new TextEncoder();
+
+/** A value's size as JSON in UTF-8 bytes. */
+export function jsonByteLength(value: unknown): number {
+  return utf8.encode(JSON.stringify(value) ?? "").length;
+}
+
+/** How deep opaque data (the game's, a recipe's metadata) may nest, in arrays and objects. */
+export const OPAQUE_DATA_MAX_DEPTH = 63;
+
+/**
+ * True when `value` nests no deeper than `levels` arrays and objects. Stops
+ * at the first level too deep, so it never recurses past `levels`.
+ */
+export function nestsAtMost(value: unknown, levels: number): boolean {
+  if (typeof value !== "object" || value === null) {
+    return true;
+  }
+  if (levels <= 0) {
+    return false;
+  }
+  const children = Array.isArray(value) ? value : Object.values(value);
+  return children.every((child) => nestsAtMost(child, levels - 1));
+}
+
+/**
+ * Opaque data: any JSON object, nested to a bounded depth so nothing stored
+ * is pathologically deep. Later checks are skipped when it fails: they
+ * serialize the value.
+ */
+const opaqueDataSchema = z
+  .record(z.string(), z.unknown())
+  .refine((value) => nestsAtMost(value, OPAQUE_DATA_MAX_DEPTH), {
+    message: `Nested more than ${OPAQUE_DATA_MAX_DEPTH} levels deep`,
+    abort: true,
+  });
+
+/**
+ * The in-game planner's own data for a thing or the whole plan: opaque here
+ * and kept exactly as written, so a website edit never loses what the game
+ * stored. Bounded so one card cannot carry megabytes.
+ */
+export const gtnhplannerDataSchema = opaqueDataSchema.refine(
+  (value) => jsonByteLength(value) <= GTNHPLANNER_DATA_MAX_BYTES,
+  {
+    message: `The game's data on one thing is limited to ${GTNHPLANNER_DATA_MAX_BYTES / 1024} KB`,
+  },
+);
+
 export const dominantColorSchema = z
   .string()
   .regex(/^#[0-9a-fA-F]{6}$/)
@@ -147,6 +199,8 @@ export const runtimeCalculationSchema = z.object({
 export const machineProfileSchema = z.object({
   machineType: z.string().min(1),
   minimumTier: z.string().min(1),
+  maximumTier: z.string().min(1).optional(),
+  availableTiers: z.array(z.string().min(1)).optional(),
   durationTicks: z.number().int().positive("Duration must be at least 1 tick").optional(),
   eut: z.number().min(0, "EU/t must be zero or positive").optional(),
   maxParallel: z.number().positive().optional(),
@@ -160,6 +214,14 @@ export const machineConfigControlSchema = z.object({
   label: z.string().min(1),
   minimumKey: z.string().min(1),
   defaultKey: z.string().min(1).optional(),
+  numeric: z
+    .object({
+      min: z.number(),
+      max: z.number().optional(),
+      step: z.number().positive().optional(),
+    })
+    .optional(),
+  minimumHeatFromSpecialValue: z.boolean().optional(),
   tiers: z
     .array(
       z.object({
@@ -204,13 +266,14 @@ export const recipeSchema = z.object({
   category: z.string().min(1).optional(),
   machineType: z.string().min(1, "Machine type is required"),
   minimumTier: z.string().min(1, "Minimum tier is required"),
+  maximumTier: z.string().min(1).optional(),
+  availableTiers: z.array(z.string().min(1)).optional(),
   durationTicks: z.number().int().positive("Duration must be at least 1 tick"),
   eut: z.number().min(0, "EU/t must be zero or positive"),
   inputs: z.array(recipeInputSchema),
   // Zero outputs is legal: the crop-farm placeholder recipe
   // (factoryflow:crop-farm:empty) has none until a crop is picked, and it
-  // stays in project.recipes, which made plans containing a crop farm fail
-  // validation on community upload and JSON import.
+  // stays in project.recipes.
   outputs: z.array(recipeOutputSchema),
   programmedCircuit: z.string().optional(),
   specialValue: z.number().optional(),
@@ -239,7 +302,12 @@ export const recipeSchema = z.object({
       sourceIdentifier: z.string().optional(),
     })
     .optional(),
-  metadata: z.record(z.string().min(1), z.unknown()).optional(),
+  metadata: z
+    .record(z.string().min(1), z.unknown())
+    .refine((value) => nestsAtMost(value, OPAQUE_DATA_MAX_DEPTH), {
+      message: `Nested more than ${OPAQUE_DATA_MAX_DEPTH} levels deep`,
+    })
+    .optional(),
   nei: z
     .object({
       iconPath: z.string().optional(),
@@ -297,6 +365,7 @@ export const targetRateSchema = z.object({
 });
 
 export const factoryNodeSchema = z.object({
+  productionGroupId: z.string().min(1).optional(),
   id: z.string().min(1),
   recipeId: z.string().min(1),
   colorTag: factoryNodeColorTagSchema.optional(),
@@ -306,26 +375,62 @@ export const factoryNodeSchema = z.object({
       mode: z.enum(["supply", "request"]),
     })
     .optional(),
+  cropFullFarmCount: z.number().int().min(1).optional(),
   machineCount: z.number().min(0),
   parallel: z
     .number()
     .positive()
     .transform((value) => Math.max(1, Math.round(value))),
   overclockTier: z.string().min(1),
-  energyHatches: z
-    .number()
-    .int()
-    .min(1)
-    .max(64)
-    .optional(),
+  energyHatches: z.number().int().min(1).max(64).optional(),
   energyHatchType: z.string().min(1).optional(),
+  powerEuT: z.number().nonnegative().finite().optional(),
+  hatchVoltageTier: z
+    .enum([
+      "ULV",
+      "LV",
+      "MV",
+      "HV",
+      "EV",
+      "IV",
+      "LuV",
+      "ZPM",
+      "UV",
+      "UHV",
+      "UEV",
+      "UIV",
+      "UMV",
+      "UXV",
+      "MAX",
+    ])
+    .optional(),
+  hatchAmps: z.number().nonnegative().finite().optional(),
+  powerInputMode: z.enum(["amps", "eut"]).optional(),
   machineHandlerId: z.string().min(1).optional(),
   coilTier: z.string().min(1).optional(),
   machineConfigTiers: z.record(z.string().min(1), z.string().min(1)).optional(),
   settingsCollapsed: z.boolean().optional(),
+  hatchSupplies: z.array(z.enum(["water", "air"])).optional(),
   recipeInputOverrides: z.record(z.string().min(1), recipeInputSchema).optional(),
-  // Solve mode's pin: run exactly this many machines; absent = solver's choice.
+  // More recipes the same machine runs (shared-machine.ts), sections 1..n.
+  extraRecipes: z
+    .array(
+      z.object({
+        recipeId: z.string().min(1),
+        recipeInputOverrides: z.record(z.string().min(1), recipeInputSchema).optional(),
+      }),
+    )
+    .optional(),
+  // The machine count the player set: Up to by default, Exactly with solvePinExact; absent = the solver's choice,
+  // shown as Up to waiting for a count, or as Any with solvePinAny.
   solvePin: z.number().nonnegative().optional(),
+  solvePinExact: z.boolean().optional(),
+  solvePinAny: z.boolean().optional(),
+  // Plan mode's port-rate pins by canonical handle id, units per second.
+  portRates: z
+    .record(z.string().min(1).max(512), z.number().positive().finite())
+    .refine((rates) => Object.keys(rates).length <= 256, "Too many port rates.")
+    .optional(),
   targetOutput: targetRateSchema.optional(),
   enabled: z.boolean(),
   pocketId: z.string().min(1).optional(),
@@ -333,9 +438,11 @@ export const factoryNodeSchema = z.object({
     x: z.number(),
     y: z.number(),
   }),
+  gtnhplanner: gtnhplannerDataSchema.optional(),
 });
 
 export const factoryStorageSchema = z.object({
+  productionGroupId: z.string().min(1).optional(),
   id: z.string().min(1),
   kind: resourceKindSchema,
   resourceId: z.string().min(1),
@@ -345,19 +452,23 @@ export const factoryStorageSchema = z.object({
   iconAtlas: resourceIconAtlasRefSchema.optional(),
   dominantColor: dominantColorSchema,
   capacity: z.number().positive().optional(),
-  // Absent on every plan written before drains had a mode, and absent is
-  // `product` - the pulling one - so nothing anybody has saved changes pace.
+  // Absent means `product` (the pulling one), as on legacy plans.
   drainMode: z.enum(["product", "byproduct", "trash"]).optional(),
-  // Absent means `overflow`: every buffer catches surplus unless the player
-  // deliberately sets it strict.
-  bufferMode: z.enum(["overflow", "strict"]).optional(),
+  // Absent means `overflow` in Build and `strict` in Solve (effectiveBufferMode).
+  bufferMode: z.enum(["overflow", "strict", "ratio"]).optional(),
+  ratioExportPercent: z.number().min(0).max(100).optional(),
+  // Pool mode: which side of the shared pool an unwired drawer sits on.
+  poolSide: z.enum(["source", "drain"]).optional(),
   // Solve mode's requirement on a product drawer; absent = unconstrained.
-  targetPerSecond: z.number().nonnegative().optional(),
+  targetPerSecond: z.number().finite().optional(),
+  targetMode: z.enum(["at-least", "at-most", "exact", "ignore"]).optional(),
+  poolTargetMode: z.enum(["at-least", "exact", "ignore"]).optional(),
   pocketId: z.string().min(1).optional(),
   position: z.object({
     x: z.number(),
     y: z.number(),
   }),
+  gtnhplanner: gtnhplannerDataSchema.optional(),
 });
 
 export const factoryAnnotationSchema = z.object({
@@ -374,9 +485,14 @@ export const factoryAnnotationSchema = z.object({
     height: z.number(),
   }),
   arrowDirection: z.enum(["down-right", "down-left", "up-right", "up-left"]).optional(),
+  arrowHeads: z.enum(["end", "both"]).optional(),
+  arrowWidth: z.number().min(1).max(8).optional(),
   // Zone outlines: bounded so an imported plan cannot carry a pathological
   // vertex soup; a drawn zone simplifies to a handful of corners.
-  points: z.array(z.object({ x: z.number(), y: z.number() })).max(64).optional(),
+  points: z
+    .array(z.object({ x: z.number(), y: z.number() }))
+    .max(64)
+    .optional(),
   // Bounded so an imported plan cannot carry a note that swallows the board.
   fontSize: z.number().min(8).max(96).optional(),
   // Image annotations: only ever rendered as an <img> src. Bounded, and http
@@ -400,6 +516,7 @@ export const factoryAnnotationSchema = z.object({
     })
     .optional(),
   pocketId: z.string().min(1).optional(),
+  gtnhplanner: gtnhplannerDataSchema.optional(),
 });
 
 export const factoryPocketSchema = z.object({
@@ -411,7 +528,7 @@ export const factoryPocketSchema = z.object({
     x: z.number(),
     y: z.number(),
   }),
-  // Standing open as a board window; absent = the classic collapsed card.
+  // Standing open as a board window; absent = minimized summary card.
   expanded: z.boolean().optional(),
   size: z
     .object({
@@ -423,6 +540,7 @@ export const factoryPocketSchema = z.object({
   theme: z.string().max(32).optional(),
   // A canvas pattern id; unknown ids fall back to the default ruling.
   pattern: z.string().max(16).optional(),
+  gtnhplanner: gtnhplannerDataSchema.optional(),
 });
 
 export const factoryEdgeSchema = z.object({
@@ -435,10 +553,12 @@ export const factoryEdgeSchema = z.object({
   resourceId: z.string().min(1),
   label: z.string().optional(),
   ratePerSecond: z.number().positive().optional(),
-  labelOffset: z.object({ x: z.number(), y: z.number() }).optional(),
+  ratioWeight: z.number().nonnegative().optional(),
+  ratioInputWeight: z.number().nonnegative().optional(),
   waypoints: z.array(z.object({ x: z.number(), y: z.number() })).optional(),
-  // A loose cell wire's Canner ratio; see FactoryEdge.crossForm.
+  // An older build's loose cell wire, turned into a fluid tank on landing; see FactoryEdge.crossForm.
   crossForm: z.object({ litresPerCell: z.number().positive() }).optional(),
+  gtnhplanner: gtnhplannerDataSchema.optional(),
 });
 
 export const fuelProfileSchema = z
@@ -459,20 +579,17 @@ export const fuelProfileSchema = z
 /**
  * The author's workspace arrangement, carried by shared setups only.
  *
- * Every field is optional and loosely typed on purpose. This has to survive a
- * round trip through `factoryProjectSchema.parse` (which strips what it does
- * not know) and the server's own re-validation, and a plan saved by a newer
- * build must not be rejected wholesale because it mentions a view setting this
- * one has never heard of. Unknown values are dropped when the view is APPLIED,
- * where the real constants live, rather than being policed here.
+ * Every field is optional and loosely typed on purpose: it must survive
+ * `factoryProjectSchema.parse` (which strips unknown keys) and server
+ * re-validation, and a plan from a newer build must not be rejected over a
+ * view setting this one does not know. Unknown values are dropped when the
+ * view is APPLIED, where the real constants live.
  */
 export const planViewStateSchema = z.object({
   canvasPattern: z.string().optional(),
   canvasTheme: z.string().optional(),
   lineHeatMode: z.boolean().optional(),
-  lineThicknessMode: z.boolean().optional(),
-  freeDockMode: z.boolean().optional(),
-  lineLabelsMode: z.boolean().optional(),
+  fixedEdgeWidth: z.boolean().optional(),
   linePulseMode: z.boolean().optional(),
   calmMode: z.boolean().optional(),
   glanceMode: z.string().optional(),
@@ -486,7 +603,145 @@ export const planViewStateSchema = z.object({
   favouriteResourceKeys: z.array(z.string()).optional(),
 });
 
+/** The task board's bounds: what one task, checklist line or comment may hold. */
+export const PLAN_TASK_LIMITS = {
+  idLength: 200,
+  titleLength: 120,
+  textLength: 4000,
+  itemTextLength: 200,
+  commentTextLength: 2000,
+  orderLength: 128,
+  accountIdLength: 64,
+  accountNameLength: 64,
+  assignees: 50,
+  nodeIds: 500,
+  /** The tasks one task may wait on. */
+  blockedBy: 500,
+  stampLength: 40,
+  /** A location's label, as the game clips it. */
+  placeLabelLength: 60,
+  /** A dimension's name or a world's key (`server:<16 hex>`, `world:<uuid>`). */
+  placeNameLength: 120,
+  /**
+   * A screenshot's thumbnail, a JPEG data URL: the game keeps the JPEG under 40 KB (about 54,000 characters in
+   * base64); this leaves room and still keeps one thing well under a live batch's 256 KB.
+   */
+  pictureThumbLength: 96_000,
+  pictureFileLength: 200,
+  /** A quest's name and quest line, and its icon's item key. */
+  questTextLength: 200,
+  questIconLength: 512,
+} as const;
+
+const taskIdSchema = z.string().min(1).max(PLAN_TASK_LIMITS.idLength);
+const accountIdSchema = z.string().min(1).max(PLAN_TASK_LIMITS.accountIdLength);
+const stampSchema = z.string().max(PLAN_TASK_LIMITS.stampLength);
+// A fractional index: sorts as a string, and a move writes a key between two others.
+const orderKeySchema = z.string().min(1).max(PLAN_TASK_LIMITS.orderLength);
+
+const planTaskLinkSchema = z.object({
+  // Empty reads as the plan holding the task (the game's older spelling).
+  plan: z.string().max(PLAN_TASK_LIMITS.idLength),
+  node: taskIdSchema,
+});
+
+export const planTaskSchema = z.object({
+  id: taskIdSchema,
+  title: z.string().min(1).max(PLAN_TASK_LIMITS.titleLength),
+  text: z.string().max(PLAN_TASK_LIMITS.textLength).optional(),
+  status: z.enum(["todo", "doing", "blocked", "done"]),
+  order: orderKeySchema,
+  assignees: z.array(accountIdSchema).max(PLAN_TASK_LIMITS.assignees).optional(),
+  links: z.array(planTaskLinkSchema).max(PLAN_TASK_LIMITS.nodeIds).optional(),
+  nodeIds: z.array(taskIdSchema).max(PLAN_TASK_LIMITS.nodeIds).optional(),
+  createdBy: accountIdSchema.optional(),
+  createdAt: stampSchema.optional(),
+  doneAt: stampSchema.optional(),
+  /** No priority is Medium; the game writes none for Medium. */
+  priority: z.enum(["high", "medium", "low"]).optional(),
+  /** When it last changed column; a task without one counts from `createdAt`. */
+  movedAt: stampSchema.optional(),
+  /** Tasks of the same board it waits on, by id. */
+  blockedBy: z.array(taskIdSchema).max(PLAN_TASK_LIMITS.blockedBy).optional(),
+});
+
+/** A spot in a game world: a block, its dimension, the world it belongs to, an optional label. */
+export const planPlaceSchema = z.object({
+  x: z.number().int(),
+  y: z.number().int(),
+  z: z.number().int(),
+  dim: z.number().int(),
+  dimName: z.string().max(PLAN_TASK_LIMITS.placeNameLength),
+  world: z.string().max(PLAN_TASK_LIMITS.placeNameLength),
+  label: z.string().max(PLAN_TASK_LIMITS.placeLabelLength).optional(),
+});
+
+/**
+ * A screenshot taken in the game: its thumbnail as an image data URL (only a data URL, so drawing it never reaches
+ * another site), the full shot's size, when, and the full shot's file in the screenshots folder of the game that
+ * took it.
+ */
+export const planPictureSchema = z.object({
+  thumb: z
+    .string()
+    .max(PLAN_TASK_LIMITS.pictureThumbLength)
+    .regex(/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/),
+  w: z.number().int().min(0),
+  h: z.number().int().min(0),
+  takenAt: stampSchema,
+  file: z.string().max(PLAN_TASK_LIMITS.pictureFileLength).optional(),
+});
+
+/**
+ * A quest in the game's quest book, the game's only: its id there, with its name, icon (an item key) and quest line.
+ * Kept as it came, so a plan the website saves keeps the game's quests.
+ */
+export const planQuestSchema = z.object({
+  id: taskIdSchema,
+  name: z.string().max(PLAN_TASK_LIMITS.questTextLength),
+  icon: z.string().max(PLAN_TASK_LIMITS.questIconLength).optional(),
+  line: z.string().max(PLAN_TASK_LIMITS.questTextLength).optional(),
+});
+
+/**
+ * One thing on a task, each with its own checkbox: a machine (a card on a plan, `link`), a location (`place`) or a
+ * screenshot (`picture`). An older checklist line has no kind. `text` is always the thing in words.
+ */
+export const planTaskItemSchema = z.object({
+  id: taskIdSchema,
+  taskId: taskIdSchema,
+  // "quest" is the game's only: the website shows it as its words and keeps `quest` as it came.
+  kind: z.enum(["machine", "location", "picture", "quest"]).optional(),
+  text: z.string().min(1).max(PLAN_TASK_LIMITS.itemTextLength),
+  done: z.boolean(),
+  order: orderKeySchema,
+  link: planTaskLinkSchema.optional(),
+  nodeId: taskIdSchema.optional(),
+  place: planPlaceSchema.optional(),
+  picture: planPictureSchema.optional(),
+  quest: planQuestSchema.optional(),
+});
+
+export const planTaskCommentSchema = z.object({
+  id: taskIdSchema,
+  taskId: taskIdSchema,
+  by: accountIdSchema,
+  byName: z.string().max(PLAN_TASK_LIMITS.accountNameLength),
+  at: stampSchema,
+  text: z.string().min(1).max(PLAN_TASK_LIMITS.commentTextLength),
+});
+
+export const productionGroupSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  parentId: z.string().min(1).optional(),
+  resourceRules: z.record(z.string(), z.enum(["share", "import"])).optional(),
+});
+
 export const factoryProjectSchema = z.object({
+  productionGroups: z.array(productionGroupSchema).optional(),
+  poolResourceRules: z.record(z.string(), z.enum(["share", "import"])).optional(),
+  checklist: z.object({ cards: z.array(z.string()), edges: z.array(z.string()) }).optional(),
   schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
   id: z.string().min(1),
   name: z.string().min(1),
@@ -496,18 +751,38 @@ export const factoryProjectSchema = z.object({
   icon: entryIconSchema.optional(),
   view: planViewStateSchema.optional(),
   targetRate: targetRateSchema.optional(),
-  // What the board does with an input nothing feeds and output nothing takes.
+  // Legacy setup rules: still parsed so old JSON validates, dropped on load.
   setupRules: z
     .object({
       freeInputs: z.boolean().optional(),
       freeOutputs: z.boolean().optional(),
-      looseCellWires: z.boolean().optional(),
     })
     .optional(),
-  // Legacy sketch mode, rewritten as both rules on load.
+  // Legacy sketch mode, dropped on load.
   assumeBoundaries: z.boolean().optional(),
   // Solve mode: product amounts are the question, machine counts the answer.
   solveMode: z.boolean().optional(),
+  // Pool mode: every resource is shared, no wires needed.
+  poolMode: z.boolean().optional(),
+  // Plan mode: the merged board (implies solveMode).
+  planMode: z.boolean().optional(),
+  // Plan mode's stored leftover splits: leftover key -> bearer key -> share.
+  spareShares: z
+    .record(
+      z.string().min(1).max(4096),
+      z
+        .record(z.string().min(1).max(512), z.number().min(0).max(1))
+        .refine((shares) => Object.keys(shares).length <= 64, "Too many bearers."),
+    )
+    .refine((leftovers) => Object.keys(leftovers).length <= 1024, "Too many leftovers.")
+    .optional(),
+  // Plan mode's setting pins: machine name -> the setting keys its cards show as chips.
+  settingPins: z
+    .record(z.string().min(1).max(256), z.array(z.string().min(1).max(128)).max(64))
+    .refine((pins) => Object.keys(pins).length <= 512, "Too many pinned machines.")
+    .optional(),
+  // Pool mode's cell-to-fluid ratios, litres per filled cell by cell id.
+  poolCellRatios: z.record(z.string(), z.number().positive()).optional(),
   recipes: z.array(recipeSchema),
   nodes: z.array(factoryNodeSchema),
   storages: z.array(factoryStorageSchema).optional().default([]),
@@ -517,6 +792,13 @@ export const factoryProjectSchema = z.object({
   fuelProfiles: z.array(fuelProfileSchema),
   selectedFuelProfileId: z.string().optional(),
   notes: z.string().optional(),
+  // The in-game planner's data for the whole plan, kept as written.
+  gtnhplanner: gtnhplannerDataSchema.optional(),
+  // Which view the plan opens on; a task board is a plan with "tasks".
+  primaryView: z.enum(["plan", "tasks"]).optional(),
+  tasks: z.array(planTaskSchema).optional(),
+  taskItems: z.array(planTaskItemSchema).optional(),
+  taskComments: z.array(planTaskCommentSchema).optional(),
   metadata: z
     .object({
       isDemo: z.boolean().optional(),
@@ -528,14 +810,13 @@ export const factoryProjectSchema = z.object({
     .optional(),
 });
 
-export type FactoryProjectInput = z.input<typeof factoryProjectSchema>;
-
 /**
  * A captured board selection (the clipboard/blueprint payload): validated
  * server-side before a blueprint is stored, so a hand-crafted upload cannot
  * smuggle malformed cards into every design that later pastes it.
  */
 export const boardSelectionPayloadSchema = z.object({
+  productionGroups: factoryProjectSchema.shape.productionGroups,
   nodes: z.array(factoryNodeSchema),
   storages: z.array(factoryStorageSchema),
   annotations: z.array(factoryAnnotationSchema),

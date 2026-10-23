@@ -2,28 +2,28 @@
 
 import { useSyncExternalStore } from "react";
 import { leaveWelcomeTab } from "@/lib/welcome/welcome-tab";
+import { playSfx } from "@/lib/sound/sfx";
 
 /**
  * The Library: everything you have, and everything the network has.
  *
- * It is not a tab and not a design. It sits at the head of the tab strip
- * as a "Library" pill, and like Welcome it COVERS the board rather than
- * replacing it, so nothing about the plan underneath is unmounted while it
- * is up.
+ * Not a tab and not a design: a "Library" pill at the head of the tab strip
+ * that, like Welcome, COVERS the board so nothing underneath unmounts.
  *
  * ALL is every design you have, one grid; a FOLDER is the same grid held to
  * one folder; PUBLIC is the network's setups.
  *
- * `active` and `view` live in sessionStorage: a reload while you are on the
- * library lands you back on it, on the same view, and a new visit starts on
- * whatever design was open. Same scope Welcome uses for the same reason.
+ * `active` and `view` live in sessionStorage, as Welcome's do: a reload
+ * returns to the same view, and a new visit starts on the open design.
  */
 export type LibraryView =
   | { kind: "all" }
   | { kind: "favorites" }
   | { kind: "folder"; folderId: string }
   | { kind: "public"; search?: string }
-  | { kind: "saved" };
+  | { kind: "saved" }
+  /** Plans other accounts shared with this one (live plans only). */
+  | { kind: "shared" };
 
 export interface LibraryTabState {
   /** It is the thing being shown, covering the board. */
@@ -47,7 +47,13 @@ function isLibraryView(value: unknown): value is LibraryView {
   if (kind === "folder") {
     return typeof (value as { folderId?: unknown }).folderId === "string";
   }
-  return kind === "all" || kind === "favorites" || kind === "public" || kind === "saved";
+  return (
+    kind === "all" ||
+    kind === "favorites" ||
+    kind === "public" ||
+    kind === "saved" ||
+    kind === "shared"
+  );
 }
 
 function readStored(): LibraryTabState {
@@ -111,6 +117,8 @@ export function readLibraryTabState(): LibraryTabState {
  * Exactly one of Welcome and the library can be up, so Welcome steps down.
  */
 export function openLibrary(view?: LibraryView) {
+  // The library swapping in for the board turns a page, as the mod's.
+  if (!getSnapshot().active) playSfx("ui.page");
   leaveWelcomeTab();
   write({ active: true, ...(view ? { view } : {}) });
 }
@@ -125,5 +133,6 @@ export function leaveLibrary() {
   if (!getSnapshot().active) {
     return;
   }
+  playSfx("ui.page");
   write({ active: false });
 }

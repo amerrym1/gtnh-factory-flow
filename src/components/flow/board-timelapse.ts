@@ -2,27 +2,22 @@ import { playBoardSound } from "@/lib/board-sounds";
 import { computeBoardLevelView } from "@/lib/model/board-windows";
 import type { FactoryProject } from "@/lib/model/types";
 import { useFactoryStore } from "@/store/factory-store";
-import { getBoardTiltSnapshot, writeBoardTilt, type BoardTilt } from "./board-tilt";
-import {
-  isNodeDetailGlanceForced,
-  NODE_GLANCE_LEAVE_ZOOM,
-  setNodeDetailGlanceForced,
-} from "./node-detail";
+import { NODE_GLANCE_LEAVE_ZOOM } from "./node-detail";
+import { boardZoomScale } from "@/lib/ui-scale";
 
 /**
  * The build timelapse's SCRIPT: the order the board's cards, wires and ink
- * would appear in if someone were building the plan by hand. A dev-menu toy
- * (see DevMenu), so it is entirely a VIEW: the player's plan, selection and
- * undo history are never touched — playback only decides which already-built
- * canvas nodes and edges are hidden on a given beat.
+ * would appear in if someone built the plan by hand. Entirely a VIEW: the
+ * plan, selection and undo history are never touched; playback only decides
+ * which already-built canvas nodes and edges are hidden on a given beat.
  *
  * The order is "sources first, flowing downstream": start on a card nothing
  * feeds, then repeatedly reveal the card whose inputs are most complete,
- * preferring one wired to something already on the board and, among those,
- * the nearest — so the camera walks the factory the way a builder would
- * instead of teleporting across it. Wires appear on the beat their second
- * endpoint does; an open board's frame appears just before its first member;
- * ink (annotations) is drawn last, in reading order.
+ * preferring one wired to something already shown and, among those, the
+ * nearest, so the camera walks the factory instead of teleporting across it.
+ * Wires appear with their second endpoint; an open board's frame appears
+ * once its last member is shown; ink (annotations) comes last, in reading
+ * order.
  */
 
 export interface TimelapseBeat {
@@ -41,10 +36,9 @@ export interface TimelapseBeat {
   kind: "card" | "wire" | "board" | "ink";
   /**
    * What the camera should watch during this beat when that is not the
-   * revealed nodes themselves. A wire beat names only its NEAR end - the
-   * card whose wiring pass this is. The far end already stands, often a
-   * screen away, and a shot stretched to hold both ends of every dock
-   * was what kept the camera cutting instead of holding its vantage.
+   * revealed nodes themselves. A wire beat names only its NEAR end (the card
+   * being wired): the far end already stands, often a screen away, and
+   * framing both ends of every wire makes the camera cut instead of hold.
    */
   focusNodeIds?: string[];
   /**
@@ -604,13 +598,12 @@ export interface BoardTimelapseSnapshot {
    */
   pendingNodeIds: ReadonlySet<string>;
   /**
-   * What the camera should be watching, as an ordered lookahead: the
-   * current beat's action first, then the next beats'. The follower in
-   * FactoryFlow plans a SHOT from these - a vantage covering as much of
-   * the upcoming action as fits without dropping to glance zoom - and then
-   * HOLDS it while beats land inside the view, so ten things happening in
-   * one vicinity get one steady shot, not ten micro-moves. The final beat
-   * hands over one group holding everything for the pull-back ending.
+   * What the camera should watch, as an ordered lookahead: the current beat's
+   * action first, then the next beats'. The follower in FactoryFlow plans a
+   * SHOT covering as much of it as fits without dropping to glance zoom, then
+   * HOLDS it while beats land inside the view, so action in one vicinity gets
+   * one steady shot, not many micro-moves. The final beat hands over one group
+   * holding everything for the pull-back ending.
    */
   focusGroups: ReadonlyArray<readonly string[]>;
   /**
@@ -840,10 +833,9 @@ export function setBoardTimelapsePopMs(ms: number): void {
 
 /**
  * The camera's working zoom range while following the action: how close a
- * shot may get and how wide it may go. Defaults are what the camera always
- * did - wide stops exactly at the glance threshold, close stops well under
- * 1:1 so shots stay roomy. Both are the player's now; the finale ignores
- * the wide limit, as it always framed everything.
+ * shot may get and how wide it may go. By default wide stops exactly at the
+ * glance threshold and close stops well under 1:1 so shots stay roomy. The
+ * finale ignores the wide limit, since it frames everything.
  */
 const TIMELAPSE_ZOOM_KEY = "gtnh-factory-flow.dev.timelapse-zoom-range";
 export const TIMELAPSE_ZOOM_MIN_DEFAULT = NODE_GLANCE_LEAVE_ZOOM;
@@ -879,7 +871,9 @@ function readStoredZoomRange(): { min: number; max: number } {
 }
 
 export function getBoardTimelapseZoomRange(): { min: number; max: number } {
-  return timelapseZoomRange;
+  // Stored at 1:1; the board's zoom carries the interface size (ui-scale.ts).
+  const scale = boardZoomScale();
+  return { min: timelapseZoomRange.min * scale, max: timelapseZoomRange.max * scale };
 }
 
 export function setBoardTimelapseZoomRange(patch: { min?: number; max?: number }): void {
@@ -1022,12 +1016,11 @@ export function setBoardTimelapseCineZoom(zoom: number): void {
 }
 
 /**
- * THE CAMERA SETS THE PACE. The board's follower reports how far the
- * viewport still is from its shot every frame; a beat whose gap has
- * elapsed does not fire until the camera has essentially arrived, so a
- * slow camera stretches the whole show and a parked one lets a 4x run
- * blaze. A staleness check and a hard cap keep a missing or wedged
- * follower from stalling the run forever.
+ * THE CAMERA SETS THE PACE. The board's follower reports every frame how
+ * far the viewport is from its shot; a beat whose gap has elapsed waits
+ * until the camera has essentially arrived, so a slow camera stretches the
+ * show and a parked one lets a fast run blaze. A staleness check and a hard
+ * cap keep a missing or wedged follower from stalling the run forever.
  */
 let cameraRemainingPx = 0;
 let cameraUpcomingOnScreen = false;
@@ -1043,13 +1036,11 @@ export function reportTimelapseCameraProgress(
 }
 
 /**
- * The gate's PRINCIPLE: a beat may fire once the place it happens is on
- * screen. The follower reports whether the upcoming action's rect sits
- * inside the live viewport; mid-glide is fine - if the camera is sweeping
- * PAST where the next card lands, the card may land while it sweeps. The
- * arrive radius is the fallback for a shot whose action never quite fits
- * (a cropped wide cluster), and the cap is pathology insurance only - a
- * glacial camera pace is legitimate travel, not a stall.
+ * The gate's principle: a beat may fire once the place it happens is on
+ * screen, even mid-glide (a camera sweeping past where the next card lands
+ * lets it land). The arrive radius is the fallback for a shot whose action
+ * never quite fits; the cap is only insurance against a wedged follower,
+ * since a very slow camera pace is legitimate travel, not a stall.
  */
 const TIMELAPSE_CAMERA_ARRIVE_PX = 120;
 const TIMELAPSE_CAMERA_REPORT_FRESH_MS = 400;
@@ -1162,121 +1153,6 @@ export function stopBoardTimelapse(options?: { reframe?: boolean }): void {
       useFactoryStore.getState().frameBoardNodes();
     }
   }
-  // A preset run hands the player's own settings back however it ended.
-  if (restorePresetSettings) {
-    const restore = restorePresetSettings;
-    restorePresetSettings = undefined;
-    restore();
-  }
-}
-
-/**
- * The two PLAYER-FACING shows, tuned by hand (Jack, 2026-08-29): complete
- * configurations - dials, tilt, glance faces - applied for the run and
- * restored when it ends, so pressing play never rewires anyone's settings.
- * The dev menu remains the workbench; this is the finished act.
- */
-export interface BoardTimelapsePreset {
-  id: string;
-  /** Player-facing name and one plain line on what the camera does. */
-  name: string;
-  line: string;
-  speed: number;
-  volume: number;
-  mode: TimelapseCameraMode;
-  cineZoom?: number;
-  cameraPace: number;
-  wireDrawMs: number;
-  popMs: number;
-  zoom: { min: number; max: number };
-  tilt: BoardTilt;
-  forceGlance: boolean;
-}
-
-export const BOARD_TIMELAPSE_PRESETS: BoardTimelapsePreset[] = [
-  {
-    id: "afar",
-    name: "From afar",
-    line: "One slow shot of the whole build.",
-    speed: 2,
-    volume: 0.15,
-    mode: "cinematic",
-    cineZoom: 1.95,
-    cameraPace: 0.7,
-    wireDrawMs: 660,
-    popMs: 260,
-    zoom: { min: 0.54, max: 0.42 },
-    tilt: { pitch: 11, yaw: -27, drift: true, always: false },
-    forceGlance: true,
-  },
-  {
-    id: "close",
-    name: "Up close",
-    line: "The camera follows each machine as it lands.",
-    speed: 4,
-    volume: 0.15,
-    mode: "follow",
-    cameraPace: 0.15,
-    wireDrawMs: 1440,
-    popMs: 2160,
-    zoom: { min: 0.4, max: 0.7 },
-    tilt: { pitch: 11, yaw: -27, drift: true, always: false },
-    forceGlance: true,
-  },
-];
-
-/** Set while a preset run is live; stopBoardTimelapse hands settings back. */
-let restorePresetSettings: (() => void) | undefined;
-
-export function runBoardTimelapsePreset(preset: BoardTimelapsePreset): boolean {
-  // A live preset run restores its settings first, so `prior` is always
-  // the player's own configuration, never a half-applied show's.
-  stopBoardTimelapse();
-  const prior = {
-    speed: timelapseSpeed,
-    volume: timelapseVolume,
-    mode: timelapseCameraMode,
-    cineZoom: timelapseCineZoom,
-    pace: timelapseCameraPace,
-    wireDrawMs: timelapseWireDrawMs,
-    popMs: timelapsePopMs,
-    zoom: timelapseZoomRange,
-    tilt: getBoardTiltSnapshot(),
-    glance: isNodeDetailGlanceForced(),
-  };
-  setBoardTimelapseSpeed(preset.speed);
-  setBoardTimelapseVolume(preset.volume);
-  setBoardTimelapseCameraMode(preset.mode);
-  if (preset.cineZoom !== undefined) {
-    setBoardTimelapseCineZoom(preset.cineZoom);
-  }
-  setBoardTimelapseCameraPace(preset.cameraPace);
-  setBoardTimelapseWireDrawMs(preset.wireDrawMs);
-  setBoardTimelapsePopMs(preset.popMs);
-  setBoardTimelapseZoomRange(preset.zoom);
-  writeBoardTilt(preset.tilt);
-  setNodeDetailGlanceForced(preset.forceGlance);
-  const restore = () => {
-    setBoardTimelapseSpeed(prior.speed);
-    setBoardTimelapseVolume(prior.volume);
-    setBoardTimelapseCameraMode(prior.mode);
-    setBoardTimelapseCineZoom(prior.cineZoom);
-    setBoardTimelapseCameraPace(prior.pace);
-    setBoardTimelapseWireDrawMs(prior.wireDrawMs);
-    setBoardTimelapsePopMs(prior.popMs);
-    setBoardTimelapseZoomRange(prior.zoom);
-    writeBoardTilt(prior.tilt);
-    setNodeDetailGlanceForced(prior.glance);
-  };
-  const started = startBoardTimelapse();
-  if (started) {
-    // Installed only AFTER the start: startBoardTimelapse begins by
-    // stopping any prior run, and the stop path is what fires this.
-    restorePresetSettings = restore;
-  } else {
-    restore();
-  }
-  return started;
 }
 
 /**
@@ -1295,9 +1171,9 @@ export function startBoardTimelapse(): boolean {
   stopBoardTimelapse();
   const token = ++playToken;
   const projectId = project.id;
-  // Cards and frames pace at a full beat, wires at their half-step - and
-  // with every wire its own beat now they are the bulk of the show, so the
-  // target length is spread over the WEIGHTED count, not the card count.
+  // Cards and frames pace at a full beat, wires at about half, ink at none.
+  // Wires are the bulk of the show, so the target length is spread over this
+  // WEIGHTED count, not the card count.
   const paceUnits = script.beats.reduce(
     (sum, beat) =>
       sum + (beat.kind === "wire" ? 0.55 : beat.kind === "ink" ? 0 : 1),

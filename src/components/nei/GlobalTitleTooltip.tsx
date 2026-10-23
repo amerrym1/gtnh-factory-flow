@@ -2,37 +2,66 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { getUiScale } from "@/lib/ui-scale";
 import { isTouchPointer } from "@/lib/pointer-kind";
+import { TOOLTIP_PANEL_CLASS } from "./tooltip-style";
+import { ensureTipHost } from "@/components/flow/clean/interaction/TipHost";
+import { restWait } from "@/components/flow/clean/interaction/rest-wait";
 
 /**
- * Every browser `title` attribute in the app, rendered as the planner's own
- * tooltip instead of the browser's.
+ * Renders every browser `title` attribute as the planner's own tooltip.
  *
- * One delegated listener, mounted once: on hover it finds the nearest
- * `[title]`, MOVES the text into `data-tip-title` (so the native popup can
- * never render - an attribute that is gone cannot be shown), and paints the
- * same words in the Minecraft panel every other tooltip here uses. React
- * putting the attribute back on a re-render is fine: the next hover strips
- * it again before the browser's ~1s delay elapses.
+ * One delegated listener: on hover it finds the nearest `[title]`, MOVES the
+ * text into `data-tip-title` (so the native popup can never render), and
+ * paints it in the Minecraft panel. A title React changes while hovered
+ * updates the panel at once.
  *
- * Precedence with the rich tooltips (MinecraftTooltip):
- * - An element that IS a rich root keeps its rich panel; its `title` was a
- *   duplicate and is stripped without replacement.
- * - A titled element INSIDE a rich area gets stamped `data-tooltip-stop`,
- *   which the rich wrapper already yields to - so hovering a button inside a
- *   card swaps the card's story for the button's own line, one panel at a
- *   time, never two.
+ * Precedence with rich tooltips (MinecraftTooltip):
+ * - An element that IS a rich root keeps its rich panel; its duplicate
+ *   `title` is stripped without replacement.
+ * - A titled element INSIDE a rich area is stamped `data-tooltip-stop`, which
+ *   the rich wrapper yields to, so only one panel shows at a time.
  */
 const STORED = "data-tip-title";
+
+/** The least time between two re-reads of what is under the pointer while the wheel or a scroll goes on. */
+const RECHECK_GAP_MS = 150;
 
 export function GlobalTitleTooltip() {
   const [tip, setTip] = useState<{ lines: string[]; x: number; y: number } | undefined>();
   const panelRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<number | undefined>(undefined);
   const pendingRef = useRef<{ lines: string[]; x: number; y: number } | undefined>(undefined);
+  const pointerRef = useRef<{ x: number; y: number } | undefined>(undefined);
 
   useEffect(() => {
+    // Plan-mode boards give titles to the clean tip host (0.8 s wait, none while holding something).
+    ensureTipHost();
+    let hovered: Element | null = null;
+    let buttons = 0;
+    let pressedAt: { x: number; y: number } | undefined;
+    let settleFrame: number | undefined;
+    // The re-read below is a hit test of the whole board (17 ms at a thousand cards), once a wheel step; so it runs
+    // at most every RECHECK_GAP_MS while the wheel or a scroll goes on.
+    let lastRecheck = 0;
+    let recheckTimer: number | undefined;
+    const observer = new MutationObserver((records) => {
+      // A title removed by React means the tip is gone; do not keep showing
+      // the cached text. Our own title conversion is unobserved.
+      if (records.some(record => record.attributeName === "title") && !hovered?.hasAttribute("title")) {
+        hovered?.removeAttribute(STORED);
+      }
+      recheckAtPointer();
+    });
     const hide = () => {
+      observer.disconnect();
+      hovered = null;
+      if (settleFrame !== undefined) {
+        window.cancelAnimationFrame(settleFrame);
+        settleFrame = undefined;
+      }
+      window.clearTimeout(recheckTimer);
+      recheckTimer = undefined;
       pendingRef.current = undefined;
       if (frameRef.current !== undefined) {
         window.cancelAnimationFrame(frameRef.current);
@@ -57,12 +86,11 @@ export function GlobalTitleTooltip() {
       );
     };
 
-    const onMove = (event: globalThis.MouseEvent) => {
-      if (isTouchPointer()) {
+    const resolveAt = (target: Element | null, clientX: number, clientY: number, buttons: number) => {
+      if (isTouchPointer() || restWait() > 0) {
         hide();
         return;
       }
-      const target = event.target as Element | null;
       const titled = target?.closest?.(`[title], [${STORED}]`) ?? null;
       if (!titled) {
         hide();
@@ -72,12 +100,15 @@ export function GlobalTitleTooltip() {
       // Strip the native attribute the moment it is seen. Do this even for
       // rich roots: their panel already says it, and the browser's box on
       // top of ours is exactly the doubling this component exists to end.
+      observer.disconnect();
       const native = titled.getAttribute("title");
       if (native !== null) {
         titled.removeAttribute("title");
         if (native.trim() && !titled.hasAttribute("data-tooltip-root")) {
           titled.setAttribute(STORED, native);
           titled.setAttribute("data-tooltip-stop", "");
+        } else {
+          titled.removeAttribute(STORED);
         }
       }
       if (titled.hasAttribute("data-tooltip-root")) {
@@ -85,39 +116,116 @@ export function GlobalTitleTooltip() {
         return;
       }
       const text = titled.getAttribute(STORED);
-      if (!text || event.buttons !== 0) {
+      const holdingOwnControl = hovered === titled && pressedAt && Math.hypot(clientX - pressedAt.x, clientY - pressedAt.y) < 6;
+      if (!text || (buttons !== 0 && !holdingOwnControl)) {
         hide();
         return;
       }
 
+      hovered = titled;
+      observer.observe(titled, { attributes: true, attributeFilter: ["title", STORED] });
       const lines = text.split("\n");
       const panelWidth = panelRef.current?.offsetWidth ?? 260;
       const panelHeight = panelRef.current?.offsetHeight ?? 60;
+      // The panel is a body portal wearing .ui-zoom, so its left/top and its
+      // offset size are shell pixels: the pointer and the window (real
+      // pixels) are brought across by the interface scale (ui-scale.ts).
+      const scale = getUiScale();
       pendingRef.current = {
         lines,
-        x: Math.max(4, Math.min(event.clientX + 12, window.innerWidth - panelWidth - 8)),
-        y: Math.max(4, Math.min(event.clientY + 12, window.innerHeight - panelHeight - 8)),
+        x: Math.max(4, Math.min(clientX / scale + 12, window.innerWidth / scale - panelWidth - 8)),
+        y: Math.max(4, Math.min(clientY / scale + 12, window.innerHeight / scale - panelHeight - 8)),
       };
       if (frameRef.current === undefined) {
         frameRef.current = window.requestAnimationFrame(flush);
       }
     };
+    const onMove = (event: globalThis.MouseEvent) => {
+      pointerRef.current = { x: event.clientX, y: event.clientY };
+      buttons = event.buttons;
+      resolveAt(event.target as Element | null, event.clientX, event.clientY, event.buttons);
+    };
+    // A wheel or scroll never hides a tip by itself: a frame later the tip is
+    // re-read from whatever is under the pointer (same element keeps it, a new
+    // one re-targets it; without elementFromPoint it stays).
+    const recheckAtPointer = () => {
+      if (settleFrame !== undefined || recheckTimer !== undefined) {
+        return;
+      }
+      const wait = RECHECK_GAP_MS - (performance.now() - lastRecheck);
+      if (wait > 0) {
+        recheckTimer = window.setTimeout(() => {
+          recheckTimer = undefined;
+          recheckAtPointer();
+        }, wait);
+        return;
+      }
+      settleFrame = window.requestAnimationFrame(() => {
+        settleFrame = undefined;
+        lastRecheck = performance.now();
+        const pointer = pointerRef.current;
+        if (!pointer) {
+          return;
+        }
+        const under = typeof document.elementFromPoint === "function"
+          ? document.elementFromPoint(pointer.x, pointer.y)
+          : hovered?.isConnected ? hovered : null;
+        resolveAt(under, pointer.x, pointer.y, buttons);
+      });
+    };
 
+    // A wheel or scroll re-reads only a tip that is up or pending: with none, the next mouse move finds one (the
+    // board's camera scrolls every frame it moves, and each re-read is a hit test of everything on screen).
+    const recheckShown = () => {
+      if (hovered) recheckAtPointer();
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      pointerRef.current = { x: event.clientX, y: event.clientY };
+      buttons = event.buttons;
+      const target = event.target instanceof Element ? event.target : null;
+      const control = target?.closest("button, input, select, textarea, [role=button]");
+      if (event.pointerType === "mouse" && hovered && target && hovered.contains(target) && control) {
+        pressedAt = { x: event.clientX, y: event.clientY };
+        return;
+      }
+      pressedAt = undefined;
+      hide();
+    };
+    const onPointerUp = (event: PointerEvent) => {
+      buttons = event.buttons;
+      pressedAt = undefined;
+      recheckAtPointer();
+    };
+    const onWindowBlur = (event: Event) => {
+      if (!(event.target instanceof Element)) hide();
+    };
     const options = { capture: true, passive: true } as const;
     document.addEventListener("mousemove", onMove, options);
-    window.addEventListener("wheel", hide, options);
-    window.addEventListener("pointerdown", hide, options);
+    window.addEventListener("wheel", recheckShown, options);
+    window.addEventListener("scroll", recheckShown, options);
+    window.addEventListener("pointerdown", onPointerDown, options);
+    window.addEventListener("pointerup", onPointerUp, options);
+    window.addEventListener("click", recheckAtPointer, options);
     window.addEventListener("pointercancel", hide, options);
     window.addEventListener("resize", hide, options);
-    window.addEventListener("blur", hide, options);
+    window.addEventListener("blur", onWindowBlur, options);
     document.documentElement.addEventListener("mouseleave", hide);
     return () => {
+      observer.disconnect();
       document.removeEventListener("mousemove", onMove, options);
-      window.removeEventListener("wheel", hide, options);
-      window.removeEventListener("pointerdown", hide, options);
+      window.removeEventListener("wheel", recheckShown, options);
+      window.removeEventListener("scroll", recheckShown, options);
+      if (settleFrame !== undefined) {
+        window.cancelAnimationFrame(settleFrame);
+      }
+      window.clearTimeout(recheckTimer);
+      window.removeEventListener("pointerdown", onPointerDown, options);
+      window.removeEventListener("pointerup", onPointerUp, options);
+      window.removeEventListener("click", recheckAtPointer, options);
       window.removeEventListener("pointercancel", hide, options);
       window.removeEventListener("resize", hide, options);
-      window.removeEventListener("blur", hide, options);
+      window.removeEventListener("blur", onWindowBlur, options);
       document.documentElement.removeEventListener("mouseleave", hide);
       if (frameRef.current !== undefined) {
         window.cancelAnimationFrame(frameRef.current);
@@ -135,11 +243,11 @@ export function GlobalTitleTooltip() {
     <div
       ref={panelRef}
       data-minecraft-tooltip="true"
-      className="pointer-events-none fixed z-[9999] max-w-[340px] border-2 border-[#2a005f] bg-[#100010] px-2 py-1 font-mono text-[16px] leading-[19px] text-white shadow-[inset_1px_1px_0_rgba(255,255,255,0.18),inset_-1px_-1px_0_rgba(0,0,0,0.8)] [text-shadow:2px_2px_0_#3f3f3f]"
+      className={`${TOOLTIP_PANEL_CLASS} ui-zoom max-w-[340px]`}
       style={{ left: tip.x, top: tip.y }}
     >
       {tip.lines.map((line, index) => (
-        <div key={`${line}-${index}`} className={index === 0 ? "text-white" : "text-[#aaaaff]"}>
+        <div key={`${line}-${index}`} className="mc-tip-line" data-tone={index === 0 ? "name" : undefined}>
           {line}
         </div>
       ))}

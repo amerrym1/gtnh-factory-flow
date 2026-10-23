@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Factory, Folder, FolderPlus, LayoutGrid, Star } from "lucide-react";
+import { Bookmark, Factory, Folder, FolderPlus, LayoutGrid, Star, Users } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -10,6 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { getUiScale } from "@/lib/ui-scale";
 import { useCommunityUser } from "@/components/community/auth";
 import { IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
 import { formatRelativeDate } from "@/components/shelf-cards";
@@ -27,23 +28,20 @@ import { ArmedMenuItem, LibraryMenu, MenuHeading, MenuItem, MenuRule } from "./l
 import { Face, InlineName, LibraryTile } from "./LibraryTile";
 import { SetupsGrid } from "./SetupsGrid";
 import { SetupsFilterBar, useSetupFilters } from "./SetupsFilterBar";
+import { SharedWithMe } from "@/components/live/SharedWithMe";
+import { isLiveConfigured } from "@/lib/live/live-config";
+import { useCloudLibraryStore } from "@/lib/library/cloud-library";
 import { parsePlanSearch } from "@/lib/community/search-query";
 
 /**
- * The Library: everything you have and everything the network has, as one
- * kind of tile (see LibraryTile).
+ * The Library: your designs and the network's public setups, as one kind of
+ * tile (see LibraryTile).
  *
- * YOUR designs are ONE GRID, no sections: the OPEN chip says what is on
- * the strip and the globe says what is posted. The rail on the left is
- * All, then your folders: a folder holds the grid to itself, a tile
- * dragged onto one is filed there (or Move to in its menu, like adding to
- * a playlist). Search, tier and sort at the top apply to whatever is
- * showing. Below a rule sits the one other page, Public setups.
- *
- * Click a tile to open it, right click or the dots for its menu. The globe
- * is green when the design is posted and dim when it is not; clicking the
- * dim one posts it. Posted tiles carry a link button. Closing a tab never
- * deletes; delete lives here, armed.
+ * Your designs are ONE GRID: the OPEN chip marks designs on the tab strip and
+ * the globe marks posted ones (green posted, dim not; clicking dim posts).
+ * The left rail is All, your folders (drop a tile on one, or use Move to),
+ * then Community. Search, tier and sort apply to whatever is showing.
+ * Closing a tab never deletes; delete lives here, armed.
  */
 
 const POSTS_PAGE_SIZE = 48;
@@ -63,7 +61,10 @@ const SORTS: { value: SortKey; label: string }[] = [
 
 export function LibraryPage() {
   const library = useLibraryTab();
-  const designs = useDesignStore((state) => state.designs);
+  const everyDesign = useDesignStore((state) => state.designs);
+  // Copies of plans shared with us live under Shared with me, not among ours.
+  const designs = useMemo(() => everyDesign.filter((design) => !design.cloud), [everyDesign]);
+  const sharedCount = useCloudLibraryStore((state) => state.shared?.length);
   const folders = useDesignStore((state) => state.folders);
   const switchToDesign = useDesignStore((state) => state.switchToDesign);
   const copyDesign = useDesignStore((state) => state.copyDesign);
@@ -77,7 +78,7 @@ export function LibraryPage() {
   const deleteFolder = useDesignStore((state) => state.deleteFolder);
   const updateDesignIdentity = useDesignStore((state) => state.updateDesignIdentity);
 
-  // The same bar and the same fields as Public setups (SetupsFilterBar);
+  // The same bar and the same fields as Community (SetupsFilterBar);
   // here they are applied in memory over the designs.
   const filters = useSetupFilters("edited");
   const { query, maxTier, setMaxTier } = filters;
@@ -101,6 +102,7 @@ export function LibraryPage() {
   /** The design whose preview page is up, if any. */
   const [detailId, setDetailId] = useState<string>();
   const { posts: myPosts, signedIn } = useMyPosts();
+  const showShared = isLiveConfigured() && signedIn;
   const savedIds = useSavedSetups();
 
   // The library has the search's voice for its pages: a page turned for
@@ -244,11 +246,9 @@ export function LibraryPage() {
   const suppressClickRef = useRef(false);
 
   /**
-   * OUR OWN DRAG, not the browser's: a press on a tile that moves a few
-   * pixels becomes a small card riding the pointer (the face, the name, a
-   * count when the selection comes along). Rail chips light as it passes;
-   * releasing on a collection files the lot there, and releasing on New
-   * collection makes one on the spot and files them into it.
+   * A custom pointer drag, not native drag and drop: past a few pixels a small
+   * card (face, name, selection count) rides the pointer. Releasing on a
+   * collection files the lot there; on New collection it creates one first.
    */
   const beginTileDrag = (design: DesignSummary, event: ReactPointerEvent) => {
     const ids = dragIdsFor(design.id);
@@ -358,10 +358,8 @@ export function LibraryPage() {
     }
   };
   /**
-   * A design and its post are one thing, so deleting the design takes the
-   * post down. A post that cannot be reached (signed out, already gone) does
-   * not stop the delete; a leftover post is the owner's to find in Public
-   * setups.
+   * Deleting a design also takes its post down. An unreachable post (signed
+   * out, already gone) does not block the delete.
    */
   const deleteDesign = async (id: string) => {
     const design = designs.find((entry) => entry.id === id);
@@ -397,7 +395,45 @@ export function LibraryPage() {
             an accent by contrast rather than colour, flush to the board. */}
         <div className="flex h-full min-h-0 overflow-hidden border-4 border-[#23262d] bg-[#101215] shadow-[inset_2px_2px_0_rgba(255,255,255,0.05),inset_-2px_-2px_0_rgba(0,0,0,0.6)] compact:flex-col compact:border-0 compact:shadow-none">
           {/* THE RAIL: all, then folders. On a phone, one row of chips. */}
-          <aside className="flex w-[184px] shrink-0 flex-col gap-1 overflow-y-auto bg-[#101215] px-2 py-2 compact:w-full compact:flex-row compact:items-center compact:overflow-x-auto compact:overflow-y-hidden compact:border-b compact:border-r-0 compact:py-1.5">
+          {/* On a phone the rail is one dropdown rather than a sideways-scrolling row. */}
+          <div className="hidden shrink-0 border-b border-[var(--mc-33)] px-2 py-1.5 compact:block">
+            <select
+              value={railValue(library.view)}
+              onChange={(event) => {
+                const value = event.target.value;
+                if (value === "new") {
+                  const name = window.prompt("Name the collection");
+                  if (name?.trim()) {
+                    void createFolder(name).then((folder) =>
+                      setLibraryView({ kind: "folder", folderId: folder.id }),
+                    );
+                  }
+                  return;
+                }
+                playBoardSound("shelfTick");
+                setLibraryView(railView(value));
+              }}
+              aria-label="Where in Plans"
+              className="h-9 w-full border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-[13px] font-bold text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
+            >
+              <option value="all">My designs ({designs.length})</option>
+              <option value="favorites">
+                Favorites ({designs.filter((design) => design.favorite).length})
+              </option>
+              {folders.map((folder) => (
+                <option key={folder.id} value={`folder:${folder.id}`}>
+                  {folder.name} ({perFolder.get(folder.id) ?? 0})
+                </option>
+              ))}
+              <option value="new">New collection…</option>
+              {showShared ? (
+                <option value="shared">Shared with me ({sharedCount ?? 0})</option>
+              ) : null}
+              <option value="public">Community</option>
+              <option value="saved">Saved ({savedIds.length})</option>
+            </select>
+          </div>
+          <aside className="flex w-[184px] shrink-0 flex-col gap-1 overflow-y-auto bg-[#101215] px-2 py-2 compact:hidden">
             <RailItem
               icon={LayoutGrid}
               label="My designs"
@@ -474,10 +510,20 @@ export function LibraryPage() {
               <span className="whitespace-nowrap text-[12px] font-bold">New collection</span>
             </button>
 
+            {showShared ? (
+              <RailItem
+                icon={Users}
+                label="Shared with me"
+                count={sharedCount}
+                selected={library.view.kind === "shared"}
+                onClick={() => setLibraryView({ kind: "shared" })}
+              />
+            ) : null}
+
             <div className="mx-1 my-2 border-t-2 border-[#23262d] compact:mx-2 compact:my-0 compact:h-4 compact:border-l compact:border-t-0" />
             <RailItem
               icon={Factory}
-              label="Public setups"
+              label="Community"
               selected={library.view.kind === "public"}
               onClick={() => setLibraryView({ kind: "public" })}
             />
@@ -493,7 +539,9 @@ export function LibraryPage() {
 
           {/* THE PAGE. */}
           <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {library.view.kind === "public" ? (
+            {library.view.kind === "shared" ? (
+              <SharedWithMe />
+            ) : library.view.kind === "public" ? (
               <SetupsGrid scope="network" presetQuery={library.view.search} />
             ) : library.view.kind === "saved" ? (
               <SetupsGrid scope="saved" />
@@ -576,7 +624,7 @@ export function LibraryPage() {
                       icon: "delete" as const,
                       confirm: detailPost
                         ? `Delete "${detailDesign.name}"? Its post comes down with it. This cannot be undone.`
-                        : `Delete "${detailDesign.name}" from your library? This cannot be undone.`,
+                        : `Delete "${detailDesign.name}" from Plans? This cannot be undone.`,
                       onClick: () => {
                         setDetailId(undefined);
                         void deleteDesign(detailDesign.id);
@@ -661,9 +709,8 @@ export function LibraryPage() {
                         const post = design.communityPlanId
                           ? myPosts?.get(design.communityPlanId)
                           : undefined;
-                        // A design opened as a copy of someone else's post is YOURS now: it
+                        // A design opened as a copy of someone else's post is YOURS: it
                         // posts, edits and wears marks like anything you made from scratch.
-                        // The link it keeps to its source serves the plan card's reset only.
                         return (
                           <LibraryTile
                             key={design.id}
@@ -911,11 +958,14 @@ function DragGhost({ drag }: { drag: TileDrag }) {
   if (typeof document === "undefined") {
     return null;
   }
+  // Shell pixels: a body portal wearing .ui-zoom positions in shell pixels, so
+  // the real-pixel pointer is divided by the interface scale.
+  const scale = getUiScale();
   return createPortal(
     <div
       aria-hidden
-      style={{ left: drag.x + 14, top: drag.y + 10 }}
-      className="pointer-events-none fixed z-[120] flex max-w-[240px] items-center gap-2 border-2 border-[var(--mc-61)] bg-[var(--mc-47)] px-2 py-1.5 text-[var(--mc-ink)] shadow-[0_8px_0_rgba(0,0,0,0.5)]"
+      style={{ left: drag.x / scale + 14, top: drag.y / scale + 10 }}
+      className="ui-zoom pointer-events-none fixed z-[120] flex max-w-[240px] items-center gap-2 border-2 border-[var(--mc-61)] bg-[var(--mc-47)] px-2 py-1.5 text-[var(--mc-ink)] shadow-[0_8px_0_rgba(0,0,0,0.5)]"
     >
       <Face icon={drag.icon} size={28} />
       <span className="min-w-0 truncate text-[12px] font-bold">{drag.name}</span>
@@ -957,6 +1007,30 @@ function BarButton({
       {children}
     </button>
   );
+}
+
+/** The rail dropdown's value for a view, and back. */
+function railValue(view: ReturnType<typeof useLibraryTab>["view"]): string {
+  switch (view.kind) {
+    case "folder":
+      return `folder:${view.folderId}`;
+    case "public":
+    case "saved":
+    case "favorites":
+    case "all":
+    case "shared":
+      return view.kind;
+  }
+}
+
+function railView(value: string): Parameters<typeof setLibraryView>[0] {
+  if (value.startsWith("folder:")) {
+    return { kind: "folder", folderId: value.slice("folder:".length) };
+  }
+  if (value === "public" || value === "saved" || value === "favorites" || value === "shared") {
+    return { kind: value };
+  }
+  return { kind: "all" };
 }
 
 function sortDesignsBy(designs: DesignSummary[], sort: SortKey): DesignSummary[] {

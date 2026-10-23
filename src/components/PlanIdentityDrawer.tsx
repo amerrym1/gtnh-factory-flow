@@ -3,12 +3,12 @@
 import {
   ArrowBigUp,
   Check,
-  ChevronDown,
-  ChevronUp,
   Link2,
+  Pencil,
   LoaderCircle,
   Share2,
   Unlink,
+  Users,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getCommunityPlan, voteCommunityPlan } from "@/lib/community/client";
@@ -19,29 +19,31 @@ import { useCommunityAuthStore } from "@/store/community-auth-store";
 import { useDesignStore } from "@/store/design-store";
 import { useFactoryStore } from "@/store/factory-store";
 import { SharePlanDialog } from "@/components/community/SharePlanDialog";
+import { ScreenshotButton } from "@/components/export/ScreenshotButton";
+import { CopyPlanButton } from "@/components/export/CopyPlanButton";
 import { EntryIconSlot, IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
 import { formatRelativeDate } from "@/components/shelf-cards";
+import { LiveFaces, LiveStatusChip } from "@/components/live/LiveFaces";
+import { PlanShareDialog } from "@/components/live/PlanShareDialog";
+import { isLiveConfigured } from "@/lib/live/live-config";
 
 /**
- * The plan bar: one permanent slim row under the board carrying the plan's
- * face - icon, name, blurb - and, when the plan is linked to a community
- * post, that post's life: author, dates, votes, and the way back to the
- * posted version.
+ * The plan bar: a slim row above the board with the plan's icon, name and
+ * blurb, plus, for a plan linked to a community post, the post's author,
+ * dates, votes and link.
  *
- * Everything edits IN PLACE and edits YOUR copy, whoever wrote the original:
- * the icon is a button, the name is an inline field (it is the tab's name -
- * every save stamps the tab's name over the plan, so renaming here IS a tab
- * rename), and the blurb sits behind the one chevron because a textarea is
- * the only thing that cannot live on a 36px bar. Post actions ride the right
- * end: vote, link, share. There is no save-to-post and no reset: a posted
- * design IS its post, and every save reaches it (post-follow.ts).
+ * Everything edits YOUR copy in place: the icon is a button, the name is an
+ * inline field (it is the tab's name, which every save stamps over the plan,
+ * so this IS a tab rename), and the blurb sits behind the chevron. Post
+ * actions (vote, link, share) sit at the right end. A posted design's post is
+ * a copy: Share's Update in library brings it up to date.
  */
 
 const OPEN_STORAGE_KEY = "gtnh-factory-flow.plan-card-open.v1";
 
 /** The header-family square button the bar is made of. */
 const BAR_BUTTON =
-  "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-line-strong bg-surface text-fg-subtle hover:bg-surface-raised disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-sunken disabled:text-fg-muted";
+  "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-line-strong bg-surface text-fg-subtle hover:bg-surface-raised disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-sunken disabled:text-fg-muted";
 
 export function PlanIdentityDrawer() {
   const project = useFactoryStore((state) => state.project);
@@ -104,6 +106,11 @@ export function PlanIdentityDrawer() {
   // The unlinked plan's way onto the network, right where its face is. Once
   // linked, the strip carries its own Share in the same rightmost spot.
   const [isSharing, setSharing] = useState(false);
+  // With live plans, Share is inviting people into this plan and posting a
+  // copy to the library is Publish: two keys, never one.
+  const live = isLiveConfigured();
+  const signedIn = useCommunityAuthStore((state) => Boolean(state.user));
+  const [isInviting, setInviting] = useState(false);
 
   return (
     // min-w-0 matters: the board column's grid sizes its one track to its
@@ -112,25 +119,75 @@ export function PlanIdentityDrawer() {
     // board gets, never the other way round.
     <section
       data-help-anchor="plan-card"
-      className="min-w-0 shrink-0 border-t border-line bg-surface"
+      className="plan-summary min-w-0 shrink-0 border-b border-line bg-surface"
     >
-      <div className="flex h-9 min-w-0 items-center gap-1.5 px-1.5">
-        <button
-          type="button"
-          onClick={toggleOpen}
-          aria-expanded={isOpen}
-          title={isOpen ? "Fold the description away" : "This plan's description"}
-          aria-label={isOpen ? "Fold the plan description away" : "Open the plan description"}
-          className={BAR_BUTTON}
-        >
-          {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
-        </button>
+      <div className="flex h-[29px] min-w-0 items-center gap-2 px-2">
         <EntryIconSlot
           icon={project.icon}
           editable
           onEdit={() => setPickingIcon(true)}
-          className="!h-7 !w-7 shrink-0 border border-line-strong bg-surface-sunken"
+          className="!h-6 !w-6 shrink-0 border border-line-strong bg-surface-sunken"
         />
+        <button type="button" onClick={toggleOpen} aria-expanded={isOpen}
+          aria-label="Edit plan details" className="plan-summary-name group flex h-6 min-w-0 max-w-[35%] shrink items-center gap-1.5 rounded px-1 text-left font-semibold text-fg hover:bg-surface-raised">
+          <span className="truncate">{nameDraft ?? project.name}</span>
+          <Pencil aria-hidden className="h-3 w-3 shrink-0 text-fg-muted opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
+        </button>
+        <button type="button" onClick={toggleOpen} aria-expanded={isOpen}
+          aria-label={isOpen ? "Fold the plan description away" : "Open the plan description"}
+          className="plan-summary-description flex h-6 min-w-0 flex-1 items-center rounded px-2 text-left text-xs text-fg-muted hover:bg-surface-raised hover:text-fg">
+          <span className="block w-full overflow-hidden whitespace-nowrap text-xs" style={{ maskImage: "linear-gradient(to right, black calc(100% - 12px), transparent)" }}>
+            {(descriptionDraft ?? project.description)?.trim() || "Add description…"}
+          </span>
+        </button>
+        {live ? (
+          <>
+            <LiveStatusChip />
+            <LiveFaces />
+            <button
+              type="button"
+              data-plan-share
+              onClick={() => setInviting(true)}
+              disabled={!signedIn}
+              title={signedIn ? "Share this plan with people to edit it together" : "Sign in to share"}
+              aria-label="Share this plan"
+              className="plan-summary-action inline-flex h-6 shrink-0 items-center justify-center gap-1.5 rounded border border-line-strong px-2 text-fg hover:bg-surface-raised disabled:opacity-40"
+            >
+              <Users className="h-3 w-3" />
+              <span>Share</span>
+            </button>
+          </>
+        ) : null}
+        {linkedPlanId ? (
+          <LinkedPostStrip key={linkedPlanId} planId={linkedPlanId} />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setSharing(true)}
+            disabled={project.nodes.length === 0}
+            title={
+              project.nodes.length === 0
+                ? `${live ? "Publish" : "Share"}: build something first`
+                : live
+                  ? "Post a copy to Community"
+                  : "Share"
+            }
+            aria-label={live ? "Post a copy to Community" : "Share this setup"}
+            className="plan-summary-action inline-flex h-6 shrink-0 items-center justify-center gap-1.5 rounded border border-line-strong px-2 text-fg hover:bg-surface-raised disabled:opacity-40"
+          >
+            <Share2 className="h-3 w-3" />
+            <span>{live ? "Publish" : "Share"}</span>
+          </button>
+        )}
+        <ScreenshotButton />
+        <CopyPlanButton />
+      </div>
+      {isSharing ? <SharePlanDialog onClose={() => setSharing(false)} /> : null}
+      {isInviting ? <PlanShareDialog onClose={() => setInviting(false)} /> : null}
+
+      {isOpen ? (
+        <div className="plan-summary-details grid gap-2 border-t border-line p-3">
+          <label className="grid gap-1 text-xs text-fg-muted">Name
         <input
           value={nameDraft ?? project.name}
           onChange={(event) => setNameDraft(event.target.value)}
@@ -143,27 +200,11 @@ export function PlanIdentityDrawer() {
           maxLength={80}
           aria-label="Plan name"
           title="Plan name"
-          className="h-7 min-w-16 flex-1 rounded border border-transparent bg-transparent px-1.5 text-sm font-medium text-fg outline-none hover:border-line focus:border-line-strong focus:bg-surface-sunken"
-        />
-        {linkedPlanId ? (
-          <LinkedPostStrip key={linkedPlanId} planId={linkedPlanId} />
-        ) : (
-          <button
-            type="button"
-            onClick={() => setSharing(true)}
-            disabled={project.nodes.length === 0}
-            title={project.nodes.length === 0 ? "Share: build something first" : "Share"}
-            aria-label="Share this setup"
-            className={BAR_BUTTON}
-          >
-            <Share2 className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
-      {isSharing ? <SharePlanDialog onClose={() => setSharing(false)} /> : null}
 
-      {isOpen ? (
-        <div className="border-t border-line p-1.5">
+          className="h-8 w-full min-w-0 rounded border border-line bg-surface-sunken px-1.5 text-sm font-medium text-fg outline-none hover:border-line focus:border-line-strong focus:bg-surface-sunken"
+        />
+          </label>
+          <label className="grid gap-1 text-xs text-fg-muted">Description
           <textarea
             value={descriptionDraft ?? project.description ?? ""}
             onChange={(event) => {
@@ -179,6 +220,7 @@ export function PlanIdentityDrawer() {
             aria-label="Plan description"
             className="w-full resize-y rounded border border-line-strong bg-surface-sunken px-2 py-1.5 text-xs"
           />
+          </label>
         </div>
       ) : null}
 
@@ -206,9 +248,9 @@ export function PlanIdentityDrawer() {
 }
 
 /**
- * The post's life on the right end of the bar: quiet meta, then the action
- * buttons. Mounted only while the plan carries a link, keyed by it, so the
- * summary fetch and the fingerprint math track the link and nothing else.
+ * The post's meta and action buttons at the bar's right end. Mounted only
+ * while the plan carries a link, keyed by it, so the summary fetch and
+ * fingerprint math track the link alone.
  */
 function LinkedPostStrip({ planId }: { planId: string }) {
   const project = useFactoryStore((state) => state.project);
@@ -273,10 +315,9 @@ function LinkedPostStrip({ planId }: { planId: string }) {
     // The plan's own fields win once they exist; this only fills silence.
   }, [post, project.description, project.icon, setProjectIdentity]);
 
-  // A link to a post that is not yours is a leftover from when copies kept
-  // one. A copy is a plain design now, so the link is dropped the moment the
-  // server says so - only while signed in, since signed out EVERY post reads
-  // as someone else's.
+  // A design linked to a post that is not yours is stale (copies are plain
+  // designs), so the link is dropped once the server says so. Only while
+  // signed in: signed out, EVERY post reads as someone else's.
   useEffect(() => {
     if (post && signedIn && post.isMine === false) {
       clearProjectCommunityLink();
@@ -379,7 +420,7 @@ function LinkedPostStrip({ planId }: { planId: string }) {
         disabled={busy === "vote"}
         title={post.myVote === 1 ? "You voted this setup up" : "Vote this setup up"}
         className={[
-          "inline-flex h-7 shrink-0 items-center gap-0.5 rounded border px-1.5 text-xs tabular-nums",
+          "inline-flex h-6 shrink-0 items-center gap-0.5 rounded border px-1.5 text-xs tabular-nums",
           post.myVote === 1
             ? "border-emerald-600 text-emerald-500"
             : "border-line-strong bg-surface text-fg-subtle hover:bg-surface-raised",
@@ -406,8 +447,8 @@ function LinkedPostStrip({ planId }: { planId: string }) {
       <button
         type="button"
         onClick={() => setSharingAsOwn(true)}
-        title="Share"
-        aria-label="Share this setup"
+        title={isLiveConfigured() ? "Published: the post and its link" : "Share"}
+        aria-label={isLiveConfigured() ? "Post a copy to Community" : "Share this setup"}
         className={BAR_BUTTON}
       >
         <Share2 className="h-3.5 w-3.5" />

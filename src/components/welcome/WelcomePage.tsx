@@ -5,15 +5,11 @@ import {
   Factory,
   Library,
   Plus,
-  ScrollText,
   Search,
-  Sparkles,
   ThumbsUp,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ChangelogDialog } from "@/components/ChangelogDialog";
 import { FLUID_ICON_SCALE, ResourceIcon } from "@/components/nei/ResourceIcon";
-import { CHANGELOG } from "@/lib/changelog";
 import { DEFAULT_DATASET_MANIFEST_URL } from "@/lib/datasets";
 import { queryRecipeDatasetResources } from "@/lib/datasets/browser-loader";
 import { listCommunityPlans } from "@/lib/community/client";
@@ -25,20 +21,19 @@ import { openSidebarTab } from "@/lib/sidebar-tab";
 import { APP_VERSION } from "@/lib/version";
 import { leaveWelcomeTab, setWelcomeOnStartup, useWelcomeTab } from "@/lib/welcome/welcome-tab";
 import { writeWorkspaceView } from "@/lib/workspace-view";
+import { UNTITLED_DESIGN_NAME } from "@/lib/designs/design-library";
 import { useDesignStore } from "@/store/design-store";
 import { useFactoryStore } from "@/store/factory-store";
 import { WelcomeBackdrop } from "./WelcomeBackdrop";
+import "../chrome/mod-panel.css";
 
 /**
- * The Welcome tab: the first thing a visitor sees, and the place a regular
- * comes back to for their designs and the community's.
- *
- * It COVERS the board (see FactoryPlannerApp) rather than replacing it, over
- * a quiet ASCII backdrop that keeps to the corners. The content is one
- * column, kept short: the name and the three ways to start, your designs,
- * the community's newest setups, then what changed last release. Every pick
- * steps off the tab, and the checkbox at the foot is how a regular stops
- * arriving here.
+ * The Welcome tab. It COVERS the board (see FactoryPlannerApp) rather than
+ * replacing it, over a quiet ASCII backdrop. One short column: the name, the
+ * ways to start (new design, shared setups, find a recipe, your library) and
+ * community setups. Every pick steps off the tab; the checkbox at the foot
+ * turns off showing it on startup. Release notes live on the header's
+ * version chip, not here.
  */
 
 const COMMUNITY_TILE_COUNT = 15;
@@ -86,12 +81,10 @@ function useBackdropIcons(): string[] {
 export function WelcomePage() {
   const welcome = useWelcomeTab();
   const addDesign = useDesignStore((state) => state.addDesign);
-  const [isChangelogOpen, setChangelogOpen] = useState(false);
-  const latest = CHANGELOG[0];
   const backdropIcons = useBackdropIcons();
 
   return (
-    <div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-canvas text-fg">
+    <div className="pn-skin relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-canvas text-fg">
       <WelcomeBackdrop icons={backdropIcons} />
       {/* A dark wash under the words so the backdrop stays a backdrop; the
           edges are left clear so the animation shows through on both sides
@@ -108,17 +101,17 @@ export function WelcomePage() {
         <div className="mx-auto flex w-full max-w-[880px] flex-col gap-6 px-6 pb-8 pt-8 compact:px-4 compact:pt-6">
           <header className="flex flex-col items-start gap-3">
             <div className="flex items-baseline gap-3">
-              <h1 className="text-[32px] font-black leading-none tracking-tight text-white compact:text-[26px]">
+              <h1 className="text-[22px] leading-none text-white compact:text-[18px]">
                 <span className="text-cyan-300">GTNH</span> Planner
               </h1>
-              <span className="rounded border border-line-strong px-1.5 py-0.5 text-[11px] text-fg-muted">
+              <span className="border border-line-strong px-1.5 py-0.5 text-[11px] text-fg-muted">
                 v{APP_VERSION}
               </span>
             </div>
             <p className="max-w-[600px] text-[13px] leading-relaxed text-fg-subtle">
               Draw a GregTech: New Horizons factory as a flowchart. Every card is a
-              real recipe, every wire carries a real rate, and the board tells you
-              what starves, what clogs and what to build.
+              real recipe, every wire carries a real rate, and
+              the board counts the machines you need.
             </p>
             <div className="mt-1 flex flex-wrap gap-2">
               <PrimaryButton
@@ -127,6 +120,13 @@ export function WelcomePage() {
                   // Step off first: adding a design does not, and the new
                   // tab would otherwise sit under this page unseen.
                   leaveWelcomeTab();
+                  // An empty untitled plan already open is the new design: a second one would only sit beside it.
+                  const { project } = useFactoryStore.getState();
+                  const blank =
+                    project.nodes.length === 0 && (project.storages ?? []).length === 0 && (project.annotations ?? []).length === 0;
+                  const open = useDesignStore.getState();
+                  const current = open.designs.find((design) => design.id === open.activeDesignId);
+                  if (blank && current?.name === UNTITLED_DESIGN_NAME && !current.closed) return;
                   void addDesign();
                 }}
               >
@@ -147,42 +147,14 @@ export function WelcomePage() {
               >
                 Find a recipe
               </SecondaryButton>
-              {/* Your own designs live on the shelf now, not on this page. */}
+              {/* Your own designs live in the library, not on this page. */}
               <SecondaryButton icon={Library} onClick={() => openLibrary()}>
-                Your library
+                Your plans
               </SecondaryButton>
             </div>
           </header>
 
           <CommunityShelf />
-
-          {latest ? (
-            <section className="flex flex-col gap-2">
-              <SectionTitle>
-                <Sparkles className="h-3.5 w-3.5 text-cyan-300" aria-hidden />
-                New in {latest.version}
-              </SectionTitle>
-              <div className="rounded border border-line bg-[#151a21]/80 px-4 py-3">
-                <p className="text-[14px] font-bold text-white">{latest.headline}</p>
-                <ul className="mt-2 flex flex-col gap-1">
-                  {latest.notes.slice(0, 2).map((note) => (
-                    <li key={note} className="flex gap-2 text-[13px] leading-relaxed text-fg-muted">
-                      <span aria-hidden className="mt-2 h-1 w-1 shrink-0 rounded-full bg-cyan-400" />
-                      <span>{note.replace(/\*/g, "")}</span>
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  type="button"
-                  onClick={() => setChangelogOpen(true)}
-                  className="mt-2 inline-flex items-center gap-1 text-[11px] text-cyan-300 hover:text-cyan-200"
-                >
-                  <ScrollText className="h-3 w-3" aria-hidden />
-                  All release notes
-                </button>
-              </div>
-            </section>
-          ) : null}
 
           <footer className="border-t border-line pt-3">
             <label className="flex w-fit cursor-pointer items-center gap-2 text-[12px] text-fg-muted hover:text-fg">
@@ -197,7 +169,6 @@ export function WelcomePage() {
           </footer>
         </div>
       </div>
-      {isChangelogOpen ? <ChangelogDialog onClose={() => setChangelogOpen(false)} /> : null}
     </div>
   );
 }
@@ -206,7 +177,7 @@ export function WelcomePage() {
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <h2 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-[#aebccd]">
+    <h2 className="flex items-center gap-2 text-[11px] uppercase text-[#aebccd]">
       {children}
     </h2>
   );
@@ -225,7 +196,7 @@ function PrimaryButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-9 items-center gap-2 border-2 border-cyan-300 bg-cyan-400 px-3.5 text-[13px] font-bold text-[#062026] shadow-[4px_4px_0_rgba(0,0,0,0.45)] hover:bg-cyan-300 active:translate-x-px active:translate-y-px active:shadow-[2px_2px_0_rgba(0,0,0,0.45)]"
+      className="inline-flex items-center gap-2 bg-cyan-400 text-[#062026]"
     >
       <Icon className="h-4 w-4" aria-hidden />
       {children}
@@ -246,7 +217,7 @@ function SecondaryButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-9 items-center gap-2 border-2 border-line-strong bg-[#151a21]/85 px-3.5 text-[13px] font-bold text-fg-subtle shadow-[4px_4px_0_rgba(0,0,0,0.45)] hover:border-cyan-500/60 hover:text-white active:translate-x-px active:translate-y-px active:shadow-[2px_2px_0_rgba(0,0,0,0.45)]"
+      className="inline-flex items-center gap-2 border border-line-strong"
     >
       <Icon className="h-4 w-4" aria-hidden />
       {children}
@@ -316,7 +287,7 @@ function CommunityShelf() {
   const open = async (plan: CommunityPlanSummary) => {
     setBusyId(plan.id);
     try {
-      await openCommunityPost({ id: plan.id, name: plan.name, isMine: plan.isMine === true });
+      await openCommunityPost({ id: plan.id, name: plan.name, isMine: plan.isMine === true, authorName: plan.authorName });
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : "Opening the setup failed.");
     } finally {

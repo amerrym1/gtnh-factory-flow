@@ -132,6 +132,14 @@ const AUX_NAMES = [
   ["Molten Tengam", "fluid"],
   ["Molten SpaceTime", "fluid"],
   ["Molten Shirabon", "fluid"],
+  // Antimatter: the forge eats protomatter, the generator a UMV catalyst.
+  ["Protomatter", "fluid"],
+  ["Molten Superconductor Base UMV", "fluid"],
+  // Byproducts: the lava boiler's obsidian, the magic converter's containers.
+  ["Obsidian", "item"],
+  ["Blank Slate", "item"],
+  ["Apple", "item"],
+  ["Stick", "item"],
   // The LNR's depleted fuel returns, litre for litre with the fuel burned.
   ["Thorium Based Liquid Fuel (Depleted)", "fluid"],
   ["Uranium Based Liquid Fuel (Depleted)", "fluid"],
@@ -230,11 +238,21 @@ const AUX_NAMES = [
   ["540k Sp Coolant Cell", "item"],
   ["1080k Sp Coolant Cell", "item"],
   ["1G Neutronium Heat Capacitor", "item"],
+  // The THTR burns bartworks' TRISO pebbles and returns them burned, a ball
+  // per 64 plus the loose rest.
+  ["TRISO pebble", "item"],
+  ["Burned Out TRISO pebble ball", "item"],
+  ["Burned Out TRISO pebble", "item"],
   // The LNE's hydroxide boosters are dusts, one per boost window.
   ["Sodium Hydroxide Dust", "item"],
   ["Potassium Hydroxide Dust", "item"],
   ["Caesium Hydroxide Dust", "item"],
   ["Francium Hydroxide Dust", "item"],
+  // The Railcraft boiler's liquid fuels the workbook tables lack (Railcraft's FuelManager, EnderIO's IMC).
+  ["Hootch", "fluid"],
+  ["Fire Water", "fluid"],
+  ["Biofuel", "fluid"],
+  ["Blazing Pyrotheum", "fluid"],
 ];
 
 /**
@@ -287,6 +305,13 @@ function collectNames() {
   for (const [name, kind] of AUX_NAMES) {
     add(name, kind);
   }
+  // kubatech's HTGR fuel and its burned form, one item per pebble material
+  // (the dataset writes "Uranium 235" where the workbook says "Uranium-235").
+  for (const entry of data.htgrPebbles) {
+    const material = entry.name.replace("-", " ");
+    add(`TRISO Fuel (${material})`, "item");
+    add(`Burned Out TRISO Fuel (${material})`, "item");
+  }
   for (const entry of data.plasmas) {
     const base = entry.name.replace(/ Plasma$/, "");
     if (base !== entry.name) {
@@ -314,8 +339,11 @@ function pick(results, displayName, kind) {
     (entry) => (entry.displayName ?? "").toLowerCase() === lower && entry.kind === kind,
   );
   if (exact.length > 0) {
-    // Prefer the busiest resource when ids collide on one display name.
-    return exact.sort((a, b) => (b.recipeCount ?? 0) - (a.recipeCount ?? 0))[0];
+    // GregTech's own molten fluids are "molten.<material>" (plasma exhaust,
+    // fusion); Tinkers' share the display name, so GT's wins a "Molten" tie.
+    // Otherwise prefer the busiest resource when ids collide on one name.
+    const gtMolten = (entry) => (lower.startsWith("molten ") && entry.id.startsWith("molten.") ? 1 : 0);
+    return exact.sort((a, b) => gtMolten(b) - gtMolten(a) || (b.recipeCount ?? 0) - (a.recipeCount ?? 0))[0];
   }
   const anyKind = results.filter((entry) => (entry.displayName ?? "").toLowerCase() === lower);
   return anyKind.sort((a, b) => (b.recipeCount ?? 0) - (a.recipeCount ?? 0))[0];

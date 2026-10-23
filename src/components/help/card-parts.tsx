@@ -4,18 +4,12 @@ import { Fragment, useId } from "react";
 import type { LucideIcon } from "lucide-react";
 
 /**
- * The glance card the board's "?" corner is built from.
- *
- * The idea: dim the screen, ring a thing, put a card beside it saying what it
- * is. A row leads with the mark the SCREEN uses: the button's own icon, a key
- * chip, or a little mouse with the right button lit, and the words that matter
- * are lit rather than spelled out at length. That is what stops the surface
- * reading as a wall of text.
- *
- * The help sheet lays eight cards over the whole window at once, where eight
- * cyan cards would be a fairground, so it passes a calmer accent in and keeps
- * cyan (GLANCE_ACCENT) for anything that can be clicked. A future guided
- * walkthrough can reuse the same card.
+ * The glance card the board's "?" corner is built from: the screen dims, a
+ * thing is ringed, and a card beside it says what it is. Each row leads with
+ * the mark the screen itself uses (the button's icon, a key chip, a mouse
+ * with a button lit) and lights the key words. The help sheet shows many
+ * cards at once, so it passes a calmer accent in and keeps cyan
+ * (GLANCE_ACCENT) for anything clickable.
  */
 
 export type GlanceTone =
@@ -27,7 +21,10 @@ export type GlanceTone =
   | "starved"
   | "blocked"
   | "bottleneck"
-  | "clogged";
+  | "clogged"
+  | "build"
+  | "solve"
+  | "pool";
 
 /** Which mouse button a row is about, drawn as a little lit-up mouse. */
 export type GlanceMouse = "left" | "right" | "scroll";
@@ -39,10 +36,50 @@ export interface GlanceRow {
   chip?: string;
   /** Draws a mouse with that button lit. */
   mouse?: GlanceMouse;
+  /** Draws a drawer's silhouette in its board tint. */
+  shape?: GlanceDrawerShape;
   /** Colours the chip. Only worth it where the app is colour-coded too. */
   tone?: GlanceTone;
   /** `*Words between asterisks*` come out lit. */
   text: string;
+}
+
+export type GlanceDrawerShape = "source" | "product" | "byproduct" | "trash" | "buffer";
+
+/** The drawer tints from StorageNode's ROLE_TINTS, so the legend and the
+ * board agree on what red, green and steel mean. */
+const DRAWER_SHAPE_TINTS: Record<GlanceDrawerShape, string> = {
+  source: "var(--flow-input)",
+  product: "var(--flow-output)",
+  byproduct: "var(--flow-output)",
+  trash: "#8a93a6",
+  buffer: "#8a93a6",
+};
+
+/**
+ * A drawer's silhouette at chip size, the same cuts globals.css makes on the
+ * drawer card: product the plain crate, source the rounded one, byproduct the
+ * shield (square shoulders, tapered base), trash the bin (sides tapering to a
+ * narrower foot), buffer the hexagon.
+ */
+export function DrawerShapeGlyph({ shape }: { shape: GlanceDrawerShape }) {
+  const tint = DRAWER_SHAPE_TINTS[shape];
+  const common = { fill: `color-mix(in srgb, ${tint} 24%, transparent)`, stroke: tint, strokeWidth: 1.5, strokeLinejoin: "round" as const };
+  return (
+    <svg viewBox="0 0 24 18" className="h-4 w-[21px] shrink-0" aria-hidden>
+      {shape === "source" ? (
+        <rect x="1" y="1" width="22" height="16" rx="4" {...common} />
+      ) : shape === "product" ? (
+        <rect x="1" y="1" width="22" height="16" {...common} />
+      ) : shape === "byproduct" ? (
+        <polygon points="1,1 23,1 23,12 18,17 6,17 1,12" {...common} />
+      ) : shape === "trash" ? (
+        <polygon points="1,1 23,1 19,17 5,17" {...common} />
+      ) : (
+        <polygon points="5,1 19,1 23,9 19,17 5,17 1,9" {...common} />
+      )}
+    </svg>
+  );
 }
 
 export const GLANCE_ACCENT = "#22d3ee";
@@ -51,11 +88,9 @@ export const GLANCE_QUIET = "#93a4bb";
 export const GLANCE_LINE = "#2a3441";
 
 /**
- * Chip colours, taken from the app rather than invented.
- *
- * The machine states are the board's own verdict inks (globals.css), so a
- * chip is the same colour as the word on the card it describes. None of them is
- * green: on this board green says "fine", and most of these are not.
+ * Chip colours: machine states use the board's own verdict inks
+ * (globals.css), so a chip matches the word on the card it describes. None
+ * is green: on this board green means "fine".
  */
 export const GLANCE_TONES: Record<GlanceTone, string> = {
   need: "#f87171",
@@ -69,6 +104,10 @@ export const GLANCE_TONES: Record<GlanceTone, string> = {
   bottleneck: "#e05252",
   // The clog family's cool blue (--verdict-clogged-ink): full, not broken.
   clogged: "#6fb2d6",
+  // The three mode keys' own inks (ModeKeys in FactoryFlow.tsx).
+  build: "#f5b642",
+  solve: "#c78bff",
+  pool: "#6f9cff",
 };
 
 export const GLANCE_CARD_CLASS =
@@ -80,12 +119,8 @@ export function splitEmphasis(text: string): string[] {
 }
 
 /**
- * A little mouse with one button lit.
- *
- * "Left click" and "right click" are what a board gesture usually comes down
- * to, and a drawing of the button says it faster than the words do. The lit
- * half is a plain rectangle CLIPPED to the mouse's own rounded body, so it
- * takes the shell's corners exactly without anyone hand-fitting a curve.
+ * A little mouse with one button lit. The lit half is a plain rectangle
+ * CLIPPED to the mouse's rounded body, so it takes the shell's corners exactly.
  */
 export function MouseGlyph({ kind, color }: { kind: GlanceMouse; color: string }) {
   const clipId = useId();
@@ -124,12 +159,9 @@ export function MouseGlyph({ kind, color }: { kind: GlanceMouse; color: string }
 }
 
 /**
- * A step or callout's lines.
- *
- * A grid rather than a stack of flex rows, with each row `display: contents`:
- * the mark column then sizes itself to the widest mark in the card - the
- * difference between a chip reading BOTTLENECK and one reading TTLENECK - and
- * every row's words still start on the same line down the card.
+ * A step or callout's lines: a grid with each row `display: contents`, so the
+ * mark column sizes to the widest mark (no clipped chips) and every row's
+ * words align down the card.
  */
 export function GlanceRows({
   rows,
@@ -145,7 +177,7 @@ export function GlanceRows({
     <ul
       className={[
         "grid grid-cols-[auto_1fr] items-start",
-        dense ? "gap-x-2 gap-y-1.5" : "gap-x-2.5 gap-y-2",
+        dense ? "gap-x-2 gap-y-1" : "gap-x-2.5 gap-y-2",
       ].join(" ")}
     >
       {rows.map((row) => (
@@ -174,6 +206,8 @@ function GlanceRowLine({
       >
         {row.mouse ? (
           <MouseGlyph kind={row.mouse} color={accent} />
+        ) : row.shape ? (
+          <DrawerShapeGlyph shape={row.shape} />
         ) : Icon ? (
           <Icon className={dense ? "h-3.5 w-3.5" : "h-4 w-4"} style={{ color: accent }} />
         ) : row.chip ? (
@@ -192,7 +226,7 @@ function GlanceRowLine({
       <span
         className={[
           "text-[#c3cedb]",
-          dense ? "text-[12px] leading-[1.4]" : "text-[13px] leading-[1.45]",
+          dense ? "text-[11px] leading-[1.35]" : "text-[13px] leading-[1.45]",
         ].join(" ")}
       >
         {splitEmphasis(row.text).map((piece, index) =>
@@ -215,7 +249,7 @@ export function GlanceTitle({ children, dense = false }: { children: string; den
     <p
       className={[
         "font-bold leading-tight text-white",
-        dense ? "text-[14px]" : "text-[18px]",
+        dense ? "text-[13px]" : "text-[18px]",
       ].join(" ")}
     >
       {children}

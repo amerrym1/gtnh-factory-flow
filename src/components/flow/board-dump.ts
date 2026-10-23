@@ -1,21 +1,17 @@
 /**
- * A diagnostic dump of the board, or of the cards you have selected.
- *
- * This exists to be PASTED - into a bug report, a chat window, a text file -
- * and read by someone who cannot see your board. So it is written for a
- * stranger, not for the app: every card gets a short handle (M1, D2), every
- * number carries its unit in the key, and nothing appears that would not help
- * answer "why is this machine not running".
+ * A diagnostic dump of the board, or of the selected cards, written to be
+ * PASTED (into a bug report, a chat, a text file) and read by someone who
+ * cannot see the board: every card gets a short handle (M1, D2), every
+ * number carries its unit in the key, and only what helps answer "why is
+ * this machine not running" appears.
  *
  * Deliberately absent: positions, colours, icon paths, NEI slot layouts, the
- * full recipe rows, and every id the reader cannot act on. Those are most of a
- * plan's bytes and none of its meaning. The real node ids ARE kept, one per
- * card, because they are how a report gets matched back to a saved plan.
+ * full recipe rows, and ids the reader cannot act on. The real node ids ARE
+ * kept, one per card, to match a report back to a saved plan.
  *
- * The numbers are the solver's own - `result` is what the board is drawing
- * right now - with the per-machine overclock math restated alongside it, since
- * "480 EU/t recipe, 4 overclocks, 6 parallels, 7680 EU/t each" is the line that
- * usually settles an argument about power.
+ * The numbers are the solver's own (`result` is what the board draws), with
+ * the per-machine overclock math restated alongside, since "480 EU/t recipe,
+ * 4 overclocks, 6 parallels, 7680 EU/t each" usually settles a power question.
  */
 import {
   applyMachineHandlerToRecipe,
@@ -26,7 +22,6 @@ import {
 import { applyRecipeInputOverrides } from "@/lib/model/recipe-input-overrides";
 import { expandPocketSelection } from "@/lib/model/pocket-connections";
 import { getStorageRoles } from "@/lib/model/storage-role";
-import { getSetupRules } from "@/lib/model/setup-rules";
 import { getCustomRateDial, isCustomRateRecipe } from "@/lib/model/custom-rate";
 import { isTrashRecipe } from "@/lib/model/trash";
 import { getMachineParallelMultiplier } from "@/lib/solver/machine-effects";
@@ -108,15 +103,11 @@ export function buildBoardDump({ project, result, selectedIds }: BoardDumpOption
   };
   dropEmpty(dump);
 
-  const rules = getSetupRules(project);
-  if (rules.freeInputs || rules.freeOutputs) {
-    dump.setupRules = [
-      rules.freeInputs ? "free inputs: any input short of stock is topped up" : undefined,
-      rules.freeOutputs ? "free outputs: any surplus leaves the setup instead of clogging" : undefined,
-    ]
-      .filter(Boolean)
-      .join("; ");
-  }
+  dump.mode = project.poolMode
+    ? "pool: no wires, every resource shared, imports worked out"
+    : project.solveMode
+      ? "solve: typed amounts, machine counts solved"
+      : "build: machine counts and wires are the player's";
   if (result) {
     dump.power = dropEmpty({
       euPerTickWhenEverythingRuns: round(scopeEuT(result, nodes, false)),

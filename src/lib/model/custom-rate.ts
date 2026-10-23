@@ -1,4 +1,10 @@
 import type { CustomRateMode, FactoryNode, Recipe, ResourceAmount } from "./types";
+import {
+  getFluidTankSlot,
+  isFluidTankRecipe,
+  releaseFluidTanks,
+  unpinFluidTanks,
+} from "./fluid-tank";
 
 /**
  * The custom rate node: a source/sink you dial by hand. Supply mode makes a
@@ -7,12 +13,10 @@ import type { CustomRateMode, FactoryNode, Recipe, ResourceAmount } from "./type
  * synthetic one-second recipe (amount per craft == rate per second), so the
  * solver treats it like any other machine with no special cases.
  *
- * A card holds its resource only for as long as it is wired to something. Pull
- * the last wire and it lets go and offers its universal ports again, so the
- * next thing you drag onto it is what it becomes — see `releaseCustomRates`.
- * The dial survives that on the node (`FactoryNode.customRate`); the resource
- * does not, because a card holding a resource nothing asked for was a card
- * that quietly refused every other resource you tried to give it.
+ * A card holds its resource only while wired. Pull the last wire and it lets
+ * go and offers its universal ports again (`releaseCustomRates`), so it never
+ * refuses a different resource. The dial survives on the node
+ * (`FactoryNode.customRate`); the resource does not.
  */
 export const CUSTOM_RATE_MACHINE_TYPE = "Custom Rate";
 export const CUSTOM_RATE_DURATION_TICKS = 20;
@@ -30,15 +34,14 @@ export function isCustomRateRecipe(
 }
 
 /**
- * Is this card a custom rate card? The CARD is the socket, not the port id it
- * happens to be showing: a card already holding water still takes a drop of
- * lava, and answers with the port it is showing rather than refusing because
- * the ids do not match.
+ * Is this card a custom rate card, or an empty fluid tank (the other holder)? The CARD is the socket, not the
+ * port id it is showing: a card holding water still accepts a drop of lava. A tank holding a Tank recipe is an
+ * ordinary card whose ports wire like any other.
  */
 export function isCustomRateNodeId(
   project: {
     nodes: Array<Pick<FactoryNode, "id" | "recipeId">>;
-    recipes: Array<Pick<Recipe, "id" | "machineType">>;
+    recipes: Array<Pick<Recipe, "id" | "machineType"> & Partial<Pick<Recipe, "inputs" | "outputs" | "source">>>;
   },
   nodeId: string | null | undefined,
 ): boolean {
@@ -49,7 +52,11 @@ export function isCustomRateNodeId(
   if (!node) {
     return false;
   }
-  return isCustomRateRecipe(project.recipes.find((entry) => entry.id === node.recipeId));
+  const recipe = project.recipes.find((entry) => entry.id === node.recipeId);
+  return (
+    isCustomRateRecipe(recipe) ||
+    (isFluidTankRecipe(recipe) && !getFluidTankSlot({ inputs: recipe?.inputs ?? [], outputs: recipe?.outputs ?? [] }))
+  );
 }
 
 export function getCustomRateSlot(
@@ -107,13 +114,21 @@ export function getCustomRateDial(
  * Every custom rate card left holding a resource with nothing wired to it,
  * emptied. Returns the same project when there is nothing to release, so the
  * common mutation costs one pass over the nodes and allocates nothing.
- *
- * This runs from `touchProject`, which is to say after EVERY project edit, so
- * there is no path — delete a wire, delete the machine at the far end, delete
- * a whole selection, undo into a state with fewer wires — that can leave a
- * card stuck on a resource it is no longer connected to.
+ * Runs from `touchProject` after EVERY project edit, so no path (wire delete,
+ * far-end delete, undo) can leave a card stuck on an unconnected resource.
  */
 export function releaseCustomRates<
+  Project extends {
+    nodes: FactoryNode[];
+    recipes: Recipe[];
+    edges: Array<{ source: string; target: string }>;
+  },
+>(project: Project): Project {
+  // The fluid tank card is the same kind of holder: it lets go the same way, and never keeps a pin.
+  return unpinFluidTanks(releaseFluidTanks(releaseCustomRateSlots(project)));
+}
+
+function releaseCustomRateSlots<
   Project extends {
     nodes: FactoryNode[];
     recipes: Recipe[];

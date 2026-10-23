@@ -11,6 +11,7 @@ set -euo pipefail
 export GTNH_EXPORT_PACK_KIND="${GTNH_EXPORT_PACK_KIND:-client}"
 export GTNH_EXPORT_TIMEOUT_SECONDS="${GTNH_EXPORT_TIMEOUT_SECONDS:-21600}"
 export GTNH_EXPORT_MAX_MEMORY="${GTNH_EXPORT_MAX_MEMORY:-6G}"
+export GTNH_EXPORT_MIN_MEMORY="${GTNH_EXPORT_MIN_MEMORY:-4G}"
 export GTNH_RENDER_STACK_ICONS="${GTNH_RENDER_STACK_ICONS:-true}"
 export GTNH_ICON_EXPORT_BATCH_SIZE="${GTNH_ICON_EXPORT_BATCH_SIZE:-64}"
 export GTNH_ATLAS_ICON_SIZE="${GTNH_ATLAS_ICON_SIZE:-256}"
@@ -164,7 +165,7 @@ export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Dgtnh.oracle.autorun=true -Dgt
 if [[ "$GTNH_RENDER_STACK_ICONS" == "true" ]]; then
   export JAVA_TOOL_OPTIONS="$JAVA_TOOL_OPTIONS -Dgtnh.oracle.renderIcons=true -Dgtnh.oracle.iconDir=$rendered_icon_dir -Dgtnh.oracle.iconCacheDir=$GTNH_ICON_CACHE_DIR -Dgtnh.oracle.iconSize=$GTNH_ATLAS_ICON_SIZE -Dgtnh.oracle.iconExportBatchSize=$GTNH_ICON_EXPORT_BATCH_SIZE -Dgtnh.oracle.neiLayoutDir=$nei_layout_dir -Djava.awt.headless=false"
 fi
-export _JAVA_OPTIONS="${_JAVA_OPTIONS:-} -Xms4G -Xmx${GTNH_EXPORT_MAX_MEMORY}"
+export _JAVA_OPTIONS="${_JAVA_OPTIONS:-} -Xms${GTNH_EXPORT_MIN_MEMORY} -Xmx${GTNH_EXPORT_MAX_MEMORY}"
 
 if [[ "$GTNH_EXPORT_PACK_KIND" == "client" ]]; then
   if [[ -n "$GTNH_CLIENT_RUNTIME_CACHE_DIR" ]]; then

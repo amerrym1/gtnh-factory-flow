@@ -10,17 +10,10 @@ import { NODE_DETAIL_FULL, NODE_DETAIL_GLANCE, type NodeDetailLevel } from "./no
  */
 
 /**
- * What a line draws, as a bitmask.
- *
- * These no longer have thresholds of their own. Edges used to derive detail
- * straight from zoom while nodes used a hysteretic threshold, so between the
- * two there was a band where the rate chips had returned but the cards were
- * still showing their glance percentages — and coming back the other way the
- * two flipped at different points again. Detail arriving in pieces reads as the
- * board glitching rather than as a zoom level.
- *
- * Both now read the single level in node-detail.ts, so everything switches at
- * once, in both directions, at the same zoom.
+ * What a line draws, as a bitmask. No thresholds of its own: edges and nodes
+ * both read the single level in node-detail.ts, so all detail switches at
+ * once, in both directions, at the same zoom (detail arriving in pieces reads
+ * as the board glitching).
  */
 export const EDGE_DETAIL_GLOBAL = 1;
 export const EDGE_DETAIL_ARROWS = 2;
@@ -28,23 +21,20 @@ export const EDGE_DETAIL_LABELS = 4;
 export const EDGE_DETAIL_PULSE = 8;
 
 /**
- * At a glance, a line is its route: no rate chip, no arrowhead, no marching
- * dashes, no hover surface. Each of those is per-edge cost paid hundreds of
- * times over for something a few pixels tall — dropping the chips alone was
- * worth 22 to 59fps of panning on a 300-node plan — and none of them can be
- * read at that size anyway.
+ * At a glance, a line is its route and its ARROWS: no rate chip, no marching
+ * dashes, no hover surface, each a per-edge cost paid hundreds of times over
+ * for something a few pixels tall. The arrows stay, drawn twice their size so
+ * they read at glance zoom.
  */
 export const EDGE_DETAIL_BY_LEVEL: Record<NodeDetailLevel, number> = {
   [NODE_DETAIL_FULL]: EDGE_DETAIL_ARROWS | EDGE_DETAIL_LABELS | EDGE_DETAIL_PULSE,
-  [NODE_DETAIL_GLANCE]: EDGE_DETAIL_GLOBAL,
+  [NODE_DETAIL_GLANCE]: EDGE_DETAIL_GLOBAL | EDGE_DETAIL_ARROWS,
 };
 
 /**
- * A table rather than a function on purpose. Calling an imported function to
- * derive this made the React Compiler give up on memoizing ResourceEdgeComponent
- * entirely ("Existing memoization could not be preserved") — the same trap the
- * edges memo carries a note about. A property read does not. Verified with
- * eslint, not assumed.
+ * A table rather than a function on purpose: calling an imported function
+ * here makes the React Compiler give up memoizing ResourceEdgeComponent
+ * ("Existing memoization could not be preserved"); a property read does not.
  */
 export function edgeDetailForLevel(level: NodeDetailLevel): number {
   return EDGE_DETAIL_BY_LEVEL[level];

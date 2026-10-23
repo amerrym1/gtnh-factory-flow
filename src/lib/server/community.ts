@@ -1,7 +1,17 @@
-import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { entryIconSchema } from "@/lib/model/schemas";
 import type { CommunityPlanSummary, EntryIcon, PlanResourceStat } from "@/lib/community/types";
+import {
+  assertLocalDbAllowed,
+  isLocalDb,
+  LOCAL_DB_SERVICE_KEY,
+  localDbFetch,
+  localDbUrl,
+} from "./local-db/client";
+import { makeSessionToken, readSessionCookie, SESSION_COOKIE, SESSION_DAYS, verifySessionToken } from "./session";
+
+export { makeSessionToken, SESSION_COOKIE };
 
 /**
  * Server-only Supabase access for the community hub. Uses the service-role
@@ -11,11 +21,133 @@ import type { CommunityPlanSummary, EntryIcon, PlanResourceStat } from "@/lib/co
 
 let cachedClient: SupabaseClient | undefined;
 
+/**
+ * How long one database request may take before it is abandoned. Without a
+ * limit, a stalled Supabase instance holds requests open for minutes, so
+ * pages hang instead of failing and the server piles up open sockets. A
+ * healthy request finishes in well under a second, so this only cuts off a
+ * stall.
+ */
+export const COMMUNITY_DB_TIMEOUT_MS = 20_000;
+
+/** What a player reads when the database cannot be reached. */
+export const COMMUNITY_DB_DOWN_MESSAGE = "The community database is not responding. Try again in a few minutes.";
+
+const DB_DOWN_HEADER = "x-community-db-down";
+
+/** A PostgREST-shaped error answer, which every client reads as `{ message }`. */
+function dbDownResponse(status: number): Response {
+  return Response.json(
+    { message: COMMUNITY_DB_DOWN_MESSAGE, code: "", details: `HTTP ${status}`, hint: "" },
+    { status, headers: { [DB_DOWN_HEADER]: "1" } },
+  );
+}
+
+/**
+ * After this many database requests in a row fail as down, the next ones fail
+ * at once, without being sent, for `DB_BREAKER_OPEN_MS`; then one goes through
+ * to try. A stalled instance only recovers once demand drops (its disk budget
+ * refills below baseline), and every tab keeps asking.
+ */
+export const DB_BREAKER_FAILURES = 5;
+export const DB_BREAKER_OPEN_MS = 15_000;
+let dbFailuresInARow = 0;
+let dbBreakerOpenUntil = 0;
+
+/** For tests: a closed breaker. */
+export function resetDbBreaker(): void {
+  dbFailuresInARow = 0;
+  dbBreakerOpenUntil = 0;
+}
+
+/** The database client's fetch: `fetchWithDbTimeout` behind the breaker. */
+async function fetchFromDb(
+  input: Parameters<typeof fetch>[0],
+  init: Parameters<typeof fetch>[1],
+  send: typeof fetch = fetch,
+): Promise<Response> {
+  if (Date.now() < dbBreakerOpenUntil) {
+    // 504: postgrest-js retries a 503, which would only meet the breaker again.
+    return dbDownResponse(504);
+  }
+  const response = await fetchWithDbTimeout(input, init, COMMUNITY_DB_TIMEOUT_MS, send);
+  if (response.headers.get(DB_DOWN_HEADER)) {
+    dbFailuresInARow += 1;
+    if (dbFailuresInARow >= DB_BREAKER_FAILURES) {
+      dbBreakerOpenUntil = Date.now() + DB_BREAKER_OPEN_MS;
+    }
+  } else {
+    dbFailuresInARow = 0;
+  }
+  return response;
+}
+
+/**
+ * The client's fetch (database, storage), abandoned after `timeoutMs`,
+ * body included. A timeout before the answer arrives becomes a 504, not a
+ * rejection: postgrest-js RETRIES a GET that rejects (other than with an
+ * AbortError) three more times with backoff, and words a rejection as its
+ * error's name and message. Supabase sits behind Cloudflare, so a stalled
+ * instance answers with Cloudflare's HTML error page (522, 524, sent as
+ * text/plain), which the clients would pass on whole as the error message:
+ * any 5xx that is not JSON becomes the same plain answer, keeping its status
+ * so postgrest-js still retries a 520. A 4xx is left alone (PostgREST reads
+ * an empty 404 as no rows).
+ */
+export async function fetchWithDbTimeout(
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
+  timeoutMs = COMMUNITY_DB_TIMEOUT_MS,
+  send: typeof fetch = fetch,
+): Promise<Response> {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), timeoutMs).unref?.();
+  const signal = init?.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal;
+  let response: Response;
+  try {
+    response = await send(input, { ...init, signal });
+  } catch (error) {
+    if (controller.signal.aborted && !init?.signal?.aborted) {
+      return dbDownResponse(504);
+    }
+    throw error;
+  }
+  if (response.status < 500) {
+    return response;
+  }
+  if (!response.headers.get("content-type")?.includes("json")) {
+    await response.body?.cancel().catch(() => undefined);
+    return dbDownResponse(response.status);
+  }
+  // PostgREST up but Postgres not (PGRST000-003: no connection, no schema
+  // cache, no pool slot) says so in its own words: "Could not query the
+  // database for the schema cache. Retrying."
+  const body = (await response.clone().json().catch(() => undefined)) as { code?: unknown } | undefined;
+  if (typeof body?.code === "string" && /^PGRST00[0-3]$/.test(body.code)) {
+    await response.body?.cancel().catch(() => undefined);
+    return dbDownResponse(response.status);
+  }
+  return response;
+}
+
 export function isCommunityConfigured(): boolean {
-  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+  return isLocalDb() || Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
 export function getCommunityDb(): SupabaseClient {
+  if (!cachedClient && isLocalDb()) {
+    // Local development (LOCAL_DB=1): the database on this machine, never
+    // the hosted project, whatever SUPABASE_URL says. Never in production.
+    assertLocalDbAllowed();
+    cachedClient = createClient(localDbUrl(), LOCAL_DB_SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      // The same limit and the same plain answers as the hosted project.
+      global: {
+        fetch: (input, init) =>
+          fetchFromDb(input, init, (i, n) => localDbFetch(i, n, fetch)),
+      },
+    });
+  }
   if (!cachedClient) {
     const url = process.env.SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -27,6 +159,7 @@ export function getCommunityDb(): SupabaseClient {
 
     cachedClient = createClient(url, key, {
       auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: (input, init) => fetchFromDb(input, init) },
     });
   }
 
@@ -34,29 +167,43 @@ export function getCommunityDb(): SupabaseClient {
 }
 
 /**
- * Anonymous identity: a salted hash of client IP + device id. Good enough to
- * dedupe votes and rate-limit without storing raw IPs.
+ * The address a request came from. The site sits behind Cloudflare and then Caddy, so the TCP peer is a Cloudflare
+ * edge and X-Forwarded-For names that edge (Caddy trusts no incoming one). Caddy puts the client's own address in
+ * X-Client-Ip, overwriting anything the client sent (its `client_ip` from Cloudflare's CF-Connecting-IP, trusted only
+ * from Cloudflare's ranges); without that, CF-Connecting-IP, which Cloudflare always sets itself.
  */
-export function makeActorKey(request: Request, deviceId?: string): string {
+export function clientAddress(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for");
-  const ip = forwarded?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "local";
+  return (
+    request.headers.get("x-client-ip")?.trim() ||
+    request.headers.get("cf-connecting-ip")?.trim() ||
+    forwarded?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip")?.trim() ||
+    "local"
+  );
+}
+
+/** A salted hash, so keys never hold raw addresses or ids. */
+export function saltedKey(text: string): string {
   const salt = process.env.COMMUNITY_HASH_SALT ?? "gtnh-factory-hub";
-  return createHash("sha256")
-    .update(`${salt}:${ip}:${deviceId ?? ""}`)
-    .digest("hex")
-    .slice(0, 32);
+  return createHash("sha256").update(`${salt}:${text}`).digest("hex").slice(0, 32);
 }
 
 /**
- * Who a VOTE belongs to: the signed-in user, else the browser's device id.
+ * Anonymous identity: a salted hash of client IP + device id. Good enough to
+ * rate-limit without storing raw IPs (votes use `makeVoterKey`).
+ */
+export function makeActorKey(request: Request, deviceId?: string): string {
+  return saltedKey(`${clientAddress(request)}:${deviceId ?? ""}`);
+}
+
+/**
+ * Who a VOTE belongs to: the signed-in user, else the browser's device id
+ * (a random UUID kept in localStorage).
  *
- * Not the actor key above. That one folds the client IP in, which is right
- * for a rate limit and wrong for a vote: IPv6 privacy addresses and carrier
- * NAT hand the same browser a new address every few minutes, and every new
- * address was a new voter, so a player could upvote their own setup again
- * after a short wait. The device id is a random UUID the browser keeps in
- * localStorage; a signed-in account beats it so one person's vote follows
- * them between browsers.
+ * Not the actor key above: it folds the client IP in, and IPv6 privacy
+ * addresses and carrier NAT change a browser's IP every few minutes, which
+ * would let one person vote again.
  */
 export async function makeVoterKey(request: Request, deviceId: string): Promise<string> {
   const user = await getSessionUser(request);
@@ -67,15 +214,9 @@ export async function makeVoterKey(request: Request, deviceId: string): Promise<
 
 // ---------------------------------------------------------------------------
 // Dead-simple accounts: username + password, scrypt-hashed, with an HMAC-signed
-// session cookie. No email, no reset flow — this is a hobby community site.
+// session cookie (session.ts, shared with the live service). No email, no
+// reset flow — this is a hobby community site.
 // ---------------------------------------------------------------------------
-
-export const SESSION_COOKIE = "gtnh_session";
-const SESSION_DAYS = 180;
-
-function authSecret(): string {
-  return process.env.COMMUNITY_HASH_SALT ?? "gtnh-factory-hub";
-}
 
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -94,13 +235,6 @@ export function verifyPassword(password: string, stored: string): boolean {
   return candidate.length === expected.length && timingSafeEqual(candidate, expected);
 }
 
-export function makeSessionToken(userId: string): string {
-  const expires = Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000;
-  const payload = `${userId}.${expires}`;
-  const signature = createHmac("sha256", authSecret()).update(payload).digest("hex");
-  return `${payload}.${signature}`;
-}
-
 export function sessionCookieHeader(token: string, clear = false): string {
   const maxAge = clear ? 0 : SESSION_DAYS * 24 * 60 * 60;
   return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
@@ -112,31 +246,53 @@ export interface SessionUser {
   is_admin: boolean;
 }
 
-/** Verifies the session cookie and loads the user, or returns undefined. */
+/**
+ * Verifies the session cookie and loads the user, or returns undefined.
+ * Throws when the database does not answer (see `loadSessionUser`).
+ */
 export async function getSessionUser(request: Request): Promise<SessionUser | undefined> {
-  const cookies = request.headers.get("cookie") ?? "";
-  const match = cookies.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`));
-  if (!match) {
-    return undefined;
-  }
+  const token = readSessionCookie(request.headers.get("cookie"));
+  const session = token ? verifySessionToken(token) : undefined;
+  return session ? loadSessionUser(session.userId) : undefined;
+}
 
-  const [userId, expires, signature] = match[1].split(".");
-  if (!userId || !expires || !signature) {
-    return undefined;
+/**
+ * The account behind a verified session, or undefined when it is gone. A
+ * lookup that fails throws: read as "signed out", it shows a signed-in player
+ * the sign-in button, and the live service would close their socket as a
+ * refused sign-in, which the client never retries.
+ */
+export async function loadSessionUser(userId: string): Promise<SessionUser | undefined> {
+  const cached = sessionUsers.get(userId);
+  if (cached && Date.now() - cached.at < SESSION_USER_CACHE_MS) {
+    return cached.user;
   }
-
-  const payload = `${userId}.${expires}`;
-  const expected = createHmac("sha256", authSecret()).update(payload).digest("hex");
-  if (signature !== expected || Number(expires) < Date.now()) {
-    return undefined;
-  }
-
-  const { data } = await getCommunityDb()
+  const { data, error } = await getCommunityDb()
     .from("community_users")
     .select("id,username,is_admin")
     .eq("id", userId)
-    .single<SessionUser>();
+    .maybeSingle<SessionUser>();
+  if (error) {
+    throw new Error(error.message || "Account lookup failed.");
+  }
+  if (sessionUsers.size >= SESSION_USER_CACHE_MAX) {
+    sessionUsers.clear();
+  }
+  sessionUsers.set(userId, { at: Date.now(), user: data ?? undefined });
   return data ?? undefined;
+}
+
+/**
+ * Accounts by id, kept a minute: nearly every request names its account, and
+ * the database is small. A rename or an admin change shows within the minute.
+ */
+const SESSION_USER_CACHE_MS = 60_000;
+const SESSION_USER_CACHE_MAX = 5000;
+const sessionUsers = new Map<string, { at: number; user: SessionUser | undefined }>();
+
+/** For tests: forget the cached accounts. */
+export function forgetSessionUsers(): void {
+  sessionUsers.clear();
 }
 
 export function isAdminRequest(request: Request): boolean {
@@ -151,54 +307,59 @@ export async function checkRateLimit(
   maxPerWindow: number,
   windowSeconds: number,
 ): Promise<boolean> {
-  const db = getCommunityDb();
+  if ((await countEvents(actorKey, action, windowSeconds)) >= maxPerWindow) {
+    return false;
+  }
+  await recordEvents([{ actorKey, action }]);
+  return true;
+}
+
+/** How many times the actor did the action in the last `windowSeconds`. */
+export async function countEvents(actorKey: string, action: string, windowSeconds: number): Promise<number> {
   const windowStart = new Date(Date.now() - windowSeconds * 1000).toISOString();
-  const { count, error } = await db
+  const { count, error } = await getCommunityDb()
     .from("community_events")
     .select("id", { count: "exact", head: true })
     .eq("actor_key", actorKey)
     .eq("action", action)
     .gte("created_at", windowStart);
-
   if (error) {
     throw new Error(`Rate limit check failed: ${error.message}`);
   }
+  return count ?? 0;
+}
 
-  if ((count ?? 0) >= maxPerWindow) {
-    return false;
-  }
-
-  const { error: insertError } = await db
+/** Records actions for `countEvents`, in one request. */
+export async function recordEvents(events: { actorKey: string; action: string }[]): Promise<void> {
+  const { error } = await getCommunityDb()
     .from("community_events")
-    .insert({ actor_key: actorKey, action });
-  if (insertError) {
-    throw new Error(`Rate limit record failed: ${insertError.message}`);
+    .insert(events.map((e) => ({ actor_key: e.actorKey, action: e.action })));
+  if (error) {
+    throw new Error(`Rate limit record failed: ${error.message}`);
   }
-
-  return true;
 }
 
 /**
  * The one item face an author picks for a shared entry. Client-supplied but
  * harmless: it only ever renders as an icon. Anything that doesn't parse
- * becomes "no icon", never a rejection. The schema lives with the model now
- * (a plan carries its own face); this stays the server's lenient reading.
+ * becomes "no icon", never a rejection. The schema lives with the model; this
+ * is the server's lenient reading.
  */
 export function parseEntryIcon(value: unknown): EntryIcon | null {
   const parsed = entryIconSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
 }
 
-/** Columns returned for plan listings (everything except the plan JSON). */
 /** The columns before the activity trio: what a database not yet migrated can answer. */
 export const PLAN_SUMMARY_COLUMNS_LEGACY =
   "id,name,description,game_version,dataset_version,tags,is_public,icon,needs,outputs," +
   "total_eu_t,machine_count,node_count,storage_count,edge_count,highest_tier," +
   "highest_tier_index,upvotes,downvotes,score,downloads,views,created_at,updated_at," +
   "user_id,author_name";
-/** The activity columns added 2026-09-04; a sort on one needs them. */
+/** The activity columns, which a later migration added; a sort on one needs them. */
 export const PLAN_ACTIVITY_COLUMNS = new Set(["comment_count", "last_comment_at", "last_activity_at"]);
 
+/** Columns returned for plan listings (everything except the plan JSON). */
 export const PLAN_SUMMARY_COLUMNS =
   "id,name,description,game_version,dataset_version,tags,is_public,icon,needs,outputs," +
   "total_eu_t,machine_count,node_count,storage_count,edge_count,highest_tier," +
@@ -312,11 +473,9 @@ export async function recountPlanComments(planId: string): Promise<void> {
 }
 
 /**
- * Same convergence contract as the blueprint tables: PGRST204/42703 mean the
- * community_plans table predates a column this build reads or writes, and
- * re-running supabase/schema.sql (idempotent ALTERs) fixes it.
+ * PGRST204 / 42703: the table predates a column this build reads or writes.
+ * Re-running supabase/schema.sql (idempotent ALTERs) fixes it.
  */
-/** PGRST204 / 42703: the table predates a column this build reads or writes. */
 export function isMissingColumnError(error: { code?: string } | null | undefined): boolean {
   return error?.code === "PGRST204" || error?.code === "42703";
 }

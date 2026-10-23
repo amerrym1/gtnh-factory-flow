@@ -6,24 +6,21 @@ import {
   ImagePlus,
   Network,
   Paintbrush,
+  Pencil,
   RefreshCw,
   RotateCcw,
   Search,
   Share2,
-  Store,
   Library,
-  Sigma,
-  SlidersHorizontal,
-  Sprout,
-  Square,
   Trash2,
   TriangleAlert,
   Undo2,
-  Volume2,
   Zap,
 } from "lucide-react";
 import { Fragment, memo, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
+import { getUiScale } from "@/lib/ui-scale";
+import { BOARD_TOOL_SCALE } from "./toolbar-fold";
 import {
   GLANCE_CARD_CLASS,
   GLANCE_LINE,
@@ -34,31 +31,28 @@ import {
 } from "@/components/help/card-parts";
 
 /**
- * The board's help corner: a "?" where the zoom buttons used to live.
+ * The board's help corner: a "?" button.
  *
  * Hovering it lays a glance sheet over the whole window: each toolbar gets a
  * dashed ring, an arrow, and a card naming what is in it (see
- * `card-parts.tsx`). The things with no toolbar to ring - what a card does,
- * what a drawer does, the keys, the notices - are LEGEND cards: they stack in
- * whatever column has the room, over the panel they are nearest to.
- *
- * Pure glance layer: pointer events stay off everywhere. Moving away folds the
- * whole thing up again.
+ * `card-parts.tsx`). Things with no toolbar to ring (what a card or a drawer
+ * does, the keys, the notices) are LEGEND cards stacked in whatever column
+ * has room, over the panel they are nearest to. Pointer events stay off
+ * everywhere; moving away folds it up.
  *
  * The sheet portals to <body>: the board, the browser and the inspector each
  * sit in their own stacking contexts, so a scrim rendered inside the board
  * could never dim its neighbours.
  *
  * Regions are found by their `data-help-anchor` attribute and measured once
- * per open, so the overlay follows the real layout instead of hardcoding it.
- * Several elements may share one anchor id, and a ring may union several ids
- * (the tool row is three trays and, folded, a trigger).
+ * per open. Several elements may share one anchor id, and a ring may union
+ * several ids (the tool row is three trays and, folded, a trigger).
  *
  * LAYOUT IS COMPUTED, NOT TUNED. Every card is CARD_W wide and cards live in
- * flex COLUMNS whose corner is fixed to a ring, so no card's position depends
- * on another card's height, and an arrow only ever leaves the card whose edge
- * sits on the column's fixed corner. The old hand-set offsets per card broke
- * at every window size the author had not looked at.
+ * flex COLUMNS whose corner is fixed to a ring, so no card's position
+ * depends on another card's height, and an arrow only ever leaves the card
+ * whose edge sits on the column's fixed corner. Per-card offsets break at
+ * window sizes nobody checked.
  */
 
 type HelpRect = { left: number; top: number; right: number; bottom: number };
@@ -71,7 +65,7 @@ type Measured = {
 };
 
 /** Every glance card's width. Rows are written to fit it. */
-const CARD_W = 320;
+const CARD_W = 280;
 /** Between stacked cards in one column. */
 const CARD_GAP = 14;
 /** Card edge to ring edge: room for the arrow to read as an arrow. */
@@ -82,20 +76,20 @@ const ARROW_STEM = 3;
 /** Long enough to cross the gap from the button to the cards over it. */
 const HIDE_GRACE_MS = 160;
 /**
- * The smallest window the spread-out glance layout fits: below either of
- * these its columns overlap or spill off the screen, so hover falls back to
- * the one-column panel instead. Checked against screenshots with both
- * columns open (`help-probe.local.mjs` at 1440x920, 1600x1000, 1920x1080):
- * at 1440x920 the left board column has about 30px to spare.
+ * The smallest window the spread-out glance layout is offered in, in SHELL
+ * pixels (the window divided by the interface size, `--ui-scale`): `show()`
+ * divides by the scale before comparing. Sized so a maximised 1080p browser
+ * qualifies; `layoutGlance`'s `fits: false` then catches a window that
+ * qualifies on size but still crams, which gets the one-column panel.
+ *
+ * `help-fit-probe.local.mjs <WxH> <out.png>` screenshots it.
  */
-const GLANCE_MIN_VW = 1440;
-const GLANCE_MIN_VH = 920;
+const GLANCE_MIN_VW = 1400;
+const GLANCE_MIN_VH = 700;
 
 /**
- * The sheet's own accent: one soft blue-grey.
- *
- * Not cyan: this draws five rings and a dozen cards over the whole window at
- * once, and in cyan that reads as an alarm going off.
+ * The sheet's own accent: one soft blue-grey. Not cyan: five rings and a
+ * dozen cards in cyan over the whole window read as an alarm.
  */
 const ACCENT = GLANCE_QUIET;
 const ACCENT_DIM = "rgba(147, 164, 187, 0.5)";
@@ -110,129 +104,139 @@ interface HelpCard {
    and a row that wraps costs a whole line of the column's budget. */
 
 const BUILD: HelpCard = {
-  title: "Build tools",
+  title: "Units and history",
   rows: [
-    { icon: Undo2, text: "Undo and redo" },
-    { chip: "/s", text: "*Rate unit*: click or wheel it" },
-    { chip: "EU/t", text: "*Power unit*: EU/t or amps" },
-    { icon: Zap, text: "*POWER*: place a generator" },
-    { icon: Gauge, text: "A *custom rate* card" },
-    { icon: Sprout, text: "A *crop farm* card" },
+    { icon: Undo2, text: "*Undo / redo* changes" },
+    { chip: "/s", text: "Change the *rate unit*" },
+    { icon: Zap, text: "Show power as *EU/t or amps of a tier*" },
+  ],
+};
+
+/** There is one mode: what the board does with the numbers you set. */
+const SOLVING: HelpCard = {
+  title: "How it solves",
+  rows: [
+    { text: "Wire recipes and set a *count*, a *rate* or a *drawer*" },
+    { text: "*Machine counts* are calculated" },
+    { text: "*Forced* rows show what leaves or enters at a port" },
+    { text: "A port with no wire is a *free end*" },
   ],
 };
 
 const TOOLS: HelpCard = {
   title: "Board tools",
   rows: [
-    { icon: Paintbrush, text: "Pick a colour, *paint* cards" },
-    { icon: Square, text: "*Draw*: board, box, arrow, note" },
-    { icon: ImagePlus, text: "Add an image, or paste one" },
-    { icon: Trash2, text: "*Bin*: click things to delete" },
-    { icon: Sigma, text: "*Solve*: type amounts, get counts" },
-    { icon: SlidersHorizontal, text: "*Rules*: free ports, loose cells" },
-    { icon: Network, text: "*Arrange* the loose cards" },
-    { icon: Volume2, text: "Mute; and *watch it build*" },
-    { icon: Eye, text: "*View*: paper, wires, motion" },
+    { icon: Pencil, text: "*Markup*: boards, shapes and notes" },
+    { icon: Paintbrush, text: "*Paint*: apply colour to cards" },
+    { icon: ImagePlus, text: "*Image*: insert or paste" },
+    { icon: Eye, text: "*View*: background and wire display" },
+    { icon: Network, text: "*Arrange*: automatic card layout" },
+    { icon: Trash2, text: "*Bin*: click objects to delete" },
   ],
 };
 
 const FRAMING: HelpCard = {
-  title: "Framing",
+  title: "Viewport",
   rows: [
-    { icon: Focus, text: "Fit the plan on screen" },
-    { text: "Zoomed out, cards can show:" },
-    { icon: Box, text: "Their machine" },
-    { icon: Gauge, text: "How hard they run" },
-    { icon: TriangleAlert, text: "Why: starved, clogged..." },
-    { icon: Zap, text: "Power draw and tier" },
+    { icon: Focus, text: "*Fit* the plan on screen" },
+    { text: "When zoomed out, show:" },
+    { icon: Box, text: "*Machine* icons" },
+    { icon: Gauge, text: "*Utilization*: running capacity" },
+    { icon: TriangleAlert, text: "*Status*: what limits production" },
+    { icon: Zap, text: "*Power* consumption and tier" },
   ],
 };
 
 const ON_A_CARD: HelpCard = {
-  title: "On a card",
+  title: "Machine controls",
   rows: [
-    { text: "Tabs above it pick the *machine*" },
-    { chip: "LV", text: "*Tier*: click up, right click down" },
-    { chip: "2×", text: "*Hatches*: click to type a count" },
-    { chip: "8", text: "*Count*: type, wheel, Shift ×100" },
-    { icon: RefreshCw, text: "*Refactor*: swap the recipe" },
-    { text: "Hover the name for its *stats*" },
-    { text: "Knobs: *coils*, tools, parallels" },
+    { text: "Click the *name* to change machine" },
+    { chip: "LV", text: "*Tier*: click up, right-click down" },
+    { chip: "2×", text: "Click to edit *hatch count*" },
+    { chip: "8", text: "*Count*: type or scroll" },
+    { icon: RefreshCw, text: "*Refactor*: choose another recipe" },
+    { text: "Hover the name for *machine stats*" },
+    { text: "Config slots: *coils, tools, parallels*" },
   ],
 };
 
 const DRAWERS: HelpCard = {
-  title: "Drawers and tanks",
+  title: "Drawers",
   rows: [
-    { chip: "SOURCE", tone: "need", text: "Never runs out. An input." },
-    { chip: "PRODUCT", tone: "product", text: "Pulls flat out. Cycles:" },
-    { chip: "BYPRODUCT", tone: "output", text: "Takes what is left over" },
-    { chip: "TRASH", tone: "internal", text: "Voids what arrives" },
-    { chip: "BUFFER", tone: "fine", text: "Pass-through, or *strict*" },
-    { text: "Solve mode: type *amounts*" },
+    { shape: "source", text: "*Source*: supplies a resource, at a rate or without limit" },
+    { shape: "product", text: "*Product*: takes a resource out, at a rate or what is left" },
+    { shape: "trash", text: "*Trash*: discards all arrivals" },
+    { text: "Click the *rule key* to cycle: at least, exactly, at most, any" },
   ],
 };
 
 const BOARDS: HelpCard = {
   title: "Board windows",
   rows: [
-    { chip: "Ctrl+G", text: "Wrap a selection in a *board*" },
-    { text: "Drag the bar: all moves" },
-    { text: "Drop cards in or out" },
-    { text: "*Fold* it to a summary card" },
-    { text: "*Dump*: frame goes, cards stay" },
-    { text: "Paper: *colour* and ruling" },
+    { chip: "Ctrl+G", text: "Group selection in a *board*" },
+    { text: "Drag *title bar*: move group" },
+    { text: "*Minimize*: show a flow summary" },
+    { text: "*Dump*: remove frame only" },
   ],
 };
 
 const LEFT_COLUMN: HelpCard = {
-  title: "The left column",
+  title: "Resources",
   rows: [
-    { icon: Search, text: "*Items*: search, filters, sorts" },
-    { text: "Left click makes, right uses" },
-    { icon: Library, text: "*Library* (tab strip): designs, boards, setups" },
+    { icon: Zap, text: "Add *generators, custom rates, farms*" },
+    { icon: Search, text: "Find *items and fluids*" },
+    { mouse: "left", text: "Click a resource: *recipes that make it*" },
+    { mouse: "right", text: "Right-click: *recipes that use it*" },
+  ],
+};
+
+/** The Library pill at the head of the tab strip, ringed and arrowed. */
+const LIBRARY: HelpCard = {
+  title: "Plans",
+  rows: [
+    { icon: Library, text: "Your *plans*, in folders" },
+    { text: "*Community setups*: open in a new tab" },
+    { text: "Favorites, saved and *posted* setups" },
   ],
 };
 
 const RECIPE_SEARCH: HelpCard = {
   title: "Recipe search",
   rows: [
-    { text: "Opens from any item or port" },
-    { chip: "ALL", text: "Takes and makes: *any, all, only*" },
-    { text: "Machine chips filter the maps" },
-    { chip: "/s", text: "Read amounts as rates or *EU*" },
-    { mouse: "right", text: "Right click a chip to *add it*" },
-    { text: "Card refactor: swap *in place*" },
+    { text: "*Takes* filters inputs; *Makes* outputs" },
+    { chip: "ANY", text: "Match at least one resource" },
+    { chip: "ALL", text: "Match all; extras allowed" },
+    { chip: "ONLY", text: "Match all; no extras" },
+    { text: "*Tabs* show one machine at a time" },
+    { mouse: "left", text: "Slot: *what makes it*" },
+    { mouse: "right", text: "Slot: *what uses it*" },
   ],
 };
 
 const PLAN_TOTALS: HelpCard = {
   title: "Inputs and outputs",
   rows: [
-    { chip: "INPUTS", tone: "need", text: "Bring this in yourself" },
-    { chip: "OUTPUTS", tone: "output", text: "Leaves the plan" },
-    { chip: "INTERNAL", tone: "internal", text: "Made and used here" },
-    { chip: "RAW/NET", text: "Raw, or the net balance" },
-    { text: "Hover a row to light it" },
+    { chip: "INPUTS", tone: "need", text: "Required external supply" },
+    { chip: "OUTPUTS", tone: "output", text: "Resources leaving the plan" },
+    { chip: "INTERNAL", tone: "internal", text: "Made and used in the plan" },
   ],
 };
 
 const MACHINES: HelpCard = {
-  title: "Machines",
+  title: "Machine list",
   rows: [
-    { icon: Store, text: "What to build, by tier" },
-    { chip: "PEAK/AVG", text: "EU at full, or as run" },
-    { chip: "USED", text: "Ledger, with generators" },
-    { mouse: "left", text: "Click a row: go to it" },
+    { text: "Required *machines by tier*" },
+    { chip: "PEAK/AVG", text: "Full-load / actual power" },
+    { mouse: "left", text: "Click a row to *locate machines*" },
   ],
 };
 
 const PLAN_CARD: HelpCard = {
-  title: "Plan card",
+  title: "Plan details",
   rows: [
-    { text: "This plan's *icon, name and blurb*" },
-    { icon: Share2, text: "Sharing posts them as its face" },
-    { icon: RotateCcw, text: "A setup you opened can *reset*" },
+    { text: "Edit the *name, icon and description*" },
+    { icon: Share2, text: "*Share* the setup and its details" },
+    { icon: RotateCcw, text: "*Reset* to the opened setup" },
   ],
 };
 
@@ -241,47 +245,47 @@ const PLAN_CARD: HelpCard = {
  * their first explanation.
  */
 const NOTICES: HelpCard = {
-  title: "Bottom notices",
+  title: "Plan diagnostics",
   rows: [
-    { chip: "NOT WIRED UP", tone: "fine", text: "Slots still to wire" },
-    { chip: "LOOSE WIRES", tone: "bottleneck", text: "Cell wires, rule off" },
-    { chip: "DEAD LOOP", tone: "bottleneck", text: "A ring starving to *0%*" },
-    { chip: "CLOG LOCK", tone: "clogged", text: "Jam: add *a drawer*" },
-    { chip: "SOLVE MODE", tone: "product", text: "Products need an *amount*" },
+    { chip: "NOT WIRED UP", tone: "fine", text: "Slots need connections" },
+    { chip: "SET COUNT", tone: "blocked", text: "Nothing sets a rate here yet" },
+    { chip: "FORCED", tone: "need", text: "Flow leaves or enters at a port" },
   ],
 };
 
 /** The gestures no button reveals. */
 const MOVES: HelpCard = {
-  title: "Mouse and keys",
+  title: "Mouse and keyboard",
   rows: [
-    { mouse: "left", text: "Drag a slot to *wire it*" },
-    { mouse: "left", text: "Drop on empty: *a drawer*" },
-    { mouse: "left", text: "Click or R: *what makes it*" },
-    { mouse: "right", text: "Right click or U: *its uses*" },
-    { chip: "Shift", text: "Box-select, or add one" },
-    { chip: "Ctrl+C/V", text: "Copy and paste cards" },
-    { chip: "Del", text: "Delete; *Esc* drops a tool" },
-    { chip: "WASD", text: "Pan; the wheel zooms" },
-    { chip: "Ctrl+G", text: "Wrap it in *a board*" },
+    { mouse: "left", text: "Drag between slots to *connect*" },
+    { mouse: "left", text: "Drag slot to empty space: *drawer*" },
+    { chip: "R / U", text: "Hover a port: find *makes / uses*" },
+    { chip: "Shift", text: "Drag to *box-select*; click to add" },
+    { chip: "Ctrl+C/V", text: "*Copy / paste* selected cards" },
+    { chip: "Del", text: "*Delete* selection" },
+    { chip: "Esc", text: "*Cancel* the active tool" },
+    { chip: "WASD", text: "*Pan* the canvas" },
+    { mouse: "scroll", text: "Scroll the canvas to *zoom*" },
   ],
 };
 
 /** The same reminder for a finger: the compact world has no hover and no
  * right button, and telling a phone to right click is worse than nothing. */
 const TOUCH_MOVES: HelpCard = {
-  title: "Touch moves",
+  title: "Touch controls",
   rows: [
-    { text: "Drag from a slot to *wire it*" },
-    { text: "Hold a port row: *make it or use it*" },
-    { text: "Tap a card first, *then* drag to move it" },
-    { text: "Double tap to *zoom*; tap and slide to keep zooming" },
-    { text: "Swipe in from either side for the *panels*" },
+    { text: "Drag between slots to *connect*" },
+    { text: "Hold a resource for *makes / uses*" },
+    { text: "Tap a card, then drag to *move*" },
+    { text: "Double-tap to *zoom*" },
+    { text: "Swipe from an edge to open a *panel*" },
   ],
 };
 
 /** Every card, in reading order, for the one-column formats. */
 const LINEAR: HelpCard[] = [
+  SOLVING,
+  LIBRARY,
   BUILD,
   TOOLS,
   FRAMING,
@@ -298,8 +302,13 @@ const LINEAR: HelpCard[] = [
 
 /* ------------------------------------------------------------------ */
 
-function toHelpRect(rect: DOMRect): HelpRect {
-  return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+/**
+ * Real px (a DOMRect) to shell px: every sheet below wears ui-zoom, so its
+ * offsets, the card widths and the window size all live in shell px, and the
+ * one conversion is here and in `show` for the window itself.
+ */
+function toHelpRect(rect: DOMRect, scale = getUiScale()): HelpRect {
+  return { left: rect.left / scale, top: rect.top / scale, right: rect.right / scale, bottom: rect.bottom / scale };
 }
 
 function unionRects(...rects: Array<HelpRect | undefined>): HelpRect | undefined {
@@ -363,58 +372,156 @@ type GlanceLayout = {
   rings: HelpRect[];
   columns: Column[];
   arrows: Arrow[];
+  /** False when the board is too small for the spread without cards
+   * landing on each other: the caller shows the one-column panel. */
+  fits: boolean;
+  /** The estimated stacks the fit was judged on, keyed by column, and the
+   * pairs that collided. Drawn by nothing; this is what
+   * `help-fit-probe.local.mjs` reads off `window.__gtnhHelpGlance` to say
+   * WHY a window fell back to the panel. */
+  boxes: (Box & { key: string })[];
+  collisions: [string, string][];
 };
+
+/** About how tall a card renders at CARD_W: title, rows, the wrapped ones
+ * twice. Only used to keep stacks off each other before anything is drawn. */
+function estimateCardHeight(card: HelpCard): number {
+  const charsPerLine = 32;
+  const rows = card.rows.reduce(
+    (sum, row) => sum + 4 + 15 * Math.max(1, Math.ceil(row.text.length / charsPerLine)),
+    0,
+  );
+  return 48 + rows;
+}
+
+function estimateStackHeight(cards: HelpCard[]): number {
+  return (
+    cards.reduce((sum, card) => sum + estimateCardHeight(card), 0) + CARD_GAP * (cards.length - 1)
+  );
+}
+
+/** A stack's estimated box, for the overlap check. */
+type Box = { left: number; top: number; bottom: number; key: string };
+
+function boxesOverlap(a: Box, b: Box): boolean {
+  return (
+    a.left < b.left + CARD_W + CARD_GAP &&
+    b.left < a.left + CARD_W + CARD_GAP &&
+    a.top < b.bottom + CARD_GAP &&
+    b.top < a.bottom + CARD_GAP
+  );
+}
 
 /**
  * Where everything goes, from the measured rings.
  *
- * Board-left hangs under the build toolbar; the corner stack grows up from
- * the "?" and its bottom card points down at the plan bar; board-right hangs
- * under the tool row and a second board-right stack sits over the framing
- * dock; the browser cards sit inside the browser column; the legend cards
- * sit over the inspector. A closed panel takes its own cards with it
- * (nothing to explain) and the legend column moves onto the board's extra
- * width.
+ * Board-left hangs under the build toolbar with the solving card; the LEGENDS
+ * (drawers, board windows, notices) stand along the board's foot between
+ * the corner stack and the framing dock, in as many lanes as fit; the
+ * corner stack grows up from the "?" and its bottom card points down at the
+ * plan bar; board-right hangs under the tool row and a second board-right
+ * stack sits over the framing dock; the browser cards sit inside the
+ * browser column, the Library card first with an arrow across to the
+ * Library pill; the inspector's totals card sits over its top and its
+ * machines card over the machine list. A closed panel takes its own cards
+ * with it. When the foot has no lane the legends hang under the build
+ * toolbar's stack. Stacks that would then land on each other report
+ * `fits: false`.
  */
 function layoutGlance({ rects, button, vw, vh }: Measured): GlanceLayout {
   const rings: HelpRect[] = [];
   const columns: Column[] = [];
   const arrows: Arrow[] = [];
+  const boxes: Box[] = [];
 
   const build = rects.build;
-  const toolRow = unionRects(rects.paint, rects.rules, rects.view);
+  const toolRow = unionRects(rects.paint, rects.view);
   const dock = rects.glance;
   const browser = rects.browser;
   const inspector = rects.inspector;
+  const machineList = rects.machines;
   const planBar = rects["plan-card"];
+  const libraryPill = rects.library;
 
   // The x the whole right side is hung from: the tool row's right edge,
   // which is also the framing dock's.
   const rightEdge = toolRow?.right ?? dock?.right ?? vw - 12;
+  const rightColumnLeft = rightEdge - CARD_W;
+  const buildLeft = build?.left ?? 12;
+
+  // THE FOOT: two lanes between the corner stack and the dock stack, hung
+  // from the plan bar: the machine-card controls and the legends (drawers,
+  // board windows, notices), balanced by height. One lane stacks all four;
+  // no lane at all hangs them under the build toolbar's cards.
+  const footCards = [ON_A_CARD, DRAWERS, BOARDS, NOTICES];
+  const footBottom = planBar ? padRect(planBar).top - CALLOUT_GAP : vh - 12;
+  const footLeftLimit = (button ? button.left + CARD_W : buildLeft) + CARD_GAP;
+  const footRightLimit = (dock ? dock.right - CARD_W : rightColumnLeft) - CARD_GAP;
+  const footLanes = Math.max(
+    0,
+    Math.min(2, Math.floor((footRightLimit - footLeftLimit + CARD_GAP) / (CARD_W + CARD_GAP))),
+  );
+  const footStacks: HelpCard[][] =
+    footLanes === 2
+      ? [
+          [ON_A_CARD, BOARDS],
+          [DRAWERS, NOTICES],
+        ]
+      : footLanes === 1
+        ? [footCards]
+        : [];
+  const footWidth = footStacks.length * CARD_W + (footStacks.length - 1) * CARD_GAP;
+  const footLeft = clamp(
+    (footLeftLimit + footRightLimit) / 2 - footWidth / 2,
+    footLeftLimit,
+    Math.max(footLeftLimit, footRightLimit - footWidth),
+  );
+
+  const cornerCards = [MOVES, PLAN_CARD];
 
   if (build) {
     const ring = padRect(build);
     rings.push(build);
     const top = ring.bottom + CALLOUT_GAP;
+    // No browser column means no place for the Library card; it sits here,
+    // under the pill it describes.
+    const cards = [
+      ...(browser ? [] : [LIBRARY]),
+      BUILD,
+      SOLVING,
+      ...(footLanes === 0 ? footCards : []),
+    ];
     columns.push({
       key: "board-left",
       style: { left: build.left, top, width: CARD_W },
-      cards: [BUILD],
+      cards,
     });
+    boxes.push({ key: "board-left", left: build.left, top, bottom: top + estimateStackHeight(cards) });
     const x = clamp((ring.left + ring.right) / 2, build.left + 24, build.left + CARD_W - 24);
     arrows.push({ points: [{ x, y: top }, { x, y: ring.bottom }] });
   }
+
+  footStacks.forEach((cards, index) => {
+    const left = footLeft + index * (CARD_W + CARD_GAP);
+    columns.push({
+      key: `foot-${index}`,
+      style: { left, bottom: vh - footBottom, width: CARD_W },
+      cards,
+    });
+    boxes.push({ key: `foot-${index}`, left, top: footBottom - estimateStackHeight(cards), bottom: footBottom });
+  });
 
   if (toolRow) {
     const ring = padRect(toolRow);
     rings.push(toolRow);
     const top = ring.bottom + CALLOUT_GAP;
-    const left = rightEdge - CARD_W;
+    const left = rightColumnLeft;
     columns.push({
       key: "board-right",
       style: { left, top, width: CARD_W },
-      cards: [TOOLS, ON_A_CARD],
+      cards: [TOOLS],
     });
+    boxes.push({ key: "board-right", left, top, bottom: top + estimateStackHeight([TOOLS]) });
     const x = clamp((ring.left + ring.right) / 2, left + 24, left + CARD_W - 24);
     arrows.push({ points: [{ x, y: top }, { x, y: ring.bottom }] });
   }
@@ -429,6 +536,7 @@ function layoutGlance({ rects, button, vw, vh }: Measured): GlanceLayout {
       style: { left, bottom: vh - bottom, width: CARD_W },
       cards: [FRAMING],
     });
+    boxes.push({ key: "board-right-bottom", left, top: bottom - estimateStackHeight([FRAMING]), bottom });
     const x = clamp((ring.left + ring.right) / 2, left + 24, left + CARD_W - 24);
     arrows.push({ points: [{ x, y: bottom }, { x, y: ring.top }] });
   }
@@ -438,8 +546,9 @@ function layoutGlance({ rects, button, vw, vh }: Measured): GlanceLayout {
     columns.push({
       key: "corner",
       style: { left: button.left, bottom: vh - bottom, width: CARD_W },
-      cards: [MOVES, PLAN_CARD],
+      cards: cornerCards,
     });
+    boxes.push({ key: "corner", left: button.left, top: bottom - estimateStackHeight(cornerCards), bottom });
     if (planBar && planBar.top > bottom + ARROW_HEAD) {
       // The plan bar runs the whole width of the board's foot, so the arrow
       // drops from the stack's bottom card wherever it clears the button.
@@ -452,31 +561,56 @@ function layoutGlance({ rects, button, vw, vh }: Measured): GlanceLayout {
 
   if (browser) {
     rings.push(browser);
+    const left = browser.left + 12;
+    // The Library card leads, level with the pill it points at: the pill
+    // sits just past the column's right edge, so the arrow runs straight
+    // across the seam into it.
+    const pill = libraryPill && libraryPill.left >= browser.right ? libraryPill : undefined;
+    const top = pill ? Math.max(browser.top + 8, pill.top - 6) : browser.top + 80;
     columns.push({
       key: "browser",
-      style: { left: browser.left + 12, top: browser.top + 80, width: CARD_W },
-      cards: [LEFT_COLUMN, RECIPE_SEARCH],
+      style: { left, top, width: CARD_W },
+      cards: [LIBRARY, LEFT_COLUMN, RECIPE_SEARCH],
     });
+    if (pill) {
+      const ring = padRect(pill);
+      rings.push(pill);
+      const y = clamp((pill.top + pill.bottom) / 2, top + 12, top + 40);
+      arrows.push({ points: [{ x: left + CARD_W, y }, { x: ring.left, y }] });
+    }
   }
 
-  // The legend: over the inspector when it is open, else on the board's
-  // extra width, left of the board-right column.
-  const legendLeft = inspector
-    ? inspector.left + Math.max(6, (inspector.right - inspector.left - CARD_W) / 2)
-    : rightEdge - CARD_W - CARD_GAP - CARD_W;
-  const legendCards = inspector
-    ? [PLAN_TOTALS, MACHINES, DRAWERS, BOARDS, NOTICES]
-    : [DRAWERS, BOARDS, NOTICES];
-  const legendTop = inspector
-    ? inspector.top + 12
-    : (toolRow ? padRect(toolRow).bottom : 80) + CALLOUT_GAP;
-  columns.push({
-    key: "legend",
-    style: { left: legendLeft, top: legendTop, width: CARD_W },
-    cards: legendCards,
-  });
+  if (inspector) {
+    const left = inspector.left + Math.max(6, (inspector.right - inspector.left - CARD_W) / 2);
+    columns.push({
+      key: "inspector",
+      style: { left, top: inspector.top + 12, width: CARD_W },
+      // No machine list on the board yet: its card waits under the totals.
+      cards: machineList ? [PLAN_TOTALS] : [PLAN_TOTALS, MACHINES],
+    });
+    if (machineList) {
+      // Over the machine list itself, hung from its head.
+      rings.push(machineList);
+      columns.push({
+        key: "inspector-machines",
+        style: { left, top: machineList.top + 10, width: CARD_W },
+        cards: [MACHINES],
+      });
+    }
+  }
 
-  return { rings, columns, arrows };
+  // Stacks that land on each other mean the board is too small for the
+  // spread; the one-column panel shows instead.
+  const collisions: [string, string][] = [];
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      if (boxesOverlap(boxes[i], boxes[j])) {
+        collisions.push([boxes[i].key, boxes[j].key]);
+      }
+    }
+  }
+
+  return { rings, columns, arrows, fits: collisions.length === 0, boxes, collisions };
 }
 
 /** The arrow's segments as 3px bars, and its head as a border triangle. */
@@ -584,23 +718,20 @@ const HELP_BUTTON_CLASS =
   "pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] font-mono text-[16px] font-black text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110";
 
 /**
- * The same help, as one scrolling sheet.
- *
- * The glance layer is built out of rings and arrows pointing at the toolbars it
- * describes; on a phone those toolbars are folded into single buttons, its cards
- * are wider than the screen, and there is no hover to open it with. So compact
- * windows get the content and drop the pointing: every card in a column, over a
- * full-screen sheet with one way out.
+ * The same help, as one scrolling sheet for compact windows: their toolbars
+ * are folded into single buttons, the cards are wider than the screen, and
+ * there is no hover. Every card in one column over a full-screen sheet with
+ * one way out, and no pointing.
  */
 function HelpSheet({ onClose }: { onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-[120] flex flex-col bg-[#101419] font-mono text-[#dbe3ec]">
+    <div className="ui-zoom fixed inset-0 z-[120] flex flex-col bg-[#101419] font-mono text-[#dbe3ec]">
       <div
         className="flex h-11 shrink-0 items-center justify-between px-3"
         style={{ borderBottom: `1px solid ${GLANCE_LINE}` }}
       >
         <span className="text-[12px] font-black uppercase tracking-[0.14em] text-[#aebccd]">
-          What everything does
+          Board help
         </span>
         <button
           type="button"
@@ -624,13 +755,9 @@ function HelpSheet({ onClose }: { onClose: () => void }) {
 
 /**
  * The help, folded to fit: one scrollable column growing out of the "?".
- *
- * The glance layer needs a big window - a dozen cards spread over the
- * screen, each beside the toolbar it names - and between the phone layout
- * and that spread sits a band of small desktop windows where the spread
- * collapses into a pile of overlapping cards. Those windows get this
- * instead: every card in one column beside the button, scrollable, still
- * opened by hover and closed by leaving. Same content, no pointing.
+ * For small desktop windows between the phone layout and the full spread,
+ * where the spread would pile cards on each other. Same content, no
+ * pointing; still opened by hover and closed by leaving.
  */
 function HelpHoverPanel({
   measured,
@@ -646,7 +773,7 @@ function HelpHoverPanel({
   const anchorLeft = button ? button.left : 12;
   return (
     <div
-      className="pointer-events-none fixed inset-0 z-[120] font-mono"
+      className="ui-zoom pointer-events-none fixed inset-0 z-[120] font-mono"
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
     >
@@ -671,18 +798,21 @@ function HelpHoverPanel({
 
 function HelpGlanceSheet({
   measured,
+  glance,
   onEnter,
   onLeave,
 }: {
   measured: Measured;
+  /** Laid out by the caller, which had to ask whether it fits anyway. */
+  glance: GlanceLayout;
   onEnter: () => void;
   onLeave: () => void;
 }) {
   const { button } = measured;
-  const { rings, columns, arrows } = layoutGlance(measured);
+  const { rings, columns, arrows } = glance;
   return (
     <div
-      className="pointer-events-none fixed inset-0 z-[120] font-mono"
+      className="ui-zoom pointer-events-none fixed inset-0 z-[120] font-mono"
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
     >
@@ -744,11 +874,14 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
   const show = useCallback(() => {
     window.clearTimeout(hideTimerRef.current);
     const buttonRect = buttonRef.current?.getBoundingClientRect();
+    // Shell px, like the rects: at 130% a 1920 window is 1477 wide here, so
+    // it gets the hover panel, the same as browser zoom gave it.
+    const scale = getUiScale();
     setMeasured({
       rects: measureAnchors(),
       button: buttonRect ? toHelpRect(buttonRect) : undefined,
-      vw: window.innerWidth,
-      vh: window.innerHeight,
+      vw: window.innerWidth / scale,
+      vh: window.innerHeight / scale,
     });
   }, []);
   const scheduleHide = useCallback(() => {
@@ -756,6 +889,15 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
     hideTimerRef.current = window.setTimeout(() => setMeasured(undefined), HIDE_GRACE_MS);
   }, []);
   useEffect(() => () => window.clearTimeout(hideTimerRef.current), []);
+
+  // Keep the probe hook before the compact return: opening a keyboard or
+  // resizing the window can switch layouts without remounting this component.
+  const glance = !compact && measured ? layoutGlance(measured) : undefined;
+  useEffect(() => {
+    (window as unknown as { __gtnhHelpGlance?: unknown }).__gtnhHelpGlance = glance
+      ? { vw: measured?.vw, vh: measured?.vh, fits: glance.fits, boxes: glance.boxes, collisions: glance.collisions }
+      : undefined;
+  }, [glance, measured]);
 
   if (compact) {
     return (
@@ -765,6 +907,7 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
           onClick={() => setSheetOpen(true)}
           data-help-anchor="help"
           className={HELP_BUTTON_CLASS}
+          style={{ zoom: BOARD_TOOL_SCALE }}
           title="Board help"
           aria-label="Show board help"
         >
@@ -780,11 +923,17 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
     );
   }
 
-  // Between the phone layout and the full spread sits a band of small
-  // desktop windows; they hover the one-column panel instead. Decided per
-  // open, so resizing simply changes what the next hover shows.
+  // Small desktop windows between the phone layout and the full spread hover
+  // the one-column panel instead. Decided per open, so a resize changes what
+  // the next hover shows. Both checks matter: room in principle, and whether
+  // THIS board's spread lands without cards on top of each other (a wide
+  // window can still have both side columns open).
   const fitsGlance =
-    measured !== undefined && measured.vw >= GLANCE_MIN_VW && measured.vh >= GLANCE_MIN_VH;
+    measured !== undefined &&
+    glance !== undefined &&
+    glance.fits &&
+    measured.vw >= GLANCE_MIN_VW &&
+    measured.vh >= GLANCE_MIN_VH;
 
   return (
     <div
@@ -803,6 +952,7 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
         onBlur={scheduleHide}
         data-help-anchor="help"
         className={HELP_BUTTON_CLASS}
+        style={{ zoom: BOARD_TOOL_SCALE }}
         title="Board help"
         aria-label="Show board help"
       >
@@ -811,7 +961,12 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
       {measured
         ? createPortal(
             fitsGlance ? (
-              <HelpGlanceSheet measured={measured} onEnter={show} onLeave={scheduleHide} />
+              <HelpGlanceSheet
+                measured={measured}
+                glance={glance}
+                onEnter={show}
+                onLeave={scheduleHide}
+              />
             ) : (
               <HelpHoverPanel measured={measured} onEnter={show} onLeave={scheduleHide} />
             ),

@@ -1,3 +1,4 @@
+import { TGS_MACHINE_TYPE } from "@/lib/machines/tree-growth-simulator";
 import type {
   FactoryNode,
   MachineConfigControl,
@@ -41,8 +42,8 @@ export const CROP_IF_FERTILIZED_CONTROL_ID = "cropIfFertilized";
 export const CROP_HARVESTER_MANAGER_ID = "crop-manager";
 export const CROP_HARVESTER_INDUSTRIAL_FARM_ID = "crop-industrial-farm";
 /**
- * LEGACY manager tier key: plans saved while a by-hand rung existed carry
- * "none", which now loads as the LV machine. The option is no longer offered.
+ * LEGACY manager tier key for "picked by hand". Not offered; a stored "none"
+ * loads as the LV machine.
  */
 export const CROP_NO_MANAGER_KEY = "none";
 
@@ -334,10 +335,8 @@ const CROP_MANAGER_HARVEST_BONUS_PER_TIER = 0.05;
  * blocks: every stick stands on a soil block, so a layer is two blocks tall
  * and only three fit (sticks at -2, 0 and +2). A crop with a subsoil rule
  * needs its block under the soil too, three blocks a layer, and only two of
- * those fit. This is the machine's capacity, not a question for the player:
- * a card says how many crop sticks it has and who picks them, and how many
- * machines that takes falls out of the two. (Reported by a player, 2026-09-02:
- * LV 363, MV 675, area x 3.)
+ * those fit. This is the machine's capacity, not a player setting: the
+ * machine count follows from the card's crop stick count.
  */
 export const CROP_MANAGER_LAYERS = 3;
 export const CROP_MANAGER_SUBSOIL_LAYERS = 2;
@@ -388,7 +387,7 @@ const VOLTAGE_TIER_NAMES = [
 ];
 
 /** `cropsnh_tooltip.cropManager.name.<tier>` from the mod's lang file. */
-const CROP_MANAGER_ITEM_NAMES: Record<string, string> = {
+export const CROP_MANAGER_ITEM_NAMES: Record<string, string> = {
   LV: "Basic Crop Manager",
   MV: "Advanced Crop Manager",
   HV: "Advanced Crop Manager II",
@@ -407,9 +406,8 @@ export interface CropHarvesterSetup {
   id: CropHarvesterId;
   /**
    * Voltage ordinal of the machine or seed bed (ULV 0, LV 1, MV 2, ...), or
-   * -1 on the crop stick side to mean nobody is automating it. Picking by
-   * hand is a Crop Manager tier below LV, not a mode of its own: the crop
-   * grows in the world either way and answers the same six knobs.
+   * -1 on the crop stick side to mean nobody is automating it (hand-picked;
+   * not offered in the UI, see `cropsNhIsHandPicked`).
    */
   tierIndex: number;
   growthUnits: number;
@@ -448,8 +446,8 @@ export function cropsNhSquarePerTier(tierIndex: number): number {
 
 /**
  * True when the crop grows on sticks with nothing automating the harvest.
- * The by-hand rung was removed from the manager ladder (legacy "none" loads
- * as LV), so this survives only as dead-path safety for callers.
+ * The manager ladder offers no by-hand rung (legacy "none" loads as LV), so
+ * this is dead-path safety for callers.
  */
 export function cropsNhIsHandPicked(setup: CropHarvesterSetup): boolean {
   return setup.id === CROP_HARVESTER_MANAGER_ID && setup.tierIndex < 0;
@@ -546,8 +544,8 @@ export function cropsNhHarvesterFromTiers(
     SEED_BED_MIN_TIER_INDEX,
     SEED_BED_MAX_TIER_INDEX,
   );
-  // There is no by-hand mode any more: an unset or legacy "none" manager
-  // tier parses to nothing and lands on the LV machine.
+  // No by-hand mode: an unset or legacy "none" manager tier parses to
+  // nothing and lands on the LV machine.
   const tierIndex =
     id === CROP_HARVESTER_MANAGER_ID
       ? clampInt(
@@ -741,6 +739,11 @@ const ic2DropMultiplierCache = new Map<string, number>();
 const ic2GrowthCycleCache = new Map<string, number>();
 
 export function enrichPassiveProductionRecipe(recipe: Recipe): Recipe {
+  // The Tree Growth Simulator's NEI page says ULV and 0 EU/t; the machine needs LV at least (it draws VP[t]), so
+  // a new card starts there (tree-growth-simulator.ts).
+  if (recipe.machineType === TGS_MACHINE_TYPE && recipe.minimumTier === "ULV") {
+    return { ...recipe, minimumTier: "LV" };
+  }
   if (isCropProductionRecipe(recipe)) {
     return enrichCropProductionRecipe(recipe);
   }
@@ -764,11 +767,6 @@ export function isCropProductionRecipe(recipe: PassiveProductionRecipeLabel) {
     /\bcrop production\b/.test(label) ||
     /\bcrop farm\b/.test(label)
   );
-}
-
-export function isIc2LegacyCropRecipe(recipe: PassiveProductionRecipeLabel) {
-  const label = passiveProductionLabel(recipe);
-  return /\bic2 crops?\b/.test(label) && !/\bcropnh\b/.test(label);
 }
 
 export function isCropNhRecipe(recipe: PassiveProductionRecipeLabel) {
@@ -800,6 +798,7 @@ export function createCropFarmPlaceholderRecipe(): Recipe {
     eut: 0,
     inputs: [],
     outputs: [],
+    machineHandlers: cropHarvesterHandlers().map((handler) => ({ ...handler, machineConfigControls: [] })),
     notes: "Pick a crop to start producing.",
     source: { recipeMap: CROP_FARM_RECIPE_MAP },
   };
@@ -898,28 +897,17 @@ export function getBeeProductionTermModifier(controlId: string, key: string) {
   }
 }
 
-export function getCropStatsPreset(value: string | undefined): CropStatsPreset | undefined {
-  const match = /^(\d+)-(\d+)-(\d+)$/.exec(value ?? "");
-  if (!match) {
-    return undefined;
-  }
-
-  return {
-    growth: Number.parseInt(match[1] ?? "0", 10),
-    gain: Number.parseInt(match[2] ?? "0", 10),
-    resistance: Number.parseInt(match[3] ?? "0", 10),
-  };
-}
-
 function enrichCropProductionRecipe(recipe: Recipe): Recipe {
   const analyticStats = getCropsNhStats(recipe);
   if (!analyticStats && isCropFarmRecipe(recipe)) {
-    // The empty crop-farm placeholder: no crop picked yet, nothing to tune.
+    // An empty farm can choose its harvester before choosing a crop.
     return {
       ...recipe,
       minimumTier: "NONE",
       eut: 0,
-      machineHandlers: [],
+      machineHandlers: recipe.id === CROP_FARM_PLACEHOLDER_RECIPE_ID
+        ? createCropFarmPlaceholderRecipe().machineHandlers
+        : [],
     };
   }
   const controls = analyticStats
@@ -1106,11 +1094,9 @@ function countControl({
 }
 
 /**
- * The two places a CropsNH crop can live: on crop sticks in the world, or
- * inside an Industrial Farm. Picking by hand is not a third place, it is the
- * stick side with no manager on it, so it is the first Manager Tier option
- * rather than a tab of its own. Sticks come first, so a card with nothing
- * chosen behaves exactly as it did before harvesters existed.
+ * The two places a CropsNH crop can live: on crop sticks in the world (under
+ * a Crop Manager), or inside an Industrial Farm. Sticks come first, so a card
+ * with no harvester chosen defaults to them.
  */
 function cropHarvesterHandlers(stats?: CropsNhStats): MachineHandler[] {
   // The crop's own seed bed floor: the game refuses the seed below it, so
@@ -1135,9 +1121,8 @@ function cropHarvesterHandlers(stats?: CropsNhStats): MachineHandler[] {
           label: "Manager",
           minTierIndex: CROP_MANAGER_MIN_TIER_INDEX,
           maxTierIndex: CROP_MANAGER_MAX_TIER_INDEX,
-          // No by-hand rung (Jack, 2026-09-01): a planned crop board is an
-          // automated one, so the ladder starts at the LV machine and a
-          // legacy stored "none" loads as LV.
+          // No by-hand rung: a planned crop board is automated, so the
+          // ladder starts at LV and a legacy stored "none" loads as LV.
           defaultKey: String(CROP_MANAGER_MIN_TIER_INDEX),
           // The tiered machine names from the mod's own lang file, so the
           // config icon shows the actual machine ("Basic Crop Manager" is
@@ -1565,6 +1550,10 @@ const BEE_SPEED_GENES: Array<{ key: string; label: string; value: number }> = [
   { key: "fastest", label: "Fastest", value: 1.7 },
   { key: "blinding", label: "Blinding", value: 2 },
 ];
+
+export function getBeeSpeedGeneValueByKey(key: string | undefined) {
+  return BEE_SPEED_GENES.find((gene) => gene.key === key)?.value ?? 1;
+}
 
 function beeSpeedGeneControl(): MachineConfigControl {
   return selectControl({

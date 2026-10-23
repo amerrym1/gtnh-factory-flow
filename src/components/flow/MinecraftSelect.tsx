@@ -1,7 +1,11 @@
 "use client";
 
+import { useDropdownDismiss } from "@/lib/hooks/use-dropdown-dismiss";
+import { focusDropdownFilter } from "@/lib/dropdown-focus";
+
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, Search } from "lucide-react";
+import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 
 export interface MinecraftSelectOption {
   key: string;
@@ -26,6 +30,7 @@ export function MinecraftSelect({
   onPreview,
   searchable = false,
   wideMenu = false,
+  tooltipContent,
 }: {
   value: string;
   options: MinecraftSelectOption[];
@@ -40,6 +45,7 @@ export function MinecraftSelect({
   searchable?: boolean;
   /** Let the open list outgrow the control for long option labels. */
   wideMenu?: boolean;
+  tooltipContent?: ReactNode | (() => ReactNode);
 }) {
   const [isOpen, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
@@ -50,22 +56,15 @@ export function MinecraftSelect({
   useEffect(() => {
     if (!isOpen) {
       setFilter("");
-      return;
     }
-    const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    return () => document.removeEventListener("pointerdown", onPointerDown, true);
   }, [isOpen]);
+  useDropdownDismiss(isOpen, { refs: [rootRef], onClose: () => setOpen(false), fade: true });
 
   useEffect(() => {
     if (isOpen) {
       selectedRef.current?.scrollIntoView({ block: "nearest" });
       if (searchable) {
-        filterRef.current?.focus();
+        focusDropdownFilter(filterRef.current);
       }
     }
   }, [isOpen, searchable]);
@@ -79,6 +78,7 @@ export function MinecraftSelect({
 
   return (
     <div ref={rootRef} className={["relative min-w-0", className].join(" ")}>
+      <MinecraftTooltip content={tooltipContent}>
       <button
         type="button"
         disabled={disabled}
@@ -93,7 +93,7 @@ export function MinecraftSelect({
             setOpen(false);
           }
         }}
-        title={title}
+        title={tooltipContent ? undefined : title}
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
@@ -104,6 +104,7 @@ export function MinecraftSelect({
         <span className="min-w-0 flex-1 truncate text-left">{current?.label ?? value}</span>
         {disabled ? null : <ChevronDown className="h-3 w-3 shrink-0" />}
       </button>
+      </MinecraftTooltip>
       {isOpen ? (
         <div
           role="listbox"

@@ -13,6 +13,8 @@ export type VoltageTierName = Exclude<MachineTier, "DEMO">;
  */
 export interface DesignStats {
   cards: number;
+  /** How many of those are drawers (the rest are machine cards); absent in stats saved before it was kept. */
+  drawers?: number;
   machines: number;
   tier?: VoltageTierName;
   tierIndex: number;
@@ -24,6 +26,8 @@ export interface DesignStats {
    */
   takes?: string[];
   makes?: string[];
+  /** A task board's tasks: its tile says how many. */
+  tasks?: number;
 }
 
 function isVoltageTier(value: unknown): value is VoltageTierName {
@@ -53,11 +57,15 @@ export function computeDesignStats(
   }
   const stats: DesignStats = {
     cards: project.nodes.length + (project.storages?.length ?? 0),
+    drawers: project.storages?.length ?? 0,
     machines,
     tierIndex,
   };
   if (tier) {
     stats.tier = tier;
+  }
+  if (project.primaryView === "tasks") {
+    stats.tasks = project.tasks?.length ?? 0;
   }
   if (result && Number.isFinite(result.totalEuT)) {
     stats.euT = result.totalEuT;

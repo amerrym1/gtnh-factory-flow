@@ -1,87 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { RefreshCw, X } from "lucide-react";
-import { ChangelogDialog } from "@/components/ChangelogDialog";
-import { CHANGELOG, type ChangelogEntry } from "@/lib/changelog";
 import { useDeployedVersion } from "@/lib/use-deployed-version";
-import {
-  isUpdatePopupEnabled,
-  markVersionSeenAndNotify,
-  needsInterrupting,
-  pendingForcedEntries,
-  subscribeToVersionSeen,
-  unseenEntries,
-} from "@/lib/whats-new";
 
 /**
- * Telling somebody the app moved under them.
- *
- * Two cases, two treatments, and conflating them would be wrong in both
- * directions:
- *
- * - AWAY WHILE IT SHIPPED. The page is already running the new code, so there
- *   is nothing to do about it and nothing to ask - just show what changed. It
- *   is a popup rather than a badge because the whole reason to bother is the
- *   releases that change what the board MEANS, and someone who does not read
- *   those goes looking for a bug that is really a new rule.
- * - OPEN WHILE IT SHIPPED. The page is running the OLD code and cannot fix
- *   that itself. Showing the notes here would describe an app the reader is
- *   not using. So this one is a quiet strip offering the reload, and the notes
- *   come after it, on the way back in.
- *
+ * A quiet strip offering a reload when a new version deploys WHILE THE TAB IS
+ * OPEN (the page is still running the old code). Release notes never open by
+ * themselves; the header's version chip opens them and wears an unread dot.
  * Mounted once, at the app shell.
  */
 export function WhatsNewGate() {
-  const [entries, setEntries] = useState<ChangelogEntry[]>([]);
   const [dismissedReload, setDismissedReload] = useState(false);
   const deployed = useDeployedVersion();
-
-  // After mount, never during render: it reads localStorage, and a server
-  // render has none, so deciding this any earlier is a hydration mismatch.
-  useEffect(() => {
-    // The settings mute. Nothing is stamped seen or shown on its account:
-    // the releases stay unread and the header dot still announces them, this
-    // browser has just asked not to be interrupted about it.
-    if (!isUpdatePopupEnabled()) {
-      return;
-    }
-    // Two questions, and the second one exists because the first cannot always
-    // be answered. `unseenEntries` needs a stamp to compare against and treats
-    // a browser without one as a first visit; `pendingForcedEntries` is for the
-    // releases that must not be missed on that account.
-    const unseen = unseenEntries();
-    const forced = pendingForcedEntries();
-    const shown = new Set([...unseen, ...forced].map((entry) => entry.version));
-    // Rebuilt from CHANGELOG rather than concatenated, so the two sources
-    // cannot double up an entry or land it out of order.
-    const combined = CHANGELOG.filter((entry) => shown.has(entry.version));
-    // Only the releases that change what a saved plan MEANS get a dialog. The
-    // rest are announced by the dot on the header button, which is there to be
-    // noticed rather than answered.
-    setEntries(needsInterrupting(combined) ? combined : []);
-  }, []);
-
-  useEffect(() => subscribeToVersionSeen(() => setEntries([])), []);
-
-  const closeNotes = () => {
-    markVersionSeenAndNotify();
-    setEntries([]);
-  };
-
-  if (entries.length > 0) {
-    return (
-      <ChangelogDialog
-        // Which versions are new TO THIS READER. The dialog opens on those and
-        // keeps the rest of the history behind a button - handing it a
-        // pre-filtered list made the popup and the header button two different
-        // documents, and neither of them was "the changelog".
-        unseenVersions={new Set(entries.map((entry) => entry.version))}
-        tone="interrupt"
-        onClose={closeNotes}
-      />
-    );
-  }
 
   if (!deployed || dismissedReload) {
     return null;

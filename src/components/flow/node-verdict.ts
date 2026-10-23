@@ -7,26 +7,27 @@ import type {
   ResourceKind,
   ThroughputResult,
 } from "@/lib/model/types";
-import { isRecipeInputConsumed, makeResourceKey } from "@/lib/model";
+import { isFreeRecipeInput, isOreDictionaryResource, isRecipeInputConsumed, makeResourceKey, resourceLabel } from "@/lib/model";
+import { getPoolProject, isPoolStorageId } from "@/lib/solver/pool-mode";
 import { findDeathSpirals, type DeathSpiral } from "./death-spiral";
 import { findClogLocks, type ClogLock } from "./clog-lock";
 import { findBareSlots } from "./bare-slots";
 import { isCustomRateRecipe } from "@/lib/model/custom-rate";
 import { collectTrashNodeIds } from "@/lib/model/trash";
 import { describeStorage, getStorageRole, getStorageRoles } from "@/lib/model/storage-role";
-import { makeResourceHandleId } from "./resource-handles";
+import { makeResourceHandleId, sectionHandleId } from "./resource-handles";
+import { sectionOwnerId } from "@/lib/model/shared-machine";
+import { getInputSupplyHatch, isHatchSuppliedInput } from "@/lib/model/hatch-supply";
 import { getSetupRules, type ResolvedSetupRules } from "@/lib/model/setup-rules";
 import { energyPerUnit } from "@/lib/model/rate-unit";
 
 type ProjectEdge = FactoryProject["edges"][number];
 
 /**
- * The node-level verdict that replaces the bare "Usage %": one state derived
- * from the solver's three separate facts (utilization, what the inputs would
- * allow, what downstream asks), plus the cause and the concrete next action.
- *
- * Two independent questions decide it, both measured against this card's own
- * full blast at its current machine count:
+ * The node-level verdict: one state derived from the solver's separate facts
+ * (utilization, what the inputs would allow, what downstream asks), plus the
+ * cause and the concrete next action. Two questions decide it, both measured
+ * against this card's own full blast at its current machine count:
  *
  *   are the inputs short?   `capableUtilization` < 1
  *   is anyone going without? a `deficit` on some output
@@ -37,35 +38,20 @@ type ProjectEdge = FactoryProject["edges"][number];
  *   inputs short  | STARVED        | BLOCKED
  *                 | (nothing to do)| (the fix is upstream)
  *
- * Two more states sit ABOVE that table, because in a closed plan a machine is
- * bounded at both ends and neither of the two words above should ever be made
- * to mean "you have not finished wiring it".
+ * Two states sit above that table, so neither word ever means "not finished
+ * wiring":
+ * - UNWIRED beats everything: some slot has no wire, so the machine is at
+ *   zero and the card marks every bare slot. A SOURCE or DRAIN drawer counts
+ *   as a connection.
+ * - CLOGGED applies only to a fully wired card whose wired output cannot
+ *   shift what it makes (its takers want less and no drain takes the rest).
+ *   Not a fault: the card says where the surplus is.
  *
- * UNWIRED is first and beats everything: some slot, input or output, has no
- * wire on it. Nothing declares where that ingredient comes from or where that
- * product goes, so the machine is at zero, and there is no arithmetic to
- * explain - the card just marks every bare slot and you go and connect them.
- * A SOURCE or DRAIN drawer counts as connecting one, which is how a plan says
- * "this part I bring in myself" out loud.
- *
- * CLOGGED is next, and only ever applies to a FULLY WIRED card: everything is
- * connected, and a wired output still cannot shift what it makes, because its
- * takers want less than the machine produces and no drain or can is there to
- * take the rest. The machine runs only as fast as that output empties. It is
- * not a fault - a plan that makes 10 redstone and only wants 5 is a normal
- * plan - so it is stated, not scolded: the card says where the surplus is and
- * offers the honest ways out.
- *
- * The doctrine that follows: running below 100% is not a fault. A machine
- * that hands every asker what it asked for is FINE, whatever its percent
- * reads. Only an unmet ask is a problem, and only when the inputs are already
- * covered is this card the place to fix it. Follow BLOCKED cards upstream and
- * you always arrive at a bottleneck, a dialled source, or a DEAD LOOP — so
- * the red cards are the whole to-do list.
- *
- * That walk only terminates because `dead-loop` exists. In a ring, A blames
- * B, B blames C and C blames A, so without a state that names the ring the
- * advice chases itself forever. See death-spiral.ts.
+ * Running below 100% is not a fault: a machine that serves every asker is
+ * fine whatever its percent. Only an unmet ask is a problem. BLOCKED cards
+ * followed upstream always end at a bottleneck, a dialled source, or a DEAD
+ * LOOP; `dead-loop` exists so that walk terminates inside a ring, where each
+ * member blames the next (see death-spiral.ts).
  */
 export type NodeVerdictKind =
   | "off"
@@ -79,12 +65,12 @@ export type NodeVerdictKind =
   | "clog-lock"
   | "demand-set"
   | "paced"
-  | "balanced";
+  | "balanced"
+  | "busy";
 
 /**
  * The two supply-short states. Both mean "the inputs, not this card, set the
- * speed", so every reader that used to test the old single `starved` kind
- * wants this instead.
+ * speed"; test this rather than a single kind.
  */
 export function isSupplyShort(kind: NodeVerdictKind): boolean {
   return kind === "starved" || kind === "blocked";
@@ -114,6 +100,17 @@ export interface NodeVerdict {
   kind: NodeVerdictKind;
   /** Clamped display percentage, 0-100. */
   pct: number;
+  /**
+   * Busy: this recipe shares its machine with others (shared-machine.ts) and
+   * the machine's time is spent. The section that took the most of it.
+   */
+  busy?: {
+    sharerName: string;
+    /** That section's share of the machine's time, display percent. */
+    sharerPct: number;
+    /** How many other recipes the machine runs. */
+    sharers: number;
+  };
   /** Starved/blocked: the input that pins the machine below what's asked. */
   binding?: {
     resourceKey: string;
@@ -184,6 +181,13 @@ export interface NodeVerdict {
      * itself stopped: the card is waiting on THAT machine, not on a drawer.
      */
     stoppedTakerName?: string;
+    /**
+     * Set when the output's takers all run but none can take more: the
+     * card is held at their pace, and their own cards say what holds them.
+     */
+    heldTakerName?: string;
+    /** The held taker's own speed, display percent, for the hover. */
+    heldTakerPct?: number;
   };
   /** Dead-loop: the ring this card is trapped in, and who else is in it. */
   spiral?: DeathSpiral;
@@ -197,6 +201,15 @@ export interface NodeVerdict {
 /** Half a percent: below this, converged solver states are just float noise. */
 const VERDICT_EPSILON = 0.005;
 const RATE_EPSILON = 1e-6;
+/**
+ * A shortfall is real only against the size of the ask: LP flows carry solver
+ * dust proportional to board scale (balances.ts snaps at 1e-5 relative), which
+ * on huge flows would otherwise read as a tiny BOTTLENECK.
+ */
+const SHORTFALL_RELATIVE_EPSILON = 1e-5;
+function isMaterialShortfall(missing: number, reference: number): boolean {
+  return missing > Math.max(RATE_EPSILON, Math.abs(reference) * SHORTFALL_RELATIVE_EPSILON);
+}
 
 function clamp01(value: number | undefined, fallback: number): number {
   if (value === undefined || !Number.isFinite(value)) {
@@ -207,19 +220,17 @@ function clamp01(value: number | undefined, fallback: number): number {
 
 /**
  * What the consumer on this edge truly asks for. The solver's converged
- * `demandPerSecond` is self-damped (it collapses to whatever was shipped, by
- * design, to stay stable), so the honest ask is the nameplate one whenever
- * the consumer is genuinely capability-starved — flagged by the solver
- * (constraint "supply") OR read off the consumer itself, because the damping
- * can also keep the flag from ever being raised (a starving reactor whose
- * ask collapsed leaves its furnace looking "demand-set"). Deliberately
- * throttled consumers (true demand-set) never beg. Everything the UI says
- * about hunger must go through here — never the damped figure directly.
+ * `demandPerSecond` is self-damped (it collapses to whatever was shipped), so
+ * the honest ask is the nameplate one whenever the consumer is genuinely
+ * starved of capability: flagged by the solver (constraint "supply") or read
+ * off the consumer itself, since damping can keep the flag from ever being
+ * raised. Deliberately throttled consumers (demand-set) never beg. Everything
+ * the UI says about hunger must go through here, never the damped figure.
  */
 export function honestEdgeAskPerSecond(
   edgeResult: EdgeThroughput | undefined,
   targetResult?: NodeThroughputResult,
-  edge?: Pick<ProjectEdge, "resourceKind" | "resourceId">,
+  edge?: Pick<ProjectEdge, "resourceKind" | "resourceId" | "targetHandle">,
 ): number {
   if (!edgeResult) {
     return 0;
@@ -252,24 +263,11 @@ export function honestEdgeAskPerSecond(
 }
 
 /**
- * What a supply line could HONESTLY deliver — the edge-label book, the one
- * Jack verified against reality:
- * - a non-dry buffer grants whatever is asked (Infinity: never a cap);
- * - a machine line whose producer has this as its sole outlet can deliver
- *   the producer's full-blast capacity (`sourceCapacityPerSecond`);
- * - otherwise fall back to the allocation figure (damped, least trusted).
- * The allocation-only version of this is what mis-crowned bottlenecks: the
- * ask coupling drags innocent lines' allocations down to the binder's level.
- */
-/**
- * What a buffer can honestly hand ONE of its consumers.
- *
- * A tank with no reserve cannot deliver more than it receives, so once the
- * asks on it exceed its inflow, that inflow is a REAL ceiling: the shortage
- * just moved one hop upstream and the consumer is still starved by it. While
- * the tank covers everyone it stays Infinity, which is what keeps a buffer
- * from becoming a false ceiling (the rule that killed "could deliver 0%").
- * A tank with no inbound lines is hand-stocked: assumed never dry.
+ * What a buffer can honestly hand ONE of its consumers. A tank with no reserve
+ * cannot deliver more than it receives, so once the asks on it exceed its
+ * inflow, that inflow is a real ceiling (the shortage moved one hop upstream).
+ * While the tank covers everyone it stays Infinity, so a buffer never becomes
+ * a false ceiling. A tank with no inbound lines is hand-stocked: never dry.
  */
 export function bufferRelaySupplyPerSecond(
   project: FactoryProject,
@@ -293,12 +291,9 @@ export function bufferRelaySupplyPerSecond(
 }
 
 /**
- * Per-buffer inflow and asks, resolved in one pass over the edges.
- *
- * The scan used to live inside bufferRelaySupplyPerSecond, which made it
- * O(edges) per buffer-fed input — and it is called from per-node code, so the
- * board would have paid O(nodes × edges) on every solver tick. The index is
- * built once per (project, result) pair and every lookup after that is O(1).
+ * Per-buffer inflow and asks, resolved in one pass over the edges. Built once
+ * per (project, result) pair so per-node callers look up in O(1); scanning
+ * per buffer-fed input would cost O(nodes × edges) every solver tick.
  */
 interface BufferRelayIndex {
   inflow: Map<string, number>;
@@ -394,12 +389,11 @@ function isStoppedBySetup(
 function findStoppedTakerClog(
   project: FactoryProject,
   result: ThroughputResult,
+  nodeId: string,
   nodeResult: NodeThroughputResult,
   outgoing: ProjectEdge[],
 ): NodeVerdict["clog"] {
-  const storageIds = new Set((project.storages ?? []).map((storage) => storage.id));
-  const recipeById = new Map(project.recipes.map((entry) => [entry.id, entry]));
-  const nodeById = new Map(project.nodes.map((entry) => [entry.id, entry]));
+  const { recipeById, nodeById, storageById: storageIds } = boardLookups(project);
   const outgoingBy = outgoingByNode(project);
   const capable = clamp01(nodeResult.capableUtilization, 1);
   const utilization = clamp01(nodeResult.utilization, 0);
@@ -456,7 +450,7 @@ function findStoppedTakerClog(
       }
       if (stoppedTaker === undefined) {
         const recipe = takerNode ? recipeById.get(takerNode.recipeId) : undefined;
-        stoppedTaker = recipe?.machineType ?? recipe?.name ?? takerResult?.recipeName;
+        stoppedTaker = takerDisplayName(taker, nodeId, recipe, takerResult?.recipeName ?? taker);
       }
     }
     if (!allStopped) {
@@ -478,15 +472,301 @@ function findStoppedTakerClog(
 }
 
 /**
- * What ONE inbound line can honestly deliver, buffers included.
+ * The output that holds a FED card below the speed its hungry takers want.
+ * The books never idle a fed machine with somewhere to put its output, so a
+ * card whose inputs are covered, whose one output is over-asked and which
+ * still runs below full speed is held by ANOTHER output: every wire on it
+ * lands on a machine that cannot take more, and no drawer absorbs the rest.
+ * That is a clog one machine removed; more of this card would only make more
+ * of the stuck thing, so it must not read as BOTTLENECK.
  *
- * This is the call every consumer of honestEdgeAvailablePerSecond should make.
- * The bare function defaults a buffer source to Infinity ("a tank grants
- * whatever is asked"), which is only true while the tank is covering everyone;
- * a dry one is a real ceiling and the shortage has simply moved one hop up.
- * Forgetting the fourth argument makes every buffer-fed input look infinitely
- * supplied, which silently disqualifies it from ever being named the
- * bottleneck.
+ * Prefers an output whose taker is visibly held (clogged, stopped, or at full
+ * speed) over one merely pacing, so the hover names the card whose own story
+ * explains this one.
+ */
+function findHeldOutputClog(
+  project: FactoryProject,
+  result: ThroughputResult,
+  nodeId: string,
+  nodeResult: NodeThroughputResult,
+  outgoing: ProjectEdge[],
+  hungryKey: string,
+  utilization: number,
+  wanted: number,
+): NodeVerdict["clog"] {
+  let best: { rank: number; clog: NonNullable<NodeVerdict["clog"]> } | undefined;
+  for (const [key, flow] of Object.entries(nodeResult.outputs).sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  )) {
+    if (key === hungryKey || flow.amountPerSecond <= RATE_EPSILON || flow.kind === "power") {
+      continue;
+    }
+    const edges = outgoing.filter(
+      (edge) => makeResourceKey(edge.resourceKind, edge.resourceId) === key,
+    );
+    if (edges.length === 0) {
+      continue;
+    }
+    const takers = machineTakersBehindOutput(project, edges);
+    if (!takers || takers.size === 0) {
+      continue;
+    }
+    let taken = 0;
+    for (const edge of edges) {
+      taken += result.edges[edge.id]?.transferredPerSecond ?? 0;
+    }
+    const made = flow.amountPerSecond * wanted;
+    if (!isMaterialShortfall(made - taken, made)) {
+      continue;
+    }
+    const named = rankHeldTaker(project, result, takers, nodeId);
+    const clog: NonNullable<NodeVerdict["clog"]> = {
+      resourceKey: key,
+      kind: flow.kind,
+      displayName: flow.displayName ?? flow.resourceId ?? key,
+      madePerSecond: made,
+      takenPerSecond: taken,
+      surplusPerSecond: made - taken,
+      heldBackPct: Math.max(0, Math.round((wanted - utilization) * 1000) / 10),
+      heldTakerName: named.name,
+      heldTakerPct: named.pct,
+    };
+    if (!best || named.rank > best.rank) {
+      best = { rank: named.rank, clog };
+    }
+  }
+  return best?.clog;
+}
+
+/**
+ * The machines behind one output port, through any buffers on the way.
+ * Absent when a drain drawer or an overflow buffer sits on the route: those
+ * absorb a surplus, so nothing on that port can be holding the card.
+ */
+function machineTakersBehindOutput(
+  project: FactoryProject,
+  edges: ProjectEdge[],
+): Set<string> | undefined {
+  const { storageById, nodeById: nodeIds } = boardLookups(project);
+  const outgoingBy = outgoingByNode(project);
+  const takers = new Set<string>();
+  const seen = new Set<string>();
+  let absorbed = false;
+  const walk = (edgesOut: ProjectEdge[]) => {
+    for (const edge of edgesOut) {
+      const storage = storageById.get(edge.target);
+      if (storage) {
+        const isDrain = (outgoingBy.get(storage.id) ?? []).length === 0;
+        if (isDrain || (storage.bufferMode ?? "overflow") === "overflow") {
+          absorbed = true;
+          return;
+        }
+        if (!seen.has(storage.id)) {
+          seen.add(storage.id);
+          walk(outgoingBy.get(storage.id) ?? []);
+        }
+      } else if (nodeIds.has(edge.target)) {
+        takers.add(edge.target);
+      }
+    }
+  };
+  walk(edges);
+  return absorbed ? undefined : takers;
+}
+
+/**
+ * Which taker to name on a held output. A stopped or clogged one explains
+ * itself best (rank 3), a full one next (2), a merely pacing one last (1).
+ * Deterministic: ties go to the first id in sort order.
+ */
+function rankHeldTaker(
+  project: FactoryProject,
+  result: ThroughputResult,
+  takers: Set<string>,
+  askerId: string,
+): { rank: number; name: string; pct: number } {
+  const { recipeById, nodeById } = boardLookups(project);
+  let best: { rank: number; name: string; pct: number } | undefined;
+  for (const taker of [...takers].sort()) {
+    const takerResult = result.nodes[taker];
+    const takerNode = nodeById.get(taker);
+    const takerUtil = clamp01(takerResult?.utilization, 0);
+    const rank =
+      takerNode?.enabled === false || !takerResult || takerUtil <= VERDICT_EPSILON
+        ? 3
+        : isHeldByOwnOutput(project, result, taker, askerId)
+          ? 3
+          : takerUtil >= 1 - VERDICT_EPSILON
+            ? 2
+            : 1;
+    if (!best || rank > best.rank) {
+      const recipe = takerNode ? recipeById.get(takerNode.recipeId) : undefined;
+      best = {
+        rank,
+        name: takerDisplayName(taker, askerId, recipe, takerResult?.recipeName ?? taker),
+        pct: Math.round(takerUtil * 1000) / 10,
+      };
+    }
+  }
+  return best ?? { rank: 0, name: "", pct: 0 };
+}
+
+/**
+ * The name a clog story gives the machine holding it: its machine type, or,
+ * when the taker is another recipe on the SAME card, that recipe, so a shared
+ * machine never reads as clogging itself.
+ */
+function takerDisplayName(
+  takerId: string,
+  askerId: string,
+  recipe: Recipe | undefined,
+  fallback: string,
+): string {
+  if (recipe?.name && sectionOwnerId(takerId) === sectionOwnerId(askerId)) {
+    const colon = recipe.name.lastIndexOf(": ");
+    const product = colon >= 0 ? recipe.name.slice(colon + 2) : recipe.name;
+    return `The ${product} recipe on this machine`;
+  }
+  return recipe?.machineType ?? recipe?.name ?? fallback;
+}
+
+const boardLookupsCache = new WeakMap<
+  FactoryProject,
+  {
+    recipeById: Map<string, Recipe>;
+    nodeById: Map<string, FactoryProject["nodes"][number]>;
+    storageById: Map<string, NonNullable<FactoryProject["storages"]>[number]>;
+  }
+>();
+function boardLookups(project: FactoryProject) {
+  let cached = boardLookupsCache.get(project);
+  if (!cached) {
+    cached = {
+      recipeById: new Map(project.recipes.map((entry) => [entry.id, entry])),
+      nodeById: new Map(project.nodes.map((entry) => [entry.id, entry])),
+      storageById: new Map((project.storages ?? []).map((entry) => [entry.id, entry])),
+    };
+    boardLookupsCache.set(project, cached);
+  }
+  return cached;
+}
+
+/**
+ * Whether a machine is held by its OWN output side, so what it asks of an
+ * input is not hunger a feeder can answer: feed it more and it still cannot
+ * get rid of what it makes. The deficit reader must know both ways this
+ * happens, or it crowns the feeder BOTTLENECK while the jam sits further down:
+ *
+ * - The solver's disposal figure binds below what the inputs allow.
+ * - The held-output clog the verdict itself reads (findHeldOutputClog): the
+ *   card runs below what its inputs and asks allow, and a wired output that
+ *   only machines take, none of them short on it, ships less than the card
+ *   would make. The solver's disposal misses this when another output's
+ *   taker begs at nameplate and lifts the card's demand to 100%.
+ *
+ * Asked recursively of the takers on that output, so a chain of held cards
+ * reads held all the way up. The asking card, and any card met again round a
+ * loop, counts as not held for the length of the question: inside a ring
+ * every member is held by the next, and excusing the asker's own taker would
+ * cut the trail short of the machine that sets the ring's pace. Memoized per
+ * (project, result) and asker.
+ */
+const heldByOwnOutputCache = new WeakMap<
+  FactoryProject,
+  { result: ThroughputResult; byAsker: Map<string, Map<string, boolean>> }
+>();
+function isHeldByOwnOutput(
+  project: FactoryProject,
+  result: ThroughputResult,
+  nodeId: string,
+  askerId: string,
+): boolean {
+  let cached = heldByOwnOutputCache.get(project);
+  if (!cached || cached.result !== result) {
+    cached = { result, byAsker: new Map() };
+    heldByOwnOutputCache.set(project, cached);
+  }
+  let held = cached.byAsker.get(askerId);
+  if (!held) {
+    held = new Map([[askerId, false]]);
+    cached.byAsker.set(askerId, held);
+  }
+  const known = held.get(nodeId);
+  if (known !== undefined) {
+    return known;
+  }
+  held.set(nodeId, false);
+  const answer = computeHeldByOwnOutput(project, result, nodeId, askerId);
+  held.set(nodeId, answer);
+  return answer;
+}
+
+function computeHeldByOwnOutput(
+  project: FactoryProject,
+  result: ThroughputResult,
+  nodeId: string,
+  askerId: string,
+): boolean {
+  const nodeResult = result.nodes[nodeId];
+  if (!nodeResult) {
+    return false;
+  }
+  const utilization = clamp01(nodeResult.utilization, 0);
+  const capable = clamp01(nodeResult.capableUtilization, 1);
+  const demand = clamp01(nodeResult.demandUtilization, utilization);
+  const disposal = clamp01(nodeResult.disposalUtilization, 1);
+  if (disposal < 1 - VERDICT_EPSILON && disposal < capable - VERDICT_EPSILON) {
+    return true;
+  }
+  const wanted = Math.min(1, capable, Math.max(demand, utilization));
+  if (utilization >= wanted - VERDICT_EPSILON) {
+    return false;
+  }
+  const outgoing = outgoingByNode(project).get(nodeId) ?? [];
+  for (const [key, flow] of Object.entries(nodeResult.outputs)) {
+    if (flow.amountPerSecond <= RATE_EPSILON || flow.kind === "power") {
+      continue;
+    }
+    const edges = outgoing.filter(
+      (edge) => makeResourceKey(edge.resourceKind, edge.resourceId) === key,
+    );
+    if (edges.length === 0) {
+      continue;
+    }
+    const takers = machineTakersBehindOutput(project, edges);
+    if (!takers || takers.size === 0) {
+      continue;
+    }
+    let taken = 0;
+    let hungry = false;
+    for (const edge of edges) {
+      const edgeResult = result.edges[edge.id];
+      const transferred = edgeResult?.transferredPerSecond ?? 0;
+      taken += transferred;
+      const ask = honestEdgeAskPerSecond(edgeResult, result.nodes[edge.target], edge);
+      if (
+        isMaterialShortfall(ask - transferred, ask) &&
+        !isHeldByOwnOutput(project, result, edge.target, askerId)
+      ) {
+        hungry = true;
+      }
+    }
+    if (hungry) {
+      continue;
+    }
+    const made = flow.amountPerSecond * wanted;
+    if (isMaterialShortfall(made - taken, made)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * What ONE inbound line can honestly deliver, buffers included. Call this
+ * rather than bare honestEdgeAvailablePerSecond: that defaults a buffer
+ * source to Infinity, and without its fourth argument every buffer-fed input
+ * looks infinitely supplied and can never be named the bottleneck.
  */
 function honestInboundAvailablePerSecond(
   project: FactoryProject,
@@ -495,11 +775,10 @@ function honestInboundAvailablePerSecond(
   sourceIsStorage: boolean,
   sourceHasSoleOutlet: boolean,
 ): number {
-  // The sole-outlet uplift says "this producer could ramp to full blast if
-  // asked". A producer at a dead stop for its own reasons - no power, or
-  // inputs that allow nothing - cannot, so its line honestly delivers what
-  // it delivers: nothing. Without this a machine starved by an unwired
-  // feeder read as fully supplied and never got to say who stopped it.
+  // The sole-outlet uplift assumes the producer could ramp to full blast. A
+  // producer at a dead stop for its own reasons (no power, inputs that allow
+  // nothing) cannot, so its line delivers nothing and the machine it starves
+  // can name who stopped it.
   const sourceCanRamp = sourceIsStorage || isMachineAbleToRun(result?.nodes[edge.source]);
   return honestEdgeAvailablePerSecond(
     result?.edges[edge.id],
@@ -511,6 +790,14 @@ function honestInboundAvailablePerSecond(
   );
 }
 
+/**
+ * What a supply line could honestly deliver:
+ * - a non-dry buffer grants whatever is asked (Infinity: never a cap);
+ * - a machine line whose producer has this as its sole outlet can deliver
+ *   the producer's full-blast capacity (`sourceCapacityPerSecond`);
+ * - otherwise the allocation figure, least trusted: the ask coupling drags
+ *   innocent lines' allocations down to the binder's level.
+ */
 export function honestEdgeAvailablePerSecond(
   edgeResult: EdgeThroughput | undefined,
   sourceIsStorage: boolean,
@@ -570,6 +857,9 @@ export function deriveNodeVerdict(
   result: ThroughputResult | undefined,
   nodeId: string,
 ): NodeVerdict {
+  // Pool mode: every story below reads the graph the solve ran on, pools
+  // and all, never the wireless drawing.
+  project = getPoolProject(project);
   const node = project.nodes.find((entry) => entry.id === nodeId);
   if (!node || node.enabled === false) {
     return { kind: "off", pct: 0 };
@@ -589,17 +879,12 @@ export function deriveNodeVerdict(
   const incoming = project.edges.filter((edge) => edge.target === nodeId);
   const outgoing = project.edges.filter((edge) => edge.source === nodeId);
 
-  // UNWIRED outranks everything below it. In a closed plan every slot has to
-  // say where its stuff comes from or goes, so a slot with no wire is a hard
-  // zero at whichever end it sits - and it is the one state that needs no
-  // arithmetic to explain. Naming it here keeps the two subtler words honest:
-  // STARVED means a feeder cannot keep up, CLOGGED means a wired output cannot
-  // shift its surplus. Neither should ever mean "you have not wired it yet".
-  //
-  // A BOARD RULE takes its own side out of that: with free inputs on, the
-  // solve already fed every bare input, so marking it is nagging about
-  // something the plan has answered. The other side still speaks up - the
-  // rules are separate on purpose, and half a closed plan is still a plan.
+  // UNWIRED outranks everything below it. In a closed plan a slot with no
+  // wire is a hard zero at whichever end it sits, and needs no arithmetic to
+  // explain. Naming it here keeps STARVED (a feeder cannot keep up) and
+  // CLOGGED (a wired output cannot shift its surplus) from ever meaning "not
+  // wired yet". A side made free by getSetupRules is answered by the solve
+  // and never marked; the two sides are judged separately.
   const rules = getSetupRules(project);
   if (!rules.freeInputs || !rules.freeOutputs) {
     const bare = findBareSlots(nodeResult, incoming, outgoing, rules);
@@ -643,12 +928,10 @@ export function deriveNodeVerdict(
   }
 
   // A card at a dead stop whose takers have ALL stopped is waiting on them,
-  // not choking on a surplus and not short of machines. Unwire one slot on
-  // the machine downstream and this one falls to 0% with everything it
-  // needs; the only true thing to say is which machine stopped, so the
-  // player goes there instead of adding machines here or hanging a drawer.
+  // not choking on a surplus and not short of machines. The only true thing
+  // to say is which machine stopped, so the player goes there.
   if (utilization <= VERDICT_EPSILON && capable > VERDICT_EPSILON && result) {
-    const waiting = findStoppedTakerClog(project, result, nodeResult, outgoing);
+    const waiting = findStoppedTakerClog(project, result, nodeId, nodeResult, outgoing);
     if (waiting) {
       return { kind: "clogged", pct, clog: waiting };
     }
@@ -671,6 +954,21 @@ export function deriveNodeVerdict(
   ) {
     const clog = describeClog(nodeResult, utilization, disposal);
     if (clog) {
+      // Name the machine on the other end when there is one: "nowhere to
+      // go" with an address sends the player to the card that says why.
+      if (result) {
+        const takers = machineTakersBehindOutput(
+          project,
+          outgoing.filter(
+            (edge) => makeResourceKey(edge.resourceKind, edge.resourceId) === clog.resourceKey,
+          ),
+        );
+        if (takers && takers.size > 0) {
+          const named = rankHeldTaker(project, result, takers, nodeId);
+          clog.heldTakerName = named.name;
+          clog.heldTakerPct = named.pct;
+        }
+      }
       return { kind: "clogged", pct, clog, deficit };
     }
   }
@@ -678,6 +976,35 @@ export function deriveNodeVerdict(
   if (utilization >= 1 - VERDICT_EPSILON) {
     return deficit ? { kind: "bottleneck", pct, deficit } : { kind: "balanced", pct };
   }
+
+  // SHARED MACHINE: a recipe held below what its inputs and takers allow
+  // because the machine's time went to the other recipes on it. The card
+  // names the section that took the most, and more machines is the fix.
+  if (utilization < Math.min(capable, demand) - VERDICT_EPSILON) {
+    const busy = findBusySharer(project, result, nodeId, utilization);
+    if (busy) {
+      return { kind: "busy", pct, busy, deficit };
+    }
+  }
+
+  // Below full speed with a hungry taker, BOTTLENECK is only true if this
+  // card could actually ramp. When another wired output has no home for
+  // the extra, it cannot, and the honest word is CLOGGED naming that
+  // output's taker. Asked only on the paths that would otherwise say
+  // bottleneck, after a genuinely short input has had its say.
+  const heldClog = () =>
+    deficit && result
+      ? findHeldOutputClog(
+          project,
+          result,
+          nodeId,
+          nodeResult,
+          outgoing,
+          deficit.resourceKey,
+          utilization,
+          Math.min(1, capable, Math.max(demand, utilization)),
+        )
+      : undefined;
 
   // Below full speed there is always a cause. Downstream owns it only when
   // demand is the strictly smaller limit; a tie means something upstream
@@ -688,10 +1015,11 @@ export function deriveNodeVerdict(
     // solver just isn't relaying the pull. Its inputs are covered, so this
     // card is where the fix goes — a bottleneck like any other.
     if (deficit) {
-      return { kind: "bottleneck", pct, deficit };
+      const held = heldClog();
+      return held
+        ? { kind: "clogged", pct, clog: held, deficit }
+        : { kind: "bottleneck", pct, deficit };
     }
-    // No headroom figure: it was old-engine capability minus the books'
-    // utilization, a percentage of nothing a player can see on the card.
     return { kind: "demand-set", pct };
   }
 
@@ -701,12 +1029,17 @@ export function deriveNodeVerdict(
   // nobody, which is not a fault to paint red at the top of the board.
   const binding = findBindingInput(project, result, nodeResult, nodeId, incoming);
   // COHERENCE GUARD. The solver can hold a machine below full speed with
-  // every input covered - a fair split of contended supply, a loop running
-  // at its level - and blaming the least-oversupplied input then produced
-  // "gets 2,000/s, wants 100/s, so you are short", which is nonsense. No
-  // genuinely short input means no shortage story: the line is pacing it.
-  if (!binding || binding.shortfallPerSecond <= RATE_EPSILON) {
-    return deficit ? { kind: "bottleneck", pct, deficit } : { kind: "paced", pct };
+  // every input covered (a fair split of contended supply, a loop running at
+  // its level). No genuinely short input means no shortage story: the line
+  // is pacing it.
+  if (!binding || !isMaterialShortfall(binding.shortfallPerSecond, binding.neededPerSecond)) {
+    if (!deficit) {
+      return { kind: "paced", pct };
+    }
+    const held = heldClog();
+    return held
+      ? { kind: "clogged", pct, clog: held, deficit }
+      : { kind: "bottleneck", pct, deficit };
   }
   return {
     kind: deficit ? "blocked" : "starved",
@@ -717,18 +1050,58 @@ export function deriveNodeVerdict(
 }
 
 /**
- * Every card with a slot still to connect, in one pass over the board.
- *
- * Deliberately not `deriveNodeVerdict` per node: that runs the death-spiral
- * search, and doing it once per card would be O(nodes x board) on something
- * the board-level notice recomputes whenever the plan or the solve changes.
- * The bare-slot test needs neither the spiral nor the solver's numbers, so
- * this walks the edges once and answers in O(nodes + edges).
+ * The recipe that took a shared machine's time, when this section is held
+ * below its own ceiling by the machine being full. Undefined for a card that
+ * shares nothing, or whose sections together leave time to spare.
+ */
+function findBusySharer(
+  project: FactoryProject,
+  result: ThroughputResult | undefined,
+  nodeId: string,
+  utilization: number,
+): NodeVerdict["busy"] | undefined {
+  if (!result) {
+    return undefined;
+  }
+  const owner = sectionOwnerId(nodeId);
+  const members = project.nodes.filter(
+    (entry) => entry.id !== nodeId && sectionOwnerId(entry.id) === owner,
+  );
+  if (members.length === 0) {
+    return undefined;
+  }
+  let total = utilization;
+  let top: { name: string; share: number } | undefined;
+  const recipesById = new Map(project.recipes.map((entry) => [entry.id, entry]));
+  for (const member of members) {
+    const share = clamp01(result.nodes[member.id]?.utilization, 0);
+    total += share;
+    if (!top || share > top.share) {
+      const recipe = recipesById.get(member.recipeId);
+      top = { name: recipe?.name ?? "another recipe", share };
+    }
+  }
+  if (total < 1 - VERDICT_EPSILON || !top) {
+    return undefined;
+  }
+  return {
+    sharerName: top.name,
+    sharerPct: Math.round(top.share * 100),
+    sharers: members.length,
+  };
+}
+
+/**
+ * Every card with a slot still to connect, in one O(nodes + edges) pass. Not
+ * `deriveNodeVerdict` per node: that runs the death-spiral search, O(nodes x
+ * board) on every plan or solve change, and the bare-slot test needs neither
+ * the spiral nor the solver's numbers.
  */
 export function findUnwiredNodeIds(
   project: FactoryProject,
   result: ThroughputResult | undefined,
 ): string[] {
+  project = getPoolProject(project);
   // With both board rules on, the solve feeds and drains every bare slot
   // itself; a checklist of things the rules already handled would just nag.
   const rules = getSetupRules(project);
@@ -771,7 +1144,12 @@ export function findUnwiredNodeIds(
       findBareSlots(nodeResult, incoming, outgoing, rules) ||
       (hasSlots && incoming.length === 0 && outgoing.length === 0)
     ) {
-      ids.push(node.id);
+      // A shared machine's section answers as its card: the card is what
+      // the notice rings and flies to.
+      const owner = sectionOwnerId(node.id);
+      if (!ids.includes(owner)) {
+        ids.push(owner);
+      }
     }
   }
   return ids;
@@ -813,15 +1191,11 @@ function describeClog(
 
 /**
  * Asks that arrive without a wire: this node's own target output, and its
- * share of the plan's target rate. The player IS a taker — a node that misses
- * the rate you dialled for it has someone going without, and reading it as
- * "starved, nothing waiting" would go quiet on exactly the card you are
- * watching. Mirrors `applyProjectTarget` in the solver (only producers with no
- * outgoing line for the resource carry a share of the plan target) so the two
- * cannot disagree about who is on the hook.
- *
- * Built once per (project, result) — the walk is O(nodes + edges) and the
- * lookup that follows is O(1), because this is called once per node.
+ * share of the plan's target rate. The player IS a taker: a node missing the
+ * rate you dialled has someone going without. Mirrors `applyProjectTarget` in
+ * the solver (only producers with no outgoing line for the resource carry a
+ * share of the plan target) so the two agree on who is on the hook. Built
+ * once per (project, result) in O(nodes + edges); per-node lookups are O(1).
  */
 const targetAskIndexCache = new WeakMap<
   FactoryProject,
@@ -914,11 +1288,11 @@ function findWorstOutputDeficit(
     if (!edgeResult) {
       continue;
     }
-    // An output-throttled consumer (disposal its binding limit — the same
-    // predicate the CLOGGED branch reads) cannot run faster however much it
-    // is fed, so its leftover ask is not hunger this card can answer. Its
-    // damped ask never collapses to shipped, and counting it crowned feeders
-    // BOTTLENECK at 18% while the real jam sat on the consumer's output side.
+    // An output-held consumer (isHeldByOwnOutput: the same two readings
+    // the CLOGGED branches make) cannot run faster however much it is fed,
+    // so its leftover ask is not hunger this card can answer. Its damped ask
+    // never collapses to shipped, so counting it would crown feeders
+    // BOTTLENECK while the real jam sits on the consumer's output side.
     const targetResult = result.nodes[edge.target];
     // A taker stopped by its own setup (no power, a bare slot) is not hungry
     // for anything this card makes; its ask stays on the books at nameplate
@@ -933,19 +1307,12 @@ function findWorstOutputDeficit(
     ) {
       continue;
     }
-    if (targetResult) {
-      const targetDisposal = clamp01(targetResult.disposalUtilization, 1);
-      const targetCapable = clamp01(targetResult.capableUtilization, 1);
-      if (
-        targetDisposal < 1 - VERDICT_EPSILON &&
-        targetDisposal < targetCapable - VERDICT_EPSILON
-      ) {
-        continue;
-      }
+    if (isHeldByOwnOutput(project, result, edge.target, nodeId)) {
+      continue;
     }
     const wanted = honestEdgeAskPerSecond(edgeResult, targetResult, edge);
     const missing = Math.max(0, wanted - (edgeResult.transferredPerSecond ?? 0));
-    if (missing <= RATE_EPSILON) {
+    if (!isMaterialShortfall(missing, wanted)) {
       continue;
     }
     const key = makeResourceKey(edge.resourceKind, edge.resourceId);
@@ -962,7 +1329,7 @@ function findWorstOutputDeficit(
       nodeResult.outputs[key as keyof typeof nodeResult.outputs]?.amountPerSecond ?? 0;
     wantedByKey.set(key, Math.max(wantedByKey.get(key) ?? 0, ask));
     const missing = Math.max(0, ask - nameplate * utilization);
-    if (missing > RATE_EPSILON) {
+    if (isMaterialShortfall(missing, ask)) {
       missingByKey.set(key, Math.max(missingByKey.get(key) ?? 0, missing));
     }
   }
@@ -1047,13 +1414,12 @@ function findBindingInput(
   const storageIds = new Set((project.storages ?? []).map((storage) => storage.id));
   const outletCounts = countSourceOutlets(project);
 
-  // Jack's definition: "bottleneck = the thing that is setting this
-  // machine's usage percent — increase it and the percent moves; increase
-  // anything else and it doesn't." Only the HONEST per-line deliverability
-  // (the edge-label book: source capacity, buffer-∞) can prove that; the
-  // allocation figures get dragged down in lockstep by the ask coupling and
-  // tie everything at the machine's own speed. Scan sorted for order
-  // independence; keep genuine ties within 1%.
+  // Bottleneck = the thing setting this machine's usage percent: increase it
+  // and the percent moves; increase anything else and it doesn't. Only the
+  // HONEST per-line deliverability (source capacity, buffer-∞) can prove
+  // that; the allocation figures are dragged down in lockstep by the ask
+  // coupling and tie everything at the machine's own speed. Scan sorted for
+  // order independence; keep genuine ties within 1%.
   const candidates: Array<{
     key: string;
     ratio: number;
@@ -1070,9 +1436,8 @@ function findBindingInput(
     const edges = incoming.filter(
       (edge) => makeResourceKey(edge.resourceKind, edge.resourceId) === key,
     );
-    // A bare input delivers nothing and binds hardest of all. It used to be
-    // skipped here as hand-fed, which meant the one input actually stopping
-    // the machine could never be named.
+    // A bare input delivers nothing and binds hardest of all; it must not be
+    // skipped, or the input actually stopping the machine is never named.
     if (edges.length === 0) {
       candidates.push({ key, ratio: 0, supplied: 0, need: flow.amountPerSecond, edges });
       continue;
@@ -1190,6 +1555,26 @@ function findUpstreamCulprit(
 
   const storage = (project.storages ?? []).find((entry) => entry.id === pick.source);
   if (storage) {
+    // A POOL is not a place to go fix: look through it to the machines
+    // feeding it and name the one that matters, exactly as a direct wire
+    // would. A pool fed only by a source drawer names that drawer.
+    if (isPoolStorageId(storage.id)) {
+      const feeders = project.edges.filter((edge) => edge.target === storage.id);
+      const machineFeeders = feeders.filter((edge) =>
+        project.nodes.some((entry) => entry.id === edge.source),
+      );
+      const through = findUpstreamCulprit(
+        project,
+        result,
+        nodeId,
+        machineFeeders.length > 0 ? machineFeeders : feeders,
+        shortfallPerSecond,
+        neededPerSecond,
+      );
+      if (through) {
+        return through;
+      }
+    }
     return {
       name: describeStorage(storage, getStorageRole(project, storage.id)),
       kind: "buffer",
@@ -1331,6 +1716,8 @@ function relayedBufferAskPerSecond(
  * recipe slots exactly the way the solver pools their flows.
  */
 export interface RailPort {
+  supplyHatch?: string;
+  hatchSupplied?: boolean;
   side: "input" | "output";
   key: string;
   kind: ResourceKind;
@@ -1343,14 +1730,13 @@ export interface RailPort {
   connected: boolean;
   /**
    * Consumed input with no line attached. Nothing declares where it comes
-   * from, so the machine cannot run. It was `handFed` back when the planner
-   * assumed a bare input arrived by hand forever.
+   * from, so the machine cannot run.
    */
   unsupplied: boolean;
   /**
-   * This port's side is answered by a board rule, so a bare slot here is not
-   * a to-do item: the solve feeds or drains it. Outputs read this to keep the
-   * NO TAKER mark off a slot the plan has an answer for.
+   * This port's side is free (getSetupRules), or it is an inert free-input
+   * row, so a bare slot here is not a to-do item. Outputs read this to keep
+   * the NO TAKER mark off a slot the plan has an answer for.
    */
   boundaryFree: boolean;
   currentPerSecond: number;
@@ -1381,6 +1767,12 @@ export interface RailPort {
    * rate; every other unit ignores it.
    */
   energyPerUnit?: number;
+  /**
+   * Free in the game (free-input.ts): drawn so the player knows to set it
+   * down, but nothing to wire, nothing to supply, no rate and no bar. Every
+   * figure above is zero and no handle is rendered for it.
+   */
+  free?: boolean;
 }
 
 export function buildRailPorts(
@@ -1389,7 +1781,12 @@ export function buildRailPorts(
   nodeId: string,
   displayRecipe: Pick<Recipe, "inputs" | "outputs">,
   verdict: NodeVerdict,
+  /** A shared machine section: its ports wear this section prefix on their handles. */
+  options?: { handleSection?: number },
 ): { inputs: RailPort[]; outputs: RailPort[] } {
+  const handleFor = (side: "input" | "output", resource: { kind: ResourceKind; id: string }) =>
+    sectionHandleId(options?.handleSection ?? 0, makeResourceHandleId(side, resource));
+  project = getPoolProject(project);
   const nodeResult = result?.nodes[nodeId];
   const utilization = clamp01(nodeResult?.utilization, 0);
   const demand = clamp01(nodeResult?.demandUtilization, utilization);
@@ -1403,6 +1800,8 @@ export function buildRailPorts(
   const nodesById = new Map(project.nodes.map((entry) => [entry.id, entry]));
   const recipesById = new Map(project.recipes.map((entry) => [entry.id, entry]));
   const outletCounts = countSourceOutlets(project);
+  const hatchNode = nodesById.get(nodeId);
+  const hatchRecipe = hatchNode ? recipesById.get(hatchNode.recipeId) : undefined;
   const machineNameOf = (id: string): string => {
     const node = nodesById.get(id);
     const recipe = node ? recipesById.get(node.recipeId) : undefined;
@@ -1438,9 +1837,22 @@ export function buildRailPorts(
       }
       seen.add(key);
 
-      const resource = resources.find(
+      const slot = resources.find(
         (entry) => entry.kind === kind && entry.id === resourceId,
       );
+      // The first member supplies stable color/art for non-animated contexts.
+      // Keep the group identity and label; ResourceIcon cycles only its artwork.
+      const face = slot && isOreDictionaryResource(slot)
+        ? slot.alternatives?.find((entry) => entry.kind === slot.kind && !isOreDictionaryResource(entry))
+        : undefined;
+      const resource = slot && face ? {
+        ...slot,
+        displayName: resourceLabel(slot),
+        iconPath: face.iconPath,
+        iconAtlas: face.iconAtlas,
+        dominantColor: face.dominantColor,
+        tooltip: face.tooltip,
+      } : slot;
       if (isInput && resource && !isRecipeInputConsumed(resource)) {
         return;
       }
@@ -1516,9 +1928,7 @@ export function buildRailPorts(
           : 1;
         if (!connected && !freeSide) {
           // Every bare slot marked, not one crowned: they are all equally the
-          // reason, and the card's job is to show you the whole list of wires
-          // to draw. `idle` was for the old world where a bare input was a
-          // standing assumption rather than a stop.
+          // reason, and the card shows the whole list of wires to draw.
           tone = "bind";
           badge = { kind: "short", perSecond: nameplate };
         } else if (isBinding) {
@@ -1609,8 +2019,14 @@ export function buildRailPorts(
         key,
         kind,
         resourceId,
-        displayName: displayName ?? resource?.displayName ?? resourceId,
-        handleId: makeResourceHandleId(side, { kind, id: resourceId }),
+        supplyHatch: isInput && hatchNode && hatchRecipe
+          ? getInputSupplyHatch(hatchRecipe, hatchNode, { kind, id: resourceId }) : undefined,
+        hatchSupplied: Boolean(isInput && hatchNode && hatchRecipe
+          && isHatchSuppliedInput(hatchRecipe, hatchNode, { kind, id: resourceId })),
+        displayName: isOreDictionaryResource({ id: resourceId })
+          ? resourceLabel(slot ?? { id: resourceId })
+          : displayName ?? resource?.displayName ?? resourceId,
+        handleId: handleFor(side, { kind, id: resourceId }),
         resource,
         connected,
         unsupplied: isInput && !connected && !freeSide,
@@ -1635,8 +2051,11 @@ export function buildRailPorts(
     };
 
     if (flows) {
+      // A wired port keeps its row at any rate: its row holds the handle the wire is drawn to, and a card the plan runs
+      // at almost nothing (an edit elsewhere) would otherwise lose it, leaving the wire undrawn while the plan runs it.
+      const wiredKeys = new Set<string>(sideEdges.map((edge) => makeResourceKey(edge.resourceKind, edge.resourceId)));
       for (const [key, flow] of Object.entries(flows)) {
-        if (flow.amountPerSecond <= RATE_EPSILON) {
+        if (flow.amountPerSecond <= RATE_EPSILON && !wiredKeys.has(key)) {
           continue;
         }
         pushPort(key, flow.kind, flow.resourceId, flow.displayName, flow.amountPerSecond);
@@ -1650,6 +2069,39 @@ export function buildRailPorts(
           resource.displayName,
           0,
         );
+      }
+    }
+
+    // Free-in-the-game inputs never reach the solver's flows and pushPort
+    // skips them as non-consumed, so they are added last as inert rows:
+    // the item and its name, every figure zero, no handle to wire.
+    if (isInput) {
+      for (const resource of resources) {
+        const key = makeResourceKey(resource.kind, resource.id);
+        if (!isFreeRecipeInput(resource) || seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        ports.push({
+          side,
+          key,
+          kind: resource.kind,
+          resourceId: resource.id,
+          displayName: resource.displayName ?? resource.id,
+          handleId: handleFor(side, { kind: resource.kind, id: resource.id }),
+          resource,
+          connected: false,
+          unsupplied: false,
+          boundaryFree: true,
+          currentPerSecond: 0,
+          nameplatePerSecond: 0,
+          wantedPerSecond: 0,
+          couldPerSecond: 0,
+          fillFraction: 0,
+          tone: "calm",
+          showNameplate: false,
+          free: true,
+        });
       }
     }
 
@@ -1681,6 +2133,7 @@ export function buildLimitLadder(
   result: ThroughputResult | undefined,
   nodeId: string,
 ): LimitRung[] {
+  project = getPoolProject(project);
   const nodeResult = result?.nodes[nodeId];
   const node = project.nodes.find((entry) => entry.id === nodeId);
   if (!nodeResult || !node || node.enabled === false) {
@@ -1807,4 +2260,3 @@ export function buildLimitLadder(
   }
   return capped;
 }
-

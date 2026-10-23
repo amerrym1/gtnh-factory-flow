@@ -2,18 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { getUiScale } from "@/lib/ui-scale";
 
 /**
- * "What makes it" / "What uses it", for a finger.
- *
- * The two questions every resource on screen answers. A mouse asks them with its
- * two buttons and a keyboard with R and U; a finger has neither, so it presses
- * and holds, and this is what it gets. One implementation, because the board's
- * port rows and the items column both need it and a menu that behaved differently
- * in the two places would be two menus.
- *
- * The gesture has two endings, and people try both: hold until the menu appears
- * and slide onto an item, letting go there to choose it; or let go first and tap.
+ * "What makes it" / "What uses it" for touch (a mouse uses its two buttons, a
+ * keyboard R and U). Shared by the board's port rows and the items column.
+ * Hold until the menu appears, then either slide onto an item and release, or
+ * release first and tap.
  */
 
 export type BrowseMode = "recipes" | "uses";
@@ -36,15 +31,10 @@ export const BROWSE_MENU_ATTRIBUTE = "data-browse-menu";
 let lastPickAt = 0;
 
 /**
- * One gesture, one answer.
- *
- * A menu is dismissed by the same release that chooses from it, and both that
- * release and the synthesised click trailing it can find a live menu to act on —
- * in development React's double-mounting can even leave two of them listening.
- * Two answers from one tap meant the second overwrote the first, so the wrong half
- * of the menu won.
- *
- * Module-level because only one of these can be open at a time anywhere.
+ * One gesture, one answer: the choosing release and its trailing synthesised
+ * click (or, in dev, a double-mounted listener) could each act on the menu,
+ * and the second answer would overwrite the first. Module-level because only
+ * one menu can be open anywhere.
  */
 function claimPick(): boolean {
   const now = performance.now();
@@ -56,10 +46,8 @@ function claimPick(): boolean {
 }
 
 /**
- * The press gesture and the menu it opens.
- *
- * The caller keeps its own click, right-click and keyboard handling — those differ
- * between a port row and a list row — and spreads `pressHandlers` alongside them.
+ * The press gesture and the menu it opens. The caller keeps its own click,
+ * right-click and keyboard handling and spreads `pressHandlers` alongside.
  */
 export function useBrowseMenu({
   name,
@@ -198,8 +186,12 @@ function BrowseMenu({
   // Wide enough for "What makes it" on one line in this font: wrapped over two, a
   // button stops looking like a button.
   const width = 208;
-  const left = Math.min(Math.max(8, at.x - width / 2), window.innerWidth - width - 8);
-  const top = Math.min(at.y + 12, window.innerHeight - 148);
+  // Shell pixels: the menu is a body portal wearing .ui-zoom, so its left/top
+  // and width are shell pixels, and the pointer and window (real pixels) come
+  // across by the interface scale (ui-scale.ts).
+  const scale = getUiScale();
+  const left = Math.min(Math.max(8, at.x / scale - width / 2), window.innerWidth / scale - width - 8);
+  const top = Math.min(at.y / scale + 12, window.innerHeight / scale - 148);
   // The finger that opened this menu is still on the screen, and its release fires
   // the compatibility mouse events every tap fires. The gesture that opened the
   // menu cannot also dismiss it.
@@ -227,13 +219,10 @@ function BrowseMenu({
         actionsRef.current.onDismiss();
       }
     };
-    // The next press anywhere but the menu. A window listener rather than a
-    // handler on the shield below, so it fires wherever the press lands — the
-    // shield is only there to keep that press off whatever is underneath.
-    //
-    // No `blur` listener, deliberately: in the capture phase that fires for every
-    // element losing focus, and lifting the finger that opened this menu moves
-    // focus, so the menu used to close itself on release.
+    // The next press anywhere but the menu. A window listener so it fires
+    // wherever the press lands; the shield below only keeps that press off
+    // whatever is underneath. No `blur` listener: in capture phase it fires for
+    // every element losing focus, including on the opening finger's release.
     const dismissOnPress = (event: PointerEvent) => {
       const inside = Boolean(menuRef.current?.contains(event.target as HTMLElement | null));
       if (!actionsRef.current.settled() || inside) {
@@ -283,8 +272,8 @@ function BrowseMenu({
       window.removeEventListener("touchmove", follow, options);
       window.removeEventListener("touchend", release, options);
     };
-    // Attached once per menu. Everything they need lives in refs, because a
-    // re-attach on every render let one release reach two listeners.
+    // Attached once per menu, reading everything from refs: re-attaching on
+    // every render can let one release reach two listeners.
   }, []);
 
   // Buttons that look like buttons: the same bevel the board's own controls wear,
@@ -306,7 +295,7 @@ function BrowseMenu({
         ref={menuRef}
         {...{ [BROWSE_MENU_ATTRIBUTE]: "" }}
         style={{ left, top, width }}
-        className="fixed z-[80] border-2 border-[var(--mc-15)] bg-[var(--mc-49)] p-1 font-mono shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25),4px_4px_0_rgba(0,0,0,0.45)]"
+        className="ui-zoom fixed z-[80] border-2 border-[var(--mc-15)] bg-[var(--mc-49)] p-1 font-mono shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25),4px_4px_0_rgba(0,0,0,0.45)]"
       >
         <p className="truncate px-1 pb-1 text-[11px] font-bold text-[var(--mc-ink-muted)]">
           {name}

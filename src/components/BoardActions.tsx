@@ -1,66 +1,49 @@
 ﻿"use client";
 
+import { useDropdownDismiss } from "@/lib/hooks/use-dropdown-dismiss";
+
 import {
   Check,
   ChevronDown,
   ClipboardList,
+  ClipboardPaste,
   Download,
   ImageDown,
   LoaderCircle,
-  Redo2,
   Share2,
   Trash2,
-  Undo2,
   Upload,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import {
-  cloneImportedProject,
-  parseFactoryProjectJson,
-  serializeFactoryProject,
-} from "@/lib/import-export";
-import { DEFAULT_DATASET_MANIFEST_URL } from "@/lib/datasets";
+import { serializeFactoryProject } from "@/lib/import-export";
 import { randomUUID } from "@/lib/random-id";
-import {
-  getRecipeDatasetRecipe,
-  getRecipeDatasetRecipeIds,
-  queryRecipeDatasetRecipes,
-  resolveRecipeDatasetRecipes,
-} from "@/lib/datasets/browser-loader";
-import type { DatasetVersion } from "@/lib/datasets";
-import type {
-  FactoryEdge,
-  FactoryProject,
-  Recipe,
-  ResourceKind,
-} from "@/lib/model/types";
 import { formatBoardDump } from "./flow/board-dump";
-import { makeResourceHandleId, parseResourceHandleId } from "./flow/resource-handles";
 import { isEditableKeyboardTarget } from "./flow/keyboard";
-import {
-  extractProjectJsonFromPng,
-  extractProjectJsonFromSvg,
-} from "@/lib/import-export/plan-image";
 import { useWelcomeTab } from "@/lib/welcome/welcome-tab";
-import { isPowerRecipe } from "@/lib/power/power-recipe";
-import { pickRecipeRefMatch, recipeContentRef } from "@/lib/import-export/recipe-ref-match";
 import { useFactoryStore } from "@/store/factory-store";
+import { copyToClipboard } from "@/lib/clipboard";
+import { PastePlanDialog } from "./export/PastePlanDialog";
+import { openPlanFile } from "@/lib/import-export/open-plan-file";
+import { isLiveConfigured } from "@/lib/live/live-config";
+
+/**
+ * With live plans, Share invites people into a plan (the plan bar) and
+ * posting a copy to the library is Publish; without, posting is Share.
+ */
+const PUBLISH_LABEL = isLiveConfigured() ? "Post a copy to Community" : "Share this setup";
 
 interface BoardActionsProps {
   /**
-   * `bar` is the top bar's row of icons. `list` is the compact menu: the same
-   * actions as labelled rows, with the export dropdown flattened into its three
-   * formats — a menu inside a menu is a trap on a touchscreen — and undo/redo
-   * left out, because on a phone they are two always-visible buttons on the
-   * board itself.
+   * `bar` is the top bar's icons. `list` is the compact menu: the same actions
+   * as labelled rows, with the export dropdown flattened (no nested menus on
+   * touch).
    */
   variant?: "bar" | "list";
   /** Lets the compact menu close itself once one of its rows has fired. */
   onAction?: () => void;
   /**
-   * Opens the share dialog. The dialog itself is owned by the header, not
-   * rendered here: on compact this component lives inside the menu sheet,
-   * which closes (and unmounts) the moment a row fires.
+   * Opens the share dialog, which the header owns: on compact this component
+   * lives in the menu sheet, which unmounts the moment a row fires.
    */
   onShare?: () => void;
   /** Opens the export-image dialog; owned by the header for the same reason. */
@@ -68,10 +51,8 @@ interface BoardActionsProps {
 }
 
 /**
- * Board actions - undo/redo, clean, import/export, theme.
- *
- * Lives on the right of the design tab strip: everything here acts on the plan
- * that strip is switching between, so the two belong on the same bar.
+ * Plan actions (share, clean, import, paste, export) for the header bar or
+ * the compact menu, plus the global undo/redo keyboard shortcuts.
  */
 export function BoardActions({
   variant = "bar",
@@ -79,6 +60,7 @@ export function BoardActions({
   onShare,
   onExportImage,
 }: BoardActionsProps = {}) {
+  const isReadOnly = useFactoryStore((state) => state.isReadOnly);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const [isExportMenuOpen, setExportMenuOpen] = useState(false);
@@ -86,30 +68,25 @@ export function BoardActions({
     { format: "json"; requestId: string } | undefined
   >();
   const project = useFactoryStore((state) => state.project);
-  const manifest = useFactoryStore((state) => state.datasetManifest);
-  const selectedDatasetVersionId = useFactoryStore((state) => state.selectedDatasetVersionId);
   const isProjectImporting = useFactoryStore((state) => state.isProjectImporting);
-  const canUndo = useFactoryStore((state) => state.undoHistory.length > 0);
-  const canRedo = useFactoryStore((state) => state.redoHistory.length > 0);
-  const setProject = useFactoryStore((state) => state.setProject);
-  const frameBoardNodes = useFactoryStore((state) => state.frameBoardNodes);
-  const setProjectImporting = useFactoryStore((state) => state.setProjectImporting);
   const cleanBoard = useFactoryStore((state) => state.cleanBoard);
   const undo = useFactoryStore((state) => state.undo);
   const redo = useFactoryStore((state) => state.redo);
   const lastResult = useFactoryStore((state) => state.lastResult);
   const selectedBoardIds = useFactoryStore((state) => state.selectedBoardIds);
   const [diagnosticsState, setDiagnosticsState] = useState<"idle" | "copied" | "failed">("idle");
+  const [isPastingPlan, setPastingPlan] = useState(false);
   // Welcome COVERS the board, so the design underneath still has content and
   // Share would happily post it. But sharing a board you cannot see is a
   // trap, so the button waits until you are looking at the thing it posts.
   const isWelcomeCoveringBoard = useWelcomeTab().active;
   const canShare = !isWelcomeCoveringBoard && project.nodes.length > 0;
+  const shareWord = isLiveConfigured() ? "Publish" : "Share";
   const shareTitle = isWelcomeCoveringBoard
-    ? "Share: open a design tab first"
+    ? `${shareWord}: open a design tab first`
     : project.nodes.length === 0
-      ? "Share: build something first"
-      : "Share";
+      ? `${shareWord}: build something first`
+      : PUBLISH_LABEL;
 
   const selectedCardCount = selectedBoardIds.length;
   const diagnosticsLabel =
@@ -122,12 +99,9 @@ export function BoardActions({
           : "Copy diagnostics (whole plan)";
 
   /**
-   * The pasteable version of what the board is showing: every selected card's
-   * machine, tier, config, overclock, rates and verdict, in JSON. Select
-   * nothing and it dumps the plan.
-   *
-   * The menu deliberately stays open - the row itself is the receipt, and
-   * closing it would take the only confirmation away with it.
+   * Copies every selected card's machine, tier, config, overclock, rates and
+   * verdict as JSON (the whole plan when nothing is selected). The menu stays
+   * open because the row itself shows the confirmation.
    */
   const copyDiagnostics = async () => {
     const text = formatBoardDump({
@@ -158,66 +132,29 @@ export function BoardActions({
     }, 450);
   };
 
+  /**
+   * An imported file opens as a NEW design tab, never over the plan on the
+   * board: the Library can cover the board without closing its design, so an
+   * import there would silently replace it and its undo history. Same path as
+   * Paste and shared links; the post link is dropped.
+   */
   const importProjectJson = async (file: File) => {
-    setProjectImporting(true);
-
     try {
-      const text = await readProjectFile(file);
-      const selectedDatasetVersion = manifest?.versions.find(
-        (version) => version.id === selectedDatasetVersionId,
-      );
-      const importedProject = refreshImportedProjectEdges(
-        cloneImportedProject(parseFactoryProjectJson(text)),
-      );
-
-      // An imported plan was built on someone else's board, so its cards can
-      // sit anywhere at all: the camera goes to them rather than leaving the
-      // viewer on blank canvas.
-      if (!selectedDatasetVersion) {
-        setProject(importedProject);
-        frameBoardNodes();
-        console.warn(
-          "Plan imported without an active GTNH dataset; embedded recipe data was kept.",
-        );
-        return;
-      }
-
-      const hydration = await hydrateImportedProjectRecipes(
-        importedProject,
-        selectedDatasetVersion,
-      );
-      setProject(refreshImportedProjectEdges(hydration.project));
-      frameBoardNodes();
-
-      if (hydration.missingRecipes.length) {
-        console.warn(
-          "Imported plan contains recipe IDs that are not present in the selected dataset.",
-          hydration.missingRecipes,
-        );
-      }
+      await openPlanFile(file);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Plan import failed.";
-      console.error(message);
+      console.error(error instanceof Error ? error.message : "Plan import failed.");
     } finally {
-      setProjectImporting(false);
       if (projectInputRef.current) {
         projectInputRef.current.value = "";
       }
     }
   };
 
-  useEffect(() => {
-    const closeMenus = (event: PointerEvent) => {
-      if (!exportMenuRef.current?.contains(event.target as Node)) {
-        setExportMenuOpen(false);
-      }
-    };
-
-    // Capture phase: the board's pan handler stops a press on the canvas before
-    // it reaches a bubble-phase listener, which left this menu open over it.
-    window.addEventListener("pointerdown", closeMenus, true);
-    return () => window.removeEventListener("pointerdown", closeMenus, true);
-  }, []);
+  useDropdownDismiss(isExportMenuOpen, {
+    refs: [exportMenuRef],
+    onClose: () => setExportMenuOpen(false),
+    fade: true,
+  });
 
   useEffect(() => {
     const handleProjectHistoryShortcut = (event: KeyboardEvent) => {
@@ -279,13 +216,15 @@ export function BoardActions({
     />
   );
 
+  if (isReadOnly) return null;
+
   if (variant === "list") {
     return (
       <div data-help-anchor="plan-actions" className="flex flex-col">
         {onShare ? (
           <MenuAction
             icon={Share2}
-            label="Share this setup"
+            label={PUBLISH_LABEL}
             disabled={!canShare}
             onClick={() => {
               onShare();
@@ -309,6 +248,11 @@ export function BoardActions({
             projectInputRef.current?.click();
             onAction?.();
           }}
+        />
+        <MenuAction
+          icon={ClipboardPaste}
+          label="Paste a copied plan"
+          onClick={() => setPastingPlan(true)}
         />
         <MenuAction
           icon={diagnosticsState === "copied" ? Check : ClipboardList}
@@ -337,6 +281,14 @@ export function BoardActions({
           />
         ) : null}
         {planFileInput}
+        {isPastingPlan ? (
+          <PastePlanDialog
+            onClose={() => {
+              setPastingPlan(false);
+              onAction?.();
+            }}
+          />
+        ) : null}
       </div>
     );
   }
@@ -344,42 +296,19 @@ export function BoardActions({
   return (
     <div data-help-anchor="plan-actions" className="flex shrink-0 items-center gap-1">
       <div className="flex items-center gap-1">
-        {/* No undo, redo or clean-board up here. Undo and redo already sit on
-            the board's own build toolbar, an inch from the thing being undone,
-            and having them in two places at once only made the header look
-            like the authoritative pair. Clean board is a whole-plan action that
-            was one slip away from the import button; it lives in the menu. */}
-        {/* Share wears its word, alone on the bar in doing so: it was buried
-            in the Setups tab and people could not find it. Same dialog as the
-            shelf's own button. */}
-        {onShare ? (
-          <button
-            type="button"
-            onClick={onShare}
-            disabled={!canShare}
-            title={shareTitle}
-            className="inline-flex h-7 items-center gap-1 rounded border border-line-strong bg-surface px-1.5 text-xs font-medium text-fg-subtle hover:border-emerald-600 hover:text-emerald-500 disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-fg-muted"
-          >
-            <Share2 className="h-3.5 w-3.5" />
-            Share
-          </button>
-        ) : null}
-        <ToolbarButton
-          icon={Upload}
-          label="Import plan"
-          disabled={isProjectImporting}
-          onClick={() => projectInputRef.current?.click()}
-        />
+        {/* No undo/redo or clean-board buttons here; undo/redo live on the
+            board's build toolbar. Share, import, paste and the exports sit
+            behind the one plan menu. */}
         <div ref={exportMenuRef} className="relative">
           <button
             type="button"
             onClick={() => setExportMenuOpen((isOpen) => !isOpen)}
-            title="Export plan"
-            aria-label="Export plan"
+            title="Plan: share, import, export"
+            aria-label="Plan menu: share, import, export"
             aria-expanded={isExportMenuOpen}
             aria-busy={pendingExport ? true : undefined}
             disabled={Boolean(pendingExport)}
-            className="inline-flex h-7 items-center justify-center gap-0.5 rounded border border-line-strong bg-surface px-1.5 text-fg-subtle hover:bg-surface-raised disabled:cursor-wait disabled:bg-surface-sunken disabled:text-fg-muted"
+            className="inline-flex h-5 items-center justify-center gap-0.5 rounded border border-line-strong bg-surface px-1.5 text-fg-subtle hover:bg-surface-raised disabled:cursor-wait disabled:bg-surface-sunken disabled:text-fg-muted"
           >
             {pendingExport ? (
               <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
@@ -389,7 +318,37 @@ export function BoardActions({
             <ChevronDown className="h-3 w-3" />
           </button>
           {isExportMenuOpen ? (
-            <div className="absolute right-0 top-8 z-50 min-w-44 rounded border border-line-strong bg-surface py-1 text-sm shadow-lg">
+            <div className="absolute right-0 top-full mt-1 z-50 min-w-44 rounded border border-line-strong bg-surface py-1 text-sm shadow-lg">
+              {onShare ? (
+                <ExportMenuItem
+                  icon={Share2}
+                  label={PUBLISH_LABEL}
+                  title={shareTitle}
+                  disabled={!canShare}
+                  onClick={() => {
+                    setExportMenuOpen(false);
+                    onShare();
+                  }}
+                />
+              ) : null}
+              <ExportMenuItem
+                icon={Upload}
+                label="Import a plan..."
+                disabled={isProjectImporting}
+                onClick={() => {
+                  setExportMenuOpen(false);
+                  projectInputRef.current?.click();
+                }}
+              />
+              <ExportMenuItem
+                icon={ClipboardPaste}
+                label="Paste a copied plan..."
+                onClick={() => {
+                  setExportMenuOpen(false);
+                  setPastingPlan(true);
+                }}
+              />
+              <div className="my-1 border-t border-line-strong" />
               <ExportMenuItem
                 icon={diagnosticsState === "copied" ? Check : ClipboardList}
                 label={diagnosticsLabel}
@@ -421,14 +380,14 @@ export function BoardActions({
       </div>
 
       {planFileInput}
+      {isPastingPlan ? <PastePlanDialog onClose={() => setPastingPlan(false)} /> : null}
     </div>
   );
 }
 
 /**
- * One row of the compact menu: a 40px tap target with the icon the top bar
- * would have shown on its own, and the words that icon was relying on a
- * tooltip for.
+ * One row of the compact menu: a 40px tap target with the top bar's icon and
+ * its label written out.
  */
 function MenuAction({
   icon: Icon,
@@ -454,469 +413,33 @@ function MenuAction({
   );
 }
 
-/**
- * Write text to the system clipboard, with the old selection-based path behind
- * it: the async API needs a secure context, and a plan opened from a file or
- * over plain http has none. Reports whether it landed rather than throwing,
- * because the caller's whole job is to say so on the button.
- */
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    try {
-      const scratch = document.createElement("textarea");
-      scratch.value = text;
-      scratch.setAttribute("readonly", "");
-      scratch.style.position = "fixed";
-      scratch.style.opacity = "0";
-      document.body.append(scratch);
-      scratch.select();
-      const copied = document.execCommand("copy");
-      scratch.remove();
-      return copied;
-    } catch {
-      return false;
-    }
-  }
-}
-
 function nextAnimationFrame(): Promise<void> {
   return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
-}
-
-async function readProjectFile(file: File): Promise<string> {
-  const extension = file.name.split(".").pop()?.toLowerCase();
-
-  if (extension === "svg" || file.type === "image/svg+xml") {
-    const projectJson = extractProjectJsonFromSvg(await file.text());
-    if (!projectJson) {
-      throw new Error("This SVG does not contain a GTNH Planner plan.");
-    }
-    return projectJson;
-  }
-
-  if (extension === "png" || file.type === "image/png") {
-    const projectJson = await extractProjectJsonFromPng(file);
-    if (!projectJson) {
-      throw new Error("This PNG does not contain a GTNH Planner plan.");
-    }
-    return projectJson;
-  }
-
-  return file.text();
-}
-
-async function hydrateImportedProjectRecipes(
-  project: FactoryProject,
-  version: DatasetVersion,
-): Promise<{
-  project: FactoryProject;
-  missingRecipes: Array<Pick<FactoryProject["recipes"][number], "id" | "name">>;
-  migratedRecipes: Array<{
-    fromId: string;
-    toId: string;
-    name: string;
-    exact: boolean;
-  }>;
-}> {
-  const availableRecipeIds = new Set(
-    await getRecipeDatasetRecipeIds(DEFAULT_DATASET_MANIFEST_URL, version),
-  );
-  const importRecipesToResolve = project.recipes.filter(
-    // Power cards own locally synthesized recipes (src/lib/power) that the
-    // dataset can never answer for - and must never replace by name-match.
-    (recipe) => !availableRecipeIds.has(recipe.id) && !isPowerRecipe(recipe),
-  );
-  const resolvedRecipeIds = new Map(
-    importRecipesToResolve.length
-      ? (
-          await resolveRecipeDatasetRecipes(
-            DEFAULT_DATASET_MANIFEST_URL,
-            version,
-            importRecipesToResolve.map(recipeContentRef),
-          )
-        ).matches.map((match) => [match.importedId, match] as const)
-      : [],
-  );
-  const missingRecipes: Array<Pick<FactoryProject["recipes"][number], "id" | "name">> = [];
-  const migratedRecipes: Array<{ fromId: string; toId: string; name: string; exact: boolean }> =
-    [];
-  const recipeIdMigration = new Map<string, string>();
-
-  const hydratedRecipes = await Promise.all(
-    project.recipes.map(async (recipe) => {
-      if (isPowerRecipe(recipe)) {
-        // Survives verbatim; normalizeLoadedProject resynthesizes it from
-        // the node's settings on the way in.
-        return recipe;
-      }
-      if (!availableRecipeIds.has(recipe.id)) {
-        const contentMatch = resolvedRecipeIds.get(recipe.id);
-        const migratedRecipe = contentMatch
-          ? await getRecipeDatasetRecipe(DEFAULT_DATASET_MANIFEST_URL, version, contentMatch.recipeId)
-          : await resolveImportedRecipe(version, recipe);
-        if (migratedRecipe) {
-          migratedRecipes.push({
-            fromId: recipe.id,
-            toId: migratedRecipe.id,
-            name: recipe.name,
-            exact: contentMatch?.exact ?? false,
-          });
-          recipeIdMigration.set(recipe.id, migratedRecipe.id);
-          return migratedRecipe;
-        }
-
-        // Nothing in the dataset is close enough to stand in for it: the
-        // plan's own embedded body keeps working, so it stays.
-        missingRecipes.push({ id: recipe.id, name: recipe.name });
-        return recipe;
-      }
-
-      return getRecipeDatasetRecipe(DEFAULT_DATASET_MANIFEST_URL, version, recipe.id);
-    }),
-  );
-  const hydratedProject = {
-    ...project,
-    recipes: hydratedRecipes,
-  };
-
-  return {
-    project: remapMigratedRecipeReferences(hydratedProject, recipeIdMigration),
-    missingRecipes,
-    migratedRecipes,
-  };
-}
-
-function remapMigratedRecipeReferences(
-  project: FactoryProject,
-  recipeIdMigration: Map<string, string>,
-): FactoryProject {
-  if (recipeIdMigration.size === 0) {
-    return project;
-  }
-
-  const recipesById = new Map(project.recipes.map((recipe) => [recipe.id, recipe] as const));
-  const nodes = project.nodes.map((node) => {
-    const migratedId = recipeIdMigration.get(node.recipeId);
-    if (!migratedId) {
-      return node;
-    }
-    return carryNodeOntoMigratedRecipe(node, recipesById.get(migratedId));
-  });
-  const nodesById = new Map(nodes.map((node) => [node.id, node] as const));
-  const originalNodesById = new Map(project.nodes.map((node) => [node.id, node] as const));
-
-  return {
-    ...project,
-    nodes,
-    edges: project.edges.map((edge) =>
-      remapMigratedRecipeEdgeHandles(
-        project,
-        nodesById,
-        originalNodesById,
-        recipeIdMigration,
-        edge,
-      ),
-    ),
-  };
-}
-
-function refreshImportedProjectEdges(project: FactoryProject): FactoryProject {
-  if (project.edges.length === 0) {
-    return project;
-  }
-
-  const nodesById = new Map(project.nodes.map((node) => [node.id, node] as const));
-  const recipesById = new Map(project.recipes.map((recipe) => [recipe.id, recipe] as const));
-  const storagesById = new Map(
-    (project.storages ?? []).map((storage) => [storage.id, storage] as const),
-  );
-  const edges = project.edges.map((edge) =>
-    refreshImportedProjectEdgeHandles(edge, nodesById, recipesById, storagesById),
-  );
-
-  return { ...project, edges };
-}
-
-function refreshImportedProjectEdgeHandles(
-  edge: FactoryEdge,
-  nodesById: Map<string, FactoryProject["nodes"][number]>,
-  recipesById: Map<string, Recipe>,
-  storagesById: Map<string, NonNullable<FactoryProject["storages"]>[number]>,
-): FactoryEdge {
-  const sourceNode = nodesById.get(edge.source);
-  const targetNode = nodesById.get(edge.target);
-  const sourceRecipe = sourceNode ? recipesById.get(sourceNode.recipeId) : undefined;
-  const targetRecipe = targetNode ? recipesById.get(targetNode.recipeId) : undefined;
-  const sourceStorage = storagesById.get(edge.source);
-  const targetStorage = storagesById.get(edge.target);
-
-  return {
-    ...edge,
-    sourceHandle: sourceRecipe
-      ? remapRecipeHandle(
-          sourceRecipe,
-          edge.sourceHandle,
-          "output",
-          edge.resourceKind,
-          edge.resourceId,
-        )
-      : sourceStorage
-        ? makeResourceHandleId("output", {
-            kind: sourceStorage.kind,
-            id: sourceStorage.resourceId,
-          })
-        : edge.sourceHandle,
-    targetHandle: targetRecipe
-      ? remapRecipeHandle(
-          targetRecipe,
-          edge.targetHandle,
-          "input",
-          edge.resourceKind,
-          edge.resourceId,
-        )
-      : targetStorage
-        ? makeResourceHandleId("input", {
-            kind: targetStorage.kind,
-            id: targetStorage.resourceId,
-          })
-        : edge.targetHandle,
-  };
-}
-
-function remapMigratedRecipeEdgeHandles(
-  project: FactoryProject,
-  nodesById: Map<string, FactoryProject["nodes"][number]>,
-  originalNodesById: Map<string, FactoryProject["nodes"][number]>,
-  recipeIdMigration: Map<string, string>,
-  edge: FactoryEdge,
-): FactoryEdge {
-  const sourceNode = nodesById.get(edge.source);
-  const targetNode = nodesById.get(edge.target);
-  const originalSourceNode = originalNodesById.get(edge.source);
-  const originalTargetNode = originalNodesById.get(edge.target);
-  const sourceRecipeMigrated = Boolean(
-    originalSourceNode && recipeIdMigration.has(originalSourceNode.recipeId),
-  );
-  const targetRecipeMigrated = Boolean(
-    originalTargetNode && recipeIdMigration.has(originalTargetNode.recipeId),
-  );
-
-  if (!sourceRecipeMigrated && !targetRecipeMigrated) {
-    return edge;
-  }
-
-  const sourceRecipe = project.recipes.find((recipe) => recipe.id === sourceNode?.recipeId);
-  const targetRecipe = project.recipes.find((recipe) => recipe.id === targetNode?.recipeId);
-
-  return {
-    ...edge,
-    sourceHandle:
-      sourceRecipeMigrated && sourceRecipe
-        ? remapRecipeHandle(
-            sourceRecipe,
-            edge.sourceHandle,
-            "output",
-            edge.resourceKind,
-            edge.resourceId,
-          )
-        : edge.sourceHandle,
-    targetHandle:
-      targetRecipeMigrated && targetRecipe
-        ? remapRecipeHandle(
-            targetRecipe,
-            edge.targetHandle,
-            "input",
-            edge.resourceKind,
-            edge.resourceId,
-          )
-        : edge.targetHandle,
-  };
-}
-
-function remapRecipeHandle(
-  recipe: Recipe,
-  handleId: string | undefined,
-  expectedSide: "input" | "output",
-  resourceKind: ResourceKind,
-  resourceId: string,
-): string | undefined {
-  const handle = parseResourceHandleId(handleId);
-  const resources = expectedSide === "input" ? recipe.inputs : recipe.outputs;
-  const handleResourceKind = handle?.kind ?? resourceKind;
-  const handleResourceId = handle?.resourceId ?? resourceId;
-  const slotIndex = parseResourceHandleSlotIndex(handleId);
-
-  if (
-    handle?.side === expectedSide &&
-    resources.some(
-      (resource, index) =>
-        resource.kind === handleResourceKind &&
-        resource.id === handleResourceId &&
-        makeResourceHandleId(expectedSide, resource, index) === handleId,
-    )
-  ) {
-    return handleId;
-  }
-
-  if (slotIndex !== undefined) {
-    const indexedResource = resources[slotIndex];
-    if (indexedResource?.kind === handleResourceKind && indexedResource.id === handleResourceId) {
-      return makeResourceHandleId(expectedSide, indexedResource, slotIndex);
-    }
-  }
-
-  const nextIndex = resources.findIndex(
-    (resource) => resource.kind === resourceKind && resource.id === resourceId,
-  );
-  if (nextIndex !== -1) {
-    return makeResourceHandleId(expectedSide, resources[nextIndex], nextIndex);
-  }
-
-  const matchingHandleIndex = resources.findIndex(
-    (resource) => resource.kind === handleResourceKind && resource.id === handleResourceId,
-  );
-  return matchingHandleIndex === -1
-    ? handleId
-    : makeResourceHandleId(expectedSide, resources[matchingHandleIndex], matchingHandleIndex);
-}
-
-function parseResourceHandleSlotIndex(handleId: string | undefined): number | undefined {
-  const rawIndex = handleId?.split(":")[3];
-  if (rawIndex === undefined) {
-    return undefined;
-  }
-
-  const index = Number(rawIndex);
-  return Number.isInteger(index) && index >= 0 ? index : undefined;
-}
-
-async function resolveImportedRecipe(
-  version: DatasetVersion,
-  importedRecipe: Recipe,
-): Promise<Recipe | undefined> {
-  const candidates = await queryRecipeDatasetRecipes(DEFAULT_DATASET_MANIFEST_URL, version, {
-    query: importedRecipe.name,
-    mode: "recipes",
-    maxTier: "all",
-    offset: 0,
-    limit: 40,
-  });
-  // A name search is the last resort, and it only ever hands back a recipe
-  // that takes and makes the same things: a same-named recipe with other
-  // inputs (the second Steel Ingot blast furnace recipe) is not this one.
-  const match = pickRecipeRefMatch(
-    recipeContentRef(importedRecipe),
-    candidates.recipes.map((candidate) => ({
-      ...candidate,
-      source: candidate.source ?? { recipeMap: candidate.recipeMap },
-    })),
-  );
-
-  return match && match.score >= RECIPE_MIGRATION_SCORE
-    ? getRecipeDatasetRecipe(DEFAULT_DATASET_MANIFEST_URL, version, match.candidate.id)
-    : undefined;
-}
-
-/** Below this the likeness is too loose to swap a plan's recipe for. */
-const RECIPE_MIGRATION_SCORE = 300;
-
-/**
- * A node whose recipe was migrated keeps only the choices the new recipe
- * can honour: a handler id the new recipe does not list is dropped (the
- * card falls back to its first handler, as a dataset load would leave it),
- * and slot overrides move from the old recipe's slot numbers to the slot
- * holding the same resource on the new one, since the exporter's slot
- * order is not part of what makes two recipes the same.
- */
-function carryNodeOntoMigratedRecipe(
-  node: FactoryProject["nodes"][number],
-  recipe: Recipe | undefined,
-): FactoryProject["nodes"][number] {
-  if (!recipe) {
-    return node;
-  }
-  const carried: FactoryProject["nodes"][number] = { ...node, recipeId: recipe.id };
-  if (
-    node.machineHandlerId &&
-    !(recipe.machineHandlers ?? []).some((handler) => handler.id === node.machineHandlerId)
-  ) {
-    delete carried.machineHandlerId;
-  }
-  const overrides = node.recipeInputOverrides;
-  if (overrides) {
-    const claimed = new Set<number>();
-    const rekeyed: NonNullable<typeof overrides> = {};
-    for (const override of Object.values(overrides)) {
-      if (!override) {
-        continue;
-      }
-      const index = recipe.inputs.findIndex(
-        (input, inputIndex) =>
-          !claimed.has(inputIndex) &&
-          input.kind === override.kind &&
-          (input.id === override.id ||
-            input.alternatives?.some((alternative) => alternative.id === override.id)),
-      );
-      if (index === -1) {
-        continue;
-      }
-      claimed.add(index);
-      rekeyed[String(index)] = override;
-    }
-    if (Object.keys(rekeyed).length > 0) {
-      carried.recipeInputOverrides = rekeyed;
-    } else {
-      delete carried.recipeInputOverrides;
-    }
-  }
-  return carried;
 }
 
 function ExportMenuItem({
   icon: Icon,
   label,
-  onClick,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-2 text-left text-fg-subtle hover:bg-surface-sunken"
-    >
-      <Icon className="h-4 w-4" />
-      <span>{label}</span>
-    </button>
-  );
-}
-
-function ToolbarButton({
-  icon: Icon,
-  label,
+  title,
   disabled = false,
   onClick,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
+  title?: string;
   disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
-      disabled={disabled}
       onClick={onClick}
-      title={label}
-      aria-label={label}
-      className="inline-flex h-7 w-7 items-center justify-center rounded border border-line-strong bg-surface text-fg-subtle hover:bg-surface-raised disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-fg-muted"
+      disabled={disabled}
+      title={title}
+      className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-2 text-left text-fg-subtle hover:bg-surface-sunken disabled:cursor-not-allowed disabled:text-fg-muted"
     >
-      <Icon className="h-3.5 w-3.5" />
+      <Icon className="h-4 w-4" />
+      <span>{label}</span>
     </button>
   );
 }

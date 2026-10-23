@@ -1,57 +1,52 @@
 /**
  * Curated machine behaviour: what each multiblock does to a recipe.
  *
- * A recipe export tells us the ingredients, the duration and the EU/t. It does
- * not tell us that titanium pipe casings give a chem plant six parallels, that
- * TPV coils run it at 200%, or that a large chemical reactor overclocks
- * perfectly. That behaviour lives in each multiblock's Java code, so it has to
- * be written down somewhere.
+ * A recipe export carries ingredients, duration and EU/t, but not what the
+ * machine does to them (pipe casings buying a chem plant parallels, coils
+ * speeding it up, perfect overclocks). That lives in each multiblock's Java
+ * code, so it is written down here. Tooltip scraping is not trusted for these
+ * values: tooltips are prose, and it produced right-shaped but wrong numbers
+ * (a heat capacity on coils for machines with no heat mechanic).
  *
- * We used to scrape it out of multiblock tooltips in the dataset pipeline.
- * Tooltips are prose, and the scraper produced values that were shaped right
- * and meant the wrong thing - most visibly a heat capacity stamped onto coils
- * for machines with no heat mechanic, which handed the chem plant, pyrolyse
- * oven, oil cracker and coke oven overclocks they never get in game.
+ * Entries are transcribed from ShadowTheAge's GTNH calculator
+ * (https://github.com/ShadowTheAge/gtnh, MIT) and audited against the
+ * GT5-Unofficial source (local clone: C:\Users\jack\gtnh-sources\GT5-Unofficial).
+ * Where they disagree the mod source wins, the entry says so, and
+ * `machine-table.test.ts` lists it under DIVERGES_FROM_REFERENCE. Indexing
+ * differences from the reference:
  *
- * These numbers were first transcribed from ShadowTheAge's GTNH calculator
- * (https://github.com/ShadowTheAge/gtnh, MIT), then audited entry by entry
- * against the actual GT5-Unofficial source (cloned at
- * C:\Users\jack\gtnh-sources\GT5-Unofficial). Where the two disagree - GTNH
- * has rewritten several machines since the reference was written - the mod
- * source wins, the entry says so in a comment, and
- * `machine-table.test.ts` lists it under DIVERGES_FROM_REFERENCE. Two
- * indexing differences are worth knowing when comparing against the
- * reference:
+ *   - Their voltage tiers start at LV = 0; ours at ULV = 0. Their
+ *     `recipe.voltageTier + 1` is our `ctx.voltageTier`.
+ *   - Their `speed` is a throughput multiplier (2 = twice as fast); our
+ *     duration multiplier is `1 / speed`.
  *
- *   - Their voltage tiers start at LV = 0; ours start at ULV = 0. Their
- *     `recipe.voltageTier + 1` is therefore our `ctx.voltageTier`.
- *   - Their `speed` is a throughput multiplier (2 = twice as fast). We divide
- *     duration by it, so a machine's duration multiplier is `1 / speed`.
- *
- * Machines absent from this table keep using the values the dataset carries,
- * so partial coverage is safe. Add entries as they are verified; do not guess.
+ * Machines absent from this table keep the dataset's values, so partial
+ * coverage is safe. Add entries only once verified; do not guess.
  *
  * `machine-table.test.ts` checks every entry against
- * `__fixtures__/reference-coefficients.json`, which is the reference's own
- * definitions evaluated over a grid of tiers and choices. Regenerate it by
- * running the probe described in that test if the reference is ever updated.
+ * `__fixtures__/reference-coefficients.json` (the reference's definitions
+ * evaluated over a grid of tiers and choices); that test says how to
+ * regenerate it.
  */
-import type { MachineConfigControl } from "@/lib/model/types";
+import type { MachineConfigControl, Recipe } from "@/lib/model/types";
+import { TGS_TICKS, getTgsControls } from "./tree-growth-simulator";
+import { getVatControls, getVatGateReason } from "./bacterial-vat";
+import { EEC_CONTROLS, EEC_MODE } from "./extreme-entity-crusher";
+import { neutronActivatorSpeed, quantiseNeutronActivatorDuration } from "./neutron-activator";
+import { HILE_SOURCE_CONTROL, hileSourceAt, normalizeHileSettings } from "./hile";
+import { PRASS_NORMAL_CASING, PRASS_PRECISE_CASING, PRASS_MACHINE_CASING, prassInputVoltageLimit } from "./precise-assembler";
 
 /**
  * How a machine spends each step of spare voltage, mirroring the reference's
- * `StandardOverclocker`.
- *
- * A step always costs the same voltage headroom. What differs is what it buys:
+ * `StandardOverclocker`. Every step costs the same voltage headroom:
  *
  *   - A perfect step divides duration by `multiplier` and multiplies EU/t by
- *     the same, so total energy is unchanged. Usually 4.
- *   - A normal step halves duration and quadruples EU/t, so the recipe costs
- *     twice the energy. This is the GTNH default.
+ *     the same (usually 4), so total energy is unchanged.
+ *   - A normal step (the GTNH default) halves duration and quadruples EU/t,
+ *     so the recipe costs twice the energy.
  *
- * Perfect steps are taken first, up to `maxPerfect`, then normal ones up to
- * `maxNormal`. `{ maxPerfect: 0, maxNormal: 0 }` is a machine that cannot
- * overclock at all.
+ * Perfect steps come first, up to `maxPerfect`, then normal ones up to
+ * `maxNormal`. `{ maxPerfect: 0, maxNormal: 0 }` cannot overclock.
  */
 export interface OverclockRule {
   maxPerfect: number;
@@ -59,11 +54,10 @@ export interface OverclockRule {
   /** Speed factor of a perfect step: what duration is divided by. */
   multiplier: number;
   /**
-   * EU/t factor of a perfect step, when it differs from the speed factor. The
-   * game's `OverclockCalculator` always charges `eutIncreasePerOC` (4 for
-   * every non-fusion machine) regardless of what the step buys, so an arc
-   * furnace electrode with a speed factor of 2 still pays 4x per step.
-   * Defaults to `multiplier` for the classic perfect overclock.
+   * EU/t factor of a perfect step when it differs from the speed factor
+   * (default `multiplier`). The game's `OverclockCalculator` always charges
+   * `eutIncreasePerOC` (4 for every non-fusion machine), so an arc furnace
+   * electrode with a speed factor of 2 still pays 4x per step.
    */
   euMultiplier?: number;
 }
@@ -111,8 +105,8 @@ export interface MachineContext {
    */
   tier: (controlId: string) => number;
   /**
-   * The numeric value behind a count knob, e.g. `value("laserAmperage")` is
-   * 256, not the position of 256 in the list. The reference states some
+   * The numeric value behind a count knob, e.g. `value("plasmaMixerParallels")`
+   * is 256, not the position of 256 in the list. The reference states some
    * choices as raw counts with a minimum rather than as a tier ladder, and
    * their formulas read the count, so those must not use `tier`.
    */
@@ -125,21 +119,35 @@ export interface MachineContext {
   /**
    * Voltage tier ordinal of the recipe's own EU/t draw, for the machines whose
    * discounts compare against the recipe rather than the hatch (the Mega Alloy
-   * Blast Smelter). Optional because test harnesses predate it.
+   * Blast Smelter). Optional because test harnesses omit it.
    */
   recipeVoltageTier?: number;
   /**
    * The recipe's special value, for the machines whose coefficients read it as
    * something other than heat (the Naquadah Fuel Refinery's minimum field
-   * restriction coil tier). Optional because test harnesses predate it, so a
+   * restriction coil tier). Optional because test harnesses omit it, so a
    * formula must state its own default.
    */
   recipeSpecialValue?: number;
+  /** Original recipe map, retained when a handler replaces the machine name. */
+  recipeMap?: string;
+  /** The recipe itself, for machines whose rules read more than its numbers (the Bacterial Vat's glass). */
+  recipe?: Partial<Recipe>;
+  /** The node's raw settings, by control id. */
+  settings?: Record<string, string>;
 }
 
 type Coefficient = number | ((ctx: MachineContext) => number);
 
 export interface MachineBehaviour {
+  /** A source-verified machine-specific whole/sub-tick rounding rule. */
+  quantiseDuration?: (durationTicks: number) => number;
+  /**
+   * The machine's own fixed cycle in ticks. It never reads the recipe's
+   * duration, so the recipe's amounts are per cycle and this replaces the
+   * duration the recipe or any handler states (`applyMachineHandlerToRecipe`).
+   */
+  cycleTicks?: number;
   /** Throughput multiplier: 2 means the recipe finishes in half the time. */
   speed?: Coefficient;
   /** EU/t multiplier applied before parallels. */
@@ -189,11 +197,22 @@ export interface MachineBehaviour {
    */
   controls?: MachineConfigControl[];
   /**
-   * Dataset control ids to drop for this machine, for knobs the scraper
-   * invented that the machine does not have. The industrial mixing machine is
-   * offered the fluid pipe casings (bronze to tungstensteel) when it actually
-   * takes item pipe casings (tin to black plutonium), so showing both would be
-   * worse than showing the wrong one.
+   * Knobs that depend on the recipe (a tree's tool per output it has, radiation only where a vat recipe needs
+   * it). Used instead of `controls` when a recipe is at hand.
+   */
+  controlsFor?: (recipe: Partial<Recipe>) => MachineConfigControl[];
+  /** Resolve legacy choices before both the UI and the solver read controls. */
+  normalizeConfig?: (settings: Record<string, string>) => Record<string, string>;
+  /** Structural recipe gate independent of how much power the hatches supply. */
+  recipeGate?: (ctx: MachineContext) => string | undefined;
+  /** Structural cap on working voltage, before multiplying by supplied amps. */
+  inputVoltageTierLimit?: (settings: Record<string, string>) => number;
+  /** The controller's unlock tier is not a minimum energy-hatch voltage. */
+  recipeTierFromBase?: boolean;
+  /**
+   * Dataset control ids to drop for this machine: knobs the scraper invented
+   * that the machine does not have (e.g. the fluid pipe casing ladder on a
+   * machine that takes item pipe casings).
    */
   hidesControls?: string[];
   /** Names this machine also goes by, including the reference's own name. */
@@ -277,7 +296,7 @@ const MACERATION_TIER = "macerationControllerTier";
 function choiceControl(
   id: string,
   label: string,
-  options: Array<string | { label: string; icon: string }>,
+  options: Array<string | { label: string; icon: string; name?: string }>,
   defaultIndex = 0,
 ): MachineConfigControl {
   const tiers = options.map((option, index) => {
@@ -291,7 +310,9 @@ function choiceControl(
         kind: "item" as const,
         id: icon,
         amount: 1,
-        displayName: optionLabel,
+        // The block's full name: the config UI also matches icons by name, and
+        // a bare "Tin" could land on some other item called Tin.
+        displayName: typeof option === "string" ? optionLabel : (option.name ?? optionLabel),
         tooltip: [label],
         consumed: false,
       },
@@ -345,17 +366,66 @@ function slug(value: string): string {
     .replace(/^-|-$/g, "");
 }
 
-/** Item pipe casings, in the reference's order. */
-const ITEM_PIPE_CONTROL = choiceControl(ITEM_PIPE, "Item Pipe Casing", [
-  "Tin",
-  "Brass",
-  "Electrum",
-  "Platinum",
-  "Osmium",
-  "Quantium",
-  "Fluxed Electrum",
-  "Black Plutonium",
-]);
+/**
+ * Item pipe casings, in the reference's order: gt.blockcasings11 metas 0-7,
+ * which every item pipe machine reads as tier meta + 1 (tin = 1).
+ */
+const ITEM_PIPE_CONTROL = choiceControl(
+  ITEM_PIPE,
+  "Item Pipe Casing",
+  [
+    "Tin",
+    "Brass",
+    "Electrum",
+    "Platinum",
+    "Osmium",
+    "Quantium",
+    "Fluxed Electrum",
+    "Black Plutonium",
+  ].map((label, meta) => ({
+    label,
+    icon: meta === 0 ? "gregtech:gt.blockcasings11" : `gregtech:gt.blockcasings11@${meta}`,
+    name: `${label} Item Pipe Casing`,
+  })),
+);
+
+/**
+ * Fluid pipe casings. The two machines that read them take gt.blockcasings2
+ * metas 12-15 and nothing else: MTEChemicalPlant's addTieredBlock(12, 16)
+ * and MTEMultiAutoclave's getFluidTierFromMeta. The scraper also offered PTFE
+ * and PBI pipe casings, which neither structure accepts. Keys match the
+ * dataset's control, so a saved pick carries straight over.
+ */
+const FLUID_PIPE_CONTROL = choiceControl(
+  PIPE,
+  "Pipe Casing",
+  ["Bronze", "Steel", "Titanium", "Tungstensteel"].map((label, index) => ({
+    label,
+    icon: `gregtech:gt.blockcasings2@${12 + index}`,
+    name: `${label} Pipe Casing`,
+  })),
+);
+
+/** The scraper's fluid pipe ladder, including the two rungs no machine takes. */
+const SCRAPED_FLUID_PIPE_KEYS = ["bronze", "steel", "titanium", "tungstensteel", "ptfe", "pbi"];
+
+/** A plan saved on PTFE or PBI keeps the best casing the machine really takes. */
+function normalizeFluidPipeSettings(settings: Record<string, string>): Record<string, string> {
+  const key = settings[PIPE];
+  return key === "ptfe" || key === "pbi" ? { ...settings, [PIPE]: "tungstensteel" } : settings;
+}
+
+/**
+ * A lathe saved on the scraped fluid pipe ladder (GT's tooltip calls its item
+ * pipes "Pipe Casing Tier") keeps its parallels: both ladders give 8 a rung,
+ * so the saved rung's position picks the matching item pipe casing.
+ */
+function normalizeLatheSettings(settings: Record<string, string>): Record<string, string> {
+  if (settings[ITEM_PIPE] !== undefined) return settings;
+  const position = SCRAPED_FLUID_PIPE_KEYS.indexOf(settings[PIPE] ?? "");
+  const carried = ITEM_PIPE_CONTROL.tiers[position];
+  return carried ? { ...settings, [ITEM_PIPE]: carried.key } : settings;
+}
 
 const CONTAINMENT_CONTROL = choiceControl(CONTAINMENT, "Containment Block", [
   "Neutronium",
@@ -451,12 +521,6 @@ const COOLANT_CONTROL = choiceControl("fridgeCoolant", "Coolant", [
   "Spatially Enlarged Fluid",
   "Molten Eternity",
 ]);
-/** Laser amperage is a raw count in the reference; parallels are its cube root. */
-const LASER_AMPERAGE_CONTROL = countControl(
-  "laserAmperage",
-  "Laser Amperage",
-  [1, 8, 27, 64, 125, 216, 512, 1000, 4096, 32768, 262144],
-);
 const PLASMA_MIXER_PARALLEL_CONTROL = countControl(
   "plasmaMixerParallels",
   "Parallels",
@@ -467,6 +531,23 @@ const WIDTH_EXPANSION = "widthExpansion";
 const WIDTH_EXPANSION_CONTROL = countControl(WIDTH_EXPANSION, "Width Expansion", [
   0, 1, 2, 3, 4, 5, 6,
 ]);
+/**
+ * The Dangote Distillus's height in layers, 3 through 12 (the STRUCTURE_HEIGHT channel's range). Only distillery
+ * mode reads it; the full 12 is the default, which is what the table assumed before it was a setting.
+ */
+const DISTILLUS_HEIGHT = "distillusHeight";
+const DISTILLUS_HEIGHT_CONTROL = countControl(
+  DISTILLUS_HEIGHT,
+  "Height",
+  [3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  9,
+);
+/**
+ * The Mega Distillation Tower's Tower Height: its middle slices, 1 through 5, as its tooltip and the hologram count
+ * them (the top slice is extra). Only distillery mode reads it; the full 5 is the default.
+ */
+const MEGA_DT_HEIGHT = "megaDtHeight";
+const MEGA_DT_HEIGHT_CONTROL = countControl(MEGA_DT_HEIGHT, "Tower Height", [1, 2, 3, 4, 5], 4);
 const LATEX_SINGULARITY = "latexSingularity";
 const LATEX_SINGULARITY_CONTROL = choiceControl(LATEX_SINGULARITY, "Controller Slot", [
   "Empty",
@@ -555,9 +636,8 @@ const FIELD_COIL_CONTROL: MachineConfigControl = {
 };
 
 /**
- * The dataset's own coke oven knobs. Its slice options are keyed "slice-1"
- * upward rather than by number, so the count is the option's position plus one
- * and `value` would not read it.
+ * The dataset's own coke oven knobs. Slice options are keyed "slice-1"
+ * upward; `value` reads the trailing number as the slice count.
  */
 const COKE_CASING = "cokeOvenCasing";
 const COKE_SLICES = "cokeOvenSlices";
@@ -630,14 +710,23 @@ const STEAM_MULTIBLOCK: MachineBehaviour = {
   parallels: 8,
   speed: (c) => 0.625 * (c.tier(STEAM_PRESSURE) + 1),
   controls: [STEAM_PRESSURE_CONTROL],
+  // The Steam Blender's handler inherited the mixer map's scraped pipe knob.
+  // Its pipes are bronze or steel with the rest of the build: the pressure.
+  hidesControls: [PIPE],
 };
 
-/** The reference's speeding pipe casing count starts at 4. */
-const NEUTRON_PIPE_CONTROL = countControl(
-  "speedingPipeCasing",
-  "Speeding Pipe Casing",
-  [4, 5, 6, 7, 8, 9, 10, 11, 12],
+/** 2.8.4's laser engraver reads its laser hatch's raw amperage, not a source tier. */
+const LASER_AMPERAGE_CONTROL = countControl(
+  "laserAmperage",
+  "Laser Amperage",
+  [1, 8, 27, 64, 125, 216, 512, 1000, 4096, 32768, 262144],
 );
+
+/** checkMachine accepts any pipe height >= 4; it never imposes a top rung. */
+const NEUTRON_PIPE_CONTROL: MachineConfigControl = {
+  ...countControl("speedingPipeCasing", "Pipe height", [4]),
+  numeric: { min: 4 },
+};
 
 /**
  * Keyed by the machine name our dataset uses. `aliases` cover the reference's
@@ -708,6 +797,8 @@ const MACHINES_V29: Record<string, MachineBehaviour> = {
     aliases: ["ExxonMobil Chemical Plant"],
     speed: (c) => c.tier(COIL) * 0.5 + 0.5,
     parallels: (c) => (c.tier(PIPE) + 1) * 2,
+    controls: [FLUID_PIPE_CONTROL],
+    normalizeConfig: normalizeFluidPipeSettings,
   },
   "Pyrolyse Oven": { overclock: OVERCLOCK.normal(), speed: (c) => (c.tier(COIL) + 1) * 0.5 },
   "Oil Cracker": {
@@ -725,11 +816,10 @@ const MACHINES_V29: Record<string, MachineBehaviour> = {
     power: (c) => Math.pow(0.9, c.tier(COIL) + 1),
   },
   Zyngen: {
-    // MTEIndustrialAlloySmelter: mLevel = coil tier + 1, so cupronickel is
-    // level 1 - the reference (and our old transcription of it) was one coil
-    // tier low on both formulas. Its coils also buy heat overclocks, one
-    // perfect step per 900 K, with no EU discount; the reference misses this
-    // entirely.
+    // MTEIndustrialAlloySmelter: mLevel = coil tier + 1 (cupronickel = 1); the
+    // reference is one coil tier low on both formulas. Its coils also buy heat
+    // overclocks, one perfect step per 900 K with no EU discount, which the
+    // reference omits.
     overclock: HEAT_OVERCLOCK,
     heat: { coilHeatMultiplier: 2, discount: false },
     speed: (c) => 1 + (c.tier(COIL) + 1) * 0.05,
@@ -821,15 +911,27 @@ const MACHINES_V29: Record<string, MachineBehaviour> = {
     speed: 3,
     parallels: (c) => c.voltageTier * 2,
   },
+  // MTEMegaDistillationTower: the mode follows the recipe map. Tower mode: 1.5x speed, 90% EU, 256 parallels.
+  // Distillery mode: 2x speed, 50% EU, getMaxParallelRecipes = 256 * (1 + height / 2) with Java's whole division,
+  // where height is the middle slices plus the top (checkMachine counts on past the last middle slice): 512, 512,
+  // 768, 768 and 1024 parallels for 1 to 5 slices.
   "Mega Distillation Tower": {
-    // Tower mode: 1.5x speed, 10% EU discount, 256 parallels. Distillery mode
-    // (2x, half EU, up to 1024) is a different recipe map and not covered.
     overclock: OVERCLOCK.normal(),
-    speed: 1.5,
-    power: 0.9,
-    parallels: 256,
+    speed: (c) => (c.recipeMap?.toLowerCase() === "distillery" ? 2 : 1.5),
+    power: (c) => (c.recipeMap?.toLowerCase() === "distillery" ? 0.5 : 0.9),
+    parallels: (c) =>
+      c.recipeMap?.toLowerCase() === "distillery"
+        ? 256 * (1 + Math.floor((Math.min(5, Math.max(1, Math.floor(c.value(MEGA_DT_HEIGHT)))) + 1) / 2))
+        : 256,
     fullPowerPool: true,
     unlimitedTierSkip: true,
+    // The dataset's own tower height carries made-up multipliers; ours follows the game.
+    hidesControls: ["structure-tower-height"],
+    controlsFor: (recipe) =>
+      (recipe.source?.recipeMap ?? recipe.machineType ?? "").toLowerCase() === "distillery"
+        ? [MEGA_DT_HEIGHT_CONTROL]
+        : [],
+    note: "Distillery mode: 512 parallels at 1 or 2 slices, 768 at 3 or 4, 1024 at the full 5. Tower mode has 256 parallels at any height.",
   },
   "Molecular Transformer": { overclock: OVERCLOCK.normal() },
   "Nuclear Salt Processing Plant": {
@@ -887,7 +989,8 @@ const MACHINES_V29: Record<string, MachineBehaviour> = {
     speed: (c) => 1.25 + c.tier(COIL) * 0.25,
     power: (c) => (11 - c.tier(PIPE)) / 12,
     parallels: (c) => c.tier(ITEM_PIPE) * 12 + 12,
-    controls: [ITEM_PIPE_CONTROL],
+    controls: [FLUID_PIPE_CONTROL, ITEM_PIPE_CONTROL],
+    normalizeConfig: normalizeFluidPipeSettings,
   },
   "Electric Implosion Compressor": {
     overclock: OVERCLOCK.normal(),
@@ -900,21 +1003,43 @@ const MACHINES_V29: Record<string, MachineBehaviour> = {
     power: 0.85,
     parallels: (c) => (c.tier(ITEM_PIPE) + 1) * 8,
     controls: [ITEM_PIPE_CONTROL],
+    hidesControls: [PIPE],
   },
   "Industrial Sledgehammer": {
-    // Rewritten as MTEIndustrialForgeHammer: the anvils are gone, parallels
-    // are 6 x solenoid voltage tier x machine voltage tier (MV solenoid = 2).
+    // MTEIndustrialForgeHammer (the reference's anvil knob does not exist in
+    // it): parallels are 6 x solenoid voltage tier x machine voltage tier
+    // (MV solenoid = 2).
     overclock: OVERCLOCK.normal(),
     speed: 2,
     parallels: (c) => c.voltageTier * (c.tier(SOLENOID) + 2) * 6,
   },
   "Industrial Precision Lathe": {
-    // Rewritten as MTEMultiLathe: flat 4x speed and 0.8x EU, with 8 parallels
-    // per pipe casing tier (bronze = 1).
+    // MTEMultiLathe: flat 4x speed and 0.8x EU, with 8 parallels per ITEM
+    // pipe casing tier (gt.blockcasings11, tin = 1). Its tooltip says "Pipe
+    // Casing Tier", so the scraper offers it the fluid pipes; they are hidden.
     overclock: OVERCLOCK.normal(),
     speed: 4,
     power: 0.8,
-    parallels: (c) => (c.tier(PIPE) + 1) * 8,
+    parallels: (c) => (c.tier(ITEM_PIPE) + 1) * 8,
+    controls: [ITEM_PIPE_CONTROL],
+    hidesControls: [PIPE],
+    normalizeConfig: normalizeLatheSettings,
+  },
+  /**
+   * kubatech's Extreme Entity Crusher. Its kill time, overclock (20-tick
+   * floor, extra steps multiply the drops), infernals and drops are replayed
+   * by extreme-entity-crusher.ts, which getOverclockedRecipeStats and
+   * getMachineOutputMultiplier call. This entry supplies the knobs, the one
+   * parallel, the summed hatch power getMaxInputEu reads, and the ritual's
+   * quarter power for the draw check.
+   */
+  "Extreme Entity Crusher": {
+    overclock: OVERCLOCK.perfect(),
+    power: (c) => (c.tier(EEC_MODE) === 1 ? 0.25 : 1),
+    parallels: 1,
+    fullPowerPool: true,
+    controls: EEC_CONTROLS,
+    note: "An infernal kill also drops one random enchanted item, which is not listed.",
   },
   "Industrial Maceration Stack": {
     overclock: OVERCLOCK.normal(),
@@ -934,42 +1059,36 @@ const MACHINES_V29: Record<string, MachineBehaviour> = {
     hidesControls: [PIPE],
   },
   /**
-   * The Utupu-Tanuri, which our dataset lists under its recipe map.
+   * The Utupu-Tanuri (MTEIndustrialDehydrator), exported under two recipe
+   * maps: Dehydrator recipes start from 0 K, Vacuum Furnace recipes carry a
+   * real heat requirement (sulfur froth: 7200 K). Both run the same logic,
+   * including validateRecipe's minimum heat: 220% speed, half the EU/t, four
+   * fixed parallels, and off its RAW coil heat (no 100 K per voltage tier) a
+   * 5% EU discount per 900 K over the requirement and a perfect overclock per
+   * 1800 K.
    *
-   * MTEIndustrialDehydrator: 220% speed, half the EU/t, a fixed four
-   * parallels, plus the heat bonus off its coils - a 5% EU discount for every
-   * 900 K over the recipe's requirement and a perfect overclock for every
-   * 1800 K. Unlike the blast furnaces it reads its coils raw, with no 100 K
-   * per voltage tier on top.
-   *
-   * The requirement is genuinely zero here. Dehydrator recipes are low
-   * temperature and always start from 0 K, which is why all 88 of them report
-   * a special value of 0 - that is the real number, not a gap in the export.
-   * So the coil tier alone settles the bonus, and a coil picker answers it
-   * exactly.
-   *
-   * This deliberately parts company with the reference, which cannot read the
-   * requirement out of its own export and so asks the player for the finished
-   * difference in 900 K steps, then spends it as a 5% SPEED bonus per step.
-   * The mod source is explicit (setHeatOC + setHeatDiscount on raw coil
-   * heat), so the coefficient check skips this machine.
+   * Deliberately diverges from the reference, which asks the player for the
+   * heat difference and spends it as a 5% SPEED bonus per 900 K step. The mod
+   * source is explicit (setHeatOC + setHeatDiscount on raw coil heat), so the
+   * coefficient check skips this machine.
    */
   "Multiblock Dehydrator": {
-    aliases: ["Utupu-Tanuri"],
+    aliases: ["Utupu-Tanuri", "Vacuum Furnace"],
     overclock: HEAT_OVERCLOCK,
     speed: 2.2,
     power: 0.5,
     parallels: 4,
-    controls: [HEATING_COIL_CONTROL],
+    controls: [{ ...HEATING_COIL_CONTROL, minimumHeatFromSpecialValue: true }],
   },
   "Industrial Wire Factory": {
     // MTEIndustrialWireMill: throughput is 0.5 x item pipe tier, so a tin
-    // pipe actually runs at HALF speed and only electrum breaks even.
+    // pipe runs at HALF speed and brass (tier 2) breaks even.
     overclock: OVERCLOCK.normal(),
     speed: (c) => 0.5 * (c.tier(ITEM_PIPE) + 1),
     power: 0.75,
     parallels: (c) => c.voltageTier * 4,
     controls: [ITEM_PIPE_CONTROL],
+    hidesControls: [PIPE],
   },
   "Amazon Warehousing Depot": {
     // MTEIndustrialPackager: throughput is item pipe tier + 1, tin included.
@@ -978,13 +1097,52 @@ const MACHINES_V29: Record<string, MachineBehaviour> = {
     power: 0.75,
     parallels: (c) => c.voltageTier * 16,
     controls: [ITEM_PIPE_CONTROL],
+    hidesControls: [PIPE],
+  },
+  // MTEPreciseAssembler's normal Assembler handler. Keep its dedicated
+  // Precise Assembler recipe map separate: the two modes have different math.
+  "Precise Auto-Assembler MT-3662": {
+    recipeTierFromBase: true,
+    overclock: OVERCLOCK.normal(),
+    speed: 2,
+    power: 1,
+    parallels: (c) => 16 * 2 ** c.tier("preciseCasing"),
+    controls: [PRASS_NORMAL_CASING, PRASS_MACHINE_CASING],
+    inputVoltageTierLimit: prassInputVoltageLimit,
+    note: "Normal Assembler mode. Requires EV+ glass. Unit casings set parallels; machine casings limit working voltage, with UHV unlocking all tiers.",
+  },
+  "Precise Assembler": {
+    overclock: OVERCLOCK.normal(),
+    speed: 1,
+    power: 1,
+    parallels: 1,
+    controls: [PRASS_PRECISE_CASING, PRASS_MACHINE_CASING],
+    inputVoltageTierLimit: prassInputVoltageLimit,
+    recipeGate: (c) => (c.recipeSpecialValue ?? 0) > c.tier("preciseCasing") + 1
+      ? "This precise recipe requires a higher unit casing tier."
+      : undefined,
+    note: "Precise mode. Unit casings unlock recipes, not extra parallels or speed. Requires EV+ glass; UHV machine casings remove the voltage cap.",
   },
   "Hyper-Intensity Laser Engraver": {
-    overclock: OVERCLOCK.normal(),
+    // MTEIndustrialLaserEngraver caps OCs at source tier + 1 - raw recipe
+    // tier, and rejects higher recipes even if the energy supply could pay.
+    overclock: (c) => ({
+      ...OVERCLOCK.normal(),
+      maxNormal: Math.max(0, hileSourceAt(c.tier("laserSource")).ordinal + 1 - (c.recipeVoltageTier ?? 0)),
+    }),
+    recipeGate: (c) => {
+      const source = hileSourceAt(c.tier("laserSource"));
+      return source.ordinal < 13 && (c.recipeVoltageTier ?? 0) > source.ordinal + 1
+        ? `Laser source tier too low: ${source.tier} permits recipes up to one tier above it. Select a higher-tier laser source and matching glass.`
+        : undefined;
+    },
     speed: 3.5,
     power: 0.8,
-    parallels: (c) => Math.floor(Math.cbrt(c.value("laserAmperage"))),
-    controls: [LASER_AMPERAGE_CONTROL],
+    parallels: (c) => Math.floor(Math.cbrt(c.value("laserSource"))),
+    controls: [HILE_SOURCE_CONTROL],
+    hidesControls: ["laserAmperage"],
+    normalizeConfig: normalizeHileSettings,
+    note: "Laser source sets parallels and the recipe/overclock ceiling; it supplies no power. Assumes glass at least the source tier. UEV+ sources allow one multi-amp energy hatch.",
   },
   "Transcendent Plasma Mixer": {
     overclock: OVERCLOCK.none(),
@@ -994,10 +1152,12 @@ const MACHINES_V29: Record<string, MachineBehaviour> = {
   },
   "Neutron Activator": {
     overclock: OVERCLOCK.none(),
-    speed: (c) => Math.pow(1 / 0.9, c.value("speedingPipeCasing") - 4),
+    speed: (c) => neutronActivatorSpeed(c.value("speedingPipeCasing")),
+    quantiseDuration: quantiseNeutronActivatorDuration,
+    unlimitedTierSkip: true,
     power: 0,
     controls: [NEUTRON_PIPE_CONTROL],
-    note: "Power use is not counted.",
+    note: "Assumes neutron kinetic energy is in the recipe's range. Accelerator hatch power is not counted.",
   },
   /**
    * MTENaquadahFuelRefinery: 4 parallels per field restriction coil tier
@@ -1040,9 +1200,24 @@ const MACHINES_V29: Record<string, MachineBehaviour> = {
     note: "Assumes it is not overheated.",
   },
   "Neutronium Compressor": { overclock: OVERCLOCK.normal(), parallels: 8 },
+  /**
+   * bartworks' Bacterial Vat (bacterial-vat.ts): normal overclocks; its fluids scale with the output hatch's
+   * fill, which getMachineOutputMultiplier and applyRecipeInputOverrides apply; glass and radiation gate it.
+   */
   "Bacterial Vat": {
     overclock: OVERCLOCK.normal(),
-    note: "Assumes a perfect fill rate.",
+    controlsFor: (recipe) => getVatControls(recipe),
+    recipeGate: (c) => (c.recipe ? getVatGateReason(c.recipe, c.settings) : undefined),
+  },
+  /**
+   * MTETreeFarm (tree-growth-simulator.ts): a fixed 100-tick run at VP[t] whatever the voltage, which
+   * getOverclockedRecipeStats replays; outputs scale by t, each mode's tool and a Forestry sapling's genes.
+   */
+  "Tree Growth Simulator": {
+    overclock: OVERCLOCK.none(),
+    cycleTicks: TGS_TICKS,
+    parallels: 1,
+    controlsFor: (recipe) => getTgsControls(recipe),
   },
   "Research Station": { overclock: OVERCLOCK.normal(), aliases: ["Research station"] },
 
@@ -1068,12 +1243,13 @@ const MACHINES_V29: Record<string, MachineBehaviour> = {
     parallels: (c) => c.voltageTier * 4,
   },
   "Industrial Coke Oven": {
-    // "Coke Oven" is what datasets before the gtpp.recipe.cokeoven rename
-    // called this machine, so saved plans still carry it. The Railcraft brick
-    // Coke Oven shares that name but never the slices control, which is what
-    // the parallels guard below keys on.
+    // "Coke Oven" is this map's name in older datasets and saved plans. The
+    // Railcraft brick Coke Oven shares that name but never has the slices
+    // control, which the parallel and overclock guards below key on.
     aliases: ["Coke Oven"],
-    overclock: OVERCLOCK.normal(),
+    // MTECokeOven assigns recipe.mDuration directly: a voltage saved on a
+    // brick-oven node must not buy it overclocks.
+    overclock: (c) => c.value(COKE_SLICES) > 0 ? OVERCLOCK.normal() : OVERCLOCK.none(),
     // Coils are a 2% EU discount each, compounding, and nothing else:
     // MTEIndustrialCokeOven bills 0.98^(coil tier + 1), cupronickel included.
     power: (c) => 0.98 ** (c.tier(COIL) + 1),
@@ -1154,11 +1330,10 @@ const MACHINES_V29: Record<string, MachineBehaviour> = {
 
   // -- Steam multiblocks -----------------------------------------------------
   // All eight share STEAM_MULTIBLOCK's logic; see its comment. The dataset
-  // bakes the tooltip's "125% Speed" into these handlers' durationTicks, which
-  // is the HIGH PRESSURE build's throughput (the tooltip states it against the
-  // 2x-slower bronze singleblock, 2 / 1.6 = 1.25), so every steam multiblock
-  // showed twice its real speed. machineTableSeedsFromBase drops that bake and
-  // these coefficients state the true physics against the recipe's own base.
+  // bakes the tooltip's "125% Speed" into these handlers' durationTicks: the
+  // HIGH PRESSURE build's throughput against the 2x-slower bronze singleblock
+  // (2 / 1.6 = 1.25). machineTableSeedsFromBase drops that bake, and these
+  // coefficients apply to the recipe's own base.
   "Steam Grinder": STEAM_MULTIBLOCK,
   "Steam Squasher": STEAM_MULTIBLOCK,
   "Steam Separator": STEAM_MULTIBLOCK,
@@ -1250,6 +1425,38 @@ const MACHINES_V29: Record<string, MachineBehaviour> = {
     parallels: (c) => c.voltageTier * (c.tier(LATEX_SINGULARITY) === 1 ? 16 : 8),
     controls: [LATEX_SINGULARITY_CONTROL],
     note: "Rubber cost discounts are not counted.",
+  },
+  // MTEAdvDistillationTower: mode follows the recipe map. The reference only
+  // models distillery mode and charges 85% EU; Java charges 15%. mHeight is
+  // the top layer's zero-based index, so (mHeight + 1) is total structure height.
+  "Dangote Distillus": {
+    overclock: OVERCLOCK.normal(),
+    speed: (c) => c.recipeMap?.toLowerCase() === "distillery" ? 2 : 3,
+    power: (c) => c.recipeMap?.toLowerCase() === "distillery" ? 0.15 : 1,
+    // getMaxParallelRecipes: 2 * floor((mHeight + 1) / 3f) * getTier(voltage), mHeight + 1 the layers.
+    parallels: (c) =>
+      c.recipeMap?.toLowerCase() === "distillery"
+        ? 2 * Math.floor(c.value(DISTILLUS_HEIGHT) / 3) * c.voltageTier
+        : 12,
+    recipeTierFromBase: true,
+    hidesControls: ["machineParallel", "voltageParallel"],
+    controlsFor: (recipe) =>
+      (recipe.source?.recipeMap ?? recipe.machineType ?? "").toLowerCase() === "distillery"
+        ? [DISTILLUS_HEIGHT_CONTROL]
+        : [],
+    note: "Distillery mode: 2 parallels per voltage tier for every 3 layers of height (8 at the full 12). Tower mode has 12 parallels whatever the height. Power comes from ordinary energy hatches; multi-amp and laser hatches are not supported.",
+  },
+  /**
+   * goodgenerator's MTEExtremeHeatExchanger. Its recipes carry no duration
+   * (ExtremeHeatExchangerRecipe passes 0, which the dataset clamps to one
+   * tick). checkProcessing_EM sets mMaxProgresstime = 20 and drains up to the
+   * recipe's hot fluid once per cycle; onRunningTick turns water into steam
+   * so each cycle matches the recipe's water and steam. The amounts are per
+   * second, as NEI labels them. No energy hatch, parallels or overclocks.
+   */
+  "Extreme Heat Exchanger": {
+    cycleTicks: 20,
+    overclock: OVERCLOCK.none(),
   },
 };
 
@@ -1810,9 +2017,17 @@ export function machineTableSeedsFromBase(
 /** Config knobs this machine contributes on top of whatever the dataset carries. */
 export function getMachineTableControls(
   machineType: string | undefined,
-  version: MachineModelVersion = DEFAULT_MACHINE_MODEL_VERSION,
+  versionOrRecipe: MachineModelVersion | Partial<Recipe> = DEFAULT_MACHINE_MODEL_VERSION,
+  version?: MachineModelVersion,
 ): MachineConfigControl[] {
-  return getMachineBehaviour(machineType, version)?.controls ?? [];
+  const recipe = typeof versionOrRecipe === "string" ? undefined : versionOrRecipe;
+  const resolvedVersion =
+    typeof versionOrRecipe === "string"
+      ? versionOrRecipe
+      : (version ?? machineModelVersionForRecipe(versionOrRecipe));
+  const behaviour = getMachineBehaviour(machineType, resolvedVersion);
+  if (behaviour?.controlsFor && recipe) return behaviour.controlsFor(recipe);
+  return behaviour?.controls ?? [];
 }
 
 /** Dataset control ids this machine does not actually have. */

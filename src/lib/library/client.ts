@@ -9,9 +9,9 @@ import type {
 } from "./sync-types";
 
 /**
- * Thrown for a response the sync must treat as "sync is off": the tables
- * are not there yet, or the session is gone. The engine stops and shows the
- * reason rather than retrying every half minute.
+ * Identifies an unavailable account service or session. The sync engine
+ * reports the failure and retries, so an operator's repair can recover
+ * existing open tabs without asking players to reload their work.
  */
 export class LibrarySyncUnavailable extends Error {
   constructor(message: string) {
@@ -20,14 +20,56 @@ export class LibrarySyncUnavailable extends Error {
   }
 }
 
+/**
+ * The account refused the request as sent: too large, not a valid plan, or
+ * the library is full. Sending the same thing again fails the same way, so
+ * the sync engine holds that design back until it changes. Recognised by
+ * `refused`, not by class, so the sync engine's tests can mock this module.
+ */
+export class LibraryRequestRefused extends Error {
+  readonly refused = true;
+
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "LibraryRequestRefused";
+  }
+}
+
+/**
+ * The plan is open live (the live service holds it): its body is the
+ * service's to write, so the push goes again without it. Not a refusal and
+ * not a conflict: the sync just has nothing of the plan to send.
+ */
+export class LibraryPlanLive extends Error {
+  readonly live = true;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "LibraryPlanLive";
+  }
+}
+
+export function isPlanLiveRefusal(error: unknown): boolean {
+  return error instanceof Error && (error as { live?: unknown }).live === true;
+}
+
 async function parseJsonOrThrow<T>(response: Response): Promise<T> {
   const body = (await response.json().catch(() => undefined)) as
-    | (T & { error?: string })
+    | (T & { error?: string; live?: boolean })
     | undefined;
   if (!response.ok || !body) {
     const message = body?.error ?? `Request failed (${response.status})`;
+    if (response.status === 409 && body?.live === true) {
+      throw new LibraryPlanLive(message);
+    }
     if (response.status === 401 || response.status === 503 || /schema\.sql/.test(message)) {
       throw new LibrarySyncUnavailable(message);
+    }
+    if (response.status === 400 || response.status === 409 || response.status === 413) {
+      throw new LibraryRequestRefused(message, response.status);
     }
     throw new Error(message);
   }

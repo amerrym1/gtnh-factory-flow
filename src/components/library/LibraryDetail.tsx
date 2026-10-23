@@ -24,18 +24,15 @@ import { Face, formatEuT, type TileMarks } from "./LibraryTile";
 import { PlanComments } from "./PlanComments";
 
 /**
- * The step between a tile and the board: the grid gives way to one page
- * that fits on one screen. The board photograph in the top half, whole;
- * then the face, name, who and when, the figures, and on the right the
- * one big Open button over a short row of ICON keys (vote, link, public
- * or private, post, edit, close tab, delete); the description; needs and
- * makes as tight columns; then, for anything posted, the comments. Back
- * (or Escape) brings the grid back. Not a popup.
+ * A design's detail page, replacing the grid (not a popup): the board
+ * photograph, then face, name, author, date and figures, with the Open button
+ * over a row of icon keys (vote, link, visibility, post, edit, close tab,
+ * delete); the description; needs and makes; and comments for posted plans.
+ * Back or Escape returns to the grid.
  *
- * The SAME page whether you came from your own grid or the network: what
- * differs is only which keys you have, because you own it or you do not.
- * Edit turns the header into a form for the name, description and tags.
- * Delete asks in words, in a strip under the keys, never by arming.
+ * The same page for your designs and the network's; only the keys differ by
+ * ownership. Edit turns the header into a form for name, description and
+ * tags. Delete confirms in words, in a strip under the keys.
  */
 
 /** The board photograph a post carries, taken when it was shared. */
@@ -82,8 +79,10 @@ export interface LibraryDetailEntry {
   marks?: TileMarks;
   /** The post whose comments show; a private design has none. */
   commentsPlanId?: string;
-  /** The big button: Open, or Open a copy. */
+  /** The main action, with an optional adjacent action such as Open a copy. */
   primary: { label: string; onClick: () => void };
+  secondary?: { label: string; onClick: () => void };
+  actionBusy?: boolean;
   /** The icon keys under it. */
   keys?: DetailKey[];
   /** Owned: the Edit key and the form it opens. Tags only where they exist. */
@@ -99,8 +98,8 @@ export function LibraryDetail({
   entry: LibraryDetailEntry;
   onClose: () => void;
 }) {
-  // The picture is probed up front: an <img> that 404s before React has
-  // attached its onError never reports, and the frame would sit dark.
+  // The picture is probed up front: an <img> that 404s before React attaches
+  // its onError never reports, leaving the frame dark.
   const [probed, setProbed] = useState<{ url: string; ok: boolean }>();
   const [confirming, setConfirming] = useState<DetailKey>();
   const [flashKey, setFlashKey] = useState<string>();
@@ -181,12 +180,16 @@ export function LibraryDetail({
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden text-[var(--mc-ink)]">
       {/* THE PHOTOGRAPH: the top half, whole, never cropped. */}
-      <div className="relative h-1/2 w-full shrink-0 bg-[#0b0e12] compact:flex compact:h-auto compact:max-h-[40vh] compact:min-h-0 compact:flex-col">
+      <div className="relative h-1/2 w-full shrink-0 bg-[#0b0e12] compact:flex compact:h-auto compact:max-h-[calc(40*var(--ui-vh))] compact:min-h-0 compact:flex-col">
         {picture === "ok" && entry.previewUrl ? (
           // Not next/image: the picture is served by our own route and
           // changes when the post is re-shared.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={entry.previewUrl} alt="" className="h-full w-full object-contain compact:h-auto compact:max-h-[36vh]" />
+          <img
+            src={entry.previewUrl}
+            alt=""
+            className="h-full w-full object-contain compact:h-auto compact:max-h-[calc(36*var(--ui-vh))]"
+          />
         ) : picture === "loading" ? null : (
           <div className="flex h-full w-full items-center justify-center gap-2 text-[12px] text-[var(--mc-ink-muted)] compact:h-16">
             <ImageIcon className="h-4 w-4 opacity-50" aria-hidden />
@@ -334,13 +337,19 @@ export function LibraryDetail({
             {/* OPEN, then the keys: one job each, read by their label. */}
             {editing ? null : (
               <div className="flex shrink-0 flex-col items-end gap-1 compact:w-full compact:items-stretch">
-                <button
-                  type="button"
-                  onClick={entry.primary.onClick}
-                  className="flex h-6 items-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2.5 text-[11px] font-bold text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85)] hover:border-cyan-400 hover:text-cyan-200 compact:h-9 compact:justify-center compact:text-[13px]"
-                >
-                  {entry.primary.label}
-                </button>
+                <div className="flex items-center gap-1.5 compact:w-full">
+                  {[entry.primary, ...(entry.secondary ? [entry.secondary] : [])].map((action) => (
+                    <button
+                      key={action.label}
+                      type="button"
+                      onClick={action.onClick}
+                      disabled={entry.actionBusy}
+                      className="flex h-6 items-center whitespace-nowrap border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2.5 text-[11px] font-bold text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-85)] hover:border-cyan-400 hover:text-cyan-200 disabled:opacity-50 compact:h-9 compact:flex-1 compact:justify-center compact:text-[13px]"
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
                 <div className="flex max-w-[360px] flex-wrap items-center justify-end gap-1 compact:max-w-none compact:justify-start">
                   {entry.onEdit ? (
                     <IconKey
@@ -427,7 +436,7 @@ export function LibraryDetail({
           <div className="grid grid-cols-2 gap-4 compact:grid-cols-1">
             <div className="flex min-w-0 flex-col gap-3">
               {/* COMMENTS: only on something posted. */}
-          {entry.commentsPlanId ? <PlanComments planId={entry.commentsPlanId} /> : null}
+              {entry.commentsPlanId ? <PlanComments planId={entry.commentsPlanId} /> : null}
             </div>
             <div className="flex min-w-0 flex-col gap-3">
               {/* NEEDS AND MAKES: tight columns, all of them. */}
@@ -538,6 +547,8 @@ function StatColumns({ label, stats }: { label: string; stats: PlanResourceStat[
             >
               <span className="flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden">
                 <ResourceIcon
+
+                  itemZoom={1.5}
                   resource={{ ...stat, id: stat.resourceId, amount: 1 }}
                   bare
                   tooltip={false}
@@ -549,9 +560,7 @@ function StatColumns({ label, stats }: { label: string; stats: PlanResourceStat[
                         : fluidArtPixels(16)
                       : undefined
                   }
-                  className={
-                    stat.kind === "fluid" ? "!h-4 !w-4" : "!h-4 !w-4 origin-center scale-150"
-                  }
+                  className="!h-4 !w-4"
                 />
               </span>
               <span className="min-w-0 flex-1 truncate text-[11px] text-neutral-300">

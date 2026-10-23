@@ -2,6 +2,7 @@
 
 import { Check, Eye, EyeOff, ImageDown, LoaderCircle, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDialogA11y } from "@/lib/hooks/use-dialog-a11y";
 import { toBlob, toSvg } from "html-to-image";
 import { computeCommunityPlanStats } from "@/lib/community/plan-stats";
 import type { PlanResourceStat } from "@/lib/community/types";
@@ -76,16 +77,16 @@ const CHECKER_STYLE: React.CSSProperties = {
 };
 
 /**
- * Export the board as a picture, dressed for sharing: a live preview, the
- * paper colour of your choice, and a summary bar that says what the plan
- * needs and makes so the image answers questions on its own. PNG and SVG
- * carry the plan itself; a GIF carries the motion.
+ * Export the board as a picture: a live preview, a chosen paper colour and a
+ * summary bar of what the plan needs and makes. PNG and SVG embed the plan
+ * itself; a GIF carries the motion.
  */
 export function ExportImageDialog({ onClose }: { onClose: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogA11y(dialogRef, { onClose });
   const project = useFactoryStore((state) => state.project);
   const result = useFactoryStore((state) => state.lastResult);
-  const manifest = useFactoryStore((state) => state.datasetManifest);
-  const selectedDatasetVersionId = useFactoryStore((state) => state.selectedDatasetVersionId);
+  const mode = project.poolMode ? "pool" : project.solveMode ? "solve" : "build";
   const activeTabName = useDesignStore(
     (state) =>
       state.designs.find((design) => design.id === state.activeDesignId)?.name ?? "Untitled",
@@ -100,10 +101,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
   const [background, setBackground] = useState<ExportBackground>(
     () => readBoardViewSnapshot().canvasTheme,
   );
-  // The defaults are the shareable face: big icons that survive a chat
-  // window, calm colours, the working board without its margin notes.
-  const [cardDetail, setCardDetail] = useState<ExportCardDetail>("glance");
-  const [presentation, setPresentation] = useState(true);
+  const [cardDetail, setCardDetail] = useState<ExportCardDetail>("full");
   const [includeFooter, setIncludeFooter] = useState(true);
   const [includeTitle, setIncludeTitle] = useState(true);
   const [includeIo, setIncludeIo] = useState(true);
@@ -129,9 +127,6 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
   // clash.
   const borderColor =
     background === "transparent" ? "#454a52" : getCanvasTheme(background).patternColor;
-  const gameVersion = manifest?.versions.find(
-    (version) => version.id === selectedDatasetVersionId,
-  )?.gtnhVersion;
   const planName = project.name || activeTabName || "My factory";
 
   const needs = useMemo(
@@ -182,7 +177,6 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
               background: background === "transparent" ? "transparent" : backgroundColor,
               cardDetail,
               hideAnnotations: !includeAnnotations,
-              presentation,
             },
           }),
         );
@@ -194,12 +188,11 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
           }
         }, 120_000);
       }),
-    [background, backgroundColor, cardDetail, includeAnnotations, presentation],
+    [background, backgroundColor, cardDetail, includeAnnotations],
   );
 
-  // The preview is one capture per background: everything else the dialog
-  // offers (the bar, its rows, the title) composes on top without asking the
-  // board again.
+  // Recapture when the mode, card look, paper or rates change. The summary
+  // bar and its visibility controls compose on top of the existing image.
   useEffect(() => {
     let cancelled = false;
     setCapturing(true);
@@ -228,13 +221,15 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
         setCapturing(false);
       });
     };
-    attempt(2);
+    // Let the mode switch mount its worksheet/canvas and publish its capture listener.
+    const frame = requestAnimationFrame(() => attempt(2));
     return () => {
       cancelled = true;
+      cancelAnimationFrame(frame);
     };
     // rateUnit repaints the BOARD, not the request: the photograph must be
     // retaken to show the new numbers.
-  }, [requestBoardCapture, rateUnit]);
+  }, [requestBoardCapture, rateUnit, mode]);
 
   const previewUrl = useMemo(
     () => (capture?.blob ? URL.createObjectURL(capture.blob) : undefined),
@@ -401,8 +396,8 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] grid place-items-center bg-neutral-950/50 p-4">
-      <div className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-y-auto rounded border border-line-strong bg-surface p-4 shadow-xl">
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Screenshot editor" className="fixed inset-0 z-[100] grid place-items-center bg-neutral-950/50 p-4">
+      <div className="flex max-h-[calc(94*var(--ui-vh))] w-full max-w-5xl flex-col overflow-y-auto rounded border border-line-strong bg-surface p-4 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <ImageDown className="h-4 w-4" /> Export an image
@@ -418,11 +413,10 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Preview: the real capture over the real bar, the WHOLE image
-            contain-fit in a fixed window - never a scrollbar between a
-            player and what their export looks like. */}
+            contain-fit in a fixed window with no scrollbar. */}
         <div
           ref={previewShellRef}
-          className="relative grid h-[52vh] place-items-center overflow-hidden rounded border border-line bg-surface-sunken"
+          className="relative grid h-[calc(52*var(--ui-vh))] place-items-center overflow-hidden rounded border border-line bg-surface-sunken"
         >
           <div>
             {previewUrl && capture && previewScale > 0 ? (
@@ -453,7 +447,6 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
                           planName={planName}
                           icon={project.icon}
                           stats={stats}
-                          gameVersion={gameVersion}
                           tone={tone}
                           width={layout.footerWidth}
                           showTitle={includeTitle}
@@ -510,7 +503,7 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className={mode === "pool" ? "hidden" : "flex items-center gap-2"}>
               <span className="text-xs font-medium text-fg-subtle">Cards</span>
               <div className="flex overflow-hidden rounded border border-line-strong">
                 {CARD_DETAILS.map((entry) => (
@@ -616,21 +609,13 @@ export function ExportImageDialog({ onClose }: { onClose: () => void }) {
               />
               Inputs and outputs
             </label>
-            <label className="flex items-center gap-1.5">
+            <label className={mode === "pool" ? "hidden" : "flex items-center gap-1.5"}>
               <input
                 type="checkbox"
                 checked={includeAnnotations}
                 onChange={(event) => setIncludeAnnotations(event.target.checked)}
               />
               Annotations
-            </label>
-            <label className="flex items-center gap-1.5">
-              <input
-                type="checkbox"
-                checked={presentation}
-                onChange={(event) => setPresentation(event.target.checked)}
-              />
-              Presentation mode
             </label>
           </div>
 
@@ -702,10 +687,8 @@ function toggleKey(current: ReadonlySet<string>, key: string): ReadonlySet<strin
 
 /**
  * The curation row: every boundary resource as a chip, lit when it will be
- * on the bar. Unchecking noise (that one stray dust) is the whole feature,
- * so each chip wears an eye - the universal "this is a visibility toggle" -
- * rather than relying on anyone guessing that a chip is clickable. Plans
- * with hundreds of boundary resources scroll inside the row.
+ * on the bar. Each chip wears an eye so it reads as a visibility toggle.
+ * Plans with hundreds of boundary resources scroll inside the row.
  */
 function ResourceChipRow({
   label,

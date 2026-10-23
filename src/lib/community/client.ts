@@ -113,18 +113,6 @@ export async function uploadCommunityPlan(
   return parseJsonOrThrow<CommunityUploadResponse>(response);
 }
 
-export async function updateCommunityPlan(
-  planId: string,
-  upload: Omit<CommunityUploadRequest, "deviceId">,
-): Promise<{ id: string }> {
-  const response = await fetch(`/api/community/plans/${encodeURIComponent(planId)}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(upload),
-  });
-  return parseJsonOrThrow<{ id: string }>(response);
-}
-
 /**
  * In-place edits of an owned post. Light fields (name, description, tags,
  * publish state, icon) travel alone; `plan` overwrites the content with a
@@ -175,12 +163,16 @@ export async function deleteCommunityPlan(planId: string): Promise<void> {
 // Accounts: username + password, session lives in an httpOnly cookie.
 // ---------------------------------------------------------------------------
 
+/** The signed-in user, or undefined; throws when the server could not tell. */
 export async function fetchCurrentUser(): Promise<CommunityUser | undefined> {
   const response = await fetch("/api/community/auth/me");
   const body = (await response.json().catch(() => undefined)) as
     | { user: CommunityUser | null }
     | undefined;
-  return body?.user ?? undefined;
+  if (!response.ok || !body) {
+    throw new Error(`Account check failed (${response.status})`);
+  }
+  return body.user ?? undefined;
 }
 
 export async function registerCommunityUser(
@@ -213,8 +205,8 @@ export async function logoutCommunityUser(): Promise<void> {
 
 /**
  * Stamps a downloaded plan with the community post it IS: only for the
- * owner's own post coming back into their library. The link is what makes
- * the post follow the design from then on (see post-follow.ts).
+ * owner's own post coming back into their library. The link is what lets
+ * Share update that post (Update in library); nothing syncs by itself.
  */
 export function tagPlanWithCommunityId(plan: unknown, planId: string): unknown {
   if (typeof plan !== "object" || plan === null) {

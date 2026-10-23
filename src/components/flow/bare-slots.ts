@@ -41,7 +41,7 @@ export function findBareSlots(
   const inputs: BareSlot[] = [];
   if (!rules.freeInputs) {
     for (const [key, flow] of Object.entries(nodeResult.inputs)) {
-      if (flow.amountPerSecond > RATE_EPSILON && !wiredOn(incoming, key)) {
+      if (flow.amountPerSecond > RATE_EPSILON && !incoming.some((edge) => makeResourceKey(edge.resourceKind, edge.resourceId) === key)) {
         inputs.push(describe(flow, key));
       }
     }

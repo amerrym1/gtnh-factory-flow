@@ -1,0 +1,1123 @@
+/*
+ * The clean look: the mod's flat card, 320 px wide on the website's 20 px grid (rows two cells, 40 px).
+ * Plain unlayered CSS, so its class selectors beat globals.css's unlayered
+ * element rules (`button, input { font: inherit }`) and Tailwind's layers.
+ * Everything hangs on data attributes: React rewrites className on the board.
+ *
+ * Tokens (mirrored in tokens.ts) are on :root so the drawers, the overview and
+ * the card all read one palette.
+ */
+:root,
+.cc {
+  --cc-surface: #23252a;
+  --cc-edge: #34363c;
+  --cc-hair: #2c2e34;
+  --cc-ink: #e8e9ee;
+  --cc-muted: #9a9ca4;
+  --cc-gold: #ffd257;
+  --cc-select: #22d3ee;
+  --cc-red: #e05252;
+  --cc-amber: #e0a63a;
+  --cc-ok: #5ee9b5;
+  --cc-source: #78b6f4;
+  --cc-product: #f59a5c;
+  --cc-trash: #8a93a6;
+  --cc-idle: #a8afbb;
+  --cc-accept: #4ade80;
+  --cc-wire-go: #22c55e;
+  --cc-wire-no: #ef4444;
+  --cc-key: #26282d;
+  --cc-key-hover: #2d2f35;
+  --cc-key-edge: #111317;
+  --cc-key-hi: #4a4c54;
+  --cc-key-lo: #17191d;
+  --cc-canvas: #141414;
+  --cc-canvas-dot: #26282d;
+  --cc-prompt-off: #6f737c;
+  --cc-pulse: 1.9s;
+  --cc-accept-pulse: 1.43s;
+  --cc-prompt: 1s;
+  /* The app's font (Inter unless the setting says otherwise); sizes below are the mod's: x1.5 (12) figures, x1 (8)
+     text, x0.75 (6) small. */
+  --cc-font: var(--app-font);
+}
+
+/* ---- The card ---------------------------------------------------------- */
+
+.cc-card {
+  position: relative;
+  box-sizing: border-box;
+  width: 320px;
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) 112px;
+  grid-template-rows: 40px auto auto;
+  padding: 0 4px;
+  background: var(--cc-surface);
+  color: var(--cc-ink);
+  font-family: var(--cc-font);
+  font-size: 8px;
+  line-height: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  /* The game's text shadow (Hyb.text draws every word with it) under the pixel font alone (globals.css --pixel-text-shadow). */
+  text-shadow: var(--pixel-text-shadow);
+  -webkit-font-smoothing: var(--pixel-font-smoothing);
+  /* The frame is an inset shadow, never a border: a border would push rows off the grid. A card with a problem draws
+     it in its bar's tone (--cc-frame). */
+  box-shadow:
+    inset 0 0 0 1px var(--cc-frame, var(--cc-edge)),
+    6px 8px 7px rgba(0, 0, 0, 0.36);
+}
+
+/* A problem card's frame in its reason's colour (data-tone, clean-model frameTone): the foot bar's tones, and the
+   overview's (up-to-reason.ts UP_TO_COLOR). FULL, Any and no read-out keep the edge. */
+.cc-card[data-tone="bottleneck"] {
+  --cc-frame: #f06262;
+}
+.cc-card[data-tone="starved"] {
+  --cc-frame: #e0a63a;
+}
+.cc-card[data-tone="clogged"] {
+  --cc-frame: #b49cf0;
+}
+.cc-card[data-tone="unused"] {
+  --cc-frame: #8a8e97;
+}
+.cc-card[data-tone="limited"] {
+  --cc-frame: #f472b6;
+}
+.cc-card[data-tone="forced"] {
+  --cc-frame: #94c3f3;
+}
+
+/* A card in a dead loop or a clog lock (data-loop, PlanSolveExtras.loops): its outline, two pixels, pulses in the ring's
+   tone (a dead loop in STARVED's amber, a clog lock in CLOGGED's purple), dimming in the grey half of the prompts' one
+   clock (virtual/prompt-phase.ts). Colour only; steady with reduced motion (the clock stays in its first half). After
+   the reason tones, so the ring wins. */
+.cc-card[data-loop] {
+  --cc-frame: var(--cc-loop);
+  box-shadow:
+    inset 0 0 0 2px var(--cc-frame),
+    6px 8px 7px rgba(0, 0, 0, 0.36);
+}
+.cc-card[data-loop="dead"] {
+  --cc-loop: #e0a63a;
+}
+.cc-card[data-loop="clog"] {
+  --cc-loop: #b49cf0;
+}
+:root[data-cc-blink] .cc-card[data-loop] {
+  --cc-frame: color-mix(in srgb, var(--cc-loop) 30%, var(--cc-edge));
+}
+/* A ring's wires (FactoryFlow ResourceEdge, `cc-loop-wire`): lit in its tone, steady. */
+.cc-loop-wire {
+  opacity: 0.8;
+  pointer-events: none;
+}
+.cc-loop-wire[data-loop="dead"] {
+  stroke: #e0a63a;
+}
+.cc-loop-wire[data-loop="clog"] {
+  stroke: #b49cf0;
+}
+
+/* Selection and "cannot run" rings, outside the edge. */
+.cc-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+.cc-card[data-selected]::before {
+  box-shadow: 0 0 0 2px var(--cc-select);
+}
+.cc-card[data-cannot-run]::before {
+  box-shadow: 0 0 0 2px var(--cc-red);
+}
+.cc-card[data-selected][data-cannot-run]::before {
+  box-shadow:
+    0 0 0 2px var(--cc-select),
+    0 0 0 4px var(--cc-red);
+}
+
+/* ---- Head --------------------------------------------------------------- */
+
+.cc-head {
+  position: relative;
+  grid-column: 1 / -1;
+  margin: 0 -4px;
+  /* The mod's header: its keys and chips 6 from the top and the sides, its hairline 32 down (CardLayout.HEAD_Y, HEADER);
+     the slot stays 40 so the rows keep the board's grid, the spare 8 sits under the hairline where it hides. */
+  padding: 6px 6px 0;
+  box-sizing: border-box;
+  height: 40px;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+.cc-head::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  bottom: 7px;
+  height: 1px;
+  background: var(--cc-hair);
+  pointer-events: none;
+}
+
+/* A key: 20 square, the mod's bevel in one shadow list. */
+.cc-key {
+  position: relative;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  background: var(--cc-key);
+  color: var(--cc-ink);
+  cursor: pointer;
+  box-shadow:
+    inset 0 0 0 1px var(--cc-key-edge),
+    inset 2px 2px 0 0 var(--cc-key-hi),
+    inset -2px -2px 0 0 var(--cc-key-lo);
+}
+.cc-key:hover {
+  background: var(--cc-key-hover);
+}
+.cc-key::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 14px;
+  height: 14px;
+  background: currentColor;
+  -webkit-mask: var(--cc-glyph) center / contain no-repeat;
+  mask: var(--cc-glyph) center / contain no-repeat;
+}
+.cc-key:active::before {
+  top: 4px;
+}
+.cc-key[data-glyph="menu"] {
+  --cc-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Crect x='2' y='2.5' width='10' height='2'/%3E%3Crect x='2' y='6' width='10' height='2'/%3E%3Crect x='2' y='9.5' width='10' height='2'/%3E%3C/svg%3E");
+}
+.cc-key[data-glyph="gear"] {
+  --cc-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M7 2.4a4.6 4.6 0 1 1 0 9.2a4.6 4.6 0 1 1 0-9.2z M7 4.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4z'/%3E%3Cpath d='M5.8 0.6h2.4v2.6h-2.4z' transform='rotate(0 7 7)'/%3E%3Cpath d='M5.8 0.6h2.4v2.6h-2.4z' transform='rotate(45 7 7)'/%3E%3Cpath d='M5.8 0.6h2.4v2.6h-2.4z' transform='rotate(90 7 7)'/%3E%3Cpath d='M5.8 0.6h2.4v2.6h-2.4z' transform='rotate(135 7 7)'/%3E%3Cpath d='M5.8 0.6h2.4v2.6h-2.4z' transform='rotate(180 7 7)'/%3E%3Cpath d='M5.8 0.6h2.4v2.6h-2.4z' transform='rotate(225 7 7)'/%3E%3Cpath d='M5.8 0.6h2.4v2.6h-2.4z' transform='rotate(270 7 7)'/%3E%3Cpath d='M5.8 0.6h2.4v2.6h-2.4z' transform='rotate(315 7 7)'/%3E%3C/svg%3E");
+}
+.cc-key[data-warn]::before {
+  color: var(--cc-red);
+}
+
+/* The machine's name: large, left, a plate on hover, a chevron when it opens a list. */
+.cc-name {
+  /* As wide as its text, shrinking to an ellipsis; the chips are pushed right by the margin on the first. */
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0 4px 0 4px;
+  padding: 0 4px;
+  height: 20px;
+  line-height: 20px;
+  font-size: var(--cc-name-size, 10px);
+  font-weight: 400;
+  color: var(--cc-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
+  user-select: none;
+}
+/* A task on this card: a dot in the most pressing task's colour before the name (a pseudo-element: the DOM budget). */
+.cc-name[data-task]::before {
+  content: "";
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  border-radius: 50%;
+  vertical-align: -1px;
+  background: var(--cc-task, transparent);
+}
+.cc-name + .cc-chip {
+  margin-left: auto;
+}
+.cc-name[data-picker] {
+  cursor: pointer;
+  padding-right: 18px;
+}
+.cc-name[data-picker]:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.cc-name[data-picker]::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  top: 5px;
+  width: 10px;
+  height: 10px;
+  background: var(--cc-muted);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 3.5 5 7l3.5-3.5' fill='none' stroke='black' stroke-width='1.6'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 3.5 5 7l3.5-3.5' fill='none' stroke='black' stroke-width='1.6'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+.cc-name[data-picker]:hover::after {
+  background: var(--cc-ink);
+}
+.cc-name[data-open]::after {
+  transform: rotate(180deg);
+}
+
+/* Tier and amps chips are buttons: the tier's colours and a black or white label, raised by the old card's bevel (light
+   top-left, dark bottom-right); pressed, the bevel turns over and the label sinks a pixel. 20 px tall either way. */
+.cc-chip {
+  flex: none;
+  box-sizing: border-box;
+  min-width: 48px;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid var(--chip-border);
+  background: var(--chip-bg);
+  color: var(--chip-ink);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  text-shadow: none;
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 255, 255, 0.55),
+    inset -2px -2px 0 rgba(0, 0, 0, 0.45);
+}
+.cc-chip:hover {
+  background: var(--chip-hover);
+}
+.cc-chip:active:not([data-fixed]):not([data-editing]) {
+  background: var(--chip-pressed);
+  line-height: 20px;
+  box-shadow:
+    inset 2px 2px 0 rgba(0, 0, 0, 0.45),
+    inset -2px -2px 0 rgba(255, 255, 255, 0.55);
+}
+/* Typing an amp count: the chip keeps its width (set as it opens) and sinks while the box is open. */
+.cc-chip[data-editing] {
+  box-shadow:
+    inset 2px 2px 0 rgba(0, 0, 0, 0.45),
+    inset -2px -2px 0 rgba(255, 255, 255, 0.3);
+}
+.cc-chip[data-underline] {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+.cc-chip[data-fixed] {
+  cursor: default;
+}
+.cc-chip input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+}
+
+/* ---- Rails and port rows -------------------------------------------------- */
+
+.cc-rail {
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cc-rail[data-side="input"] {
+  grid-column: 1;
+}
+.cc-rail[data-side="output"] {
+  grid-column: 3;
+}
+
+/*
+ * Every port is a tile of one shape (mockups/up-to-card, pass 3): 38 px tall with a pixel above and below, so a row
+ * keeps the board's two cells and its middle (where its wire docks) stays where it was; a bevel of three inset lines.
+ * A free end of the plan only changes the tile's colours, never its shape.
+ */
+.cc-row {
+  --cc-tile: #2b2d33;
+  --cc-tile-edge: #121418;
+  --cc-tile-hi: #3b3e45;
+  --cc-tile-lo: #222428;
+  position: relative;
+  box-sizing: border-box;
+  flex: none;
+  height: 38px;
+  margin: 1px 0;
+  padding: 0 0 0 38px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  border-radius: 3px;
+  background: var(--cc-tile);
+  box-shadow:
+    inset 0 0 0 1px var(--cc-tile-edge),
+    inset 1px 1px 0 1px var(--cc-tile-hi),
+    inset -1px -1px 0 1px var(--cc-tile-lo);
+}
+.cc-row[data-side="output"] {
+  padding: 0 38px 0 0;
+  text-align: right;
+  align-items: flex-end;
+}
+.cc-row[data-port]:hover {
+  --cc-tile: #31343a;
+}
+/* An unwired port the plan runs through anyway is a free end of it: the tile of a source (blue, a tank) or a product
+   (orange, a crate), a flat tint of it. */
+.cc-row[data-open] {
+  background: var(--cc-open-body);
+}
+.cc-row[data-open][data-side="input"] {
+  --cc-open-body: #292f38;
+  --cc-open-stripe: #2e3844;
+  --cc-tile-edge: #4f6986;
+  --cc-tile-hi: #3a4757;
+  --cc-tile-lo: #22272e;
+}
+.cc-row[data-open][data-side="output"] {
+  --cc-open-body: #322d2e;
+  --cc-open-stripe: #3e3431;
+  --cc-tile-edge: #815e49;
+  --cc-tile-hi: #4b3f39;
+  --cc-tile-lo: #2a2425;
+}
+.cc-row[data-open][data-side="input"] .cc-num {
+  color: #94c3f3;
+}
+.cc-row[data-open][data-side="output"] .cc-num {
+  color: #f2ae81;
+}
+.cc-row[data-open][data-side="input"] .cc-pname {
+  color: #8ba8c8;
+}
+.cc-row[data-open][data-side="output"] .cc-pname {
+  color: #c39b84;
+}
+.cc-row[data-open] .cc-num[data-zero] {
+  color: var(--cc-idle);
+}
+
+/* A port that also holds a forced row: its own tile over the forced tile, the two as tall as two rows. */
+.cc-row[data-forced] {
+  height: 78px;
+  padding: 0 !important;
+  justify-content: flex-start;
+  gap: 2px;
+  background: none;
+  box-shadow: none;
+}
+.cc-line {
+  position: relative;
+  box-sizing: border-box;
+  height: 38px;
+  padding: 0 0 0 38px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  border-radius: 3px;
+  background: var(--cc-tile);
+  box-shadow:
+    inset 0 0 0 1px var(--cc-tile-edge),
+    inset 1px 1px 0 1px var(--cc-tile-hi),
+    inset -1px -1px 0 1px var(--cc-tile-lo);
+}
+.cc-row[data-side="output"] .cc-line {
+  padding: 0 38px 0 0;
+  align-items: flex-end;
+  text-align: right;
+}
+
+/* Lit by a hover scope or an overview row: gold ring and three halos, steady. */
+.cc-row[data-lit] {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 210, 87, 0.75),
+    inset 0 0 0 2px rgba(255, 210, 87, 0.18),
+    inset 0 0 0 3px rgba(255, 210, 87, 0.12),
+    inset 0 0 0 4px rgba(255, 210, 87, 0.06);
+  z-index: 1;
+}
+
+.cc-icon {
+  position: absolute !important;
+  left: 3px;
+  top: 3px;
+  width: 32px !important;
+  height: 32px !important;
+  pointer-events: none;
+}
+.cc-row[data-side="output"] .cc-icon {
+  left: auto;
+  right: 3px;
+}
+/* A fluid is the mod's flat square in its colour: 28 of the 32 box, no bevel, no art. */
+.cc-swatch {
+  box-sizing: border-box;
+  display: block;
+  padding: 2px;
+  background-clip: content-box;
+}
+
+/*
+ * The pixel font is shorter and wider than the game's font: at 14 px its capitals are the mod's x1.5 figures' 10.5 px,
+ * and a letter spacing of -0.8 px keeps each figure as wide as at 13 px. The same holds below: names at 9 px (-0.6 px)
+ * stand as tall as the game's 8 px. Line 13: the name's glyphs start 14 px under the number's, as the mod's (12 px
+ * figures, 2 px gap). The fit checks measure these sizes and spacings as drawn (text-measure.ts ROW_TYPE).
+ */
+.cc-num {
+  display: block;
+  max-width: 70px;
+  font-size: 14px;
+  letter-spacing: -0.8px;
+  font-weight: 400;
+  line-height: 13px;
+  color: var(--cc-ink);
+  white-space: nowrap;
+}
+/* The unit small beside the number, snug against it (a pixel), its foot a pixel above the number's. */
+.cc-num::after {
+  content: attr(data-unit);
+  margin-left: 1px;
+  font-size: 9px;
+  letter-spacing: -0.6px;
+  font-weight: 400;
+  color: var(--cc-muted);
+  position: relative;
+  top: -1px;
+}
+.cc-num[data-zero] {
+  color: var(--cc-idle);
+}
+.cc-num[data-gold] {
+  color: var(--cc-gold);
+}
+.cc-num[data-small] {
+  font-size: 9px;
+  letter-spacing: -0.6px;
+  line-height: 13px;
+}
+.cc-num[data-small]::after {
+  top: 0;
+  margin-left: 0;
+  color: inherit;
+}
+
+.cc-pname {
+  display: block;
+  width: 70px;
+  max-width: 70px;
+  font-size: 9px;
+  letter-spacing: -0.6px;
+  font-weight: 400;
+  line-height: 10px;
+  color: var(--cc-muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.cc-pname[data-small] {
+  font-size: 7px;
+  letter-spacing: -0.45px;
+}
+.cc-pname[data-clip] {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 10px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 10px), transparent);
+}
+.cc-row[data-side="output"] .cc-pname:not([data-clip]) {
+  text-align: right;
+}
+
+/* The power row: a tile among the inputs, without a wire. */
+.cc-row[data-power] {
+  cursor: default;
+}
+.cc-bolt {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23F5B731' d='M18 3 7 18h7l-2 11 12-17h-8z'/%3E%3C/svg%3E")
+      center / 24px no-repeat,
+    #2b2410;
+  box-shadow: inset 0 0 0 1px #6b5a22;
+  pointer-events: none;
+}
+.cc-row[data-stalled] .cc-num {
+  color: var(--cc-red);
+  font-weight: 700;
+}
+.cc-row[data-stalled] .cc-bolt {
+  box-shadow: inset 0 0 0 1px #6b2a2a;
+}
+
+/* A choice mark: the slot takes several items. */
+.cc-row[data-choice]::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 31px;
+  width: 5px;
+  height: 5px;
+  background: #ffaa00;
+  box-shadow: 0 0 0 1px #000;
+  pointer-events: none;
+}
+.cc-row[data-side="output"][data-choice]::after {
+  left: auto;
+  right: 30px;
+}
+
+/* A forced row: the plan sends material out (or brings it in) here with no drawer. A tile of the same shape on a flat
+   tint of the side's colour, its edge in that colour. */
+.cc-forced {
+  position: relative;
+  box-sizing: border-box;
+  align-self: stretch;
+  height: 38px;
+  padding: 0 0 0 38px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  border-radius: 3px;
+  background: var(--cc-forced-body);
+  box-shadow:
+    inset 0 0 0 1px var(--cc-forced-edge),
+    inset 1px 1px 0 1px var(--cc-forced-hi),
+    inset -1px -1px 0 1px var(--cc-forced-lo);
+}
+.cc-row[data-side="output"] .cc-forced {
+  padding: 0 38px 0 0;
+  align-items: flex-end;
+}
+.cc-forced[data-kind="in"] {
+  --cc-forced-body: #292f38;
+  --cc-forced-stripe: #2e3844;
+  --cc-forced-edge: #4f6986;
+  --cc-forced-hi: #3a4757;
+  --cc-forced-lo: #22272e;
+}
+.cc-forced[data-kind="out"] {
+  --cc-forced-body: #322d2e;
+  --cc-forced-stripe: #3e3431;
+  --cc-forced-edge: #815e49;
+  --cc-forced-hi: #4b3f39;
+  --cc-forced-lo: #2a2425;
+}
+.cc-forced[data-kind="in"] .cc-num {
+  color: #94c3f3;
+}
+.cc-forced[data-kind="out"] .cc-num {
+  color: #f2ae81;
+}
+.cc-forced[data-kind="in"] .cc-pname {
+  color: #8ba8c8;
+}
+.cc-forced[data-kind="out"] .cc-pname {
+  color: #c39b84;
+}
+/* Lit with the rest of its spill (the buffer's Forced tile, its other makers'): the lit row's gold ring. */
+.cc-forced[data-lit] {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 210, 87, 0.75),
+    inset 0 0 0 2px rgba(255, 210, 87, 0.18),
+    inset 0 0 0 3px rgba(255, 210, 87, 0.12),
+    inset 0 0 0 4px rgba(255, 210, 87, 0.06);
+}
+
+/* The row an Up to card's reason names (STARVED's short input, CLOGGED's or UNUSED's output, and the rows tied with
+   it): a flat tint of the reason's colour as a free end is of its own (the body mixed in clean-model reasonStripes,
+   set inline), its edge and its name in that colour, the foot bar's tones. After the free ends' colours so it wins
+   over them; on a free end or a forced row its tint replaces theirs. */
+.cc-card .cc-row[data-why] {
+  --cc-tile-edge: var(--cc-why);
+  background: var(--cc-why-body);
+}
+.cc-card .cc-row[data-why][data-forced] {
+  background: none;
+}
+.cc-card .cc-row[data-why] > .cc-line,
+.cc-card .cc-row[data-why] > .cc-forced {
+  --cc-forced-edge: var(--cc-why);
+  background: var(--cc-why-body);
+}
+.cc-card .cc-row[data-why] > .cc-pname,
+.cc-card .cc-row[data-why] > .cc-line > .cc-pname {
+  color: var(--cc-why);
+}
+.cc-row[data-why="starved"] {
+  --cc-why: #e0a63a;
+}
+.cc-row[data-why="clogged"] {
+  --cc-why: #b49cf0;
+}
+.cc-row[data-why="unused"] {
+  --cc-why: #8a8e97;
+}
+
+/* ---- The machine's well ------------------------------------------------------ */
+
+/* The machine sits in a sunk well between the rails (pass 3), its picture over the count. At least six cells tall
+   with its margin (virtual/card-shell.ts WELL_MIN_HEIGHT); a taller card centres both in it. */
+.cc-pic {
+  grid-row: 2;
+  grid-column: 2;
+  position: relative;
+  min-height: 118px;
+  min-width: 0;
+  margin: 1px 4px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 3px;
+  background: #1a1c20;
+  box-shadow:
+    inset 0 0 0 1px #0e0f12,
+    inset 2px 2px 0 0 #141518,
+    inset -1px -1px 0 1px #2f3138;
+}
+/* The art fitted in an 80 px square, never stretched (the mod's RecipeCard.drawMachineArt). */
+.cc-art {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(4px 6px 5px rgba(0, 0, 0, 0.6));
+  pointer-events: none;
+}
+.cc-machine {
+  width: 64px !important;
+  height: 64px !important;
+  filter: drop-shadow(4px 6px 5px rgba(0, 0, 0, 0.6));
+  pointer-events: none;
+}
+/* The programmed circuit: a badge in the well's top-left corner, its own icon (which shows its number). Never dimmed;
+   no words beside it. */
+.cc-circuit {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+}
+.cc-circuit-icon {
+  position: absolute !important;
+  left: 0;
+  top: 0;
+  width: 24px !important;
+  height: 24px !important;
+  pointer-events: none;
+}
+
+/*
+ * The count under the machine (docs/up-to.md): what runs, big and white (`::before`, its own line), and under it what
+ * is set, as the overview's machine lines say it: the rule word (`.cc-rule`, opens Any, Up to, Exactly) and the set
+ * box (`::after`, the overview's sunken box at the card's size): the number in gold, or "Set" in grey on Any, gold and
+ * blinking while nothing sets this part of the plan. Every rule draws both, so the block never moves.
+ */
+.cc-count {
+  position: relative;
+  z-index: 2;
+  max-width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  column-gap: 3px;
+  font-size: 8px;
+  font-weight: 400;
+  line-height: 10px;
+  color: var(--cc-muted);
+  cursor: text;
+  user-select: none;
+  white-space: nowrap;
+}
+.cc-count::before {
+  content: attr(data-run);
+  flex: 0 0 100%;
+  margin-bottom: 2px;
+  text-align: center;
+  font-size: 14px;
+  letter-spacing: -0.8px;
+  line-height: 13px;
+  color: var(--cc-ink);
+}
+.cc-count[data-zero]::before {
+  color: var(--cc-idle);
+}
+/* The set box: as wide as what it says, at least the box an open editor starts at. */
+.cc-count::after {
+  content: attr(data-set);
+  box-sizing: border-box;
+  min-width: calc(3ch + 8px);
+  height: 12px;
+  padding: 0 3px;
+  border: 1px solid #5a5e68;
+  background: #0f1114;
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.7);
+  line-height: 10px;
+  text-align: center;
+  color: #6f737c;
+}
+.cc-count[data-pinned]::after,
+.cc-count[data-prompt]::after {
+  color: var(--cc-gold);
+}
+/* The prompts blink off one clock, the root's data-cc-blink (virtual/prompt-phase.ts), not an animation each. */
+:root[data-cc-blink] .cc-count[data-prompt]::after {
+  color: var(--cc-prompt-off);
+}
+/* What a click types into: the box. */
+.cc-count:not([data-editing]):not(:has(.cc-rule:hover)):hover::after {
+  border-color: var(--cc-gold);
+  background: #15171c;
+}
+.cc-count[data-editing]::after {
+  display: none;
+}
+.cc-rule {
+  line-height: 9px;
+  border-bottom: 1px dotted #5a5e68;
+  cursor: pointer;
+}
+.cc-rule:hover,
+.cc-rule[data-open] {
+  color: var(--cc-ink);
+}
+.cc-rule[data-fixed] {
+  border-bottom-color: transparent;
+  cursor: text;
+}
+/* The open box: the set box's size (its width set inline in ch, growing with what is typed), never wider than the
+   well. */
+.cc-count input {
+  box-sizing: border-box;
+  min-width: calc(3ch + 8px);
+  max-width: 100%;
+  height: 12px;
+  margin: 0;
+  padding: 0 3px;
+  border: 1px solid var(--cc-gold);
+  outline: 0;
+  background: #15171c;
+  color: var(--cc-gold);
+  font: inherit;
+  font-size: 8px;
+  line-height: 10px;
+  text-align: center;
+}
+
+@keyframes cc-prompt {
+  0%,
+  49.99% {
+    color: var(--cc-gold);
+  }
+  50%,
+  100% {
+    color: var(--cc-prompt-off);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cc-count[data-prompt]::after {
+    animation: none;
+    color: var(--cc-prompt-off);
+  }
+}
+
+/* ---- The bar along the foot ------------------------------------------------------ */
+
+/*
+ * An Up to card's story in one bar (docs/up-to.md, pass 3), one cell with its air: the fill is reached over the count,
+ * a bottleneck's bar runs on striped to what the line wants, then one word in the reason's colour, one plain line and
+ * the fraction on the right. Fill and stripes are background layers sized in px from the model (`--fill`, `--ghost-l`,
+ * `--ghost-w`, inside a track 2 px in from the edge); the word and fraction are pseudo-elements. FORCED IN is the same
+ * bar with no fill.
+ */
+.cc-foot {
+  --tone: var(--cc-muted);
+  --fill: 0px;
+  --ghost-l: 0px;
+  --ghost-w: 0px;
+  --cc-foot-fill: color-mix(in srgb, var(--tone) 30%, #17191d);
+  --cc-foot-ghost: color-mix(in srgb, var(--tone) 34%, #17191d);
+  position: relative;
+  grid-column: 1 / -1;
+  box-sizing: border-box;
+  height: 16px;
+  margin: 1px 0 3px;
+  padding: 0 7px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: 400;
+  line-height: 10px;
+  color: #c8cad0;
+  cursor: default;
+  background-color: #17191d;
+  background-image:
+    linear-gradient(var(--tone), var(--tone)),
+    repeating-linear-gradient(135deg, var(--cc-foot-ghost) 0 3px, transparent 3px 7px),
+    linear-gradient(var(--cc-foot-fill), var(--cc-foot-fill));
+  background-repeat: no-repeat;
+  background-position:
+    calc(2px + var(--ghost-l)) 2px,
+    calc(2px + var(--ghost-l)) 2px,
+    2px 2px;
+  background-size:
+    0 calc(100% - 4px),
+    var(--ghost-w) calc(100% - 4px),
+    var(--fill) calc(100% - 4px);
+  box-shadow:
+    inset 0 0 0 1px #0d0e11,
+    inset 1px 1px 0 1px #111215;
+}
+/* Where your count ends and the striped run-on starts: a line in the reason's colour. */
+.cc-foot[data-ghost] {
+  background-size:
+    1px calc(100% - 4px),
+    var(--ghost-w) calc(100% - 4px),
+    var(--fill) calc(100% - 4px);
+}
+.cc-foot[data-word]::before {
+  content: attr(data-word);
+  color: var(--tone);
+}
+.cc-foot[data-frac]::after {
+  content: attr(data-frac);
+  margin-left: auto;
+  color: var(--cc-ink);
+}
+.cc-foot[data-tone="full"] {
+  --tone: #5ee9b5;
+}
+.cc-foot[data-tone="bottleneck"] {
+  --tone: #f06262;
+}
+.cc-foot[data-tone="starved"] {
+  --tone: #e0a63a;
+}
+.cc-foot[data-tone="clogged"] {
+  --tone: #b49cf0;
+}
+.cc-foot[data-tone="unused"] {
+  --tone: #8a8e97;
+}
+.cc-foot[data-tone="limited"] {
+  --tone: #f472b6;
+}
+.cc-foot[data-tone="forced"] {
+  --tone: #94c3f3;
+}
+
+/* ---- Settings strip ------------------------------------------------------- */
+
+.cc-strip {
+  position: relative;
+  grid-column: 1 / -1;
+  margin: 0 -4px;
+}
+.cc-strip::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 1px;
+  right: 1px;
+  height: 1px;
+  background: var(--cc-hair);
+}
+.cc-sc {
+  background-repeat: no-repeat;
+  background-position: 2px center;
+  background-size: 18px;
+  image-rendering: pixelated;
+  position: absolute;
+  box-sizing: border-box;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--cc-edge);
+  background-color: #2a2c31;
+  color: var(--cc-ink);
+  font-size: 8px;
+  font-weight: 400;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+}
+.cc-sc::before {
+  content: attr(data-label);
+  margin-right: 4px;
+  color: var(--cc-muted);
+}
+.cc-sc:hover {
+  border-color: #4a4d55;
+  background-color: #33363c;
+}
+.cc-sc[data-warn] {
+  border-color: #6b2a2a;
+  color: var(--cc-red);
+}
+.cc-sc[data-reading] {
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  background-image: none;
+  cursor: default;
+}
+
+/* ---- Zoomed out ------------------------------------------------------------ */
+
+/* The glance layer: art and the count only. The board hides every other child. */
+.cc-glance {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-position: center;
+  /* The art keeps its shape inside the card less a 12 px margin (the mod fits it in a square, never stretched). */
+  background-size: contain;
+  background-origin: content-box;
+  padding: 12px;
+  box-sizing: border-box;
+  image-rendering: pixelated;
+}
+.cc-glance::after {
+  content: attr(data-count);
+  position: absolute;
+  right: calc(2px + 6px / var(--board-zoom, 1));
+  bottom: calc(2px + 4px / var(--board-zoom, 1));
+  font-size: min(calc(20px / var(--board-zoom, 1)), 90px);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--cc-ink);
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
+}
+/* The Up to bar along a zoomed-out card's foot (glance.ts): the fill (to --glance-fill, in the reason's tone) and the
+   track are background layers over the picture, the reason's word is the layer's own text on the bar. Every size is in
+   card pixels, so a zoom step re-lays nothing out: near the glance step the word reads, further out the fill does. */
+.cc-glance[data-bar] {
+  --glance-tone: var(--cc-muted);
+  --glance-bar-h: 36px;
+  --glance-track: #17191d;
+  --glance-fill-ink: color-mix(in srgb, var(--glance-tone) 45%, #17191d);
+  /* The picture's widest: the card's 320 less 12 a side. With its width over height (--glance-art-ratio, glance.ts)
+     it stays whole on a tall card (a shared machine's), as the mod fits it: sized by the height alone it ran to
+     twice the card's width there and showed a blown-up middle. Centred in the room above the bar. */
+  --glance-art-w: 296px;
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 0;
+  background-position:
+    left bottom,
+    left bottom,
+    center calc(50% - var(--glance-bar-h) / 2);
+  background-size:
+    var(--glance-fill) var(--glance-bar-h),
+    100% var(--glance-bar-h),
+    auto min(calc(100% - var(--glance-bar-h) - 18px), calc(var(--glance-art-w) / var(--glance-art-ratio, 1)));
+  background-origin: border-box, border-box, border-box;
+  font-size: 24px;
+  line-height: var(--glance-bar-h);
+  color: var(--glance-tone);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.cc-glance[data-bar]::after {
+  bottom: calc(var(--glance-bar-h) + 2px + 4px / var(--board-zoom, 1));
+}
+.cc-glance[data-tone="full"] {
+  --glance-tone: #5ee9b5;
+}
+.cc-glance[data-tone="bottleneck"] {
+  --glance-tone: #f06262;
+}
+.cc-glance[data-tone="starved"] {
+  --glance-tone: #e0a63a;
+}
+.cc-glance[data-tone="clogged"] {
+  --glance-tone: #b49cf0;
+}
+.cc-glance[data-tone="unused"] {
+  --glance-tone: #8a8e97;
+}
+.cc-glance[data-tone="limited"] {
+  --glance-tone: #f472b6;
+}
+/* "Names when zoomed out": the card's name just under it, at a constant screen size (the mod draws it under the card). */
+.cc-glance[data-name]::before {
+  content: attr(data-name);
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: calc(3px / var(--board-zoom, 1));
+  width: max(100%, calc(160px / var(--board-zoom, 1)));
+  max-width: calc(220px / var(--board-zoom, 1));
+  font-size: min(calc(11px / var(--board-zoom, 1)), 48px);
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--cc-ink);
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.9);
+}
+.factory-flow-board[data-detail-level="glance"] .cc-card {
+  box-shadow:
+    inset 0 0 0 max(2px, calc(1px / var(--board-zoom, 1))) var(--cc-frame, var(--cc-edge)),
+    6px 8px 7px rgba(0, 0, 0, 0.36);
+}
+
+/* Zoomed out the rings hold a constant screen thickness: red when the card cannot run, cyan three times that for a selection. */
+.factory-flow-board[data-detail-level="glance"] .cc-card[data-cannot-run]::before {
+  box-shadow: 0 0 0 min(max(2px, calc(2px / var(--board-zoom, 1))), 12px) var(--cc-red);
+}
+.factory-flow-board[data-detail-level="glance"] .cc-card[data-selected]::before {
+  box-shadow: 0 0 0 min(max(3px, calc(6px / var(--board-zoom, 1))), 24px) var(--cc-select);
+}
+.factory-flow-board[data-detail-level="glance"] .cc-card[data-selected][data-cannot-run]::before {
+  box-shadow:
+    0 0 0 min(max(3px, calc(6px / var(--board-zoom, 1))), 24px) var(--cc-select),
+    0 0 0 min(max(5px, calc(8px / var(--board-zoom, 1))), 32px) var(--cc-red);
+}
+
+/* A selection outline shows only when several things are selected (the mod's BoardSession.showsSelected): with one
+   selected (no selected node followed by another), the card wears no ring; "cannot run" keeps its red. */
+.react-flow__nodes:not(:has(> .react-flow__node.selected ~ .react-flow__node.selected))
+  .cc-card[data-selected]::before {
+  box-shadow: none;
+}
+.react-flow__nodes:not(:has(> .react-flow__node.selected ~ .react-flow__node.selected))
+  .cc-card[data-selected][data-cannot-run]::before {
+  box-shadow: 0 0 0 2px var(--cc-red);
+}

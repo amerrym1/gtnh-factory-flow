@@ -16,8 +16,8 @@
  *     port centres land on a grid line: head + 20 + 40i.
  *
  * Rule 3 is why the head, the footer and the config panels have fixed heights
- * rather than sizing to their content. Content that used to set the height now
- * sits inside a box whose height the grid sets.
+ * rather than sizing to their content: content sits inside a box whose height
+ * the grid sets.
  */
 
 /** The cell. Everything on the board is a whole number of these. */
@@ -47,46 +47,58 @@ export function cells(n: number): number {
 /* Card geometry — the sizes every node component builds itself out of.    */
 /* ---------------------------------------------------------------------- */
 
-/** Every recipe card is this wide. 18 cells. */
-export const RECIPE_NODE_WIDTH = cells(18); // 360
+/** The clean recipe card is this wide: 16 cells, the mod's 320 exactly (rails 112, picture 88, 4 inset each side). */
+export const RECIPE_NODE_WIDTH = cells(16); // 320
+
+/**
+ * The classic bevelled card (the fallback for cards the clean look has no design for yet) and a
+ * minimized board are 19 cells wide.
+ *
+ * The machine picture is the flex-1 middle between the two rails and must
+ * stay 96px, the size a structure render reads at; re-check it first if this
+ * width changes. The item chips and output coupling absorb width changes, and
+ * the price is the chip's 70px name column: names wrap to two lines and long
+ * ones clip on the second (the hover shows the whole name).
+ */
+export const CLASSIC_NODE_WIDTH = cells(19); // 380
 
 /** Card padding either side of the rails (inside the 2px frame). */
 export const RECIPE_NODE_PAD_X = 8;
 
-/** Inner width available to the rails: 360 − 2×(2 frame + 8 pad). */
-export const RECIPE_RAIL_AREA_WIDTH = RECIPE_NODE_WIDTH - 2 * (2 + RECIPE_NODE_PAD_X); // 340
+/** Inner width available to the classic card's rails after frame and padding. */
+export const RECIPE_RAIL_AREA_WIDTH = CLASSIC_NODE_WIDTH - 2 * (2 + RECIPE_NODE_PAD_X); // 360
 
 /** The input chip, and the chip half of an output row. */
-export const PORT_CHIP_WIDTH = 140; // 7 cells
+export const PORT_CHIP_WIDTH = 112;
 
-/** The `→` divider between the two rails. */
-export const RAIL_DIVIDER_WIDTH = 16;
-
-/** Chip + 2px gap + the 34px coupling (`.flow-plug` in globals.css). */
-export const OUTPUT_RAIL_WIDTH = PORT_CHIP_WIDTH + 2 + 34; // 176
+/** Chip + 2px gap + the 30px coupling (`.flow-plug` in globals.css). */
+export const OUTPUT_RAIL_WIDTH = PORT_CHIP_WIDTH + 2 + 30; // 144
 
 /** One port row. Two cells, so a rail of any length stays on the grid. */
 export const PORT_ROW_HEIGHT = cells(2); // 40
 
-/** The title row, and one row of the machine tab strip. */
-export const HEAD_ROW_HEIGHT = cells(2); // 40
+/**
+ * The minimum height of the machine picture's window (the flex-1 middle
+ * between the rails, which grows with them). Two port rows, so the common
+ * one-input two-output card is not made taller by the picture.
+ *
+ * It must stay a whole number of CELLS or a short card lands off the grid.
+ */
+export const PICTURE_MIN_HEIGHT = PORT_ROW_HEIGHT * 2; // 80
 
-/** The stat footer. */
-export const FOOTER_HEIGHT = cells(2); // 40
+/** The title row. */
+export const HEAD_ROW_HEIGHT = cells(2); // 40
 
 /** One row of a machine-config panel (label over a dropdown). */
 export const CONFIG_PANEL_ROW_HEIGHT = cells(3); // 60
 
 /**
- * Drawers and tanks. Five cells by four: a drawer holds one thing, and with
- * buffers between machines everywhere now, a board full of them has to read
- * as small tiles rather than a second fleet of machine cards. Wider than
- * tall, because the tile's two lines of text - the role word up top, the net
- * rate below - need width, not height. The height stays an EVEN number of
- * cells so the side-centre dock points (height / 2) land on a grid line.
+ * Drawers and tanks: the mod's drawer, 116 x 48 (DrawerPaint.W, H): a bar to move it by over one port row to wire
+ * from. Not whole cells: the drawer sits on the grid by its corner, as the mod's does. Shared by
+ * placement, routing, and drag previews.
  */
-export const STORAGE_NODE_WIDTH = cells(5); // 100
-export const STORAGE_NODE_HEIGHT = cells(4); // 80
+export const STORAGE_NODE_WIDTH = 116;
+export const STORAGE_NODE_HEIGHT = 48;
 
 /** Trash cans, same tile. */
 export const TRASH_NODE_WIDTH = cells(4); // 80

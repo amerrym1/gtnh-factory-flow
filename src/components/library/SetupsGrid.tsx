@@ -13,7 +13,7 @@ import {
   voteCommunityPlan,
 } from "@/lib/community/client";
 import { withAuthor } from "@/lib/community/search-query";
-import { openCommunityPost } from "@/lib/community/open-post";
+import { copyCommunityPost, openCommunityPost } from "@/lib/community/open-post";
 import { sharedPlanLink } from "@/lib/community/shared-link";
 import type { CommunityPlanSort, CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
@@ -26,9 +26,9 @@ import { useFactoryStore } from "@/store/factory-store";
 import { LibraryDetail, previewUrlFor } from "./LibraryDetail";
 import { ArmedMenuItem, LibraryMenu, MenuItem, MenuRule } from "./library-menu";
 import { LibraryTile, TagEditor } from "./LibraryTile";
-import { SetupsFilterBar, useSetupFilters } from "./SetupsFilterBar";
+import { SetupsFilterBar, useSetupFilters, type SetupFilters } from "./SetupsFilterBar";
 
-const SETUP_SORTS: Array<{ value: CommunityPlanSort; label: string }> = [
+export const SETUP_SORTS: Array<{ value: CommunityPlanSort; label: string }> = [
   { value: "active", label: "Recently active" },
   { value: "new", label: "Newest" },
   { value: "top", label: "Top voted" },
@@ -46,9 +46,9 @@ const SETUP_SORTS: Array<{ value: CommunityPlanSort; label: string }> = [
 const PAGE_SIZE = 60;
 
 /**
- * Every tag seen on any loaded page, kept for the life of the app: a
- * half-typed #tag narrows the results to nothing, so the suggestions must
- * not come from the results alone.
+ * Every tag seen on any loaded page, kept for the app's lifetime: a
+ * half-typed #tag narrows the results to nothing, so suggestions cannot come
+ * from the current results alone.
  */
 const knownTags = new Set<string>();
 
@@ -84,13 +84,23 @@ type Armed = { id: string; what: "takedown" | "overwrite" };
 export function SetupsGrid({
   scope,
   presetQuery,
+  filters: outerFilters,
+  bare = false,
+  onTotal,
 }: {
   scope: SetupsScope | "saved";
   presetQuery?: string;
+  /** The library's header owns the search and the dials (the mod's header row): they come in here. */
+  filters?: SetupFilters;
+  /** No filter bar of its own; the header above carries it. */
+  bare?: boolean;
+  /** Told how many setups the shelf found. */
+  onTotal?: (total: number) => void;
 }) {
   const savedIds = useSavedSetups();
   const { user, isLoading: isAuthLoading } = useCommunityUser();
-  const filters = useSetupFilters("active");
+  const ownFilters = useSetupFilters("active");
+  const filters = outerFilters ?? ownFilters;
   const { query, setQuery, maxTier, setMaxTier, debouncedMaxEuT, makesKeys, takesKeys } = filters;
   const sort = filters.sort as CommunityPlanSort;
   /** The public list narrowed to the account's own posts. */
@@ -130,6 +140,7 @@ export function SetupsGrid({
     (state) =>
       state.designs.find((design) => design.id === state.activeDesignId)?.name ?? "this board",
   );
+  const hasEditableDesign = useDesignStore((state) => state.activeDesignId !== undefined);
 
   useEffect(() => {
     const refresh = () => setRefreshTick((tick) => tick + 1);
@@ -218,11 +229,14 @@ export function SetupsGrid({
   const needsAccount = scope === "mine" && !username;
   const isLoading = !needsAccount && (!isCurrent || remembered.page !== activePage);
   const hasMore = isCurrent && remembered.plans.length < remembered.total;
+  const shelfTotal = isCurrent ? remembered.total : undefined;
+  useEffect(() => {
+    if (shelfTotal !== undefined) onTotal?.(shelfTotal);
+  }, [shelfTotal, onTotal]);
 
-  // Infinite scroll: when the sentinel under the last row comes into view
-  // and the page asked for has LANDED, ask for the next one. Asking while a
-  // page is still loading would cancel that fetch and ask again, forever,
-  // with the grid never growing - which is what this used to do.
+  // Infinite scroll: when the sentinel under the last row is in view and the
+  // requested page has LANDED, ask for the next. Asking while a page is still
+  // loading would cancel that fetch and loop without the grid ever growing.
   useEffect(() => {
     const sentinel = moreRef.current;
     if (!sentinel || isLoading || !hasMore) {
@@ -266,8 +280,8 @@ export function SetupsGrid({
   const fail = (thrown: unknown, fallback: string) =>
     setError(thrown instanceof Error ? thrown.message : fallback);
 
-  // A post shared by an old release carries the stat card that release
-  // computed; the first hover asks once for the current one.
+  // A post may carry a stat card computed by an older app version; the first
+  // hover asks once for a current one.
   const refreshedStatsRef = useRef(new Set<string>());
   const refreshStats = (planId: string) => {
     if (refreshedStatsRef.current.has(planId)) {
@@ -307,21 +321,32 @@ export function SetupsGrid({
     }
   };
 
-  // Your own post opens your design; anyone else's opens as a copy of yours.
-  const open = async (plan: CommunityPlanSummary) => {
+  // Opening someone else's setup makes a copy; owners resume their design, or
+  // take a fresh copy of it with Open a copy.
+  const open = async (plan: CommunityPlanSummary, asCopy = false) => {
+    if (busyId) return;
     setBusyId(plan.id);
     try {
-      const outcome = await openCommunityPost({
-        id: plan.id,
-        name: plan.name,
-        isMine: plan.isMine === true,
-      });
+      let outcome: "opened" | "copied";
+      if (asCopy) {
+        await copyCommunityPost(plan);
+        outcome = "copied";
+      } else {
+        outcome = await openCommunityPost({
+          id: plan.id,
+          name: plan.name,
+          isMine: plan.isMine === true,
+          authorName: plan.authorName,
+        });
+      }
       if (outcome === "copied") {
         patchPlan(plan.id, (entry) => ({ ...entry, downloads: entry.downloads + 1 }));
       }
       setError(undefined);
+      setDetailId(undefined);
     } catch (thrown) {
       fail(thrown, "Opening the setup failed.");
+      setDetailId(undefined);
     } finally {
       setBusyId(undefined);
     }
@@ -361,6 +386,7 @@ export function SetupsGrid({
 
   // The OPEN TAB becomes this post's new content.
   const overwriteWithBoard = async (plan: CommunityPlanSummary) => {
+    if (useFactoryStore.getState().isReadOnly) return;
     try {
       const state = useFactoryStore.getState();
       await patchCommunityPlan(plan.id, {
@@ -455,10 +481,16 @@ export function SetupsGrid({
             primary: {
               label: detailPlan.isMine ? "Open" : "Open a copy",
               onClick: () => {
-                setDetailId(undefined);
                 void open(detailPlan);
               },
             },
+            secondary: detailPlan.isMine
+              ? {
+                  label: "Open a copy",
+                  onClick: () => void open(detailPlan, true),
+                }
+              : undefined,
+            actionBusy: busyId === detailPlan.id,
             keys: [
               {
                 label: detailPlan.myVote === 1 ? "Take back your vote" : "Vote this up",
@@ -488,6 +520,7 @@ export function SetupsGrid({
       ) : (
         <>
       {/* Two rows: what you are looking for, then what it must be. */}
+      {bare ? null : (
       <SetupsFilterBar
         filters={filters}
         placeholder={
@@ -506,8 +539,19 @@ export function SetupsGrid({
         }
         itemFilter={scope !== "saved"}
       />
+      )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 compact:px-2">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-3 compact:px-2"
+        onScroll={(event) => {
+          // Belt and braces beside the sentinel: within two screens of the
+          // end, ask for the next page.
+          const el = event.currentTarget;
+          if (hasMore && !isLoading && el.scrollTop + el.clientHeight > el.scrollHeight - 1600) {
+            setTarget({ key, page: activePage + 1 });
+          }
+        }}
+      >
         {error ? <p className="mb-2 text-[11px] text-red-400">{error}</p> : null}
         {needsAccount && !isAuthLoading ? (
           <p className="text-[12px] leading-relaxed text-[var(--mc-ink-muted)]">
@@ -604,7 +648,7 @@ export function SetupsGrid({
           onClose={closeMenu}
         >
           <MenuItem
-            label={menuPlan.isMine ? "Open" : "Open a copy as a tab"}
+            label={menuPlan.isMine ? "Open" : "Open a copy"}
             onClick={() => {
               closeMenu();
               void open(menuPlan);
@@ -641,7 +685,7 @@ export function SetupsGrid({
                   setIconEditId(menuPlan.id);
                 }}
               />
-              <ArmedMenuItem
+              {hasEditableDesign ? <ArmedMenuItem
                 label={`Replace with "${activeTabName}"`}
                 armedLabel="Confirm: replace the post"
                 armed={armed?.id === menuPlan.id && armed.what === "overwrite"}
@@ -650,7 +694,7 @@ export function SetupsGrid({
                   closeMenu();
                   void overwriteWithBoard(menuPlan);
                 }}
-              />
+              /> : null}
               <ArmedMenuItem
                 label="Take down"
                 armedLabel="Confirm: take it down for everyone"

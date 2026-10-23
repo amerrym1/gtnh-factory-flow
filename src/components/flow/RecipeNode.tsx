@@ -1,26 +1,40 @@
 "use client";
 
+import { stripBeeFrameSlotInputs } from "@/lib/model/bee-display";
+import { wheelChangesValues } from "@/lib/device-settings";
+
+import { isTreeGrowthSimulatorToolControl, applyTreeGrowthSimulatorToolInputs, getTreeGrowthSimulatorSlotResource, getTreeGrowthSimulatorSlotTiers } from "@/lib/model/recipe-tool-slots";
+import { MachineFormulas } from "./MachineFormulas";
+import { getTgsFormulas, isTgsRecipe } from "@/lib/machines/tree-growth-simulator";
+import { getVatFormulas, isVatRecipe } from "@/lib/machines/bacterial-vat";
+import type { FormulaLine } from "@/lib/machines/formula-lines";
+import { getNodePowerAmps as getMachineFormulaAmps, getNodeRunTier as getMachineFormulaTier } from "@/lib/solver/power";
+import { industrialFarmCapacity } from "@/lib/model/full-farms";
+
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import {
+  Fragment,
   memo,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type CSSProperties,
   type ReactNode,
 } from "react";
 import {
   ChevronDown,
+  ChevronUp,
   Copy,
   Cpu,
-  Image as ImageIcon,
   Minus,
   Pencil,
   Plus,
   RefreshCw,
   Sprout,
-  Zap,
+  X,
 } from "lucide-react";
 import type {
   FactoryNode,
@@ -43,10 +57,13 @@ import { isMultiblockRecipe } from "@/lib/solver/power";
 import {
   energyHatchTypeExistsAtTier,
   getEnergyHatchType,
-  STANDARD_ENERGY_HATCH_ID,
+
 } from "@/lib/machines/energy-hatches";
-import { energyHatchCatalogKey, useEnergyHatchCatalog } from "./use-energy-hatch-catalog";
-import { EnergyHatchArt, energySupplyOptionsForTier } from "./EnergyHatchMenu";
+import { HatchPowerControls, PowerReadout, PowerControlsGuide } from "./HatchPowerControls";
+import { carryMachineVoltage } from "@/lib/solver/hatch-input";
+import { CardActionsMenu } from "./CardActionsMenu";
+import { getVoltageTierMaxEuT, isVoltageTierName } from "@/lib/model/tiers";
+import { describePowerWorking } from "@/lib/solver/power-working";
 import { prefersCuratedMachineMath } from "@/lib/solver/runtime-calculation";
 import {
   applyMachineOutputMultipliers,
@@ -54,6 +71,7 @@ import {
 } from "@/lib/solver/machine-effects";
 import {
   formatCompact,
+  formatPowerValue,
   formatCompactStable,
   formatRate,
   applyMachineHandlerToRecipe,
@@ -66,6 +84,9 @@ import {
   getSelectedMachineHandler,
   getCropsNhStats,
   getVoltageTierIndex,
+  getRecipeMaximumVoltageTier,
+  getRecipeAvailableVoltageTiers,
+  getRunVoltageTier,
   BEE_INDUSTRIAL_PRODUCTION_CONTROL_ID,
   BEE_INDUSTRIAL_SPEED_CONTROL_ID,
   CROP_GAIN_STAT_CONTROL_ID,
@@ -102,12 +123,19 @@ import {
   isCropFarmRecipe,
   isCropProductionConfigControl,
   isCropProductionRecipe,
+  isControllerSlotInput,
   isIndustrialApiaryMachineType,
   makeResourceKey,
   resourceMatchesInput,
   resourceLabel,
   type MachineConfigTierControl,
 } from "@/lib/model";
+import {
+  getSharedMachineHandlers,
+  isSharedMachineNode,
+  listNodeSections,
+  sectionNodeId,
+} from "@/lib/model/shared-machine";
 import {
   CUSTOM_RATE_ANY_RESOURCE_ID,
   getCustomRateDial,
@@ -118,44 +146,54 @@ import {
 import {
   powerDisplayFromEuT,
   powerDisplaySuffix,
-  rateMultiplierForKind,
   rateSuffixForKind,
   rateUnitMultiplier,
   rateUnitPrecisionScale,
-  rateUnitSuffix,
 } from "@/lib/model/rate-unit";
 import {
   getRecipeProgrammedCircuit,
   type RecipeProgrammedCircuit,
 } from "@/lib/model/programmed-circuit";
-import { BOARD_GRID, CONFIG_PANEL_ROW_HEIGHT, RECIPE_NODE_WIDTH } from "@/lib/board-grid";
-import { CropPickerMenu } from "./CropPickerMenu";
 import {
-  MachineCompareTable,
-  MachineIconTab,
-  MachineTabStrip,
+  BOARD_GRID,
+  PICTURE_MIN_HEIGHT,
+  CLASSIC_NODE_WIDTH,
+  RECIPE_RAIL_AREA_WIDTH,
+} from "@/lib/board-grid";
+import { CropPickerMenu } from "./CropPickerMenu";
+import { MobPickerMenu } from "./MobPickerMenu";
+import { recipeChoiceName } from "./RecipeListPicker";
+import { isEecRecipe } from "@/lib/machines/extreme-entity-crusher";
+import {
+  MachineMenu,
   machineArtPixels,
+  orderMachineHandlers,
 } from "./MachinePicker";
 import { NodeGlanceText, glanceTileStyle } from "./NodeGlance";
-import { isWiringConnection, wasRecentWireDrop } from "./connection-drag";
-import { clearHoveredPortBrowse, setHoveredPortBrowse } from "./port-browse";
-import {
-  isFromBrowseMenu,
-  useBrowseMenu,
-  type BrowseMode as PortBrowseMode,
-} from "@/components/browse-menu";
-import { isEchoOfTouch } from "@/lib/pointer-kind";
-import { useMachineHandlerIcons, type MachineHandlerIcon } from "./machine-icons";
-import { publishDockTopInset } from "./dock-insets";
+import { isWiringConnection } from "./connection-drag";
+import { usePortRowBrowse } from "./use-port-row-browse";
+import { type BrowseMode as PortBrowseMode } from "@/components/browse-menu";
+import { machineIconAtTier, useMachineHandlerIconEntries, useMachineHandlerIcons, useRecipeMapIcons, type MachineHandlerIcon } from "./machine-icons";
+import { getFusionMachine } from "@/lib/machines/fusion";
 import { useRenderedHandles } from "./use-rendered-handles";
 import { MinecraftSelect } from "./MinecraftSelect";
+import {
+  FactTile,
+  LadderTile,
+  SETTING_TILE_GAP_PX,
+  SETTING_TILE_HEIGHT_PX,
+  SETTING_TILE_MIN_WIDTH_PX,
+} from "./SettingTile";
 import { PowerConfigPanel } from "./PowerConfigPanel";
 import { getPowerSource } from "@/lib/power/registry";
-import { getPowerStructureArt } from "@/lib/power/structure-art";
-import { getPowerMachineIcon, type PowerMachineIcon } from "@/lib/power/planner-data";
+import { getMachineStructureArt, getPowerStructureArt } from "@/lib/power/structure-art";
+import { getPowerMachineIcon } from "@/lib/power/planner-data";
 import type { PowerSelectSetting } from "@/lib/power/types";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { useWorkspaceView } from "@/lib/workspace-view";
+import { RecipeTooltip } from "./RecipeTooltip";
+import { buildConfigTooltip } from "./machine-tooltip-data";
+import { buildPortTooltip, buildDemandTooltip, buildStatusTooltip, buildCountTooltip, tooltipMode, type TooltipAction } from "./recipe-tooltip-data";
 import { MachineStatsContent } from "./MachineStatsContent";
 import {
   fluidArtPixels,
@@ -167,32 +205,25 @@ import {
   canonicalizeResourceHandleId,
   makeResourceHandleId,
 } from "./resource-handles";
+import { buildPortFlowScope } from "./flow-scope";
 import {
   buildRailPorts,
   deriveNodeVerdict,
-  isSupplyShort,
   type NodeVerdict,
   type RailPort,
 } from "./node-verdict";
-import { describeDeathSpiral } from "./death-spiral";
-import { describeClogLockForNode } from "./clog-lock";
 import {
-  edgeTouchesResource,
-  explainPlug,
-  explainPort,
   formatPct,
   formatPortRate,
   formatSlotRate,
   formatSlotRateBare,
-  formatSlotRateOrNull,
   portReadsEnergy,
   ENERGY_READING_TEXT,
   formatEnergyPerUnitParts,
   ENERGY_UNIT_TEXT,
   formatTimes,
-  type PortStory,
 } from "./flow-explainers";
-import { useFactoryStore } from "@/store/factory-store";
+import { useFactoryStore, useRateDisplayUnits } from "@/store/factory-store";
 import {
   GLANCE_NEUTRAL_SURFACE,
   GT_NODE_COLORS,
@@ -201,24 +232,26 @@ import {
   glanceSurfaceFor,
   heatmapColorFor,
   rampFor,
+  POWER_CARD_RAMP,
+  CROP_CARD_RAMP,
   type NodeSurfaceColor,
 } from "./node-colors";
 import { useBoardView } from "./board-view";
-import { MotionNumberText, useBoardMotion, useMotionValues } from "./board-motion";
-import { getPaintBrushCursor } from "./paint-cursor";
+import { MotionNumberText } from "./board-motion";
 import { GT_TIER_COLORS } from "./tier-colors";
 import { playBoardSound, suppressBoardSound } from "@/lib/board-sounds";
+import { fetchRecipeTwins, recipeMayHaveTwins, type RecipeTwin } from "@/lib/datasets/recipe-twins";
+import { getRecipeDatasetRecipe } from "@/lib/datasets/browser-loader";
+import { DEFAULT_DATASET_MANIFEST_URL } from "@/lib/datasets/remote";
 
 // Full width so the crop config panel and stat grid line up with the recipe
 // canvas edge instead of forcing their own wider box.
 const CROP_CONFIG_PANEL_WIDTH_CLASS = "w-full";
 
 /**
- * Floor for one row of two passive-production knobs, in grid cells. A label
- * and its select measure a shade over two cells, and GridBlock rounds the
- * REAL content up past this, so two is a floor rather than a promise. The
- * shared CONFIG_PANEL_ROW_HEIGHT is three, which on these panels reserved an
- * empty cell per row and left the box padded top and bottom.
+ * Floor for one row of two passive-production knobs, in grid cells. GridBlock
+ * rounds the real content up past this. The shared CONFIG_PANEL_ROW_HEIGHT
+ * (three) would reserve an empty cell per row on these panels.
  */
 const PASSIVE_PANEL_ROW_CELLS = 2;
 
@@ -230,21 +263,12 @@ const CUSTOM_RATE_UNIVERSAL_HANDLE_IDS: readonly string[] = [
   makeResourceHandleId("output", { kind: "item", id: CUSTOM_RATE_ANY_RESOURCE_ID }),
 ];
 
-/**
- * The power sector's card face: the window ground warmed toward amber - a
- * different material, with every element on it keeping its ordinary colours.
- * The face is the WHOLE mark (a chamfered-corner variant was tried and
- * dropped: the frame's flash and the selection ring could not be made to
- * traverse the cuts convincingly).
+/*
+ * Power and crop cards use a tinted --mc-* ramp (POWER_CARD_RAMP /
+ * CROP_CARD_RAMP in node-colors.ts), so the name bar, wells, tiles and bevels
+ * all take the tint, not only the ground. Keep the corners square: the
+ * frame's flash and the selection ring cannot follow chamfer cuts.
  */
-const POWER_CARD_FACE = "color-mix(in srgb, var(--mc-78) 85%, #d99a2b 15%)";
-
-/**
- * The crop sector's card face: the same trick in green - the crop card is a
- * different material the way a power card is, and every element on it keeps
- * its ordinary colours.
- */
-const CROP_CARD_FACE = "color-mix(in srgb, var(--mc-78) 74%, #4f8c33 26%)";
 
 export interface RecipeNodeData extends Record<string, unknown> {
   projectNode: FactoryNode;
@@ -254,9 +278,21 @@ export interface RecipeNodeData extends Record<string, unknown> {
 
 export type RecipeFlowNode = Node<RecipeNodeData, "recipeNode">;
 
-function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
+function RecipeNodeComponent({ data, selected, controlsOnly = false, renderEditor }: Pick<NodeProps<RecipeFlowNode>, "data" | "selected"> & { controlsOnly?: boolean; renderEditor?: (controls: ReactNode, picture: ReactNode, settings: ReactNode, tier: ReactNode) => ReactNode }) {
   const { projectNode, recipe, result } = data;
-  const [isCompareOpen, setCompareOpen] = useState(false);
+  const editorLocked = useFactoryStore((state) => state.isReadOnly || state.checklistMode);
+  const [isCompareOpen, setCompareOpenState] = useState(false);
+  // The machine menu's open and close SOUND, the search's leaf lifted and
+  // laid down; a switch made from the list closes it with the same sound.
+  const setCompareOpen = (next: boolean | ((open: boolean) => boolean)) => {
+    setCompareOpenState((open) => {
+      const value = typeof next === "function" ? next(open) : next;
+      if (value !== open) {
+        playBoardSound(value ? "pageOpen" : "pageClose");
+      }
+      return value;
+    });
+  };
   const [previewHandlerId, setPreviewHandlerId] = useState<string>();
   // Hovering a config option shows the node as if it were picked. Same shape
   // as the machine-tab preview: display-only, never written to the project.
@@ -265,17 +301,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     key: string;
   }>();
   const [isCropMenuOpen, setCropMenuOpen] = useState(false);
-  // A power card's picture window, hidden or shown from the header button.
-  // The choice is this browser's, per card, never the plan's.
-  const [powerArtHidden, setPowerArtHidden] = useState(() =>
-    readPowerArtCollapsed(projectNode.id),
-  );
+  const [isMobMenuOpen, setMobMenuOpen] = useState(false);
   // The hatch-count chip mid-edit: the typed digits, or undefined at rest.
-  // The dropdowns the chips used to open are GONE (Jack, 2026-08-31): the
-  // supply chip types and wheels, the tier chip clicks and wheels, and
-  // there is no menu to manage.
-  const [hatchCountDraft, setHatchCountDraft] = useState<string>();
-  const isHatchMenuOpen = hatchCountDraft !== undefined;
   const recipeSearch = useFactoryStore((state) => state.highlightSearch);
   // The right panel's PEAK/AVG switch drives the card's power figures too,
   // so the board and the power list always tell one story.
@@ -287,11 +314,20 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   const deleteNode = useFactoryStore((state) => state.deleteNode);
   const duplicateNode = useFactoryStore((state) => state.duplicateNode);
   const beginRecipeRefactor = useFactoryStore((state) => state.beginRecipeRefactor);
+  const refactorNodeWithRecipe = useFactoryStore((state) => state.refactorNodeWithRecipe);
+  const beginRecipeAdd = useFactoryStore((state) => state.beginRecipeAdd);
+  const resolveRecipeAdd = useFactoryStore((state) => state.resolveRecipeAdd);
+  const failRecipeAdd = useFactoryStore((state) => state.failRecipeAdd);
+  const datasetManifestUrl = useFactoryStore((state) => state.datasetManifestUrl);
+  const selectedDatasetVersion = useFactoryStore((state) =>
+    state.datasetManifest?.versions.find((entry) => entry.id === state.selectedDatasetVersionId),
+  );
   const updateNode = useFactoryStore((state) => state.updateNode);
-  const nodeColorPaintMode = useFactoryStore((state) => state.nodeColorPaintMode);
+  const browseMachineRecipes = useFactoryStore((state) => state.browseMachineRecipes);
+  const removeRecipeSection = useFactoryStore((state) => state.removeRecipeSection);
+  const moveRecipeSection = useFactoryStore((state) => state.moveRecipeSection);
   const pendingResourceConnection = useFactoryStore((state) => state.pendingResourceConnection);
   const dataset = useFactoryStore((state) => state.dataset);
-  const energyHatchCatalog = useEnergyHatchCatalog(dataset?.datasetVersionId);
   const isSearchHighlighted = recipeContainsSearchResource(recipe, recipeSearch);
   const isFlowResourceHighlighted = recipeContainsResourceKey(
     recipe,
@@ -305,37 +341,26 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   const isInspectorHighlighted =
     isFlowResourceHighlighted || isNodeBottleneckHighlighted || isUsageHighlighted;
   const { calmMode, glanceMode } = useBoardView();
-  // Card colour is IDENTITY, not decoration (2026-08-30): player paint no
-  // longer applies to recipe cards - a stored colorTag is ignored, not
-  // stripped, so plans stay untouched. The tints that remain say what a card
-  // IS: custom rate blue, and the sector FACES below (power amber, crop
-  // green) - a face washes only the card's ground, so every element on it
-  // keeps its exact ordinary colours. The crop cards' green RAMP was
-  // deliberately retired for the face (Jack, 2026-09-01): a ramp greens
-  // every button and dropdown, and the ask was a green card, not green
-  // chrome. Drawers and boards still take paint.
+  // Card colour is identity, not decoration: recipe cards ignore player paint
+  // (a stored colorTag is kept but not applied). The tints say what a card
+  // is: custom rate blue here, power amber and crop green through the sector
+  // ramps on the shell below. Drawers and boards still take paint.
   const paintTag = isCustomRateRecipe(recipe) ? "blue" : undefined;
-  // A generator wears the power sector's face: the card BACKGROUND warms
-  // toward amber. Everything ON the card keeps its exact ordinary colours -
-  // this is not the paint ramp, just the window's own ground.
+  // A generator wears the power sector's ramp (see POWER_CARD_RAMP).
   const isPowerCard = Boolean(recipe.power);
   const paintColor = paintTag ? GT_NODE_COLORS[paintTag] : undefined;
   const nodeColor = paintColor;
-  // The card's own --mc-* ramp, which is the WHOLE of how a card takes a
-  // colour: every surface inside already reads these tokens, so redefining
-  // them here paints the dropdowns, the block beside them, the machine tabs,
-  // the head buttons, the plugs and everything else without one of them
-  // having to know. See GT_NODE_RAMPS.
-  // The ink is never touched: a ramp keeps an unpainted card's lightnesses,
-  // so the same light text sits at the same contrast on every colour.
+  // The card's --mc-* ramp is the whole of how a card takes colour: every
+  // surface inside reads these tokens, so redefining them paints all of it
+  // (see GT_NODE_RAMPS). A ramp keeps an unpainted card's lightnesses, so text
+  // contrast is the same on every colour.
   const nodeRamp = rampFor(paintTag);
-  // Cards no longer take paint, so the brush must not offer itself here -
-  // the armed paint mode still shows its cursor over drawers and boards.
+  // Recipe cards take no paint, so the brush cursor is not offered here; it
+  // still shows over drawers and boards.
   const paintCursor = undefined;
-  // Recipe derivation is pure in (recipe, projectNode, dataset) but ran on every
-  // render, including renders caused by unrelated store writes such as hover or
-  // search. It also rebuilt `overclockedRecipe` each time, whose fresh identity
-  // defeated NeiRecipeWindow's memo and re-ran the whole NEI pipeline downstream.
+  // Recipe derivation is pure in (recipe, projectNode, dataset); memoize it so
+  // unrelated store writes (hover, search) do not rebuild `overclockedRecipe`
+  // and defeat memoized children.
   const previewedNode = useMemo(() => {
     if (!previewConfigTier) {
       return projectNode;
@@ -382,7 +407,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     // The hatch chip rides only on multiblocks whose maths our own engine
     // runs; runtime-ladder machines would show a knob that changes nothing.
     const showHatchControl = Boolean(
-      powerReport?.isMultiblock && prefersCuratedMachineMath(effectiveRecipe),
+      powerReport?.isMultiblock && prefersCuratedMachineMath(effectiveRecipe) && !getFusionMachine(effectiveRecipe.machineType),
     );
     // Which hatch family feeds the build: the plain 2 A pair, or one exotic
     // hatch (multi-amp, laser) carrying its whole rating. Picked in the
@@ -446,11 +471,16 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           )
         : undefined;
     const cropTitle =
-      cropSeedResource && recipe.name.includes(": ")
+      isCropFarmRecipe(effectiveRecipe) && effectiveRecipe.outputs.length > 0 && recipe.name.includes(": ")
         ? recipe.name.slice(recipe.name.indexOf(": ") + 2)
         : undefined;
     const isCropFarmNode = isCropFarmRecipe(effectiveRecipe);
     const isCropFarmPlaceholder = isCropFarmNode && effectiveRecipe.outputs.length === 0;
+    // An Extreme Entity Crusher: its spawner names the mob and swaps it.
+    const isEecNode = isEecRecipe(effectiveRecipe);
+    const mobSpawner = isEecNode
+      ? effectiveRecipe.inputs.find((input) => isControllerSlotInput(input))
+      : undefined;
     // Custom rate nodes: the dialed rate lives on the raw recipe (the panel
     // writes it there), so the slot is read from `recipe`, not the effective
     // pipeline output.
@@ -472,9 +502,23 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         control.id === CROP_MANAGER_TIER_CONTROL_ID ||
         control.id === CROP_SEED_BED_TIER_CONTROL_ID,
     );
+    // The worked formulas of a modelled machine, from the recipe as written (the effective one already carries
+    // the vat's scaled fluid) and the card's own settings and power.
+    const machineFormulaLines: FormulaLine[] = isTgsRecipe(effectiveRecipe)
+      ? getTgsFormulas(
+        recipe,
+        projectNode.machineConfigTiers,
+        getVoltageTierMaxEuT(getMachineFormulaTier(effectiveRecipe, projectNode)),
+        getMachineFormulaAmps(effectiveRecipe, projectNode),
+      )
+      : isVatRecipe(effectiveRecipe)
+        ? getVatFormulas(recipe, projectNode.machineConfigTiers, overclockedStats)
+        : [];
     return {
+      machineFormulaLines,
       machineHandlers,
       selectedMachineHandler,
+      nodeRecipe,
       effectiveRecipe,
       recipePowerTier,
       tierControl,
@@ -483,15 +527,18 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       cropProductionControls,
       cropTierControl,
       cropTitle,
+      cropSeedResource,
       isCropFarmNode,
       isCropFarmPlaceholder,
+      isEecNode,
+      mobSpawner,
       isCustomRateNode,
       customRateSlot,
       customRateDial,
       isCustomRatePlaceholder,
       isCropProductionNode: cropProductionControls.length > 0,
       beeFrameControls,
-      beePanelControls: getBeePanelControls(beeProductionControls),
+      beePanelControls: getBeePanelControls(beeProductionControls.filter((control) => !isBeeFrameSlotControlId(control.id))),
       tgsToolControls,
       statsMachineConfigControls: machineConfigControls.filter(
         (control) =>
@@ -506,7 +553,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       // different setting.
       programmedCircuit: getRecipeProgrammedCircuit(effectiveRecipe),
       overclockedRecipe,
-      tierColor: tierControl ? GT_TIER_COLORS[tierControl.current] : undefined,
+      tierColor: tierControl
+        ? GT_TIER_COLORS[powerReport?.isMultiblock ? powerReport.tier : tierControl.current]
+        : undefined,
       powerReport,
       steamReport,
       showHatchControl,
@@ -518,8 +567,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   }, [dataset, previewedNode, recipe]);
 
   const {
-    machineHandlers,
+    machineHandlers: recipeMachineHandlers,
     selectedMachineHandler,
+    nodeRecipe,
     effectiveRecipe,
     tierControl,
     coilControl,
@@ -527,8 +577,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     cropProductionControls,
     cropTierControl,
     cropTitle,
+    cropSeedResource,
     isCropFarmNode,
     isCropFarmPlaceholder,
+    isEecNode,
+    mobSpawner,
     isCustomRateNode,
     customRateSlot,
     customRateDial,
@@ -547,17 +600,56 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     showHatchControl,
     energyHatchType,
     powerInfo,
+    machineFormulaLines,
   } = derived;
+  // SHARED MACHINE (shared-machine.ts): a card running several recipes.
+  // The machine list is what runs EVERY recipe on it; each extra recipe is
+  // a section with rails of its own below the first.
+  const isSharedMachine = isSharedMachineNode(projectNode);
+  const liveRecipes = useFactoryStore((state) => state.project.recipes);
+  const machineHandlers = useMemo(
+    () =>
+      isSharedMachine
+        ? getSharedMachineHandlers(projectNode, (id) =>
+            id === recipe.id ? recipe : liveRecipes.find((entry) => entry.id === id),
+          )
+        : recipeMachineHandlers,
+    [isSharedMachine, liveRecipes, projectNode, recipe, recipeMachineHandlers],
+  );
+  const extraSections = useMemo(
+    () =>
+      listNodeSections(projectNode)
+        .slice(1)
+        .map(({ section, node }) => {
+          const sectionRecipe = liveRecipes.find((entry) => entry.id === node.recipeId);
+          if (!sectionRecipe) {
+            return undefined;
+          }
+          const sectionNodeRecipe = applyRecipeInputOverrides(sectionRecipe, node);
+          const sectionEffective = applyMachineHandlerToRecipe(sectionNodeRecipe, node);
+          const stats = getOverclockedRecipeStats(sectionNodeRecipe, node);
+          const adjusted = applyMachineOutputMultipliers(sectionEffective, node, stats.tier);
+          // The section's own draw at the card's budget: what the POWER
+          // cell's peak and average are built from.
+          const drawsEu = sectionEffective.eut > 0 && !isSteamMachineHandler(getSelectedMachineHandler(sectionRecipe, node));
+          return {
+            section,
+            node,
+            recipe: sectionRecipe,
+            display: { ...sectionEffective, ...adjusted, ...stats },
+            powerReport: drawsEu && hasPowerReport(sectionNodeRecipe) ? getNodePowerReport(sectionNodeRecipe, node) : undefined,
+            steamReport: !drawsEu ? getNodeSteamReport(sectionNodeRecipe, node) : undefined,
+          };
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined),
+    [liveRecipes, projectNode],
+  );
   // The chip's own art: the concrete hatch item this tier-and-family pair
   // names, from the once-per-dataset catalog.
-  const hatchChipEntry = tierControl
-    ? energyHatchCatalog.get(energyHatchCatalogKey(tierControl.current, energyHatchType.id))
-    : undefined;
-  // The full footer — usage, power, parallel, machines, circuit — does not
-  // fit the fixed card width on one line. When power and the parallel chip
-  // would share the row, the parallel chip steps UP: into the config panel's
-  // own grid when the card has one, sharing a row with the coil and solenoid
-  // knobs, or onto a slim right-aligned row of its own when it does not.
+
+  // The full footer does not fit the card width on one line. When power and
+  // the parallel chip would share the row, the parallel chip moves up into the
+  // config panel's grid, or onto a slim row of its own when there is none.
   const parallelChipLifts =
     !isCustomRateNode &&
     (powerReport !== undefined || steamReport !== undefined) &&
@@ -567,6 +659,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // numbers can change.
   const { project: liveProject, lastResult } = useFactoryStore.getState();
   const verdict = deriveNodeVerdict(liveProject, lastResult, projectNode.id);
+  // The rate and power dials are the one thing that changes what the card
+  // prints without changing the books, so the card subscribes to them.
+  useRateDisplayUnits();
   // Solve mode: the card answers "how many machines" instead of "how hard is
   // this build running", so the usage cell and the count stepper both yield.
   const solveMode = useFactoryStore((state) => state.project.solveMode === true);
@@ -577,20 +672,98 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     overclockedRecipe,
     verdict,
   );
+  // Each extra section reads its own solve node (`card#rN`) for verdict and
+  // rails; its handles wear the section prefix so wires know the section.
+  const sectionRails = extraSections.map((entry) => {
+    const id = sectionNodeId(projectNode.id, entry.section);
+    const sectionVerdict = deriveNodeVerdict(liveProject, lastResult, id);
+    return {
+      ...entry,
+      id,
+      verdict: sectionVerdict,
+      result: lastResult?.nodes[id],
+      rails: buildRailPorts(liveProject, lastResult, id, entry.display, sectionVerdict, {
+        handleSection: entry.section,
+      }),
+    };
+  });
+  // The card's usage is the machine's: every section's share of its time
+  // added up. The word is the first section's unless the machine is full.
+  const sharedUsage = isSharedMachine
+    ? sectionRails.reduce(
+        (sum, entry) => sum + Math.min(1, entry.result?.utilization ?? 0),
+        Math.min(1, result?.utilization ?? 0),
+      )
+    : undefined;
+  // The shared machine's POWER: what it spikes to is the hungriest recipe's
+  // draw, what it averages is every recipe's draw weighted by its share of
+  // the time. The MACHINES list bills a shared card the same way.
+  const sharedDraw = (() => {
+    if (!isSharedMachine) {
+      return undefined;
+    }
+    const perMachine = projectNode.machineCount * Math.max(1, projectNode.parallel);
+    const parts = [
+      { report: powerReport, share: Math.min(1, result?.utilization ?? 0) },
+      ...sectionRails.map((entry) => ({
+        report: entry.powerReport,
+        share: Math.min(1, entry.result?.utilization ?? 0),
+      })),
+    ];
+    const totalShare = parts.reduce((sum, part) => sum + part.share, 0);
+    return {
+      peakEuT: totalShare > 0 ? Math.max(...parts.map((part) => part.report?.drawEuT ?? 0)) * perMachine : 0,
+      avgEuT: parts.reduce((sum, part) => sum + (part.report?.drawEuT ?? 0) * part.share, 0) * perMachine,
+      recipes: parts.length,
+    };
+  })();
+  const sharedLitres = (() => {
+    if (!isSharedMachine) {
+      return undefined;
+    }
+    const perMachine = { machineCount: projectNode.machineCount, parallel: projectNode.parallel };
+    const parts = [
+      { report: steamReport, share: Math.min(1, result?.utilization ?? 0) },
+      ...sectionRails.map((entry) => ({
+        report: entry.steamReport,
+        share: Math.min(1, entry.result?.utilization ?? 0),
+      })),
+    ];
+    const litres = (report: NodeSteamReport | undefined) =>
+      report ? steamDrawLitresPerSecond(report, perMachine) : 0;
+    const totalShare = parts.reduce((sum, part) => sum + part.share, 0);
+    return {
+      peak: totalShare > 0 ? Math.max(...parts.map((part) => litres(part.report))) : 0,
+      avg: parts.reduce((sum, part) => sum + litres(part.report) * part.share, 0),
+      recipes: parts.length,
+    };
+  })();
+  const cardVerdict: NodeVerdict =
+    sharedUsage !== undefined && verdict.kind !== "off" && verdict.kind !== "no-recipe"
+      ? {
+          ...verdict,
+          pct: Math.min(100, sharedUsage * 100),
+          ...(sharedUsage >= 0.995 && (verdict.kind === "busy" || verdict.kind === "paced" || verdict.kind === "demand-set")
+            ? { kind: "balanced" as const }
+            : {}),
+        }
+      : verdict;
   const powerStalled = powerReport !== undefined && powerReport.state !== "ok";
-  // The picture window's material: the workbook render for a multiblock,
-  // the machine item for a singleblock. Both are map lookups. The Industrial
-  // Farm is the one non-generator multiblock with a render of its own, so a
-  // crop card on that handler wears the same window (and the same hide
-  // button) as any large turbine.
+  // The picture window's art: the workbook render for a multiblock, the
+  // machine item for a singleblock. A crop card on the Industrial Farm wears
+  // the farm's render like a generator wears its own.
   const cropStructureArt =
     selectedMachineHandler.id === CROP_HARVESTER_INDUSTRIAL_FARM_ID
       ? "/power-art/industrial-farm.png"
       : undefined;
   const powerArt =
-    (powerInfo ? getPowerStructureArt(powerInfo.sourceId) : undefined) ?? cropStructureArt;
+    (powerInfo ? getPowerStructureArt(powerInfo.sourceId) : undefined) ??
+    cropStructureArt ??
+    // A processing multiblock with a render of its own wears the same window
+    // as a generator; the rest keep the controller icon.
+    getMachineStructureArt(selectedMachineHandler.id);
   const powerMachineIcon = powerInfo ? getPowerMachineIcon(powerInfo.sourceId) : undefined;
-  const hasPowerPicture = Boolean(powerArt || powerMachineIcon?.iconPath);
+
   // A generator's EU rides the output rail as its first row (a real port,
   // kind "power"); machines that only DRAW keep the figure in the footer.
   const hasOutputSide = rails.outputs.length > 0;
@@ -606,6 +779,18 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // draw the machine spikes to when it runs, 0 only at exactly 0% (a machine
   // that never starts draws nothing); AVG weights it by the solve's usage.
   const drawScale = drawScaleFor(averageDraw, result?.utilization);
+  const powerReadout: ComponentProps<typeof PowerReadout> | undefined = showHatchControl ? {
+    recipe: nodeRecipe,
+    node: projectNode,
+    mode: tooltipMode(liveProject),
+    // In Solve/Pool, inactive results retain nameplate EU/t for their ports.
+    plannedEuT: result ? [result, ...sectionRails.map((entry) => entry.result)].reduce(
+      (sum, part) => sum + (part?.enabled && part.theoreticalMachinesRequired > 0 ? part.euT : 0), 0,
+    ) : undefined,
+    utilization: sharedUsage ?? result?.utilization,
+    sharedAverageEuT: sharedDraw?.avgEuT,
+    shared: isSharedMachine,
+  } : undefined;
   // The crop harvester's draw for the footer's POWER cell: the Industrial
   // Farm burns `getPowerUsage` continuously spread over its seeds, the Crop
   // Manager spends `maxEUInput() / 8` per harvest - the same arithmetic the
@@ -617,6 +802,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       ? Math.ceil((result?.theoreticalMachinesRequired ?? 0) - 0.000001)
       : undefined;
   const cropSeedCount = cropSolvedSeeds ?? projectNode.machineCount;
+  const fullFarmCapacity = industrialFarmCapacity(effectiveRecipe, projectNode);
+  const fullFarms = fullFarmCapacity !== undefined && projectNode.cropFullFarmCount !== undefined;
   const cropDrawEuT = (() => {
     if (!isCropProductionNode) {
       return 0;
@@ -663,7 +850,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     : 0;
   const powerCardMakes = (powerInfo?.euPerTick ?? 0) > 0;
   const powerCardGlanceWord = powerInfo
-    ? (projectNode.machineConfigTiers?.tier ?? getPowerSource(powerInfo.sourceId)?.unlock)
+    ? // An exchanger's `tier` is its pipe tier, a bare number, not a voltage.
+      (isVoltageTierName(projectNode.machineConfigTiers?.tier)
+        ? projectNode.machineConfigTiers?.tier
+        : getPowerSource(powerInfo.sourceId)?.unlock)
     : undefined;
   // What the LOD step paints this card, per smart view. Every non-identity
   // view returns a surface for EVERY card — a card with nothing to say gets
@@ -685,19 +875,22 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // and a custom rate node shows its two universal sockets instead. Handing
   // the list to React Flow keeps its handle bounds honest when the set changes
   // without the card changing size — see use-rendered-handles.ts.
-  useRenderedHandles(
-    projectNode.id,
-    isCropFarmPlaceholder
+  const renderedHandleIds = isCropFarmPlaceholder
       ? EMPTY_HANDLE_IDS
       : isCustomRatePlaceholder
         ? CUSTOM_RATE_UNIVERSAL_HANDLE_IDS
         : [
-            ...rails.inputs.map((port) => port.handleId),
+            // A free-in-the-game slot renders no handle: there is nothing
+            // to wire, so it must not be listed as a handle to await.
+            ...rails.inputs.filter((port) => !port.free).map((port) => port.handleId),
             ...rails.outputs.map((port) => port.handleId),
-          ],
-  );
+            ...sectionRails.flatMap((entry) => [
+              ...entry.rails.inputs.filter((port) => !port.free).map((port) => port.handleId),
+              ...entry.rails.outputs.map((port) => port.handleId),
+            ]),
+          ];
   const updateTier = (direction: -1 | 1) => {
-    if (!tierControl) {
+    if (editorLocked || !tierControl || tierControl.fixed) {
       return;
     }
 
@@ -705,6 +898,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       tierControl.current,
       tierControl.allowBelowMinimum ? undefined : tierControl.minimum,
       direction,
+      tierControl.maximum,
+      tierControl.available,
     );
     if (nextTier !== tierControl.current) {
       // The board's ONE sound for a voltage tier: the power unit dial's
@@ -725,38 +920,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       });
     }
   };
-  // Shift-click on the supply chip walks the supply ladder without the menu:
-  // regular counts first, then the exotic hatches, in the menu's own order.
-  const stepSupply = (direction: -1 | 1) => {
-    if (!tierControl) {
-      return;
-    }
-    const options = energySupplyOptionsForTier(tierControl.current, energyHatchCatalog);
-    const currentIndex = options.findIndex(
-      (option) =>
-        option.familyId === energyHatchType.id &&
-        (option.familyId !== STANDARD_ENERGY_HATCH_ID ||
-          option.hatches === (powerReport?.hatches ?? 1)),
-    );
-    const next =
-      options[
-        Math.min(options.length - 1, Math.max(0, (currentIndex < 0 ? 0 : currentIndex) + direction))
-      ];
-    if (next && (currentIndex < 0 || options[currentIndex] !== next)) {
-      // The supply ladder speaks the same electric language, quieter, and
-      // CLIMBS with the amps: each supply option is a quarter-rung above
-      // the last inside its tier, so more hatches audibly means more.
-      playBoardSound("dialPower", {
-        step: getVoltageTierIndex(tierControl.current) + 1 + options.indexOf(next) * 0.25,
-        gain: 0.6,
-      });
-      suppressBoardSound("adjust", 150);
-      updateNode(projectNode.id, {
-        energyHatchType: next.familyId === STANDARD_ENERGY_HATCH_ID ? undefined : next.familyId,
-        energyHatches: next.hatches,
-      });
-    }
-  };
   const updateCoilTier = (nextTier: string) => {
     updateNode(projectNode.id, { coilTier: nextTier });
   };
@@ -773,9 +936,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       machineConfigTiers: nextMachineConfigTiers,
     });
   };
-  // TGS tool slots and bee frame slots used to be icon menus painted over
-  // recipe-canvas slots; with the canvas gone they join the regular config
-  // panel as icon + dropdown rows (tiers filtered to each slot's category).
+  // TGS tool slots and bee frame slots are ordinary config rows (icon +
+  // dropdown), their tiers filtered to each slot's category.
   const visibleMachineConfigControls = [
     ...(coilControl && coilResource ? [{ ...coilControl, resource: coilResource }] : []),
     ...tgsToolControls.map((control) => ({
@@ -784,20 +946,45 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       tiers: getTreeGrowthSimulatorSlotTiers(control),
     })),
     ...beeFrameControls,
-    ...statsMachineConfigControls,
+    // The parallel controls are FACTS of the structure, not choices: they
+    // never get a tile. The count they produce rides the Parallel fact tile.
+    ...statsMachineConfigControls.filter(
+      (control) => control.id !== "machineParallel" && control.id !== "voltageParallel",
+    ),
   ];
-  const parallelPanelTile =
-    parallelChipLifts && visibleMachineConfigControls.length > 0 ? (
-      <ConfigParallelTile value={formatMachineParallelMultiplier(machineParallelMultiplier)} />
-    ) : undefined;
+  // The parallel count is a fact of the chosen casing, not a setting, so it
+  // is a read-only tile after the settings in the same grid. It is the count
+  // the card actually runs at: the curated table's (a Volcanus runs 8
+  // whatever the scraped control says), else the config's.
+  const effectiveParallels =
+    powerReport?.parallels ?? steamReport?.parallels ?? machineParallelMultiplier;
+  const configFacts =
+    !isCustomRateNode && (powerReport !== undefined || steamReport !== undefined) && effectiveParallels > 1
+      ? [
+          {
+            id: "parallel",
+            caption: "Parallel",
+            value: `×${formatMachineParallelMultiplier(effectiveParallels)}`,
+            help: () => (
+              <RecipeTooltip
+                view={{
+                  title: "Parallel operations",
+                  rows: [{ label: "Operations at once", value: formatMachineParallelMultiplier(effectiveParallels) }],
+                  reason: "Set by the machine and its configuration.",
+                }}
+              />
+            ),
+          },
+        ]
+      : [];
   const machineConfigPanel =
-    visibleMachineConfigControls.length > 0 ? (
+    visibleMachineConfigControls.length > 0 || configFacts.length > 0 ? (
       <MachineConfigControlPanel
+        compact={controlsOnly}
+        recipe={recipe}
+        node={projectNode}
         controls={visibleMachineConfigControls}
-        trailing={parallelPanelTile}
-        onPreview={(controlId, key) =>
-          setPreviewConfigTier(key === undefined ? undefined : { controlId, key })
-        }
+        facts={configFacts}
         onSelect={(controlId, nextTier) => {
           setPreviewConfigTier(undefined);
           if (controlId === "heatingCoil") {
@@ -831,8 +1018,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         controls={beePanelControls}
         onSelect={updateMachineConfigTier}
         title={selectedMachineHandler.label}
-        collapsed={projectNode.settingsCollapsed === true}
-        onToggleCollapsed={() =>
+        collapsed={!controlsOnly && projectNode.settingsCollapsed === true}
+        onToggleCollapsed={controlsOnly ? undefined : () =>
           updateNode(projectNode.id, {
             settingsCollapsed: !(projectNode.settingsCollapsed === true),
           })
@@ -852,20 +1039,99 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       ...(energyHatchTypeExistsAtTier(projectNode.energyHatchType, nextHandler.minimumTier)
         ? undefined
         : { energyHatchType: undefined }),
+      ...carryMachineVoltage(
+        { recipe: nodeRecipe, node: projectNode },
+        { recipe: nodeRecipe, machineHandlerId: nextHandler.id },
+      ),
     });
-    setCompareOpen(false);
+    // Silent: the switch itself sounds (the board's adjust tap), and a
+    // close sound on top of it read as a double.
+    setCompareOpenState(false);
     setPreviewHandlerId(undefined);
   };
 
-  // A crop card's NAME BAR is its crop picker, so the harvester picker takes
-  // the tab strip above the card like every other machine choice. The old
-  // `!isCropFarmNode` guard was redundant when crops had a single handler;
-  // now that they offer by hand, Crop Manager and Industrial Farm it is the
-  // only thing standing between the card and its machines.
+  // Crop cards pick their harvester (by hand, Crop Manager, Industrial Farm)
+  // here like any machine; the crop itself is picked from the sprout key.
   const hasMachinePicker = machineHandlers.length > 1;
+  // The card's TWINS: other recipes taking and making exactly this, listed
+  // under the machines in the same menu. Fetched when the menu opens or the
+  // pointer first rests on the name bar, so a one-machine card knows whether
+  // to show a chevron before it is clicked.
+  const mayHaveTwins = useMemo(
+    () => recipeMayHaveTwins(recipe, projectNode),
+    [recipe, projectNode.recipeInputOverrides],
+  );
+  // The answer is keyed by the question (recipe, its slot picks, the
+  // dataset) so a stale answer never shows under a new recipe; until the
+  // answer for the current key lands, the list is loading.
+  const twinsKey = `${selectedDatasetVersion?.id ?? ""}|${recipe.id}|${JSON.stringify(projectNode.recipeInputOverrides ?? null)}`;
+  const [twinsAnswer, setTwinsAnswer] = useState<{ key: string; value: RecipeTwin[] | "error" }>();
+  const [twinsWanted, setTwinsWanted] = useState(false);
+  useEffect(() => {
+    if (
+      !(isCompareOpen || twinsWanted) ||
+      !mayHaveTwins ||
+      !selectedDatasetVersion ||
+      twinsAnswer?.key === twinsKey
+    ) {
+      return;
+    }
+    const controller = new AbortController();
+    fetchRecipeTwins(selectedDatasetVersion, recipe, projectNode, { signal: controller.signal })
+      .then((rows) => {
+        if (!controller.signal.aborted) setTwinsAnswer({ key: twinsKey, value: rows });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setTwinsAnswer({ key: twinsKey, value: "error" });
+      });
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- twinsKey names everything the question depends on
+  }, [isCompareOpen, twinsWanted, mayHaveTwins, twinsKey, selectedDatasetVersion, twinsAnswer?.key]);
+  const twins: RecipeTwin[] | undefined =
+    twinsAnswer?.key === twinsKey && Array.isArray(twinsAnswer.value) ? twinsAnswer.value : undefined;
+  const hasTwins = (twins?.length ?? 0) > 0;
+  const useTwin = (twin: RecipeTwin) => {
+    setCompareOpenState(false);
+    setPreviewHandlerId(undefined);
+    if (!selectedDatasetVersion) {
+      return;
+    }
+    // The swap is the refactor's landing, with the same chip over the board
+    // while the full recipe loads and the same apology when it cannot.
+    const pendingId = beginRecipeAdd(twin.recipe.name);
+    void getRecipeDatasetRecipe(
+      datasetManifestUrl ?? DEFAULT_DATASET_MANIFEST_URL,
+      selectedDatasetVersion,
+      twin.recipe.id,
+    )
+      .then((full) => {
+        refactorNodeWithRecipe(projectNode.id, full, { machineHandlerId: twin.handler.id });
+        resolveRecipeAdd(pendingId);
+      })
+      .catch((error: unknown) => {
+        failRecipeAdd(pendingId, error instanceof Error ? error.message : "The recipe could not be loaded.");
+      });
+  };
+  // A card whose machine can take another recipe: everything but the
+  // generators, crop farms and custom rate cards, which own their recipe.
+  const canShareMachine = !powerInfo && !isCropFarmNode && !isEecNode && !isCustomRateNode && !calmMode;
+  const hasMachineMenu = (hasMachinePicker || hasTwins || canShareMachine) && !calmMode;
+  const cycleMachineHandler = (direction: -1 | 1) => {
+    const ordered = orderMachineHandlers(machineHandlers);
+    const index = Math.max(0, ordered.findIndex((handler) => handler.id === selectedMachineHandler.id));
+    const next = ordered[(index + direction + ordered.length) % ordered.length];
+    if (next && next.id !== selectedMachineHandler.id) {
+      updateMachineHandler(next.id);
+    }
+  };
   const machineIcons = useMachineHandlerIcons();
-  // The machine's own art, when the dataset ships it. Crop farms and custom
-  // rate nodes have no machine to show.
+  const machineIconEntries = useMachineHandlerIconEntries();
+  const recipeMapIcons = useRecipeMapIcons();
+  // Crop/bee category icons represent seeds or specimens, not machines.
+  const recipeMapMachineIcon = isCropProductionRecipe(recipe) || isBeeProductionRecipe(recipe)
+    ? undefined
+    : recipeMapIcons.get(recipe.source?.recipeMap ?? recipe.machineType);
+  // Prefer the selected harvester or housing's own art.
   const machineGlanceIcon = powerInfo
     ? powerMachineIcon?.iconPath
       ? ({
@@ -876,65 +1142,199 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           dominantColor: powerMachineIcon.dominantColor,
         } as unknown as MachineHandlerIcon)
       : undefined
-    : !isCropFarmNode && !isCustomRateNode
-      ? machineIcons.get(selectedMachineHandler.id)
+    : !isCustomRateNode
+      ? // The same pick as the picture window: the tier's own block, the
+        // family face, or the map's machine - the glance must mirror the card.
+        (machineIconAtTier(machineIconEntries.get(selectedMachineHandler.id), cropTierControl?.current.label ?? tierControl?.current ?? projectNode.overclockTier) ??
+        recipeMapMachineIcon)
       : undefined;
-  // Presentation mode's tab zone: the selected machine's icon, big, and
-  // nothing else.
-  const machineTabIcon = calmMode ? machineGlanceIcon : undefined;
-  // The tab zone's height IS the dock inset: wires must not dock on the
-  // zone's phantom top edge (dock-insets.ts). Observed rather than derived,
-  // because the picker strip wraps and its row count is a layout fact.
-  const tabZoneRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const element = tabZoneRef.current;
-    const publish = () => {
-      const zoneHeight = element?.offsetHeight ?? 0;
-      if (!element || zoneHeight === 0) {
-        publishDockTopInset(projectNode.id, 0);
-        return;
-      }
-      // How far right the tab ART reaches: the widest in-flow child across
-      // every row (the baseline strip is absolute and spans the whole zone,
-      // so it is skipped). Top docks refuse to land left of this line — a
-      // stub there would draw straight across a tab.
-      let tabsRight = 0;
-      const zone = element.firstElementChild;
-      for (const child of zone?.children ?? []) {
-        const box = child as HTMLElement;
-        if (getComputedStyle(box).position === "absolute") {
-          continue;
-        }
-        tabsRight = Math.max(tabsRight, box.offsetLeft + box.offsetWidth);
-      }
-      publishDockTopInset(projectNode.id, zoneHeight, tabsRight);
-    };
-    publish();
-    if (!element || typeof ResizeObserver === "undefined") {
-      return;
-    }
-    const observer = new ResizeObserver(publish);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [projectNode.id]);
   const previewHandler = hasMachinePicker
     ? (machineHandlers.find((handler) => handler.id === previewHandlerId) ?? selectedMachineHandler)
     : selectedMachineHandler;
-  const isPreviewing = hasMachinePicker && previewHandler.id !== selectedMachineHandler.id;
-  // The outlines the card is wearing, innermost first. They STACK rather than
-  // override: each ring starts where the one inside it stopped. Selection is
-  // innermost, which is also the ring painted on top — clicking a card has to
-  // show that it landed, and a 2px line inside a breathing red dead-loop glow was
-  // being lost in it.
-  //
-  // The recipe book's tier dropdown used to put a red ring and a "TIER REQUIRED"
-  // badge on every card above it. That dropdown narrows a SEARCH; it says nothing
-  // about what the plan is allowed to contain, and reading it as a verdict meant
-  // filtering the book to LV accused a third of the board of being wrong.
+  // Every machine wears a picture, following the menu's hover so a previewed
+  // machine shows too. The icon is the tier's own block for a tiered
+  // singleblock family, else the family face, else the MAP's machine for a
+  // one-family map whose placeholder handler has no family icon (the Chemical
+  // Plant). A crop card's tier is its harvester chip, not a voltage tier.
+  const pictureTier = cropTierControl?.current.label ?? tierControl?.current ?? projectNode.overclockTier;
+  const previewMachineIcon =
+    machineIconAtTier(machineIconEntries.get(previewHandler.id), pictureTier) ??
+    recipeMapMachineIcon;
+  // The machine's real name: the tier variant's own item name ("Advanced
+  // Centrifuge II", not the family word "Centrifuge"), or the map's machine
+  // for a one-family map. Generators, crops and custom rate cards name
+  // themselves.
+  const machineDisplayName =
+    !powerInfo && !isCustomRateNode && previewMachineIcon?.displayName
+      ? previewMachineIcon.displayName
+      : previewHandler.label;
+  const titleRef = useFitTitle(machineDisplayName);
+  const hasPowerPicture = Boolean(
+    powerArt ||
+      powerMachineIcon?.iconPath ||
+      (!isCustomRateNode && previewMachineIcon?.iconPath),
+  );
+  // The outlines the card wears, innermost first. They stack: each ring starts
+  // where the one inside it stops. Selection is innermost and painted on top,
+  // so it stays visible inside a dead-loop glow. The recipe book's tier filter
+  // narrows a search, not the plan, so it never rings a card.
   const cardOutlineRings = [
     ...(selected ? [{ width: 2, color: "var(--selection)" }] : []),
     ...(isSearchHighlighted ? [{ width: 4, color: "#7dd3fc" }] : []),
   ];
+
+  // Canvas and worksheet share the same tier chip and interaction surface.
+  const voltageTierControl = tierControl && tierColor ? (
+    // The fused chip trio is ONE hover surface telling the whole
+    // power story - the same panel the footer's POWER cell shows -
+    // so count, hatch and tier all speak one language. The native
+    // titles survive only where there is no report to tell it.
+    <div className="relative">
+    <MinecraftTooltip
+      content={
+        powerReport && isSharedMachine ? (
+          // A shared machine's chip is a machine fact: its tier and
+          // budget. Each recipe's own story sits on its rule row.
+          <RecipeTooltip
+            view={{
+              title: "Machine power",
+              rows: [
+                { label: "Tier", value: powerReport.tier },
+                { label: "Supply per machine", value: `${formatPowerValue(powerDisplayFromEuT(powerReport.poolEuT))} ${powerDisplaySuffix()}` },
+                { label: "Recipes", value: String(1 + sectionRails.length) },
+              ],
+            }}
+          />
+        ) : powerReport ? (
+          <PowerStoryContent
+            report={powerReport}
+            utilization={result?.utilization}
+            machines={projectNode.machineCount * projectNode.parallel}
+            recipe={nodeRecipe}
+            node={projectNode}
+          />
+        ) : undefined
+      }
+    >
+    <div className="flex">
+      <MinecraftTooltip content={() => <RecipeTooltip view={tierControl.fixed
+        ? { title: "Fusion reactor power", rows: [{ label: "Operating tier", value: tierControl.current }], reason: "Fixed by the reactor mark. Select a different controller to change overclocks." }
+        : { title: "Voltage tier", rows: [{ label: "Configured tier", value: tierControl.current }], actions: [{ gesture: "left", label: "Increase" }, { gesture: "right", label: "Decrease" }, { gesture: "wheel", label: "Adjust tier" }] }} />}>
+      <button
+        type="button"
+        aria-disabled={tierControl.fixed || undefined}
+        onClick={(event) => {
+          event.stopPropagation();
+          // Click steps up, right-click steps down, wheel walks: the
+          // classic cycle, everywhere.
+          if (!tierControl.fixed) updateTier(1);
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          // Right click steps the tier down, with or without shift:
+          // requiring shift left plain right click doing nothing,
+          // which read as broken (and Firefox forces its own menu on
+          // shift-right-click, so plain is the one that always works).
+          if (!tierControl.fixed) updateTier(-1);
+        }}
+        data-hatch-menu-anchor
+        onWheel={(event) => {
+          if (checklistLocked() || !wheelChangesValues()) return;
+          event.stopPropagation();
+          if (!tierControl.fixed) updateTier(event.deltaY < 0 ? 1 : -1);
+        }}
+        className="nowheel flex h-6 w-[50px] items-center justify-center border-2 px-1 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+        style={{
+          backgroundColor: tierColor.background,
+          borderColor: tierColor.border,
+          color: tierColor.text,
+          textShadow: `1px 1px 0 ${tierColor.shadow}`,
+        }}
+        aria-label={`Tier ${tierControl.current}`}
+      >
+        {tierControl.current}
+      </button>
+      </MinecraftTooltip>
+    </div>
+    </MinecraftTooltip>
+    </div>
+  ) : null;
+
+  // The worksheet mounts the SAME controls and derivation without canvas
+  // handles or geometry registration. There is only one editing path for
+  // machine math, specialized farms, generators, and shared recipe settings.
+  if (controlsOnly) {
+    const controls = (
+      <fieldset disabled={editorLocked} className="pool-machine-editor min-w-0 border-0 p-0 text-[var(--mc-ink)]">
+        <div className="pool-editor-controls pool-editor-heading">
+          <div className="pool-machine-identity">
+            {isCropFarmNode ? <div className="pool-crop-picker">
+              <MinecraftTooltip content={cropTitle ? "Change crop: " + cropTitle : "Pick a crop"}>
+                <button type="button" className="pool-machine-icon-button pool-crop-button" data-crop-picker-toggle
+                  aria-label={cropTitle ? "Change crop: " + cropTitle : "Pick a crop"} aria-expanded={isCropMenuOpen}
+                  onClick={() => setCropMenuOpen((open) => !open)}>
+                  {cropSeedResource ? <ResourceIcon resource={cropSeedResource} size="sm" className="!h-6 !w-6" iconPixelSize={24} bare showAmount={false} showConsumedState={false} tooltip={false} /> : <Sprout className="h-5 w-5" />}
+                  <RefreshCw className="pool-machine-swap" aria-hidden="true" />
+                </button>
+              </MinecraftTooltip>
+              {isCropMenuOpen ? <CropPickerMenu nodeId={projectNode.id} onClose={() => setCropMenuOpen(false)} /> : null}
+            </div> : null}
+            {isEecNode ? <div className="pool-crop-picker">
+              <MinecraftTooltip content={"Change mob: " + recipeChoiceName(recipe.name)}>
+                <button type="button" className="pool-machine-icon-button pool-crop-button" data-mob-picker-toggle
+                  aria-label={"Change mob: " + recipeChoiceName(recipe.name)} aria-expanded={isMobMenuOpen}
+                  onClick={() => setMobMenuOpen((open) => !open)}>
+                  {mobSpawner ? <ResourceIcon resource={mobSpawner} size="sm" className="!h-6 !w-6" iconPixelSize={24} bare showAmount={false} showConsumedState={false} tooltip={false} /> : null}
+                  <RefreshCw className="pool-machine-swap" aria-hidden="true" />
+                </button>
+              </MinecraftTooltip>
+              {isMobMenuOpen ? <MobPickerMenu nodeId={projectNode.id} onClose={() => setMobMenuOpen(false)} /> : null}
+            </div> : null}
+            <span className="pool-machine-title" title={machineDisplayName}>{machineDisplayName}</span>
+          </div>
+        </div>
+      </fieldset>
+    );
+    const tier = (
+      <fieldset disabled={editorLocked} className="pool-tier-editor min-w-0 border-0 p-0 text-[var(--mc-ink)]">
+          <div className="pool-editor-power">
+          {powerInfo ? <PowerTierChip nodeId={projectNode.id} sourceId={powerInfo.sourceId} values={projectNode.machineConfigTiers} /> : null}
+          {cropTierControl && !tierControl && !powerInfo ? <CropTierChip control={cropTierControl} onPick={(key) => updateMachineConfigTier(cropTierControl.id, key)} /> : null}
+          {powerReadout ? <HatchPowerControls {...powerReadout} locked={() => editorLocked}
+            onChange={(hatchVoltageTier, hatchAmps, powerInputMode) => updateNode(projectNode.id, {
+              hatchVoltageTier, hatchAmps, powerInputMode, powerEuT: hatchAmps * getVoltageTierMaxEuT(hatchVoltageTier),
+            })} /> : voltageTierControl}
+          </div>
+      </fieldset>
+    );
+    const settings = powerInfo || machineConfigPanel || passiveProductionPanel || (isCustomRateNode && customRateDial) ? (
+      <fieldset disabled={editorLocked} className="pool-machine-settings min-w-0 border-0 p-0 text-[var(--mc-ink)]">
+        {powerInfo ? <PowerConfigPanel nodeId={projectNode.id} sourceId={powerInfo.sourceId} values={projectNode.machineConfigTiers} stats={powerInfo.stats} warnings={powerInfo.warnings} /> : null}
+        {machineConfigPanel}
+        {machineFormulaLines.length > 0 ? <MachineFormulas lines={machineFormulaLines} /> : null}
+        {passiveProductionPanel}
+        {isCustomRateNode && customRateDial ? <CustomRatePanel nodeId={projectNode.id} mode={customRateDial.mode} kind={customRateSlot?.resource.kind ?? "item"} perSecond={customRateDial.perSecond} /> : null}
+      </fieldset>
+    ) : null;
+    const picture = (
+      <div className="pool-machine-chooser" data-machine-editor-anchor>
+        <button type="button" data-machine-menu-toggle className="pool-machine-icon-button"
+          aria-label={`Change machine: ${machineDisplayName}`} aria-expanded={isCompareOpen} aria-haspopup="listbox"
+          disabled={editorLocked || (!hasMachinePicker && !canShareMachine && !mayHaveTwins)}
+          onClick={() => setCompareOpen((open) => !open)}>
+          {hasPowerPicture ? <PowerStructureWindow art={powerArt} icon={powerMachineIcon ?? previewMachineIcon} inline bare /> : <Cpu size={22} />}
+          <RefreshCw className="pool-machine-swap" aria-hidden="true" />
+        </button>
+        {isCompareOpen ? <MachineMenu recipe={recipe} node={projectNode} handlers={machineHandlers}
+          selectedId={selectedMachineHandler.id} iconsById={machineIcons} onHover={setPreviewHandlerId}
+          onUse={updateMachineHandler} onClose={() => setCompareOpen(false)}
+          twins={isSharedMachine ? undefined : twins} mapIcons={recipeMapIcons} onUseTwin={useTwin}
+          figures={!isSharedMachine && !isCropProductionRecipe(recipe)} onAddRecipe={canShareMachine ? () => { setCompareOpen(false); browseMachineRecipes(projectNode.id); } : undefined} /> : null}
+      </div>
+    );
+    return renderEditor ? renderEditor(controls, picture, settings, tier) : <>{picture}{controls}{tier}{settings}</>;
+  }
 
   // Outputs end in coupling chips at the node's right edge — inside the
   // card, like inputs — so the node's box is the machine's box again and
@@ -948,15 +1348,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       className={[
         // recipe-node-shell scopes the strip↔row hover link (globals.css):
         // hovering the verdict lights the input it blames, in pure CSS, so a
-        // hover never re-renders a node.
-        // The shell is the node's whole BOX — tab zone plus window — and is
-        // deliberately unpainted: the frame and background live on the window
-        // div below, so the tabs protrude over bare canvas. The router still
-        // measures the shell, which is what keeps wires out of the tab zone.
-        // Nothing that OUTLINES the card belongs on this element: the shell's
-        // box includes the tab zone, so a ring here draws around the machine
-        // tabs and the bare canvas behind them. Every outline lives on the
-        // window instead — see cardOutlineRings and the dead-loop ring.
+        // hover never re-renders a node. The shell is unpainted: the frame,
+        // background and every outline live on the window div below (see
+        // cardOutlineRings and the dead-loop ring).
         "recipe-node-shell group relative font-mono text-[var(--mc-ink)]",
         // Marker for the globals.css layer lift: with a picker popup open the
         // node (and the whole nodes layer) must paint above edges.
@@ -968,60 +1362,34 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       // view LOD-only with no subscription to the zoom.
       data-glance-paint={glanceSurface ? "" : undefined}
       style={{
-        // Every recipe card is the same 18 cells wide. Width used to be
-        // content-driven (`w-max`), which put the card's right edge — and so
-        // every output coupling — at an arbitrary sub-cell offset.
-        width: RECIPE_NODE_WIDTH,
-        // The colour, all of it. The ramp goes on the SHELL rather than the
-        // window so the machine tabs above the card take it too — they are
-        // the card's tabs, and a grey tab on a green card was the tell that
-        // the paint was a list of elements rather than a palette.
-        ...(nodeRamp as CSSProperties | undefined),
+        // A fixed whole-cell width, so the card's right edge and every output
+        // coupling sit on the grid.
+        width: CLASSIC_NODE_WIDTH,
+        // The colour, all of it: the ramp on the shell reaches every element
+        // inside the card.
+        ...((nodeRamp ??
+          (isPowerCard
+            ? POWER_CARD_RAMP
+            : isCropProductionNode || isCropFarmNode
+              ? CROP_CARD_RAMP
+              : undefined)) as CSSProperties | undefined),
         ...(glanceSurface ? (glanceCardVars(glanceSurface) as CSSProperties) : undefined),
         ...(paintCursor ? { cursor: paintCursor } : undefined),
       }}
     >
-      {/* The tab zone: rows of whole cells ABOVE the window, over bare
-          canvas — tabs, not a toolbar band inside the card. It is part of
-          the shell's box, so the router keeps wires out of the space the
-          tabs claim; its measured height is published as the dock inset so
-          wires never DOCK on its phantom edge (see dock-insets.ts). Normal
-          mode gets the picker strip; presentation mode gets the selected
-          machine's icon, big, and nothing to click. */}
-      <div ref={tabZoneRef}>
-        {!calmMode && hasMachinePicker ? (
-          <MachineTabStrip
-            handlers={machineHandlers}
-            selectedId={selectedMachineHandler.id}
-            previewId={previewHandlerId}
-            iconsById={machineIcons}
-            onHover={setPreviewHandlerId}
-            onSelect={updateMachineHandler}
-            onToggleCompare={() => setCompareOpen((open) => !open)}
-            isCompareOpen={isCompareOpen}
-          />
-        ) : machineTabIcon ? (
-          <MachineIconTab icon={machineTabIcon} label={selectedMachineHandler.label} />
-        ) : null}
-      </div>
+      <RenderedRecipeHandles nodeId={projectNode.id} handleIds={renderedHandleIds} />
       {/* The window: the painted card. The 2px frame is an INSET shadow, not
-          a border — a real border sits outside the content box and would push
-          every row 2px off the grid; painted inside, the window's box and its
-          content box are the same rectangle, so a head of 40 and rows of 40
-          land exactly on cell lines. The bevel is drawn at 4px and the frame
-          covers its outer half, which reproduces the old 2px-inside-2px look
-          exactly. */}
+          a border: a border sits outside the content box and would push every
+          row 2px off the grid. The bevel is drawn at 4px and the frame covers
+          its outer half. */}
       <div
-        // Glance root is the WINDOW, not the shell: zoomed out the frame and
-        // paint stay and only what is written on them goes — a card still
-        // reads as a card. The tab zone hides via its own rule in globals.css
-        // (it is the shell's child, outside this root).
+        // Glance root is the WINDOW: zoomed out, the frame and paint stay and
+        // only what is written on them goes, so a card still reads as a card.
         data-node-glance-root=""
-        // recipe-node-window: the painted rectangle, as opposed to the shell's
-        // box (which includes the unpainted tab zone). Anything that outlines
-        // "the card" belongs here — see the dead-loop ring in globals.css.
-        // The resource glow is an `outline`, not a box-shadow, so it rides the
-        // window directly without touching the frame this element draws.
+        // recipe-node-window is the painted rectangle: anything that outlines
+        // "the card" belongs here (see the dead-loop ring in globals.css). The
+        // resource glow is an `outline`, not a box-shadow, so it leaves the
+        // frame this element draws untouched.
         className={[
           "recipe-node-window relative bg-[var(--mc-78)] shadow-[inset_0_0_0_2px_var(--mc-96),inset_4px_4px_0_var(--mc-100),inset_-4px_-4px_0_var(--mc-33)]",
           isInspectorHighlighted ? "resource-glow" : "",
@@ -1036,30 +1404,18 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 boxShadow: `inset 0 0 0 2px ${nodeColor.border}, inset 4px 4px 0 var(--mc-100), inset -4px -4px 0 var(--mc-33), 0 0 0 2px ${nodeColor.shadow}`,
               }
             : undefined),
-          ...(isPowerCard ? { backgroundColor: POWER_CARD_FACE } : undefined),
-          ...(isCropProductionNode || isCropFarmNode
-            ? { backgroundColor: CROP_CARD_FACE }
-            : undefined),
         }}
       >
-      {/* The ring's mark, and the reason it is an ELEMENT rather than the
-          window's ::after: a pseudo-element's box is only as trustworthy as
-          the selector that made it, and this one kept coming out around the
-          SHELL — the whole box, tab zone included — so the ring enclosed the
-          machine tabs and the bare canvas behind them, and the card read as
-          floating inside a rectangle that was not its own. A child of the
-          window has the window's box by construction; there is no selector
-          left to get wrong. It draws nothing but its own glow, takes no
-          pointer events, and carries no text, so it is invisible to
-          everything except the eye. */}
+      {/* The dead-loop ring is a child ELEMENT rather than the window's
+          ::after: a child has the window's box by construction, with no
+          selector to get wrong. It draws only its glow, takes no pointer
+          events and carries no text. */}
       {verdict.kind === "dead-loop" ? (
         <div aria-hidden className="dead-loop-ring" />
       ) : null}
-      {/* The clog lock's ring, in the clog family's blue - and only on the
-          VENT sites, the cards whose surplus needs the drawer. A jam can
-          hold half a board; every member keeps the verdict and its story,
-          but a ring on all of them painted whole plans blue and pointed
-          nowhere. */}
+      {/* The clog lock's ring, in the clog family's blue, only on the VENT
+          sites (the cards whose surplus needs a drawer). Every member keeps
+          the verdict; a ring on all of them would paint whole plans blue. */}
       {verdict.kind === "clog-lock" &&
       verdict.clogLock?.vents.some((vent) => vent.nodeId === projectNode.id) ? (
         <div aria-hidden className="clog-lock-ring" />
@@ -1070,13 +1426,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       {verdict.kind === "unwired" ? (
         <div aria-hidden className="unwired-ring" />
       ) : null}
-      {/* Selection, the over-tier warning and a search hit, on the card's own
-          box for the same reason the ring above is. One element and one
-          box-shadow list: shadows paint first-on-top and each spread is
-          cumulative, so the list reads outwards from the card edge and the
-          innermost ring is also the one nothing can cover. Above the dead-loop
-          ring in z, so a selected card in a ring still shows it is selected —
-          the red keeps its breathing halo outside the purple. */}
+      {/* Selection and a search hit, on the card's own box like the rings
+          above. One box-shadow list: shadows paint first-on-top and each
+          spread is cumulative, so the list reads outwards from the card edge
+          and the innermost ring is never covered. Above the dead-loop ring in
+          z, so a selected card in a ring still shows it is selected. */}
       {cardOutlineRings.length > 0 ? (
         <div
           aria-hidden
@@ -1110,7 +1464,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           label={
             isCustomRateNode
               ? (effectiveRecipe.name ?? "Custom rate")
-              : `${projectNode.machineCount}× ${selectedMachineHandler.label ?? effectiveRecipe.machineType ?? effectiveRecipe.name}`
+              : `${projectNode.machineCount}× ${machineDisplayName ?? effectiveRecipe.machineType ?? effectiveRecipe.name}`
           }
           inputs={rails.inputs}
           outputs={rails.outputs}
@@ -1137,8 +1491,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   const value = shown[0] ?? glancePowerCardEuT;
                   const figure =
                     value === glancePowerCardEuT
-                      ? formatCompact(powerDisplayFromEuT(glancePowerCardEuT))
-                      : formatCompactStable(powerDisplayFromEuT(value));
+                      ? formatPowerValue(powerDisplayFromEuT(glancePowerCardEuT))
+                      : formatPowerValue(powerDisplayFromEuT(value), true);
                   return powerCardMakes ? `+${figure}` : figure;
                 }}
               />
@@ -1180,8 +1534,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     // Same pact as the footer's POWER cell: stable widths
                     // mid-tween, the clean compact form at rest.
                     return value === glanceDrawEuT
-                      ? formatCompact(powerDisplayFromEuT(glanceDrawEuT))
-                      : formatCompactStable(powerDisplayFromEuT(value));
+                      ? formatPowerValue(powerDisplayFromEuT(glanceDrawEuT))
+                      : formatPowerValue(powerDisplayFromEuT(value), true);
                   }}
                 />
                 <span className="ml-1.5 text-[18px] font-semibold opacity-70">
@@ -1210,9 +1564,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           word={
             powerReport
               ? powerReport.isMultiblock
-                ? energyHatchType.exotic
-                  ? `${energyHatchType.chip} ${powerReport.tier}`
-                  : `${powerReport.hatches}× ${powerReport.tier}`
+                ? powerReport.typedBudget
+                  ? `${formatCompact(powerReport.amps)}A ${powerReport.tier}`
+                  : energyHatchType.exotic
+                    ? `${energyHatchType.chip} ${powerReport.tier}`
+                    : `${powerReport.hatches}× ${powerReport.tier}`
                 : powerReport.tier
               : steamReport
                 ? steamReport.highPressure
@@ -1277,11 +1633,15 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               // have nothing to refactor, so they keep two buttons.
               ...(calmMode
                 ? []
-                : isCropFarmPlaceholder || isCustomRateNode
+                : showHatchControl
+                  ? ["24px"]
+                  : isCropFarmPlaceholder || isCustomRateNode
                   ? ["24px", "24px"]
-                  : hasPowerPicture
+                  : isCropFarmNode
                     ? ["24px", "24px", "24px", "24px"]
-                    : ["24px", "24px", "24px"]),
+                    : canShareMachine
+                      ? ["24px", "24px", "24px", "24px"]
+                      : ["24px", "24px", "24px"]),
               "minmax(0,1fr)",
               // The tier chip, with its hatch sister fused on the left when
               // the machine is a multiblock that takes energy hatches. The
@@ -1296,7 +1656,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             ].join(" "),
           }}
         >
-          {!calmMode ? (
+          {!calmMode && showHatchControl ? <>
+            <CardActionsMenu onDelete={() => deleteNode(projectNode.id)} onClone={() => duplicateNode(projectNode.id)} onRefactor={() => beginRecipeRefactor(projectNode.id)} onAddRecipe={canShareMachine ? () => browseMachineRecipes(projectNode.id) : undefined} onChangeMob={isEecNode && !editorLocked ? () => setMobMenuOpen(true) : undefined} />
+            {isMobMenuOpen ? <MobPickerMenu nodeId={projectNode.id} onClose={() => setMobMenuOpen(false)} /> : null}
+          </> : !calmMode ? (
             <>
               <button
                 type="button"
@@ -1304,7 +1667,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   event.stopPropagation();
                   deleteNode(projectNode.id);
                 }}
-                className="nodrag h-6 w-6 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-base leading-[16px] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:bg-red-700"
+                className="h-6 w-6 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-base leading-[16px] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:bg-red-700"
                 title="Delete node"
                 aria-label="Delete node"
               >
@@ -1316,7 +1679,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   event.stopPropagation();
                   duplicateNode(projectNode.id);
                 }}
-                className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
+                className="flex h-6 w-6 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
                 title="Clone node"
                 aria-label="Clone node"
               >
@@ -1329,41 +1692,62 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     event.stopPropagation();
                     beginRecipeRefactor(projectNode.id);
                   }}
-                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
-                  title="Refactor: search for a replacement recipe"
+                  className="flex h-6 w-6 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
+                  title="Replace the recipe"
                   aria-label="Refactor node"
                 >
                   <RefreshCw aria-hidden className="h-3.5 w-3.5" />
                 </button>
               ) : null}
-              {hasPowerPicture ? (
-                // The picture window's switch lives with the card chrome:
-                // hidden, the window renders nothing at all.
+              {canShareMachine ? (
+                // The second door to the machine menu's last row: one more
+                // recipe on this machine, in the head row's own key style,
+                // beside the key that swaps the recipe.
                 <button
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
-                    setPowerArtHidden((hidden) => {
-                      writePowerArtCollapsed(projectNode.id, !hidden);
-                      return !hidden;
-                    });
+                    browseMachineRecipes(projectNode.id);
                   }}
-                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
-                  title={powerArtHidden ? "Show the machine picture" : "Hide the machine picture"}
-                  aria-label={powerArtHidden ? "Show the machine picture" : "Hide the machine picture"}
-                  aria-pressed={!powerArtHidden}
+                  className="flex h-6 w-6 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
+                  title="Add another recipe to this machine"
+                  aria-label="Add another recipe to this machine"
                 >
-                  <ImageIcon
-                    aria-hidden
-                    className={powerArtHidden ? "h-3.5 w-3.5 opacity-40" : "h-3.5 w-3.5"}
-                  />
+                  <Plus aria-hidden className="h-3.5 w-3.5" />
                 </button>
+              ) : null}
+              {isCropFarmNode && !isCropFarmPlaceholder ? (
+                // WHAT IS PLANTED: the crop is picked from this key (the
+                // farm's sprout); the picker opens over the card like the
+                // machine menu. The name bar is the harvester.
+                <span className="relative">
+                  <button
+                    type="button"
+                    data-crop-picker-toggle
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setCropMenuOpen((open) => !open);
+                    }}
+                    className="flex h-6 w-6 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
+                    title={cropTitle ? `${cropTitle}. Click to pick another crop.` : "Pick a crop"}
+                    aria-label="Pick a crop"
+                    aria-haspopup="dialog"
+                    aria-expanded={isCropMenuOpen}
+                  >
+                    <Sprout aria-hidden className="h-3.5 w-3.5" />
+                  </button>
+                  {isCropMenuOpen ? (
+                    <CropPickerMenu nodeId={projectNode.id} onClose={() => setCropMenuOpen(false)} />
+                  ) : null}
+                </span>
               ) : null}
             </>
           ) : null}
           <div className="relative min-w-0">
             <MinecraftTooltip
-              content={
+              // The bar's hover yields while its machine menu is open: the
+              // list is what the pointer is there for.
+              content={isCompareOpen ? undefined : () =>
                 isCropFarmPlaceholder ? (
                   "Click to pick a crop"
                 ) : isCustomRateNode ? (
@@ -1379,45 +1763,79 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   // lines); the machine tooltip's overclock story does not
                   // apply to it and would just be wrong here.
                   (recipe.notes ?? recipe.name)
+                ) : isSharedMachine ? (
+                  // One recipe's stats would be the wrong story for a
+                  // machine running several; the rows below carry each.
+                  <RecipeTooltip
+                    view={{
+                      title: machineDisplayName,
+                      rows: [{ label: "Recipes", value: String(1 + sectionRails.length) }],
+                      reason: "Runs its recipes one at a time; each row says how its share goes.",
+                    }}
+                  />
                 ) : (
                   <MachineStatsContent
                     recipe={recipe}
                     handler={selectedMachineHandler}
                     node={projectNode}
+                    result={result}
+                    title={machineDisplayName}
                   />
                 )
               }
             >
-              {/* One plain name bar for every node. Picker nodes already show
-                  the selected machine in the tab strip above, so the old
-                  icon-box + TIME/POWER/PARALLEL glance cells only overflowed
-                  the narrow card; those numbers live in the hover and the
-                  footer. */}
+              {/* One plain name bar for every node; time, power and parallel
+                  figures live in the hover and the footer. */}
               <div
-                role={isCropFarmNode ? "button" : undefined}
-                tabIndex={isCropFarmNode ? 0 : undefined}
+                role={hasMachineMenu ? "button" : undefined}
+                tabIndex={hasMachineMenu ? 0 : undefined}
                 onClick={
-                  isCropFarmNode
+                  hasMachineMenu
                     ? (event) => {
                         event.stopPropagation();
-                        setCropMenuOpen((open) => !open);
+                        setCompareOpen((open) => !open);
                       }
                     : undefined
                 }
+                // The wheel walks the machines in the menu's own order, the
+                // way the tier chip walks tiers; the hover stays put for it.
+                onWheel={hasMachinePicker && !calmMode ? (event) => {
+                  if (checklistLocked() || !wheelChangesValues()) return;
+                  event.stopPropagation();
+                  cycleMachineHandler(event.deltaY < 0 ? -1 : 1);
+                } : undefined}
+                onPointerEnter={mayHaveTwins && !twins ? () => setTwinsWanted(true) : undefined}
+                data-machine-menu-toggle={hasMachineMenu ? "" : undefined}
+                // Tells the board camera the wheel is taken here, not a zoom.
+                data-wheel-steps={hasMachinePicker && !calmMode ? "" : undefined}
                 className={[
-                  // 13px: long GT machine names must read fully instead of
-                  // getting chopped by the narrow card.
+                  // 13px, shrunk by measurement (useFitTitle) as far as 9px
+                  // when the name would not fit: the real tier names
+                  // ("Advanced Chemical Reactor III") read whole before the
+                  // bar has to truncate them.
                   "minecraft-title flex h-6 min-w-0 items-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] text-[13px] leading-[18px] shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-29)]",
-                  // Symmetric padding keeps the crop name in the true middle;
-                  // the picker chevron floats on the right without shifting it.
-                  isCropFarmNode
-                    ? "nodrag relative cursor-pointer px-5 hover:brightness-110"
+                  hasMachineMenu
+                    ? "nowheel relative cursor-pointer pl-4 pr-1.5 hover:brightness-110"
                     : "px-2",
                 ].join(" ")}
                 style={nodeColor ? { backgroundColor: nodeColor.header } : undefined}
-                title={isCropFarmNode ? "Pick a crop" : undefined}
               >
-                <span className="mx-auto min-w-0 truncate">
+                {hasMachineMenu ? (
+                  // The bar IS the machine switch: click anywhere on it for
+                  // the list, wheel to step through. The chevron is only the
+                  // sign that it opens.
+                  <ChevronDown
+                    aria-hidden
+                    className={[
+                      "pointer-events-none absolute left-0.5 top-1/2 h-3 w-3 -translate-y-1/2 transition-transform",
+                      isCompareOpen ? "rotate-180" : "",
+                    ].join(" ")}
+                  />
+                ) : null}
+                {/* flex-1 rather than mx-auto: the fit measures this span's
+                    width against its text, and a shrink-wrapped span moves
+                    with the text it is measuring. */}
+                <span ref={titleRef} className="min-w-0 flex-1 truncate text-center">
                   {isCropFarmPlaceholder
                     ? "Pick a crop..."
                     : isCustomRateNode
@@ -1425,29 +1843,36 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                         // with its icon. Repeating its name in the title only
                         // ever made the card wider.
                         "Custom Rate"
-                      : (cropTitle ?? previewHandler.label)}
-                  {isPreviewing ? " ?" : ""}
+                      : machineDisplayName}
                 </span>
-                {isCropFarmNode ? (
-                  <ChevronDown className="absolute right-1 top-1/2 h-3 w-3 shrink-0 -translate-y-1/2" />
-                ) : null}
               </div>
             </MinecraftTooltip>
-            {isCropMenuOpen ? (
-              <CropPickerMenu
-                nodeId={projectNode.id}
-                onClose={() => setCropMenuOpen(false)}
-              />
-            ) : null}
-            {hasMachinePicker && isCompareOpen && !calmMode ? (
-              <MachineCompareTable
+            {hasMachineMenu && isCompareOpen ? (
+              <MachineMenu
                 recipe={recipe}
+                node={projectNode}
                 handlers={machineHandlers}
                 selectedId={selectedMachineHandler.id}
                 iconsById={machineIcons}
                 onHover={setPreviewHandlerId}
                 onUse={updateMachineHandler}
                 onClose={() => setCompareOpen(false)}
+                // A shared machine lists no twins: it is not one recipe to
+                // swap for another.
+                twins={isSharedMachine ? undefined : twins}
+                mapIcons={recipeMapIcons}
+                onUseTwin={useTwin}
+                figures={!isSharedMachine && !isCropProductionRecipe(recipe)}
+                title={isSharedMachine ? "Machines that run every recipe on this card" : undefined}
+                onAddRecipe={
+                  canShareMachine
+                    ? () => {
+                        setCompareOpen(false);
+                        setPreviewHandlerId(undefined);
+                        browseMachineRecipes(projectNode.id);
+                      }
+                    : undefined
+                }
               />
             ) : null}
           </div>
@@ -1475,153 +1900,14 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               }}
             />
           ) : null}
-          {tierControl && tierColor ? (
-            // The fused chip trio is ONE hover surface telling the whole
-            // power story - the same panel the footer's POWER cell shows -
-            // so count, hatch and tier all speak one language. The native
-            // titles survive only where there is no report to tell it.
-            <div className="relative">
-            <MinecraftTooltip
-              content={
-                powerReport && !isHatchMenuOpen ? (
-                  <PowerStoryContent
-                    report={powerReport}
-                    utilization={result?.utilization}
-                    machines={projectNode.machineCount * projectNode.parallel}
-                  />
-                ) : undefined
-              }
-            >
-            <div className="flex">
-              {showHatchControl && hatchCountDraft !== undefined ? (
-                // The count chip MID-EDIT: type any hatch count. No menu -
-                // the wheel walks the ladder, the keyboard names a number.
-                <input
-                  autoFocus
-                  value={hatchCountDraft}
-                  onChange={(event) => setHatchCountDraft(event.target.value)}
-                  onFocus={(event) => event.currentTarget.select()}
-                  onBlur={() => {
-                    const count = Number.parseInt(hatchCountDraft.trim(), 10);
-                    setHatchCountDraft(undefined);
-                    if (Number.isFinite(count) && count >= 1 && count <= 64) {
-                      playBoardSound("dialPower", {
-                        step: getVoltageTierIndex(tierControl.current) + 1,
-                        gain: 0.6,
-                      });
-                      suppressBoardSound("adjust", 150);
-                      updateNode(projectNode.id, {
-                        energyHatchType: undefined,
-                        energyHatches: count,
-                      });
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.currentTarget.blur();
-                    }
-                    if (event.key === "Escape") {
-                      setHatchCountDraft(undefined);
-                    }
-                    event.stopPropagation();
-                  }}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => event.stopPropagation()}
-                  inputMode="numeric"
-                  aria-label="Energy hatch count"
-                  className="nodrag h-6 w-[44px] border-2 border-r-0 bg-[var(--mc-93)] px-1 text-center text-[11px] font-bold leading-none text-[var(--mc-ink)] outline-none focus:border-cyan-700"
-                  style={{ borderColor: tierColor.border }}
-                />
-              ) : showHatchControl ? (
-                // The SUPPLY chip: what powers the build (count and item, or
-                // an exotic's amp badge), fused left of the tier. CLICK to
-                // type any count; wheel or right-click walks the ladder
-                // (counts, then the exotic families).
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setHatchCountDraft(String(powerReport?.hatches ?? 1));
-                  }}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    stepSupply(-1);
-                  }}
-                  onWheel={(event) => {
-                    event.stopPropagation();
-                    stepSupply(event.deltaY < 0 ? 1 : -1);
-                  }}
-                  className="nodrag nowheel flex h-6 items-center justify-center gap-0.5 whitespace-nowrap border-2 border-r-0 px-0.5 text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
-                  style={{
-                    backgroundColor: tierColor.background,
-                    borderColor: tierColor.border,
-                    color: tierColor.text,
-                    textShadow: `1px 1px 0 ${tierColor.shadow}`,
-                  }}
-                  aria-label="Energy hatch count"
-                >
-                  <span className="pb-[3px]">
-                    {energyHatchType.exotic
-                      ? energyHatchType.chip
-                      : `${powerReport?.hatches ?? 1}×`}
-                  </span>
-                  {hatchChipEntry ? (
-                    <EnergyHatchArt entry={hatchChipEntry} boxClass="h-7 w-7" />
-                  ) : (
-                    <Zap className="h-3.5 w-3.5" style={{ color: tierColor.text }} />
-                  )}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  // No dropdown any more: click steps up, right-click steps
-                  // down, wheel walks - the classic cycle, everywhere.
-                  updateTier(1);
-                }}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  // Right click steps the tier down, with or without shift:
-                  // requiring shift left plain right click doing nothing,
-                  // which read as broken (and Firefox forces its own menu on
-                  // shift-right-click, so plain is the one that always works).
-                  updateTier(-1);
-                }}
-                data-hatch-menu-anchor
-                onWheel={(event) => {
-                  event.stopPropagation();
-                  updateTier(event.deltaY < 0 ? 1 : -1);
-                }}
-                className="nodrag nowheel flex h-6 w-[50px] items-center justify-center border-2 px-1 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
-                style={{
-                  backgroundColor: tierColor.background,
-                  borderColor: tierColor.border,
-                  color: tierColor.text,
-                  textShadow: `1px 1px 0 ${tierColor.shadow}`,
-                }}
-                title={powerReport ? undefined : `Tier ${tierControl.current}`}
-                aria-label={`Tier ${tierControl.current}`}
-              >
-                {tierControl.current}
-              </button>
-            </div>
-            </MinecraftTooltip>
-            </div>
-          ) : null}
+          {powerReadout ? <HatchPowerControls {...powerReadout}
+            locked={checklistLocked} onChange={(hatchVoltageTier, hatchAmps, powerInputMode) => {
+            playBoardSound("dialPower", { step: getVoltageTierIndex(hatchVoltageTier) + 1, gain: .6 });
+            suppressBoardSound("adjust", 150);
+            updateNode(projectNode.id, { hatchVoltageTier, hatchAmps, powerInputMode, powerEuT: hatchAmps * getVoltageTierMaxEuT(hatchVoltageTier) });
+          }} /> : voltageTierControl}
         </div>
         </div>
-        {/* The picture window sits under the title bar, over the ports:
-            the multiblock render (or the machine item), full card width. */}
-        {!calmMode && hasPowerPicture && !powerArtHidden ? (
-          <PowerStructureWindow
-            art={powerArt}
-            icon={powerMachineIcon}
-            tint={cropStructureArt ? "#4f8c33" : undefined}
-          />
-        ) : null}
         {/* The card body. No paint of its own: the window behind it is
             already the ramp's face, painted or not. */}
         <div>
@@ -1632,17 +1918,53 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 event.stopPropagation();
                 setCropMenuOpen(true);
               }}
-              className="nodrag mx-auto my-0 flex h-[80px] w-[240px] items-center justify-center gap-2 border-2 border-dashed border-[var(--mc-33)] bg-[var(--mc-71)] text-[14px] font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
+              className="mx-auto my-0 flex h-[80px] w-[240px] items-center justify-center gap-2 border-2 border-dashed border-[var(--mc-33)] bg-[var(--mc-71)] text-[14px] font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
             >
               <Sprout className="h-5 w-5" /> Pick a crop
+              {/* The picker hangs under this button while there is no crop
+                  tile yet to hang it from. */}
+              {isCropMenuOpen ? (
+                <CropPickerMenu nodeId={projectNode.id} onClose={() => setCropMenuOpen(false)} />
+              ) : null}
             </button>
           ) : isCustomRatePlaceholder ? (
             <CustomRateUniversalPorts nodeId={projectNode.id} />
           ) : (
-          // The rails ARE the node now: ports carry the icons, rates, and
-          // health that the recipe canvas used to duplicate. Recipe identity
-          // lives in the header (name hover = full machine stats) and in the
-          // port icons (click = recipes, right-click = uses).
+          // The rails are the node: ports carry the icons, rates and health.
+          // Recipe identity lives in the header (name hover = full machine
+          // stats) and the port icons (click = recipes, right-click = uses).
+          <>
+          {/* A SHARED MACHINE: the recipes stack on one pair of rails, each
+              under a thin rule with its remove key, and the picture spans
+              all of them between the rails. No names: the ports say what
+              each recipe is. */}
+          {isSharedMachine ? (
+            <SharedMachineRails
+              nodeId={projectNode.id}
+              sections={[
+                { section: 0, rails, verdict, circuit: programmedCircuit, powerStalled: result?.powerStalled === true },
+                ...sectionRails.map((entry) => ({
+                  ...entry,
+                  circuit: getRecipeProgrammedCircuit(entry.display),
+                  powerStalled: entry.result?.powerStalled === true,
+                })),
+              ]}
+              pending={pendingResourceConnection}
+              onRemove={(section) => removeRecipeSection(projectNode.id, section)}
+              onMove={(section, direction) => moveRecipeSection(projectNode.id, section, direction)}
+              picture={
+                !calmMode && hasPowerPicture ? (
+                  <PowerStructureWindow
+                    art={powerArt}
+                    icon={powerMachineIcon ?? previewMachineIcon}
+                    tint="#8a8f99"
+                    inline
+                    pickedFor={`${previewHandler.id}@${pictureTier}:${machineIconEntries.get(previewHandler.id)?.tiers?.length ?? 0}`}
+                  />
+                ) : undefined
+              }
+            />
+          ) : (
           <div
             className={[
               "flex items-start gap-1",
@@ -1663,12 +1985,28 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 pending={pendingResourceConnection}
               />
             )}
-            {hasInputSideView && hasOutputSideView ? (
-              <div className="flex w-4 shrink-0 items-center justify-center self-stretch text-[15px] font-black text-[var(--mc-ink-muted)]">
+            {/* THE PICTURE sits between the rails: the multiblock render or
+                the machine item, on a recessed window stretched to the rails'
+                height. Calm mode shows a bare arrow instead. */}
+            {!calmMode && hasPowerPicture ? (
+              <div className={PICTURE_COLUMN_CLASS} style={PICTURE_MIN_STYLE}>
+                <div className={PICTURE_FILL_CLASS}>
+                <PowerStructureWindow
+                  art={powerArt}
+                  icon={powerMachineIcon ?? previewMachineIcon}
+                  tint={isCropFarmNode ? "#4f8c33" : powerInfo ? undefined : "#8a8f99"}
+                  inline
+                  // Which handler and tier the art was picked for, for probes.
+                  pickedFor={`${previewHandler.id}@${pictureTier}:${machineIconEntries.get(previewHandler.id)?.tiers?.length ?? 0}`}
+                />
+                </div>
+              </div>
+            ) : hasInputSideView && hasOutputSideView ? (
+              <div className="flex min-w-0 flex-1 items-center justify-center self-stretch text-[15px] font-black text-[var(--mc-ink-muted)]">
                 →
               </div>
             ) : null}
-            {/* A generator's EU is an ordinary output row now (kind "power",
+            {/* A generator's EU is an ordinary output row (kind "power",
                 first on the rail): it wires, it solves, it reads EU/t. */}
             {showNoOutputRow ? (
               <NoFlowRow label="No output" side="output" />
@@ -1682,6 +2020,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             )}
           </div>
           )}
+          </>
+          )}
           {/* The dial is on the card whether it holds a resource or not: an
               empty card still has a number and a direction, and they are what
               the next thing you wire to it starts on. */}
@@ -1693,18 +2033,18 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               perSecond={customRateDial.perSecond}
             />
           ) : null}
-          {/* The bottom cluster: the config dials (coil tiers, TGS tools,
-              crop knobs) and the stat footer, anchored together to the card's
-              BOTTOM edge with a 6px inset clearing the frame's bevel. One
-              rounded-up block for all of it, so the grid-rounding slack opens
-              between the ports and the controls — never below the controls,
-              where it read as the card trailing off. Calm mode drops the
-              dials and the diagnostics; a custom rate node has no machine
-              count, so calm mode drops its footer entirely. */}
+          {/* The bottom cluster: config dials and the stat footer, anchored to
+              the card's BOTTOM edge with a 6px inset clearing the bevel. One
+              rounded-up block, so grid-rounding slack opens between the ports
+              and the controls, never below them. Calm mode drops the dials
+              and diagnostics, and a custom rate node's footer entirely. */}
           {!isCropFarmPlaceholder &&
           !isCustomRatePlaceholder &&
           (!calmMode || !isCustomRateNode) ? (
             <GridBlock minCells={3} align="end" className="min-w-0">
+            {/* ONE hairline, above the knobs: settings and the stat footer
+                below it form one tiled block. */}
+            <div className="min-w-0 border-t border-[var(--mc-56)] pt-[6px]">
               {/* A power card's knobs: fuel, tier, rotor, boost - written
                   through setPowerSetting so the owned recipe follows. */}
               {!calmMode && powerInfo ? (
@@ -1717,23 +2057,21 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 />
               ) : null}
               {calmMode ? null : machineConfigPanel}
+              {calmMode || machineFormulaLines.length === 0 ? null : (
+                <GridBlock className="" minCells={1}>
+                  <MachineFormulas lines={machineFormulaLines} />
+                </GridBlock>
+              )}
               {calmMode ? null : passiveProductionPanel}
               <div
-                // A hairline over the stats: the knobs are one thing, the
-                // verdict below them is another. No background of its own —
-                // this strip is card face, and the face is the window behind
-                // it. It used to paint itself with the raw tag colour, which
-                // left the bottom of a painted card a different shade from
-                // the rest of it.
-                className="min-w-0 border-t border-[var(--mc-56)] pb-[6px] pt-[6px] text-[14px] leading-5 text-[var(--mc-ink)]"
+                // No background of its own: this strip is card face, so the
+                // card stays one shade to the bottom.
+                className="min-w-0 pb-[6px] pt-1 text-[14px] leading-5 text-[var(--mc-ink)]"
               >
                 {calmMode ? (
-                  /* Pure presentation: the count as one large line, centred,
-                     on the same bordered tile every other element sits on —
-                     bare text floated alone on the card face. The circuit
-                     rides beside it, because a presented card is the one
-                     somebody builds from and the setting is part of the
-                     build. The pair centres together. */
+                  /* Presentation: the count as one large line on the shared
+                     bordered tile, with the circuit beside it (the setting is
+                     part of the build), centred together. */
                   <div className="flex min-w-0 items-stretch justify-center gap-1.5">
                     <span className="truncate border border-[var(--mc-47)] bg-[var(--mc-71)] px-3 py-0.5 text-[20px] font-bold leading-6 tabular-nums text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
                       {solveMode
@@ -1748,33 +2086,20 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                           ? "Machine"
                           : "Machines"}
                     </span>
-                    {programmedCircuit ? <CircuitChip circuit={programmedCircuit} /> : null}
+                    {programmedCircuit && !isSharedMachine ? <CircuitChip circuit={programmedCircuit} /> : null}
                   </div>
                 ) : (
                   <>
-                    {parallelChipLifts && !parallelPanelTile ? (
-                      // No config panel to ride in: the lifted parallel chip
-                      // gets its own slim line, packed right, not a full row
-                      // of tiles. See parallelChipLifts.
-                      <div className="mb-1 flex min-w-0 justify-end">
-                        <Stat
-                          label="Parallel"
-                          value={`×${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
-                        />
-                      </div>
-                    ) : null}
                     <div
                       className={[
+                        // Auto tracks stretch together, so every cell shares
+                        // the footer's leftover width equally.
                         "grid min-w-0 items-center gap-1",
                         isCropProductionNode ? CROP_CONFIG_PANEL_WIDTH_CLASS : "",
                       ].join(" ")}
-                      // Every cell sizes to its content except MACHINES, which
-                      // takes the slack: a four-digit machine count is the one
-                      // number here that legitimately gets wide. Parallel
-                      // stretched to fill and then truncated its own label
-                      // ("Parall…"). Inline, like the head row's: with parallel
-                      // and the circuit each free to be absent, the class form is
-                      // one spelled-out arbitrary value per combination.
+                      // Inline, like the head row's: with parallel and the
+                      // circuit each optional, a class would need one
+                      // spelled-out arbitrary value per combination.
                       style={{
                         gridTemplateColumns: isCustomRateNode
                           ? "auto"
@@ -1789,19 +2114,31 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                               ...(machineParallelMultiplier > 1 && !parallelChipLifts
                                 ? ["auto"]
                                 : []),
-                              "minmax(84px,1fr)",
-                              // The circuit ends the row, square, in the corner
-                              // the machine count leaves free.
-                              ...(programmedCircuit ? ["auto"] : []),
+                              // The machine count: 84px at least, since a
+                              // four-digit count is the one figure that gets wide.
+                              "minmax(84px,auto)",
+                              // The circuit ends the row, square, in the corner.
+                              ...(programmedCircuit ? ["max-content"] : []),
                             ].join(" "),
                       }}
                     >
                       {!solveMode ? (
                         <UsageStat
                           nodeId={projectNode.id}
-                          verdict={verdict}
+                          verdict={cardVerdict}
                           isCustomRate={isCustomRateNode}
                           powerStall={powerReport}
+                          shares={
+                            isSharedMachine
+                              ? [
+                                  { name: recipe.name, pct: Math.min(100, (result?.utilization ?? 0) * 100) },
+                                  ...sectionRails.map((entry) => ({
+                                    name: entry.recipe.name,
+                                    pct: Math.min(100, (entry.result?.utilization ?? 0) * 100),
+                                  })),
+                                ]
+                              : undefined
+                          }
                         />
                       ) : null}
                       {!isCustomRateNode ? (
@@ -1813,14 +2150,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                             // is only a bill.
                             <Stat
                               label="Power"
-                              value={`${formatCompact(
-                                powerDisplayFromEuT(
+                              value={`${formatPowerValue(powerDisplayFromEuT(
                                   Math.abs(powerInfo.euPerTick) *
                                     projectNode.machineCount *
                                     Math.max(1, projectNode.parallel) *
                                     drawScale,
-                                ),
-                              )} ${powerDisplaySuffix()}`}
+                                ))} ${powerDisplaySuffix()}`}
                             />
                           ) : null}
                           {powerReport ? (
@@ -1830,6 +2165,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                               nodeParallel={projectNode.parallel}
                               utilization={result?.utilization}
                               average={averageDraw}
+                              recipe={nodeRecipe}
+                              node={projectNode}
+                              sharedDraw={sharedDraw}
+                              powerReadout={powerReadout}
                             />
                           ) : null}
                           {steamReport ? (
@@ -1839,6 +2178,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                               nodeParallel={projectNode.parallel}
                               utilization={result?.utilization}
                               average={averageDraw}
+                              sharedLitres={sharedLitres}
                             />
                           ) : null}
                           {cropDrawEuT > 0 ? (
@@ -1847,9 +2187,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                             // switch like every draw figure on the board.
                             <Stat
                               label="Power"
-                              value={`${formatCompact(
-                                powerDisplayFromEuT(cropDrawEuT * drawScale),
-                              )} ${powerDisplaySuffix()}`}
+                              value={`${formatPowerValue(powerDisplayFromEuT(cropDrawEuT * drawScale))} ${powerDisplaySuffix()}`}
                             />
                           ) : null}
                           {machineParallelMultiplier > 1 && !parallelChipLifts ? (
@@ -1861,18 +2199,34 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                           {solveMode ? (
                             <SolvedMachinesStat
                               label={isCropProductionNode ? "Seeds" : "Machines"}
-                              needed={result?.theoreticalMachinesRequired ?? 0}
+                              // A shared machine's count is the sum of its
+                              // sections' time shares.
+                              needed={
+                                isSharedMachine
+                                  ? sectionRails.reduce(
+                                      (sum, entry) => sum + (entry.result?.theoreticalMachinesRequired ?? 0),
+                                      result?.theoreticalMachinesRequired ?? 0,
+                                    )
+                                  : result?.theoreticalMachinesRequired
+                              }
                               pinned={projectNode.solvePin}
                               onPin={(solvePin) => updateNode(projectNode.id, { solvePin })}
                             />
                           ) : (
                             <MachineCountStat
-                              label={isCropProductionNode ? "Seeds" : "Machines"}
-                              machineCount={projectNode.machineCount}
-                              onChange={(machineCount) => updateNode(projectNode.id, { machineCount })}
+                              key={fullFarms ? "full-farms" : "seeds"}
+                              label={fullFarms ? "Farms" : isCropProductionNode ? "Seeds" : "Machines"}
+                              machineCount={fullFarms ? projectNode.cropFullFarmCount! : projectNode.machineCount}
+                              fullFarms={fullFarmCapacity !== undefined ? fullFarms : undefined}
+                              onFullFarmsChange={(checked) => updateNode(projectNode.id, {
+                                cropFullFarmCount: checked ? Math.max(1, Math.ceil(projectNode.machineCount / fullFarmCapacity!)) : undefined,
+                              })}
+                              onChange={(count) => updateNode(projectNode.id, fullFarms
+                                ? { cropFullFarmCount: count }
+                                : { machineCount: count })}
                             />
                           )}
-                          {programmedCircuit ? (
+                          {programmedCircuit && !isSharedMachine ? (
                             <CircuitChip circuit={programmedCircuit} />
                           ) : null}
                         </>
@@ -1881,6 +2235,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   </>
                 )}
               </div>
+            </div>
             </GridBlock>
           ) : null}
         </div>
@@ -1897,31 +2252,35 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   );
 }
 
-// React Flow hands node components their live position (and dragging state) as
-// props, so the default prop comparison fails on every drag frame — which
-// re-rendered this entire NEI window per frame while its box moved. The
-// component only reads `data` and `selected`; comparing exactly those keeps the
-// heavy content inert while the wrapper is translated around it.
+// React Flow passes live position and dragging state as props, so the default
+// comparison fails on every drag frame and would re-render the whole card. The
+// component reads only `data` and `selected`; comparing exactly those keeps it
+// inert while the wrapper is translated.
 export const RecipeNode = memo(
   RecipeNodeComponent,
   (previous, next) => previous.data === next.data && previous.selected === next.selected,
 );
 
+function RenderedRecipeHandles({ nodeId, handleIds }: { nodeId: string; handleIds: readonly string[] }) {
+  useRenderedHandles(nodeId, handleIds);
+  return null;
+}
+
+export function RecipeNodeEditor({ data, render }: { data: RecipeNodeData; render?: (controls: ReactNode, picture: ReactNode, settings: ReactNode, tier: ReactNode) => ReactNode }) {
+  return <RecipeNodeComponent data={data} selected={false} controlsOnly renderEditor={render} />;
+}
+
 /**
- * The machine's circuit slot, in the footer beside the machine count.
- *
- * A dialed circuit is part of the recipe and nothing else on the board said
- * so: it is a non-consumed input, so it never earns a port row, and two cards
- * for the same machine differing only in their setting looked identical. The
- * slot is drawn whether or not it holds anything, because "runs on circuit 11"
- * and "runs on whatever the circuit is set to" are different builds and an
- * absent slot cannot tell them apart.
+ * The machine's circuit slot, in the footer beside the machine count. A dialed
+ * circuit is a non-consumed input, so it never gets a port row; this is where
+ * it shows. The slot is drawn even when empty, because "runs on circuit 11"
+ * and "runs on whatever the circuit is set to" are different builds.
  */
-function CircuitChip({ circuit }: { circuit: RecipeProgrammedCircuit }) {
+export function CircuitChip({ circuit, small = false, bare = false }: { circuit: RecipeProgrammedCircuit; small?: boolean; bare?: boolean }) {
   const { setting, resource } = circuit;
   return (
     <MinecraftTooltip
-      label={setting ? `Circuit set to ${setting}` : "No circuit setting for this recipe"}
+      content={() => <RecipeTooltip view={{ title: "Programmed circuit", rows: setting ? [{ label: "Required setting", value: String(setting) }] : [], reason: setting ? "Not consumed." : "No circuit setting required." }} />}
     >
       <div
         aria-label={setting ? `Programmed circuit ${setting}` : "No circuit setting"}
@@ -1929,34 +2288,34 @@ function CircuitChip({ circuit }: { circuit: RecipeProgrammedCircuit }) {
         // the row's height and w-9 answers it, so the slot stays a slot however
         // the footer's type is measured.
         className={[
-          "relative flex w-9 shrink-0 self-stretch items-center justify-center overflow-hidden border",
-          resource
+          "relative flex shrink-0 items-center justify-center overflow-hidden",
+          bare ? "h-11 w-11" : small ? "h-[22px] w-[22px]" : "w-9 self-stretch border",
+          small || bare ? "" : resource
             ? "border-[var(--mc-47)] bg-[var(--mc-71)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
             : // Empty reads as a hole in the card, the way an unfilled slot
               // does in the machine's own GUI.
               "border-[var(--mc-47)] bg-[var(--mc-47)] shadow-[inset_1px_1px_0_var(--mc-33),inset_-1px_-1px_0_var(--mc-56)]",
         ].join(" ")}
       >
-        {/* The item alone, zoomed past the box and clipped by it — the same
-            trick the port rows use. Item sprites ship with transparent padding
-            baked in, so drawn at its true size the chip floats in the middle of
-            a square instead of filling it. The number is one hover away;
-            printed here it only fought the art for the same pixels. */}
+        {/* The whole item uses the same fit as the ports. Its number stays
+            in the hover so it does not compete with the small artwork. */}
         {resource ? (
           <ResourceIcon
+
+            itemZoom={1.5}
             resource={{ ...resource, amount: 1, chance: undefined }}
             bare
             tooltip={false}
             showAmount={false}
             showConsumedState={false}
-            className="!h-9 !w-9 origin-center scale-150"
+            className={bare ? "!h-11 !w-11" : small ? "!h-[22px] !w-[22px]" : "!h-9 !w-9"}
           />
         ) : (
           // Not an item, a silhouette: the same drawn circuit the recipe book
           // card wears, at a fraction of the ink. An empty slot with nothing
           // in it at all reads as art that failed to load rather than as a
           // machine that does not care what its circuit says.
-          <Cpu aria-hidden className="h-5 w-5 text-[var(--mc-ink-muted)] opacity-50" />
+          <Cpu aria-hidden className={`${bare ? "h-9 w-9" : small ? "h-[22px] w-[22px]" : "h-5 w-5"} text-[var(--mc-ink-muted)] opacity-50`} />
         )}
       </div>
     </MinecraftTooltip>
@@ -1964,17 +2323,12 @@ function CircuitChip({ circuit }: { circuit: RecipeProgrammedCircuit }) {
 }
 
 /**
- * The identity glance: zoomed out the card is ONE BIG ICON on its own
- * background — no name, no figures; at that size text is unreadable anyway.
- * Hovering the card opens the big reveal: name, count and the I/O rates, in
- * a panel that renders at SCREEN size — globals.css scales it by
- * 1/var(--board-zoom), because a viewer parked way out still has to read it.
- *
- * The panel is in the DOM from the start and pure CSS reveals it
- * (globals.css, `.glance-io`): hover must never rebuild the board, and a
- * hover feature is exactly where that rule bites. Everything here is
- * `absolute inset-0` like the other glance layers, so it has no say in the
- * card's size and the router never sees it.
+ * The identity glance: zoomed out, the card is one big icon on its own
+ * background. Hovering reveals name, count and I/O rates in a panel that
+ * globals.css scales by 1/var(--board-zoom) to screen size. The panel is in
+ * the DOM from the start and pure CSS reveals it (`.glance-io`): hover must
+ * never rebuild the board. `absolute inset-0` like the other glance layers,
+ * so it never affects the card's size or the router.
  */
 function GlanceIdentityLayer({
   machineIcon,
@@ -2057,11 +2411,10 @@ function GlanceIdentityLayer({
 }
 
 /**
- * The zoomed-out machine art, shared by every glance view: the identity tile
- * carries it full-size, and the stat views (speed, usage, power) sit it to
- * the LEFT of their figure so a coloured card still says which machine it is
- * talking about. Two literal sizes rather than a number, because Tailwind
- * only emits arbitrary-value classes it can see written out.
+ * The zoomed-out machine art shared by every glance view: full size on the
+ * identity tile, left of the figure on the stat views (speed, usage, power).
+ * Two literal sizes rather than a number, because Tailwind only emits
+ * arbitrary-value classes it can see written out.
  */
 function GlanceMachineArt({
   machineIcon,
@@ -2116,9 +2469,8 @@ function GlanceMachineArt({
         bare
         showAmount={false}
         tooltip={false}
-        // The glance face is measured, not zoom-cropped: the 1.5x trick
-        // the rows use overflows the box and reads as art spilling off the
-        // card at LOD.
+        // Not zoom-cropped: the rows' 1.5x crop overflows the box and spills
+        // art off the card at LOD.
         iconPixelSize={
           isSwatchFluid(fallbackResource)
             ? pixels
@@ -2132,11 +2484,7 @@ function GlanceMachineArt({
   );
 }
 
-/**
- * An energy reading as a number with a small grey tail: "200" and then
- * "EU/Item" a size down in the same amber. The number carries the eye and
- * the eye; the unit only has to be there.
- */
+/** An energy reading: the number ("200"), then its unit ("EU/Item") smaller. */
 function EnergyReading({
   euPerUnit,
   kind,
@@ -2162,12 +2510,12 @@ function EnergyReading({
 function GlanceIoRow({ port }: { port: RailPort }) {
   return (
     <span className="flex items-center gap-1.5 border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 py-0.5 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-      {/* Same crop treatment as a port chip: items ship transparent padding
-          in the sprite, so they zoom 1.5× inside an overflow-hidden box;
-          fluids are a solid square with nothing to crop. */}
+      {/* Same whole-item fit and shadow as the port rows. */}
       <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden">
         {port.resource ? (
           <ResourceIcon
+
+            itemZoom={1.5}
             resource={{ ...port.resource, amount: 1, chance: undefined }}
             size="sm"
             bare
@@ -2180,7 +2528,7 @@ function GlanceIoRow({ port }: { port: RailPort }) {
                   : fluidArtPixels(36)
                 : undefined
             }
-            className={port.kind === "fluid" ? "!h-9 !w-9" : "!h-9 !w-9 origin-center scale-150"}
+            className="!h-9 !w-9"
           />
         ) : null}
       </span>
@@ -2194,7 +2542,9 @@ function GlanceIoRow({ port }: { port: RailPort }) {
             portReadsEnergy(port) ? ENERGY_READING_TEXT : "text-[var(--mc-ink-muted)]",
           ].join(" ")}
         >
-          {portReadsEnergy(port) ? (
+          {port.free ? (
+            "free"
+          ) : portReadsEnergy(port) ? (
             <EnergyReading euPerUnit={port.energyPerUnit!} kind={port.kind} unitSize={10} />
           ) : (
             formatPortRate(port, port.currentPerSecond)
@@ -2206,12 +2556,10 @@ function GlanceIoRow({ port }: { port: RailPort }) {
 }
 
 /**
- * One word for the node's state, and how loudly it is worth saying.
- *
- * The ladder is the point: plain ink for a card with nothing to answer for,
- * then muted gold, amber and red as the answer gets more urgent. A machine at
- * 40% that hands every asker what it asked for has done nothing wrong and
- * reads as quietly as one at 100% — the percent is a speed, not a grade.
+ * One word for the node's state, and how loudly to say it: plain ink for a
+ * card with nothing to answer for, then muted gold, amber and red as it gets
+ * more urgent. The percent is a speed, not a grade: a machine at 40% that
+ * serves every asker reads as quietly as one at 100%.
  */
 interface VerdictWord {
   word: string;
@@ -2256,6 +2604,11 @@ function verdictWord(
     // it set the speed. Nothing here needs fixing.
     case "paced":
       return { word: "paced", tone: "fine" };
+    // The rest of the machine's time went to its other recipes: nothing is
+    // short and nothing is jammed, so it wears the plain tone. Two recipes
+    // at 50% each is the machine doing exactly its job.
+    case "busy":
+      return { word: "sharing", tone: "fine" };
     case "balanced":
       return { word: isCustomRate ? "at the dial" : "full", tone: "fine" };
     case "unwired":
@@ -2335,31 +2688,31 @@ function powerGlanceValueSize(compact: string): number {
 }
 
 /**
- * USAGE: the widest cell in the footer, carrying the number and one word for
- * why it reads that way. It replaced a four-line colored strip, and the two
- * rules that came out of that are worth keeping:
- *
- * - never a third line. The footer repeats on every node, so a line spent
- *   here is a line spent on the whole board; the fix note rides beside the
- *   USAGE label instead of below the number.
- * - the number is never colored. A node at 100% that still can't cover its
- *   asks proves the speed and the problem are different facts — color lives
- *   on the state word, which is the thing that says where to act.
- *
- * Everything longer (the honest rates, the culprit's own machine count, the
- * ladder of what caps this next) lives in the hover.
+ * USAGE: the widest footer cell, the number plus one word for why.
+ * - Never a third line: the footer repeats on every node. The fix note rides
+ *   beside the USAGE label.
+ * - Never colour the number: speed and problem are different facts, so
+ *   colour goes on the state word.
+ * Everything longer lives in the hover.
  */
 function UsageStat({
   nodeId,
   verdict,
   isCustomRate = false,
   powerStall,
+  shares,
 }: {
   nodeId: string;
   verdict: NodeVerdict;
   isCustomRate?: boolean;
   /** Set when the power setup cannot start the build; owns the word AND the hover. */
   powerStall?: NodePowerReport;
+  /**
+   * A SHARED MACHINE: the number is the recipes' shares of its time added
+   * up, and the machine has no one reason, so the reason cell goes and the
+   * hover shows the add-up instead. Each recipe's own reason sits on its row.
+   */
+  shares?: Array<{ name: string; pct: number }>;
 }) {
   const stalled = powerStall !== undefined && powerStall.state !== "ok";
   const state = verdictWord(verdict, isCustomRate, stalled);
@@ -2368,19 +2721,24 @@ function UsageStat({
   return (
     <MinecraftTooltip
       content={
-        stalled && powerStall ? (
-          // The power story replaces the flow story outright: whatever the
-          // wires would say, nothing moves until the power fits.
-          <div className="w-60">
-            <div className="text-[13px] font-semibold text-white">
-              {powerStall.state === "under-powered"
-                ? "The hatches can't carry it"
-                : "The recipe is above this tier"}
-            </div>
-            <div className="mt-0.5 text-[11px] leading-4 text-slate-300">
-              {describePowerStall(powerStall)}
-            </div>
-          </div>
+        shares ? (
+          <RecipeTooltip
+            view={{
+              title: "Machine time",
+              rows: shares.map((share) => ({ label: share.name, value: formatPct(share.pct) + "%" })),
+              reason: `${formatPct(Math.min(100, shares.reduce((sum, share) => sum + share.pct, 0)))}% of the machine's time is spent. Each recipe's row says why it runs at its share.`,
+            }}
+          />
+        ) : stalled && powerStall ? (
+          // The power restriction replaces the flow reading outright: whatever
+          // the wires would say, nothing runs until the power fits.
+          <RecipeTooltip
+            view={{
+              title: powerStall.state === "under-powered" ? "Insufficient energy supply" : "Tier too low for recipe",
+              rows: [],
+              reason: describePowerStall(powerStall),
+            }}
+          />
         ) : (
           <VerdictHoverContent verdict={verdict} isCustomRate={isCustomRate} />
         )
@@ -2414,6 +2772,8 @@ function UsageStat({
             )}
           </div>
         </div>
+        {shares ? null : (
+        <>
         <div className="my-0.5 w-px shrink-0 bg-[var(--mc-47)]" />
         {/* verdict-reason-cell: on an unwired card the WHOLE cell breathes,
             label and all, not just the word inside it. */}
@@ -2433,6 +2793,8 @@ function UsageStat({
             {state.word}
           </div>
         </div>
+        </>
+        )}
       </div>
     </MinecraftTooltip>
   );
@@ -2443,186 +2805,47 @@ function UsageStat({
  * the culprit's OWN machine count, then the ladder — what caps this next and
  * where it lands once today's wall is gone.
  */
-function VerdictHoverContent({
-  verdict,
-  isCustomRate,
-}: {
-  verdict: NodeVerdict;
-  isCustomRate: boolean;
-}) {
-  const title = verdictHoverTitle(verdict, isCustomRate);
-  const detail = verdictHoverDetail(verdict, isCustomRate);
-
-  // Two lines: what this card is doing, and why it reads that way. Nothing
-  // else. This used to carry a fix note and a four-rung ladder of what caps
-  // the card next, which is a briefing rather than a hover - by the time you
-  // have read it you have forgotten what you pointed at. The marks on the card
-  // already say where to act; the hover only has to name the state.
-  return (
-    <div className="w-60">
-      <div className="text-[13px] font-semibold text-white">{title}</div>
-      {detail ? <div className="mt-0.5 text-[11px] leading-4 text-slate-300">{detail}</div> : null}
-    </div>
-  );
+function VerdictHoverContent({ verdict }: { verdict: NodeVerdict; isCustomRate: boolean }) {
+  const mode = useFactoryStore((state) => tooltipMode(state.project));
+  return <RecipeTooltip view={buildStatusTooltip(verdict, mode)} />;
 }
 
 /**
- * The unwired card names the slots, because that IS the whole story: every
- * one of them is a wire you have not drawn yet, and the card has already
- * marked them. Counts rather than a list once there are more than a couple,
- * so a twelve-slot multiblock does not write a paragraph.
+ * Fits the name bar's text: 13px when it fits, otherwise scaled down by the
+ * measured overflow, never below 9px (past that the bar truncates). Measured
+ * once per name and once per bar resize, off the render path; nothing here
+ * runs per frame.
  */
-function unwiredTitle(verdict: NodeVerdict): string {
-  const inputs = verdict.bare?.inputs ?? [];
-  const outputs = verdict.bare?.outputs ?? [];
-  const total = inputs.length + outputs.length;
-  if (total === 0) {
-    return "Nothing is wired to it";
-  }
-  if (total === 1) {
-    const only = inputs[0] ?? outputs[0]!;
-    return inputs.length === 1
-      ? `Nothing supplies the ${only.displayName}`
-      : `Nothing takes the ${only.displayName}`;
-  }
-  return `${total} slots have no wire`;
+function useFitTitle(name: string) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const fit = () => {
+      // Step down a point at a time until it fits: at most five layouts,
+      // and the span's own width moves as it shrinks, which a one-shot
+      // ratio misjudged.
+      element.style.fontSize = "";
+      for (let size = 13; size > 9 && element.scrollWidth > element.clientWidth; size -= 1) {
+        element.style.fontSize = `${size - 1}px`;
+      }
+    };
+    fit();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(fit);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [name]);
+  return ref;
 }
-
-function unwiredDetail(verdict: NodeVerdict): string {
-  const inputs = verdict.bare?.inputs ?? [];
-  const outputs = verdict.bare?.outputs ?? [];
-  const name = (list: typeof inputs) =>
-    list.length <= 2 ? list.map((entry) => entry.displayName).join(" and ") : `${list.length} of them`;
-
-  const parts: string[] = [];
-  if (inputs.length > 0) {
-    parts.push(`nothing supplies ${name(inputs)}`);
-  }
-  if (outputs.length > 0) {
-    parts.push(`nothing takes ${name(outputs)}`);
-  }
-  const marked = parts.join(", and ");
-  return `A machine runs on what arrives and stops when what it makes has nowhere to go, so ${marked}. Wire each marked slot to a machine, or to a SOURCE or DRAIN drawer to say you handle that end yourself.`;
-}
-
-function verdictHoverTitle(verdict: NodeVerdict, isCustomRate: boolean): string {
-  switch (verdict.kind) {
-    case "starved":
-      return `Short on ${verdict.binding?.displayName ?? "an input"}`;
-    case "blocked":
-      return `Waiting on ${verdict.binding?.displayName ?? "an input"}`;
-    case "bottleneck":
-      return isCustomRate ? "Asked for more than the dialed rate" : "Asked for more than it makes";
-    case "clogged":
-      return `Nowhere to put the ${verdict.clog?.displayName ?? "spare output"}`;
-    case "dead-loop":
-      return verdict.spiral ? describeDeathSpiral(verdict.spiral).title : "Stuck in a loop";
-    case "clog-lock":
-      return verdict.clogLock && verdict.clogLockNodeId
-        ? describeClogLockForNode(verdict.clogLock, verdict.clogLockNodeId).title
-        : "Choking on a surplus";
-    case "demand-set":
-      return verdict.pct <= 0.05 ? "Nothing draws from this yet" : "Makes only what gets taken";
-    case "paced":
-      return "Runs at the speed of the machines around it";
-    case "balanced":
-      return isCustomRate ? "Dialed rate met exactly" : "Full speed, all asks met";
-    case "unwired":
-      return isCustomRate ? "No wires on this dial" : unwiredTitle(verdict);
-    case "off":
-      return "Disabled";
-    case "no-recipe":
-      return "No recipe";
-  }
-}
-
-function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string | undefined {
-  switch (verdict.kind) {
-    case "starved":
-    case "blocked": {
-      const binding = verdict.binding;
-      if (!binding) {
-        return undefined;
-      }
-      // One sentence of numbers, one of consequence. The guard in
-      // deriveNodeVerdict promises supplied < needed here, so the numbers
-      // can never argue with the word above them.
-      const supplied = formatSlotRate(binding.suppliedPerSecond, binding.kind);
-      const needed = formatSlotRate(binding.neededPerSecond, binding.kind);
-      const tied = binding.tiedWithNames?.length
-        ? ` Tied with ${binding.tiedWithNames.join(", ")}.`
-        : "";
-      const cost =
-        verdict.kind === "starved"
-          ? " Nothing it feeds goes short."
-          : " The machines it feeds go short because of it.";
-      return `Gets ${supplied} of the ${needed} it could eat.${cost}${tied}`;
-    }
-    case "bottleneck": {
-      const deficit = verdict.deficit;
-      if (!deficit) {
-        return undefined;
-      }
-      const missing = formatSlotRate(deficit.missingPerSecond, deficit.kind);
-      return `${missing} short on ${deficit.displayName}. More machines here would cover it.`;
-    }
-    case "clogged": {
-      const clog = verdict.clog;
-      if (!clog) {
-        return undefined;
-      }
-      const spare = formatSlotRate(clog.surplusPerSecond, clog.kind);
-      if (clog.stoppedTakerName) {
-        return `Nothing takes the ${clog.displayName}: ${clog.stoppedTakerName} has stopped. Its own card says why.`;
-      }
-      if (clog.takenPerSecond <= 0.0005) {
-        return `Nothing takes the ${clog.displayName}. A machine cannot run with a full output.`;
-      }
-      return `The spare ${spare} of ${clog.displayName} has nowhere to go. That holds it at ${formatPct(verdict.pct)}%.`;
-    }
-    case "dead-loop": {
-      if (!verdict.spiral) {
-        return undefined;
-      }
-      const story = describeDeathSpiral(verdict.spiral);
-      return `${story.short} ${story.fix}`;
-    }
-    case "clog-lock": {
-      if (!verdict.clogLock || !verdict.clogLockNodeId) {
-        return undefined;
-      }
-      return describeClogLockForNode(verdict.clogLock, verdict.clogLockNodeId).detail;
-    }
-    case "demand-set":
-      return "The machines it feeds are not taking more, so it does not make more. Nothing here needs fixing.";
-    case "paced":
-      return "Its ingredients arrive and its outputs move. Nothing here needs fixing.";
-    case "balanced":
-      return isCustomRate ? undefined : "Fed, full, and everything it makes gets taken.";
-    case "unwired":
-      return isCustomRate
-        ? "This dial does nothing until something is wired to it."
-        : unwiredDetail(verdict);
-    default:
-      return undefined;
-  }
-}
-
 
 /**
  * A block that is always a whole number of grid cells tall, and always tall
- * enough for what is inside it.
- *
- * The rails and the head are deterministic — a port row is 40px because we say
- * so — but the footer and the config panels hold text and controls whose height
- * depends on the recipe, the machine and the browser's font metrics. Pinning
- * those to a fixed height is what made stats hang out of the bottom of the
- * card. So they measure instead, and round UP: never compress to fit the grid,
- * take another cell.
- *
- * The observer fires when the content's own height changes — a different
- * recipe, a wider number — not on drags, hovers or frames, so it costs nothing
- * in the cases the board's performance is judged on.
+ * enough for its content. The footer and config panels hold content whose
+ * height depends on the recipe, machine and font metrics, so they measure and
+ * round UP: never compress to fit the grid, take another cell. The observer
+ * fires only when the content's own height changes, never on drags, hovers or
+ * frames.
  */
 function GridBlock({
   children,
@@ -2667,7 +2890,7 @@ function GridBlock({
   }, [clearancePx, minCells]);
 
   return (
-    <div className={className} style={{ ...style, height: cellCount * BOARD_GRID }}>
+    <div data-grid-block className={className} style={{ ...style, height: cellCount * BOARD_GRID }}>
       {/* The measured div must be free to size to its content, or its own
           scrollHeight would just report the height we gave it and the block
           could never shrink again. The aligning wrapper takes the fixed
@@ -2687,8 +2910,29 @@ function GridBlock({
   );
 }
 
+/**
+ * CHECKLIST MODE is a tally, not an editor: while it is on, every wheel knob
+ * on a card is dead and the port rows stop lighting their flow; the board only
+ * shows what a click would mark (checklist.css). Read at event time, so no
+ * card subscribes to the mode and nothing re-renders when it flips.
+ */
+export const checklistLocked = () => useFactoryStore.getState().checklistMode;
+
 /** Input chip width, shared by the input rail and the output rail's chip. */
-export const PORT_CHIP_WIDTH_CLASS = "w-[140px]";
+const PORT_CHIP_WIDTH_CLASS = "w-[112px]";
+
+/** One object, not one per card per render: this sits on every recipe card. */
+const PICTURE_MIN_STYLE = { minHeight: PICTURE_MIN_HEIGHT } as const;
+
+/**
+ * The picture column between the rails. It is `relative` with NO intrinsic
+ * height and the window fills it absolutely, so the art never sets the card's
+ * height (an image's aspect ratio would put cards on fractional pixels, off
+ * the grid). The rails decide the height, this column's floor catches short
+ * cards, and the art scales to fit.
+ */
+const PICTURE_COLUMN_CLASS = "relative min-w-0 flex-1 self-stretch";
+const PICTURE_FILL_CLASS = "absolute inset-0 flex items-stretch";
 
 /**
  * One side of the port rails. Every port always renders - a hidden port is a
@@ -2707,6 +2951,9 @@ function PortRail({
   ports: RailPort[];
   pending: ReturnType<typeof useFactoryStore.getState>["pendingResourceConnection"];
 }) {
+  // Solve and pool have no couplings, so the output rail is a chip wide
+  // like the input rail, and the arrow between them sits in the middle.
+  const solveMode = useFactoryStore((state) => state.project.solveMode === true);
   if (ports.length === 0) {
     return null;
   }
@@ -2718,16 +2965,14 @@ function PortRail({
         // No gap between rows: the row IS the grid unit (40px = two cells),
         // and a gap would put every row after the first off the grid.
         "flex shrink-0 flex-col justify-start gap-0 py-0",
-        // Half the old rails. The rate text under each name was the thing that
-        // demanded 210px of chip; with it gone the name is the only wide thing
-        // left, and a truncated name plus a hover beats a board you can't fit.
-        // The output rail is chip (140) + 2px gap + the coupling (34, in
-        // globals.css) — anything wider and the couplings hang off the card.
-        isInput ? PORT_CHIP_WIDTH_CLASS : "w-[176px]",
+        // Output rail: 112px chip + 2px gap + 30px coupling.
+        isInput || solveMode ? PORT_CHIP_WIDTH_CLASS : "w-[144px]",
       ].join(" ")}
     >
       {ports.map((port) =>
-        isInput ? (
+        port.free ? (
+          <FreePortRow key={port.key} nodeId={nodeId} port={port} />
+        ) : isInput ? (
           <PortChip key={port.key} nodeId={nodeId} port={port} pending={pending} />
         ) : (
           <OutputSocketRow key={port.key} nodeId={nodeId} port={port} pending={pending} />
@@ -2738,19 +2983,289 @@ function PortRail({
 }
 
 /**
- * A power card's bare side: the same footprint as a port row, dashed and
- * muted, saying plainly that there is nothing to wire here. Inert on
- * purpose - it is the absence of a port, not a port.
+ * An input the game gives away (free-input.ts): the item and its name in
+ * the same 40px footprint as a port row, greyed, with "free" where the rate
+ * would go. No handle, no bar, no browse: there is nothing to wire and
+ * nothing to look up, only something to set down next to the machine.
+ */
+function FreePortRow({ nodeId, port }: { nodeId: string; port: RailPort }) {
+  // A controller-slot item (the EEC's spawner) sits in the machine for good,
+  // and swapping it is how the card changes mob.
+  if (port.resource && isControllerSlotInput(port.resource)) {
+    return <ControllerSlotRow nodeId={nodeId} port={port} />;
+  }
+  return (
+    <MinecraftTooltip content={() => <RecipeTooltip view={{ title: port.displayName, subtitle: "Free input", rows: [], reason: "No supply connection required." }} />}>
+    <div
+      className="flow-port relative flex h-[40px] w-full flex-none items-center gap-1 px-0.5 py-0 opacity-60"
+      data-free-input="true"
+    >
+      <span className="pointer-events-none relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden grayscale">
+        {port.resource ? (
+          <ResourceIcon
+
+            itemZoom={1.5}
+            resource={{ ...port.resource, amount: 1, chance: undefined }}
+            bare
+            tooltip={false}
+            showAmount={false}
+            showConsumedState={false}
+            className="!h-7 !w-7"
+          />
+        ) : null}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col justify-center pr-0.5">
+        <span className="flow-port-name text-[9px] font-bold leading-[9px] text-[var(--mc-ink-muted)]">
+          {port.displayName}
+        </span>
+        {/* Same dress as a port's rate line, so the word sits where the
+            number would and reads as its stand-in. */}
+        <span className="block truncate text-[9px] leading-[9px] tabular-nums text-[var(--mc-ink-muted)] opacity-80">
+          free
+        </span>
+      </span>
+    </div>
+    </MinecraftTooltip>
+  );
+}
+
+/**
+ * The item in a machine's controller slot (the EEC's Powered Spawner): the
+ * free row's footprint and dress, but a key - it names the mob, and pressing
+ * it opens the mob picker, the way a player swaps the spawner.
+ */
+function ControllerSlotRow({ nodeId, port }: { nodeId: string; port: RailPort }) {
+  const [open, setOpen] = useState(false);
+  const locked = useFactoryStore((state) => state.isReadOnly || state.checklistMode);
+  return (
+    <div className="relative">
+      <MinecraftTooltip content={() => <RecipeTooltip view={{
+        title: port.displayName,
+        subtitle: "Controller slot",
+        rows: [],
+        reason: locked
+          ? "Goes in the machine's controller slot. Never used up."
+          : "Goes in the machine's controller slot. Never used up. Click to put in another mob.",
+      }} />}>
+        <button
+          type="button"
+          data-free-input="true"
+          data-mob-picker-toggle
+          disabled={locked}
+          aria-label={`Change mob: ${port.displayName}`}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpen((value) => !value);
+          }}
+          className="flow-port group relative flex h-[40px] w-full flex-none items-center gap-1 px-0.5 py-0 text-left opacity-75 enabled:hover:bg-[var(--mc-85)] enabled:hover:opacity-100"
+        >
+          <span className="pointer-events-none relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden grayscale">
+            {port.resource ? (
+              <ResourceIcon
+
+                itemZoom={1.5}
+                resource={{ ...port.resource, amount: 1, chance: undefined }}
+                bare
+                tooltip={false}
+                showAmount={false}
+                showConsumedState={false}
+                className="!h-7 !w-7"
+              />
+            ) : null}
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col justify-center pr-0.5">
+            <span className="flow-port-name text-[9px] font-bold leading-[9px] text-[var(--mc-ink-muted)]">
+              {port.displayName}
+            </span>
+            <span className="block truncate text-[9px] leading-[9px] tabular-nums text-[var(--mc-ink-muted)] opacity-80">
+              in controller
+            </span>
+          </span>
+          {locked ? null : (
+            <RefreshCw aria-hidden className="h-3 w-3 shrink-0 text-[var(--mc-ink-muted)] group-hover:text-[var(--mc-ink)]" />
+          )}
+        </button>
+      </MinecraftTooltip>
+      {open ? <MobPickerMenu nodeId={nodeId} onClose={() => setOpen(false)} /> : null}
+    </div>
+  );
+}
+
+/** One cell: the rule over a shared machine's recipe, with its remove key. */
+const SECTION_RULE_HEIGHT = BOARD_GRID;
+
+/**
+ * A SHARED MACHINE's rails: every recipe's inputs stacked on the left, every
+ * recipe's outputs stacked on the right, the machine's picture between them
+ * spanning the lot. Each recipe sits under a one-cell rule (so the rows
+ * below stay on the grid) whose right end carries the key that takes it off
+ * the machine. A recipe's two sides are padded to the same height, so its
+ * inputs and outputs face each other across the picture.
+ */
+function SharedMachineRails({
+  nodeId,
+  sections,
+  pending,
+  picture,
+  onRemove,
+  onMove,
+}: {
+  nodeId: string;
+  sections: Array<{
+    section: number;
+    rails: { inputs: RailPort[]; outputs: RailPort[] };
+    verdict: NodeVerdict;
+    powerStalled: boolean;
+    circuit?: RecipeProgrammedCircuit;
+  }>;
+  pending: ComponentProps<typeof PortRail>["pending"];
+  picture?: ReactNode;
+  onRemove: (section: number) => void;
+  /** Swap the recipe with its neighbour above (-1) or below (+1). */
+  onMove: (section: number, direction: -1 | 1) => void;
+}) {
+  const last = sections.length - 1;
+  // A bare key in the reading's row: the arrows sit together, the x a
+  // little apart from them, so a hand aiming to reorder never lands on
+  // remove.
+  const key = (
+    label: string,
+    icon: ReactNode,
+    onClick: () => void,
+    disabled: boolean,
+    extraClass = "",
+  ) => (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      aria-label={label}
+      title={label}
+      className={[
+        "nodrag -mt-0.5 flex h-4 w-4 items-center justify-center text-[var(--mc-ink-muted)]",
+        disabled ? "opacity-30" : "hover:text-white",
+        extraClass,
+      ].join(" ")}
+    >
+      {icon}
+    </button>
+  );
+  const rowsOf = (entry: (typeof sections)[number]) =>
+    Math.max(1, entry.rails.inputs.length, entry.rails.outputs.length);
+  // The rule over a recipe carries the recipe's own reading: its share of
+  // the machine's time and why it runs at that (the same word and hover a
+  // card's footer gives a one-recipe machine). The machine has no one
+  // reason; each recipe has its own, here.
+  const reading = (entry: (typeof sections)[number]) => {
+    const state = verdictWord(entry.verdict, false, entry.powerStalled);
+    const showPct = entry.verdict.kind !== "off" && entry.verdict.kind !== "no-recipe";
+    // The footer's usage tile in miniature: the same bordered, inset plate,
+    // a usage cell and a reason cell divided by a hairline, at a size that
+    // fits in one grid cell over the ports.
+    return (
+      <MinecraftTooltip content={<VerdictHoverContent verdict={entry.verdict} isCustomRate={false} />}>
+        <span className="flex h-[18px] min-w-0 items-stretch border border-[var(--mc-47)] bg-[var(--mc-71)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+          {showPct ? (
+            <>
+              <span className="flex items-center px-1.5 text-[11px] font-bold leading-none tabular-nums">
+                {formatPct(entry.verdict.pct)}%
+              </span>
+              <span className="my-0.5 w-px shrink-0 bg-[var(--mc-47)]" />
+            </>
+          ) : null}
+          <span
+            className={[
+              "flex min-w-0 items-center truncate px-1.5 text-[10px] uppercase leading-none tracking-[0.4px]",
+              VERDICT_WORD_CLASS[state.tone],
+            ].join(" ")}
+          >
+            {state.word}
+          </span>
+        </span>
+      </MinecraftTooltip>
+    );
+  };
+  // One cell holds the reading and controls. Half a cell of breathing room
+  // separates later recipes; both rails use the same spacing.
+  const rule = (entry: (typeof sections)[number], withKey: boolean) => (
+    <div
+      className="relative flex items-end pb-0.5"
+      style={{ height: SECTION_RULE_HEIGHT, marginTop: entry.section > 0 ? BOARD_GRID / 2 : 0 }}
+    >
+      {withKey ? null : reading(entry)}
+      {withKey && entry.circuit ? <span className="absolute bottom-px left-0 z-10"><CircuitChip circuit={entry.circuit} small /></span> : null}
+      {withKey ? (
+        <span className="ml-auto flex items-center">
+          {key("Move this recipe up", <ChevronUp className="h-3.5 w-3.5" />, () => onMove(entry.section, -1), entry.section === 0)}
+          {key("Move this recipe down", <ChevronDown className="h-3.5 w-3.5" />, () => onMove(entry.section, 1), entry.section === last)}
+          {key("Take this recipe off the machine", <X className="h-3 w-3" />, () => onRemove(entry.section), false, "ml-2")}
+        </span>
+      ) : null}
+    </div>
+  );
+  return (
+    <div className="flex items-stretch justify-between gap-1">
+      <div className="flex shrink-0 flex-col">
+        {sections.map((entry) => (
+          <Fragment key={entry.section}>
+            {rule(entry, false)}
+            <div style={{ minHeight: rowsOf(entry) * PORT_ROW_HEIGHT_PX }}>
+              {entry.rails.inputs.length > 0 ? (
+                <PortRail nodeId={nodeId} side="input" ports={entry.rails.inputs} pending={pending} />
+              ) : (
+                <NoFlowRow label="No input" side="input" />
+              )}
+            </div>
+          </Fragment>
+        ))}
+      </div>
+      {picture ? (
+        <div className={PICTURE_COLUMN_CLASS} style={PICTURE_MIN_STYLE}>
+          <div className={PICTURE_FILL_CLASS}>{picture}</div>
+        </div>
+      ) : (
+        <div className="flex min-w-0 flex-1 items-center justify-center self-stretch text-[15px] font-black text-[var(--mc-ink-muted)]">
+          →
+        </div>
+      )}
+      <div className="flex shrink-0 flex-col">
+        {sections.map((entry) => (
+          <Fragment key={entry.section}>
+            {rule(entry, true)}
+            <div style={{ minHeight: rowsOf(entry) * PORT_ROW_HEIGHT_PX }}>
+              {entry.rails.outputs.length > 0 ? (
+                <PortRail nodeId={nodeId} side="output" ports={entry.rails.outputs} pending={pending} />
+              ) : (
+                <NoFlowRow label="No output" side="output" />
+              )}
+            </div>
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const PORT_ROW_HEIGHT_PX = BOARD_GRID * 2;
+
+/**
+ * A power or crop card's bare side: the same footprint as a port row, dashed
+ * and muted. Inert on purpose: it is the absence of a port, not a port.
  */
 function NoFlowRow({ label, side }: { label: string; side: "input" | "output" }) {
-  // Input chips are 140px and output rows 176 (chip + coupling): the stand-in
+  // Input chips are 112px and output rows 144 (chip + coupling): the stand-in
   // must match its side's width or it shoves the other rail off the card.
   return (
     <div
       aria-hidden
       className={[
         "flex h-[40px] shrink-0 items-center justify-center border-2 border-dashed border-[var(--mc-47)] text-[12px] font-bold text-[var(--mc-ink-muted)]/70",
-        side === "input" ? PORT_CHIP_WIDTH_CLASS : "w-[176px]",
+        side === "input" ? PORT_CHIP_WIDTH_CLASS : "w-[144px]",
       ].join(" ")}
     >
       {label}
@@ -2758,61 +3273,46 @@ function NoFlowRow({ label, side }: { label: string; side: "input" | "output" })
   );
 }
 
-const POWER_ART_COLLAPSED_KEY = "gtnh-factory-flow.power-art-collapsed.v1";
-
-function readPowerArtCollapsed(nodeId: string): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    const raw = window.localStorage.getItem(POWER_ART_COLLAPSED_KEY);
-    return raw ? (JSON.parse(raw) as string[]).includes(nodeId) : false;
-  } catch {
-    return false;
-  }
-}
-
-function writePowerArtCollapsed(nodeId: string, collapsed: boolean) {
-  if (typeof window === "undefined") return;
-  try {
-    const raw = window.localStorage.getItem(POWER_ART_COLLAPSED_KEY);
-    const ids = new Set<string>(raw ? (JSON.parse(raw) as string[]) : []);
-    if (collapsed) {
-      ids.add(nodeId);
-    } else {
-      ids.delete(nodeId);
-    }
-    // The list only ever grows by cards someone deliberately folded; cap it
-    // so a long-lived browser profile never accumulates unbounded ids.
-    window.localStorage.setItem(POWER_ART_COLLAPSED_KEY, JSON.stringify([...ids].slice(-200)));
-  } catch {
-    // Storage unavailable: the toggle still holds for this session.
-  }
-}
-
 /**
- * The picture window: the workbook's own multiblock render (a singleblock
- * shows its machine item), spanning the card between the title bar and the
- * ports, on a recessed ground from the card's own palette with a whisper
- * of the power amber - there to help you see the thing you are planning.
- * The header's picture button hides it entirely; hidden, nothing renders.
- * Height plus the breathing room below stays a whole number of grid cells.
+ * The picture window: the workbook's multiblock render (a singleblock shows
+ * its machine item) on a recessed ground from the card's palette with a
+ * whisper of `tint`. Always shown; there is no hide button. Height plus the
+ * breathing room below stays a whole number of grid cells.
  */
 function PowerStructureWindow({
   art,
   icon,
   tint = "#d99a2b",
+  pickedFor,
+  inline = false,
+  bare = false,
 }: {
   art?: string;
-  icon?: PowerMachineIcon;
-  /** The sector's colour behind the render: power amber, crop green. */
+  icon?: { id: string; displayName?: string; iconPath?: string; dominantColor?: string };
+  /** The colour behind the render: power amber, crop green, machine grey. */
   tint?: string;
+  /** Handler id, tier and variant count the art was picked for (probes read it). */
+  pickedFor?: string;
+  /** Between the rails: fill the column the card gives it, no band height. */
+  inline?: boolean;
+  bare?: boolean;
 }) {
   if (!art && !icon?.iconPath) {
     return null;
   }
+  // A deeper drop shadow than the glance art's: the picture sits between two
+  // busy rails and needs to lift off them.
+  const shadow = "drop-shadow-[5px_7px_6px_rgba(0,0,0,0.6)]";
   return (
     <div
-      className="box-border mb-2 flex h-[112px] w-full items-center justify-center overflow-hidden border-2 border-[var(--mc-47)] p-1 shadow-[inset_2px_2px_0_rgba(0,0,0,0.3),inset_-2px_-2px_0_rgba(255,255,255,0.04)]"
-      style={{ backgroundColor: `color-mix(in srgb, var(--mc-33) 92%, ${tint} 8%)` }}
+      data-machine-picture={art ?? icon?.id}
+      data-picked-for={pickedFor}
+      className={[
+        "box-border flex items-center justify-center overflow-hidden p-1",
+        bare ? "" : "border-2 border-[var(--mc-47)] shadow-[inset_2px_2px_0_rgba(0,0,0,0.3),inset_-2px_-2px_0_rgba(255,255,255,0.04)]",
+        inline ? "h-full w-full" : "mb-2 h-[112px] w-full",
+      ].join(" ")}
+      style={bare ? undefined : { backgroundColor: `color-mix(in srgb, var(--mc-33) 92%, ${tint} 8%)` }}
     >
       {art ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -2820,7 +3320,7 @@ function PowerStructureWindow({
           src={art}
           alt=""
           draggable={false}
-          className="max-h-full max-w-full object-contain [image-rendering:pixelated]"
+          className={`max-h-full max-w-full object-contain [image-rendering:pixelated] ${shadow}`}
         />
       ) : (
         <ResourceIcon
@@ -2828,7 +3328,7 @@ function PowerStructureWindow({
             kind: "item",
             id: icon!.id,
             amount: 1,
-            displayName: icon!.displayName,
+            displayName: icon!.displayName ?? icon!.id,
             iconPath: icon!.iconPath,
             dominantColor: icon!.dominantColor,
           }}
@@ -2836,10 +3336,13 @@ function PowerStructureWindow({
           tooltip={false}
           showAmount={false}
           showConsumedState={false}
-          // Same zoom-and-crop ratio the picker's banner uses, scaled to
-          // this window's height: the render's padding goes, its face stays.
-          iconPixelSize={170}
-          className="!h-[100px] !w-[100px]"
+          // Same zoom-and-crop ratio the picker's banner uses (1.7x the box),
+          // scaled to this window's height: the render's padding goes, its
+          // face stays. The inline box is sized to the window's FLOOR, not to
+          // a tall card's window — the crop is what the ratio buys, so a box
+          // bigger than the floor would simply hang out of a short card.
+          iconPixelSize={inline ? 109 : 170}
+          className={`${inline ? "!h-[64px] !w-[64px]" : "!h-[100px] !w-[100px]"} ${shadow}`}
         />
       )}
     </div>
@@ -2926,74 +3429,17 @@ function PowerTierChip({
         step(-1);
       }}
       onWheel={(event) => {
+        if (checklistLocked() || !wheelChangesValues()) return;
         event.stopPropagation();
         step(event.deltaY < 0 ? 1 : -1);
       }}
-      className="nodrag nowheel flex h-6 w-[50px] items-center justify-center border-2 px-1 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+      className="nowheel flex h-6 w-[50px] items-center justify-center border-2 px-1 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
       style={chipStyle}
       title={`Tier ${shownTier}`}
       aria-label={`Tier ${shownTier}`}
     >
       {shownTier}
     </button>
-  );
-}
-
-/**
- * A power card's EU, worn as the FIRST output row: the product of a
- * generator is power, so it sits where the products sit, lightning bolt for
- * a face. The coupling slot is deliberately inert - nothing wires to power
- * yet - but the row already holds the place wires will land.
- */
-function PowerEuSocketRow({
-  euPerTick,
-  machines,
-  drawScale,
-  average,
-}: {
-  euPerTick: number;
-  machines: number;
-  /** The PEAK/AVG switch, applied like every other EU figure's; a stalled
-   * generator makes 0 EU/t under both readings. */
-  drawScale: number;
-  /** Which reading the switch has picked, named beside the EU title so the
-   * figure says what it is. */
-  average: boolean;
-}) {
-  const totalEuT = euPerTick * machines * drawScale;
-  return (
-    <div className="relative flex items-stretch">
-      <MinecraftTooltip label="Power this card makes. Power does not wire to machines yet; it counts in POWER MADE, bottom right.">
-        <div
-          className={`flow-port relative flex h-[40px] ${PORT_CHIP_WIDTH_CLASS} flex-none items-center gap-1 px-0.5 py-0`}
-        >
-          <span className="pointer-events-none relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden">
-            <span className="flex h-7 w-7 items-center justify-center border border-[var(--mc-47)] bg-[var(--mc-55)]">
-              <Zap className="h-4 w-4 text-amber-300" aria-hidden />
-            </span>
-          </span>
-          <span className="flex min-w-0 flex-1 flex-col justify-center pr-0.5">
-            <span className="block truncate text-[11px] font-bold leading-[13px] text-[var(--mc-ink)]">
-              EU{" "}
-              <span className="text-[9px] font-normal text-[var(--mc-ink-muted)] opacity-75">
-                ({average ? "avg" : "peak"})
-              </span>
-            </span>
-            <span className="block truncate text-[10px] leading-[12px] tabular-nums text-amber-200/90">
-              <MotionNumberText
-                values={[totalEuT]}
-                render={(shown) =>
-                  `${formatCompact(powerDisplayFromEuT(shown[0] ?? totalEuT))} ${powerDisplaySuffix()}`
-                }
-              />
-            </span>
-          </span>
-        </div>
-      </MinecraftTooltip>
-      <span className="flow-socket-empty">
-        <Zap className="h-3 w-3 text-amber-300/60" aria-hidden />
-      </span>
-    </div>
   );
 }
 
@@ -3012,6 +3458,14 @@ export function OutputSocketRow({
   pending: ReturnType<typeof useFactoryStore.getState>["pendingResourceConnection"];
 }) {
   const setHoveredFlowScope = useFactoryStore((state) => state.setHoveredFlowScope);
+  // SOLVE and POOL cover every asker by construction: the coupling's
+  // percent is always 100, so the socket stays blank.
+  const solveMode = useFactoryStore((state) => state.project.solveMode === true);
+  if (solveMode) {
+    // No socket at all: the chip takes the whole rail, wires dock on it and
+    // drag from it the way an input's do.
+    return <PortChip nodeId={nodeId} port={port} pending={pending} />;
+  }
   return (
     <div
       className="relative flex items-stretch"
@@ -3020,30 +3474,34 @@ export function OutputSocketRow({
       data-resource-handle-id={port.handleId}
       // Wiring is a mode: a held wire must not also be lighting up slots.
       onPointerEnter={() =>
-        isWiringConnection() ? undefined : setHoveredFlowScope(buildPortFlowScope(nodeId, port))
+        isWiringConnection() || checklistLocked()
+          ? undefined
+          : setHoveredFlowScope(
+              buildPortFlowScope(useFactoryStore.getState().project, nodeId, port),
+            )
       }
       onPointerLeave={() => setHoveredFlowScope(undefined)}
     >
       <PortChip nodeId={nodeId} port={port} pending={pending} plugRow />
-      {port.plug ? (
+      {port.plug && !solveMode ? (
         <PlugBlock nodeId={nodeId} port={port} />
       ) : (
         <MinecraftTooltip
           label={
-            port.nameplatePerSecond <= 0
+            solveMode
+              ? "Every taker is covered: the machines are sized to what is asked."
+              : port.nameplatePerSecond <= 0
               ? "Empty socket: nothing plugged in."
               : port.boundaryFree
-                ? "Free outputs is on, so this leaves the setup."
+                ? "Pool mode banks the surplus by itself."
                 : "Nothing takes this, so it backs up and the machine stops. Wire it to a machine that wants it, a DRAIN drawer, or a trash can."
           }
         >
-          {/* The mirror of an input's NO SUPPLY. It used to read "—" beside a
-              tooltip saying the output vanished, which is exactly the thing
-              that stopped being true when the plan became a closed system.
-              With FREE OUTPUTS on it is true again, so the mark comes off. */}
+          {/* The mirror of an input's NO SUPPLY: an output nothing takes
+              reads NO TAKER; an empty or boundary-free socket reads "—". */}
           <span className="flow-socket-empty nodrag">
             <PlugDragHandle nodeId={nodeId} port={port} />
-            {port.nameplatePerSecond > 0 && !port.boundaryFree ? (
+            {port.nameplatePerSecond > 0 && !port.boundaryFree && !solveMode ? (
               <span className="text-[7px] font-black leading-3 tracking-[0.5px] text-[var(--verdict-unwired-ink)]">
                 NO TAKER
               </span>
@@ -3082,7 +3540,7 @@ function PlugDragHandle({ nodeId, port }: { nodeId: string; port: RailPort }) {
 }
 
 /** Where a dead-end output actually ends. Trash destroys; the rest keeps. */
-// A dead-end drawer is a DRAIN now — the same word its own card wears, so the
+// A dead-end drawer reads DRAIN, the same word its own card wears, so the
 // plug and the thing it points at cannot be read as two different ideas.
 const PLUG_DUMP_WORD: Record<"trash" | "tank" | "store", string> = {
   trash: "TRASH",
@@ -3090,11 +3548,9 @@ const PLUG_DUMP_WORD: Record<"trash" | "tank" | "store", string> = {
   store: "DRAIN",
 };
 
-// No brightness lift here, and none on the port row below. A CSS filter applies
-// to the element's SHADOWS as well as its content, and brightness(1.22) on
-// #ffd257 clips red and green to 255 while lifting blue: the ring came out
-// near #ffff6a, a flat yellow. Wires carry no filter, so they kept the true
-// gold, and the two ends of the same highlight looked like two colours.
+// No brightness filter here or on the port row below: a CSS filter also applies
+// to the element's shadows, and brightness(1.22) clips #ffd257 to a flat yellow
+// while the unfiltered wires keep the true gold.
 const PLUG_GLOW_STYLE: CSSProperties = {
   boxShadow: "0 0 0 2px var(--glow-line), 0 0 10px 2px var(--glow-halo)",
   zIndex: 15,
@@ -3125,9 +3581,9 @@ function PlugBlock({ nodeId, port }: { nodeId: string; port: RailPort }) {
             wrapper, so hovering the handle still opens the asker's story. */}
         <PlugDragHandle nodeId={nodeId} port={port} />
         {plug.state === "dump" ? (
-          // No ask exists to be a percent of — flow just ends here. Name the
-          // end it reaches: "DUMP" read as destruction even when the flow was
-          // going somewhere perfectly safe.
+          // No ask exists to be a percent of: flow just ends here. Name the
+          // end it reaches; a generic "DUMP" would read as destruction even
+          // when the flow goes somewhere safe.
           <span className="flow-plug-top">
             <b>{PLUG_DUMP_WORD[plug.dumpKind ?? "store"]}</b>
           </span>
@@ -3153,136 +3609,7 @@ function PlugBlock({ nodeId, port }: { nodeId: string; port: RailPort }) {
  * The chip doubles as the React Flow handle (drag to wire) and as the edge
  * anchor element the router measures.
  */
-/**
- * The flow neighbourhood a port hover lights up: every line on this port,
- * the far-end port of each line, and the nodes involved (so storages can
- * glow too). Built lazily on pointer-enter from live store state.
- */
-function buildPortFlowScope(nodeId: string, port: RailPort) {
-  const { project } = useFactoryStore.getState();
-  const edges: Record<string, true> = {};
-  const ports: Record<string, true> = { [`${nodeId}|${port.handleId}`]: true };
-  const nodes: Record<string, true> = { [nodeId]: true };
-  const isInput = port.side === "input";
-  for (const edge of project.edges) {
-    if ((isInput ? edge.target : edge.source) !== nodeId) {
-      continue;
-    }
-    if (!edgeTouchesResource(edge, port.side, port.kind, port.resourceId)) {
-      continue;
-    }
-    edges[edge.id] = true;
-    const otherId = isInput ? edge.source : edge.target;
-    nodes[otherId] = true;
-    const rawOtherHandle = isInput ? edge.sourceHandle : edge.targetHandle;
-    const otherHandle =
-      canonicalizeResourceHandleId(rawOtherHandle) ??
-      makeResourceHandleId(isInput ? "output" : "input", {
-        kind: edge.resourceKind,
-        id: edge.resourceId,
-      });
-    ports[`${otherId}|${otherHandle}`] = true;
-  }
-  return { edges, ports, nodes };
-}
 
-/**
- * What a port row does when you point at it.
- *
- * It used to be the little item icon and nothing else: a 28px square inside a
- * 40px row, carrying click-for-recipes and right-click-for-uses, while the rest
- * of the row — the name, the rate, the bar — was only a wire drag. Aiming at the
- * icon to ask "what makes this?" is a game of darts, and on a touchscreen the
- * icon has no right button to press and no hover to reveal itself.
- *
- * So the whole row answers now, and every input device gets a way in:
- *   click       recipes that make it
- *   right click recipes that use it
- *   drag        a wire, exactly as before
- *   R / U       the same two, for the row under the pointer
- *   tap         a menu offering both, for a finger
- *   press       the same menu, early enough to slide onto one and let go
- */
-function usePortRowBrowse({
-  nodeId,
-  port,
-  browse,
-}: {
-  nodeId: string;
-  port: RailPort;
-  browse: (mode: PortBrowseMode) => void;
-}) {
-  // The press gesture, the menu it opens and the one-answer-per-gesture rule are
-  // shared with the items column — see browse-menu.tsx. What stays here is what is
-  // particular to a port: the mouse's two buttons, the keyboard's two keys, and
-  // the fact that a drag from here is a wire.
-  const { pressHandlers, isPressing, menu, wasDragged, wasTouch, openFromTap } = useBrowseMenu({
-    name: port.displayName,
-    onPick: browse,
-    onPressBecomesMenu: ({ x, y }) => {
-      // React Flow began pulling a wire the instant the finger landed — it has no
-      // way to know a press was coming — and the finger is now going to travel
-      // down onto a menu item. Left alone it would drop that wire wherever the
-      // finger let go. `mouseup` on the document is what its connection listens
-      // for, so this is the wire being put down where it started, which wires
-      // nothing.
-      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: x, clientY: y }));
-    },
-  });
-
-  const handlers = {
-    onPointerEnter: () => {
-      setHoveredPortBrowse({ nodeId, handleId: port.handleId, open: browse });
-    },
-    onPointerLeave: () => {
-      clearHoveredPortBrowse(nodeId, port.handleId);
-      pressHandlers.onPointerCancel();
-    },
-    onPointerDown: pressHandlers.onPointerDown,
-    onPointerMove: pressHandlers.onPointerMove,
-    onPointerUp: pressHandlers.onPointerUp,
-    onPointerCancel: pressHandlers.onPointerCancel,
-    onClick: (event: React.MouseEvent<HTMLElement>) => {
-      if (isFromBrowseMenu(event)) {
-        return;
-      }
-      // A finger gets the menu — a tap and a press open the same two answers, the
-      // press just gets there early enough to slide onto one. Opening the book
-      // straight off a tap would be guessing which of the two was meant.
-      //
-      // `isEchoOfTouch`, not the pointerdown this row saw: the click a tap
-      // synthesises claims to be a mouse, and on some engines so does the
-      // pointerdown before it, so only the timing gives them away.
-      if (wasTouch() || isEchoOfTouch()) {
-        if (openFromTap({ x: event.clientX, y: event.clientY })) {
-          event.stopPropagation();
-        }
-        return;
-      }
-      // Dropping a wire back on the row it came from is a pointerdown and a
-      // pointerup on one element, which is also the definition of a click.
-      if (wasDragged() || wasRecentWireDrop()) {
-        return;
-      }
-      event.stopPropagation();
-      browse("recipes");
-    },
-    onContextMenu: (event: React.MouseEvent<HTMLElement>) => {
-      if (isFromBrowseMenu(event)) {
-        return;
-      }
-      // Android raises this on a long press too, where the menu is the answer.
-      event.preventDefault();
-      event.stopPropagation();
-      if (wasTouch() || isEchoOfTouch()) {
-        return;
-      }
-      browse("uses");
-    },
-  };
-
-  return { handlers, menu, isPressing };
-}
 
 export function PortChip({
   nodeId,
@@ -3297,7 +3624,13 @@ export function PortChip({
   plugRow?: boolean;
 }) {
   const isInput = port.side === "input";
-  const { calmMode } = useBoardView();
+  const { calmMode: calmView } = useBoardView();
+  // SOLVE and POOL: every fed port is at nameplate by construction, so the
+  // bar and the want marks would say the same thing on every card. The
+  // port shows its name and its rate, the calm presentation.
+  const solveMode = useFactoryStore((state) => state.project.solveMode === true);
+  const calmMode = calmView || solveMode;
+  const readOnly = useFactoryStore((state) => state.isReadOnly);
   const browseResource = useFactoryStore((state) => state.browseResource);
   const setHoveredFlowScope = useFactoryStore((state) => state.setHoveredFlowScope);
   const isFlowScopeLit = useFactoryStore((state) =>
@@ -3347,16 +3680,12 @@ export function PortChip({
             : port.tone === "idle"
               ? "flow-port--idle"
               : "";
-  // The rate reads under the name in a lighter grey — the number is worth a
-  // line, it just isn't worth competing with the name for attention. The
-  // binding input still shows both halves (what it gets over what it asks);
-  // every other port shows the one number that matters. Calm mode always
-  // shows the bare actual rate: no fraction, nothing to diagnose.
-  // The numbers ease to a new solve (value motion, board-motion.tsx): the
-  // leaf re-renders itself per frame while they move, never the row.
-  // The EU unit swaps an output's line for the energy each unit cost. It is
-  // gold, and gold only here: the one reading on the board that is not a
-  // rate, dressed so it can never be mistaken for one.
+  // The rate reads under the name in a lighter grey. The binding input shows
+  // what it gets over what it asks; every other port shows one number. Calm
+  // mode shows the bare actual rate. The numbers ease to a new solve (value
+  // motion, board-motion.tsx): the leaf re-renders per frame, never the row.
+  // The EU unit swaps an output's line for the energy each unit cost, in
+  // gold only here, so it is never mistaken for a rate.
   const readsEnergy = portReadsEnergy(port);
   const rateText = readsEnergy ? (
     <EnergyReading euPerUnit={port.energyPerUnit!} kind={port.kind} unitSize={calmMode ? 10 : 8} />
@@ -3394,10 +3723,9 @@ export function PortChip({
         // 40s, so every port centre lands exactly on a grid line. Name, rate
         // and bar total 32px and centre inside it.
         "flow-port relative flex h-[40px] items-center gap-1 px-0.5 py-0",
-        // flex-none both ways. An input chip used to be `flex-1`, and in a
-        // column flex container that resolves the row's main size from its
-        // content — quietly beating the 40px height and leaving the rail 4px
-        // short per row, which is exactly how ports drift off the grid.
+        // flex-none both ways: `flex-1` in a column flex container resolves
+        // the row's size from its content, beating the 40px height and
+        // drifting ports off the grid.
         plugRow ? `${PORT_CHIP_WIDTH_CLASS} flex-none` : "w-full flex-none",
         toneClass,
         isFlowScopeLit ? "flow-port--flow-lit" : "",
@@ -3428,8 +3756,10 @@ export function PortChip({
       // twice, because the flow-scope highlight shares these two events.
       onPointerEnter={(event) => {
         rowBrowse.handlers.onPointerEnter();
-        if (!plugRow && !isWiringConnection()) {
-          setHoveredFlowScope(buildPortFlowScope(nodeId, port));
+        if (!plugRow && !isWiringConnection() && !checklistLocked()) {
+          setHoveredFlowScope(
+            buildPortFlowScope(useFactoryStore.getState().project, nodeId, port),
+          );
         }
         void event;
       }}
@@ -3460,27 +3790,20 @@ export function PortChip({
           ].join(" ")}
         />
       ) : null}
-      {/* Art, not a button. It used to be the only part of the row that opened
-          the book, which made a 28px square the target for a question the whole
-          row can now answer. Nothing here claims the pointer, so the handle
+      {/* Art, not a button: nothing here claims the pointer, so the handle
           above it gets the drag and the row gets the click. */}
-      <span className="pointer-events-none relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden">
+      <span className="pointer-events-none relative flex h-7 w-7 shrink-0 items-center justify-center">
         {port.resource ? (
           <ResourceIcon
+
+            itemZoom={1.5}
             resource={{ ...port.resource, amount: 1, chance: undefined }}
             bare
             tooltip={false}
             showAmount={false}
             showConsumedState={false}
-            // Item art ships with transparent padding baked into the sprite,
-            // and that padding is a FRACTION of the cell — growing the box
-            // grows the empty border with it. ResourceIcon's default already
-            // zooms to 200%-8px inside an overflow-hidden box; items take
-            // another 1.5x on top and get clipped by the box above, which is
-            // what finally puts the art edge to edge. A fluid sprite's art is
-            // exactly the middle half of its canvas, so it takes the precise
-            // spriteArtPixels size instead; only the artless swatch keeps its
-            // exact requested size.
+            // Item sizing and shadows are shared with the left resource panel.
+            // Fluid sprites and artless swatches keep their own sizing rules.
             iconPixelSize={
               port.kind === "fluid"
                 ? isSwatchFluid(port.resource)
@@ -3488,7 +3811,7 @@ export function PortChip({
                   : fluidArtPixels(28)
                 : undefined
             }
-            className={port.kind === "fluid" ? "" : "!h-7 !w-7 origin-center scale-150"}
+            className={port.kind === "fluid" ? "" : "!h-7 !w-7"}
           />
         ) : (
           <span className="block h-7 w-7 border border-[var(--mc-47)] bg-[var(--mc-55)]" />
@@ -3498,15 +3821,30 @@ export function PortChip({
         {/* The name is what you look for on a rail of five ports; the rate is
             what you compare once you have found it. Name in full ink, rate a
             step down and a step lighter, so the pair reads in that order. */}
-        <span className="block truncate text-[11px] font-bold leading-[13px] text-[var(--mc-ink)]">
+        <span
+          className={`flow-port-name font-bold text-[var(--mc-ink)] ${
+            // A NO SUPPLY row carries a fourth reading in the same 40px, so
+            // its name gives up a point. The size lives HERE, not in the
+            // stylesheet: .flow-port-name only clamps, so a card whose CSS
+            // has not arrived yet is small and unclamped, never 16px text
+            // bursting out of the chip.
+            !calmMode && port.unsupplied ? "text-[8px] leading-[8px]" : "text-[9px] leading-[9px]"
+          }`}
+        >
           {port.displayName}
         </span>
-        {calmMode ? (
+        {calmMode && !port.supplyHatch ? (
           /* Presentation: no bar, no want marks — the room they used goes to
              the number, which is the thing a viewer actually reads. Muted ink
              a step below the name, so the pair still reads name-first. */
           <span
-            className={`block truncate text-[13px] font-bold leading-[15px] tabular-nums ${rateInk}`}
+            className={[
+              "block truncate tabular-nums",
+              // The calm VIEW is a presentation and wants the number big and
+              // bold; solve and pool are working modes and want it plain.
+              calmView ? "text-[13px] font-bold leading-[15px]" : "text-[12px] font-medium leading-[14px]",
+              rateInk,
+            ].join(" ")}
           >
             {rateText}
           </span>
@@ -3516,12 +3854,14 @@ export function PortChip({
                 story's color. Green text over a red bar told two stories at
                 once. */}
             <span
-              className={`block truncate text-[10px] leading-[12px] tabular-nums ${rateInk} ${readsEnergy ? "font-bold" : "opacity-80"}`}
+              className={`block truncate text-[9px] leading-[9px] tabular-nums ${rateInk} ${readsEnergy ? "font-bold" : "opacity-80"}`}
             >
               {rateText}
             </span>
-            {port.unsupplied ? (
-              <span className="block text-[7px] font-black leading-3 tracking-[0.5px] text-[var(--verdict-blocked-ink)]">
+            {port.supplyHatch ? (
+              <HatchSupplyButton nodeId={nodeId} port={port} />
+            ) : port.unsupplied ? (
+              <span className="block text-[7px] font-black leading-[8px] tracking-[0.5px] text-[var(--verdict-blocked-ink)]">
                 NO SUPPLY
               </span>
             ) : (
@@ -3561,16 +3901,51 @@ export function PortChip({
           data-resource-handle="true"
           data-resource-node-id={nodeId}
           data-resource-handle-id={port.handleId}
-          title={`${isInput ? "Input" : "Output"}: ${port.displayName}. Click for what makes it, right click for what uses it (R and U do the same), drag to wire`}
+          // No native title: GlobalTitleTooltip would stamp the handle as a
+          // tooltip STOP and the rich port panel would yield to it.
+          aria-label={`${isInput ? "Input" : "Output"}: ${port.displayName}${readOnly ? "" : ". Left click or R for recipes, right click or U for uses, drag to connect"}`}
           className={[
             "resource-slot-handle nodrag !absolute !left-0 !right-auto !top-0 !z-30 !h-full !w-full !min-w-0 !translate-x-0 !translate-y-0",
             "!rounded-none !border-0 !bg-transparent !opacity-0",
-            "cursor-crosshair",
+            readOnly ? "cursor-default" : "cursor-crosshair",
           ].join(" ")}
         />
       </MinecraftTooltip>
       {rowBrowse.menu}
     </div>
+  );
+}
+
+function HatchSupplyButton({ nodeId, port }: { nodeId: string; port: RailPort }) {
+  const locked = useFactoryStore((state) => state.checklistMode || state.isReadOnly);
+  return (
+    <button
+      type="button"
+      aria-pressed={port.hatchSupplied === true}
+      aria-label={`${port.supplyHatch} for ${port.displayName}`}
+      disabled={locked}
+      data-viewer-disabled="true"
+      style={{ fontSize: 7, lineHeight: "10px", fontWeight: 700 }}
+      className={`nodrag nopan relative z-40 mt-0.5 w-fit rounded-sm border px-1 text-[8px] font-bold leading-[10px] disabled:opacity-40 ${port.hatchSupplied ? "border-emerald-400/40 text-emerald-300" : "border-[var(--mc-47)] text-[var(--mc-ink-muted)] hover:border-cyan-300 hover:text-cyan-200"}`}
+      onPointerDown={(event) => event.stopPropagation()}
+      onPointerUp={(event) => event.stopPropagation()}
+      onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (checklistLocked()) return;
+        const state = useFactoryStore.getState();
+        if (state.isReadOnly) return;
+        const node = state.project.nodes.find((entry) => entry.id === nodeId);
+        if (!node || (port.resourceId !== "water" && port.resourceId !== "air")) return;
+        const supplies = new Set(node.hatchSupplies);
+        if (port.hatchSupplied) supplies.delete(port.resourceId);
+        else supplies.add(port.resourceId);
+        state.updateNode(nodeId, { hatchSupplies: supplies.size ? [...supplies] : undefined });
+        playBoardSound("tick");
+      }}
+    >
+      {port.supplyHatch}
+    </button>
   );
 }
 
@@ -3672,7 +4047,7 @@ function CustomRatePanel({
   };
   const modeButtonClassName = (active: boolean) =>
     [
-      "nodrag h-6 px-2 text-[11px] font-bold uppercase",
+      "h-6 px-2 text-[11px] font-bold uppercase",
       // The chosen side is the app's blue and keeps it on any paint: it is the
       // one thing on this row that says which way the card faces.
       active
@@ -3682,7 +4057,7 @@ function CustomRatePanel({
 
   return (
     // Two cells tall, or more if the dial needs them.
-    <GridBlock className="nodrag border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+    <GridBlock className="border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
     <div className="flex items-center gap-1">
       <div className="flex border-2 border-[var(--mc-33)]">
         <button
@@ -3728,11 +4103,8 @@ function CustomRatePanel({
         inputMode="decimal"
         aria-label="Rate"
         title="Rate"
-        // Sized to the number, not to the row: `flex-1` made the field claim
-        // every spare pixel and the card was permanently as wide as its
-        // widest possible contents. In `ch` on a mono font this is exactly
-        // the typed digits, so a "5" node is small and a "1000000000" node
-        // grows only when it has to.
+        // Sized to the number, not the row (`flex-1` would claim every spare
+        // pixel). In `ch` on a mono font this is exactly the typed digits.
         style={{ width: `${Math.min(Math.max(draft.length + 2, 5), 16)}ch` }}
         className="nodrag h-6 shrink-0 border border-[var(--mc-33)] bg-[var(--mc-93)] px-1 text-right text-[13px] text-[var(--mc-ink)]"
       />
@@ -3744,187 +4116,14 @@ function CustomRatePanel({
   );
 }
 
-const STORY_TONE_TEXT: Record<PortStory["tone"], string> = {
-  red: "text-red-300",
-  amber: "text-amber-300",
-  gold: "text-yellow-200/80",
-  green: "text-emerald-300",
-  steel: "text-slate-300",
-  dim: "text-slate-400",
-};
-
-const STORY_TONE_FILL: Record<PortStory["tone"], string> = {
-  red: "#e05252",
-  amber: "#e0a63a",
-  gold: "#b0aa66",
-  green: "#3fbf6f",
-  steel: "#8aa0b8",
-  dim: "#5a6a80",
-};
-
-const STORY_ACTION_TEXT: Record<"fix" | "fine" | "note", string> = {
-  fix: "text-amber-300",
-  fine: "text-emerald-300",
-  note: "text-slate-300",
-};
-
-/**
- * The port hover panel — the big explainer: a thicker copy of the port's bar
- * with the same landmarks, the honest numbers, the per-line list, then the
- * plain answer to "why is it like this" and what to do. All copy comes from
- * explainPort; styles ride inline so no stale stylesheet chunk can mute the
- * teaching surface.
- */
 function renderPortHoverContent(port: RailPort, nodeId: string) {
-  if (port.nameplatePerSecond <= 1e-9 && port.currentPerSecond <= 1e-9) {
-    return undefined;
-  }
-
   const { project, lastResult } = useFactoryStore.getState();
   const verdict = deriveNodeVerdict(project, lastResult, nodeId);
-  const story = explainPort(project, lastResult, nodeId, port, verdict);
-
-  const nameplate = port.nameplatePerSecond;
-  const fillPct = nameplate > 1e-9 ? Math.min(port.currentPerSecond / nameplate, 1) * 100 : 0;
-  const couldPct = nameplate > 1e-9 ? Math.min(port.couldPerSecond / nameplate, 1) * 100 : 0;
-  const ghostPct = Math.max(0, couldPct - fillPct);
-  const wantRatio = nameplate > 1e-9 ? port.wantedPerSecond / nameplate : 0;
-  const caretPct =
-    port.wantedPerSecond > 1e-9 ? Math.min(Math.max(wantRatio, 0), 1) * 100 : undefined;
-  const hasBurst = wantRatio > 1.005;
-  const fillColor = STORY_TONE_FILL[story.tone];
-
-  return (
-    <div className="w-64">
-      <div className="flex items-baseline gap-2">
-        <span className="min-w-0 truncate text-[13px] font-semibold text-white">
-          {port.displayName}
-        </span>
-        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-          {port.side === "input" ? "Input" : "Output"}
-        </span>
-        <span
-          className={[
-            "ml-auto shrink-0 text-[10px] font-black tracking-wide",
-            STORY_TONE_TEXT[story.tone],
-          ].join(" ")}
-        >
-          {story.stateWord}
-        </span>
-      </div>
-
-      {!port.unsupplied ? (
-        <div className={["mt-2 flex items-center gap-1", caretPct !== undefined ? "mb-2" : "mb-1"].join(" ")}>
-          <div
-            className="relative h-[9px] flex-1"
-            style={{
-              background: "#101826",
-              border: "1px solid #2c3a52",
-              borderRightWidth: hasBurst ? 2 : 1,
-              borderRightColor: hasBurst ? "rgba(255,255,255,0.9)" : "#2c3a52",
-            }}
-          >
-            <i
-              className="absolute bottom-0 left-0 top-0 block"
-              style={{ width: `${fillPct}%`, background: fillColor }}
-            />
-            {ghostPct > 1 ? (
-              <s
-                className="absolute bottom-0 top-0 block"
-                style={{
-                  left: `${fillPct}%`,
-                  width: `${ghostPct}%`,
-                  background:
-                    "repeating-linear-gradient(45deg, rgba(220,228,245,0.35) 0 1.5px, transparent 1.5px 3px)",
-                }}
-              />
-            ) : null}
-            {caretPct !== undefined ? (
-              <u
-                className="absolute block"
-                style={{
-                  left: `${caretPct}%`,
-                  top: "100%",
-                  marginTop: 1,
-                  width: 0,
-                  height: 0,
-                  borderLeft: "4px solid transparent",
-                  borderRight: "4px solid transparent",
-                  borderBottom: "5px solid #f5c542",
-                  transform: "translateX(-4px)",
-                }}
-              />
-            ) : null}
-          </div>
-          {hasBurst ? (
-            <em className="shrink-0 border border-dashed border-amber-400/70 bg-amber-400/20 px-1 text-[9px] font-black not-italic leading-[13px] text-amber-300">
-              {formatTimes(wantRatio)}
-            </em>
-          ) : null}
-        </div>
-      ) : null}
-
-      <StoryBody story={story} />
-    </div>
-  );
+  return <RecipeTooltip view={buildPortTooltip(project, lastResult, nodeId, port, verdict)} />;
 }
 
-/**
- * The whole body of a port or plug hover: one sentence.
- *
- * It used to be a table of rates, then a list of every line plugged in with
- * the far machine's own speed beside it, then an arrowed instruction. The
- * numbers are already on the port, the lines are already on the board, and the
- * marks already say where to act.
- */
-function StoryBody({ story }: { story: PortStory }) {
-  return (
-    <div className="mt-1.5 border-t border-white/15 pt-1.5 text-[12px] leading-snug text-slate-200">
-      {story.lines.map((line, index) => (
-        <p key={index} className="mb-1 last:mb-0">
-          {line}
-        </p>
-      ))}
-    </div>
-  );
-}
-
-/**
- * The plug hover — the asker's story at full length: who is plugged in, what
- * they ask, what they get, and the fix. The covered bar rides the asker's
- * own frame: full = the ask is covered.
- */
-function renderPlugHoverContent(port: RailPort, nodeId: string) {
-  const { project, lastResult } = useFactoryStore.getState();
-  const story = explainPlug(project, lastResult, nodeId, port);
-  if (!story) {
-    return undefined;
-  }
-  const plug = port.plug!;
-
-  return (
-    <div className="w-64">
-      <div className="flex items-baseline gap-2">
-        <span className="min-w-0 truncate text-[13px] font-semibold text-white">
-          {port.displayName}
-        </span>
-        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-          Plug
-        </span>
-        <span
-          className={[
-            "ml-auto shrink-0 text-[10px] font-black tracking-wide",
-            STORY_TONE_TEXT[story.tone],
-          ].join(" ")}
-        >
-          {story.stateWord}
-          {plug.timesShort !== undefined ? ` ${formatTimes(plug.timesShort)}` : ""}
-        </span>
-      </div>
-
-      <StoryBody story={story} />
-    </div>
-  );
+function renderPlugHoverContent(port: RailPort, _nodeId: string) {
+  return <RecipeTooltip view={buildDemandTooltip(port)} />;
 }
 
 function recipeContainsSearchResource(recipe: Recipe, query: string) {
@@ -3959,6 +4158,8 @@ function normalizeSearch(value: string) {
 type VoltageTier = Exclude<MachineTier, "DEMO">;
 
 function getNodeTierControl(recipe: Recipe, node: FactoryNode) {
+  const fusion = getFusionMachine(recipe.machineType);
+  if (fusion) return { minimum: fusion.tier, maximum: fusion.tier, current: fusion.tier, available: undefined, allowBelowMinimum: false, fixed: true };
   if (isIndustrialApiaryMachineType(recipe.machineType)) {
     return undefined;
   }
@@ -3976,12 +4177,14 @@ function getNodeTierControl(recipe: Recipe, node: FactoryNode) {
   // is what says an underpowered build won't start, not a silent clamp. A
   // singleblock is floored: a lower machine does not exist to be built.
   const allowBelowMinimum = isMultiblockRecipe(recipe);
-  const resolved = resolveVoltageTier(node.overclockTier, minimum);
-  const current =
-    !allowBelowMinimum && getVoltageTierIndex(resolved) < getVoltageTierIndex(minimum)
-      ? minimum
-      : resolved;
-  return { minimum, current, allowBelowMinimum };
+  // ...and capped at the family's last registered machine. Higher-tier
+  // names may change (Canning Machine -> Can Operator) within that family.
+  const maximum = allowBelowMinimum ? undefined : getRecipeMaximumVoltageTier(recipe);
+  const available = allowBelowMinimum ? undefined : getRecipeAvailableVoltageTiers(recipe);
+  const current = allowBelowMinimum
+    ? resolveVoltageTier(node.overclockTier, minimum)
+    : getRunVoltageTier(recipe, node.overclockTier);
+  return { minimum, maximum, current, available, allowBelowMinimum, fixed: false };
 }
 
 function isTierDrivenOutputRecipe(recipe: Recipe) {
@@ -3989,13 +4192,26 @@ function isTierDrivenOutputRecipe(recipe: Recipe) {
   return normalizeSearch(recipeMap) === "tree growth simulator";
 }
 
-function getAdjacentTier(current: VoltageTier, floor: VoltageTier | undefined, direction: -1 | 1) {
+function getAdjacentTier(
+  current: VoltageTier,
+  floor: VoltageTier | undefined,
+  direction: -1 | 1,
+  ceiling?: VoltageTier,
+  available?: VoltageTier[],
+) {
   const currentIndex = getVoltageTierIndex(current);
   const floorIndex = floor ? getVoltageTierIndex(floor) : 0;
-  const nextIndex = Math.min(
-    GT_OVERCLOCK_TIERS.length - 1,
-    Math.max(floorIndex, currentIndex + direction),
-  );
+  const ceilingIndex = ceiling ? getVoltageTierIndex(ceiling) : GT_OVERCLOCK_TIERS.length - 1;
+  if (available) {
+    const choices = available.filter((tier) => {
+      const index = getVoltageTierIndex(tier);
+      return index >= floorIndex && index <= ceilingIndex;
+    });
+    return (direction > 0
+      ? choices.find((tier) => getVoltageTierIndex(tier) > currentIndex)
+      : choices.findLast((tier) => getVoltageTierIndex(tier) < currentIndex)) ?? current;
+  }
+  const nextIndex = Math.min(ceilingIndex, Math.max(floorIndex, currentIndex + direction));
   return GT_OVERCLOCK_TIERS[nextIndex]?.tier ?? current;
 }
 
@@ -4029,33 +4245,9 @@ function resolveDatasetMachineConfigResource(
   };
 }
 
-function isTreeGrowthSimulatorToolControl(control: MachineConfigTierControl) {
-  return (
-    /^tgsToolSlot\d+$/.test(control.id) ||
-    (control.id.startsWith("tgs") && control.id.endsWith("Tool"))
-  );
-}
-
 function isDisplayOnlyParallelControl(control: MachineConfigTierControl) {
   return /^machineParallel/.test(control.id) && control.tiers.length <= 1;
 }
-
-const TREE_GROWTH_SIMULATOR_TOOL_SLOTS: Record<string, { x: number; y: number }> = {
-  tgsToolSlot1: { x: 36, y: 36 },
-  tgsToolSlot2: { x: 54, y: 36 },
-  tgsToolSlot3: { x: 36, y: 54 },
-  tgsToolSlot4: { x: 54, y: 54 },
-  tgsLogTool: { x: 36, y: 36 },
-  tgsSaplingTool: { x: 54, y: 36 },
-  tgsLeavesTool: { x: 36, y: 54 },
-  tgsFruitTool: { x: 54, y: 54 },
-};
-
-const BEE_FRAME_SLOTS: Record<string, { x: number; y: number }> = {
-  beeFrameSlot1: { x: 66, y: 23 },
-  beeFrameSlot2: { x: 66, y: 52 },
-  beeFrameSlot3: { x: 66, y: 81 },
-};
 
 function getBeePanelControls(controls: MachineConfigTierControl[]): MachineConfigTierControl[] {
   const speedControl = controls.find((control) => control.id === BEE_INDUSTRIAL_SPEED_CONTROL_ID);
@@ -4082,283 +4274,61 @@ function getBeePanelControls(controls: MachineConfigTierControl[]): MachineConfi
   });
 }
 
-function applyTreeGrowthSimulatorToolInputs(
-  recipe: Recipe,
-  controls: MachineConfigTierControl[],
-): Recipe {
-  if (controls.length === 0) {
-    return recipe;
-  }
-
-  const inputs = recipe.inputs.map((input) => {
-    const matchingControl = controls.find((control) => {
-      const position = TREE_GROWTH_SIMULATOR_TOOL_SLOTS[control.id];
-      return position?.x === input.neiSlot?.x && position.y === input.neiSlot?.y;
-    });
-
-    if (!matchingControl) {
-      return input;
-    }
-    const resource = getTreeGrowthSimulatorSlotResource(matchingControl);
-
-    return {
-      ...input,
-      ...resource,
-      amount: 1,
-      optional: true,
-      consumed: false,
-      neiSlot: input.neiSlot,
-    };
-  });
-
-  return { ...recipe, inputs };
-}
-
-function stripBeeFrameSlotInputs(recipe: Recipe): Recipe {
-  const inputs = recipe.inputs.filter((input) => !isBeeFrameSlotInput(input));
-  const neiSlots = recipe.nei?.slots?.filter((slot) => !isBeeFrameSlotPosition(slot));
-  const recipeChanged = inputs.length !== recipe.inputs.length;
-  const neiChanged = neiSlots?.length !== recipe.nei?.slots?.length;
-
-  if (!recipeChanged && !neiChanged) {
-    return recipe;
-  }
-
-  return {
-    ...recipe,
-    inputs,
-    nei: recipe.nei
-      ? {
-          ...recipe.nei,
-          slots: neiSlots,
-        }
-      : recipe.nei,
-  };
-}
-
-function isBeeFrameSlotInput(input: Recipe["inputs"][number]) {
-  return /^factoryflow:bee_frame_slot_\d+$/.test(input.id);
-}
-
-function isBeeFrameSlotPosition(slot: NonNullable<NonNullable<Recipe["nei"]>["slots"]>[number]) {
-  return Object.values(BEE_FRAME_SLOTS).some(
-    (position) => position.x === slot.x && position.y === slot.y,
-  );
-}
-
-function isTreeGrowthSimulatorEmptyTool(control: MachineConfigTierControl) {
-  return (
-    control.current.key === "none" ||
-    getTreeGrowthSimulatorToolCategory(control.current.key) !==
-      getTreeGrowthSimulatorSlotCategory(control.id)
-  );
-}
-
-function getTreeGrowthSimulatorSlotResource(control: MachineConfigTierControl) {
-  if (!isTreeGrowthSimulatorEmptyTool(control)) {
-    return control.resource;
-  }
-
-  return control.tiers.find((tier) => tier.key === "none")?.resource ?? control.resource;
-}
-
-function getTreeGrowthSimulatorToolCategory(key: string): string | undefined {
-  const [category] = key.split(":");
-  return category && category !== "none" ? category : undefined;
-}
-
-function getTreeGrowthSimulatorSlotCategory(controlId: string): string | undefined {
-  switch (controlId) {
-    case "tgsToolSlot1":
-    case "tgsLogTool":
-      return "log";
-    case "tgsToolSlot2":
-    case "tgsSaplingTool":
-      return "sapling";
-    case "tgsToolSlot3":
-    case "tgsLeavesTool":
-      return "leaves";
-    case "tgsToolSlot4":
-    case "tgsFruitTool":
-      return "fruit";
-    default:
-      return undefined;
-  }
-}
-
-function getTreeGrowthSimulatorSlotTiers(control: MachineConfigTierControl) {
-  const category = getTreeGrowthSimulatorSlotCategory(control.id);
-  if (!category) {
-    return control.tiers;
-  }
-
-  return control.tiers.filter(
-    (tier) => tier.key === "none" || getTreeGrowthSimulatorToolCategory(tier.key) === category,
-  );
-}
-
 /**
  * The block a config option means. `sizeClass` must be a literal Tailwind
  * pair — the class list is scanned at build time, so a computed size string
  * would silently produce no CSS at all.
  */
-function ConfigTierIcon({
-  resource,
-  sizeClass,
-}: {
-  resource: ResourceAmount;
-  sizeClass: string;
-}) {
-  if (!resource.iconPath && !resource.iconAtlas) {
-    return (
-      <span className="flex items-center justify-center whitespace-nowrap px-1 text-center text-[11px] font-black leading-none text-white [text-shadow:1px_1px_0_#000]">
-        {shortConfigLabel(resource)}
-      </span>
-    );
-  }
-  return (
-    <ResourceIcon
-      resource={{ ...resource, amount: 1, chance: undefined }}
-      bare
-      tooltip={false}
-      showAmount={false}
-      showConsumedState={false}
-      // No pixel size: ResourceIcon's zoom-and-clip crops the sprite's own
-      // transparent padding, so the block fills its square instead of
-      // floating in the middle of one.
-      className={`shrink-0 ${sizeClass}`}
-    />
-  );
-}
-
-/**
- * What picking this option would change, against the one selected now. The
- * card's rates come from the solver, so they cannot move on hover without a
- * solve per mouse move; this says the same thing honestly and instantly.
- */
-function configTierHint(
-  option: MachineConfigTierOption,
-  current: MachineConfigTierOption,
-): string | undefined {
-  const parts: string[] = [];
-  const ratio = (next: number | undefined, now: number | undefined) => {
-    const a = next ?? 1;
-    const b = now ?? 1;
-    return b === 0 ? undefined : a / b;
-  };
-  // A smaller duration multiplier is a faster machine, so speed inverts.
-  const speed = ratio(current.durationMultiplier, option.durationMultiplier);
-  if (speed !== undefined && Math.abs(speed - 1) > 0.005) {
-    parts.push(`${formatTimes(speed)} speed`);
-  }
-  const parallel = ratio(option.parallelMultiplier, current.parallelMultiplier);
-  if (parallel !== undefined && Math.abs(parallel - 1) > 0.005) {
-    parts.push(`${formatTimes(parallel)} parallel`);
-  }
-  const output = ratio(option.outputMultiplier, current.outputMultiplier);
-  if (output !== undefined && Math.abs(output - 1) > 0.005) {
-    parts.push(`${formatTimes(output)} output`);
-  }
-  const eut = ratio(option.eutMultiplier, current.eutMultiplier);
-  if (eut !== undefined && Math.abs(eut - 1) > 0.005) {
-    parts.push(`${formatTimes(eut)} EU/t`);
-  }
-  return parts.slice(0, 2).join(" · ") || undefined;
-}
-
 function MachineConfigControlPanel({
+  recipe,
+  node,
   controls,
+  facts = [],
   onSelect,
-  onPreview,
-  trailing,
+  compact = false,
 }: {
+  recipe: Recipe;
+  node: FactoryNode;
   controls: MachineConfigTierControl[];
+  /** Read-only tiles after the settings, in the same grid. */
+  facts?: Array<{ id: string; caption: string; value: string; help?: ReactNode | (() => ReactNode) }>;
   onSelect: (controlId: string, nextTier: string) => void;
-  /** Hovering an option shows the node as if it were picked. */
-  onPreview?: (controlId: string, tierKey: string | undefined) => void;
-  /** An extra read-only tile sharing the grid — the ×N parallel count. */
-  trailing?: ReactNode;
+  compact?: boolean;
 }) {
-  if (controls.length === 0) {
+  if (controls.length === 0 && facts.length === 0) {
     return null;
   }
-
-  // Two controls per row. The panel's border-2 and px-1 leave 328px of
-  // content width, so the column minimum must clear 2 × 160 + 4 gap = 324:
-  // at the old 168 the auto-fit grid only ever found room for ONE column and
-  // every knob quietly took a full row of its own.
-  const rows = Math.ceil((controls.length + (trailing ? 1 : 0)) / 2);
-  return (
-    <GridBlock
-      className="nodrag border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
-      minCells={(rows * CONFIG_PANEL_ROW_HEIGHT) / BOARD_GRID}
-    >
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] items-center gap-x-1 gap-y-1">
+  // As many tiles per row as fit: a tile needs only SETTING_TILE_MIN_WIDTH_PX
+  // (captions and values truncate). Settings first, facts after, one grid.
+  // The row count uses the same numbers as the CSS, so the grid block below
+  // charges for exactly the rows the browser lays out.
+  const perRow = Math.max(
+    1,
+    Math.floor((RECIPE_RAIL_AREA_WIDTH + SETTING_TILE_GAP_PX) / (SETTING_TILE_MIN_WIDTH_PX + SETTING_TILE_GAP_PX)),
+  );
+  const rows = Math.ceil((controls.length + facts.length) / perRow);
+  const tiles = (
+      <div
+        className="grid gap-1"
+        style={{ gridTemplateColumns: compact
+          ? "repeat(auto-fill, min(132px, 100%))"
+          : `repeat(auto-fit, minmax(${SETTING_TILE_MIN_WIDTH_PX}px, 1fr))` }}
+      >
         {controls.map((control) => (
-          <label key={control.id} className="min-w-0">
-            <span className="mb-0.5 block text-[12px] font-bold uppercase leading-[14px] text-[var(--mc-ink-muted)]">
-              {control.label}
-            </span>
-            <span className="flex min-w-0 items-center gap-1">
-              {/* A square the block fills, not a wide box with a small block
-                  adrift in it. */}
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
-                <ConfigTierIcon
-                  resource={control.current.resource ?? control.resource}
-                  sizeClass="!h-[26px] !w-[26px]"
-                />
-              </span>
-              <MinecraftSelect
-                value={control.current.key}
-                // Every option carries its own block, so the list is a row of
-                // casings rather than a list of names to translate.
-                options={control.tiers.map((tier) => ({
-                  key: tier.key,
-                  label: tier.label,
-                  hint: configTierHint(tier, control.current),
-                  icon: (
-                    <ConfigTierIcon
-                      resource={tier.resource ?? control.resource}
-                      sizeClass="!h-[28px] !w-[28px]"
-                    />
-                  ),
-                }))}
-                onSelect={(key) => onSelect(control.id, key)}
-                onPreview={
-                  onPreview ? (key) => onPreview(control.id, key) : undefined
-                }
-                disabled={control.tiers.length <= 1}
-                title={`${control.label}: ${control.current.label}`}
-                ariaLabel={control.label}
-                className="flex-1"
-              />
-            </span>
-          </label>
+          <LadderTile
+            key={control.id}
+            control={control}
+            onSelect={(key) => onSelect(control.id, key)}
+            help={() => <RecipeTooltip view={buildConfigTooltip(recipe, node, control)} />}
+          />
         ))}
-        {trailing}
+        {facts.map((fact) => (
+          <FactTile key={fact.id} caption={fact.caption} value={fact.value} help={fact.help} />
+        ))}
       </div>
-    </GridBlock>
   );
+  return compact ? tiles : <GridBlock className="" minCells={(rows * SETTING_TILE_HEIGHT_PX) / BOARD_GRID}>{tiles}</GridBlock>;
 }
-
-/**
- * The machine's ×N parallel count as a config-panel tile, shaped like the
- * knobs beside it (label over a row-high box) so it shares their grid row
- * instead of spending a line of its own under the footer.
- */
-function ConfigParallelTile({ value }: { value: string }) {
-  return (
-    <div className="min-w-0">
-      <span className="mb-0.5 block text-[12px] font-bold uppercase leading-[14px] text-[var(--mc-ink-muted)]">
-        Parallel
-      </span>
-      <span className="flex h-7 min-w-0 items-center border border-[var(--mc-47)] bg-[var(--mc-85)] px-1.5 font-medium tabular-nums shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)]">
-        ×{value}
-      </span>
-    </div>
-  );
-}
-
 
 function PassiveProductionConfigPanel({
   className = "",
@@ -4375,10 +4345,9 @@ function PassiveProductionConfigPanel({
   /** Hover explanation per control (what the knob does and why it matters). */
   getControlHelp?: (controlId: string) => ReactNode;
   /**
-   * What is being configured, written across the panel's head. The tab strip
-   * can only afford one letter per machine, so on a card whose name bar is
-   * spoken for - a crop farm names its CROP there - this is the only place
-   * the machine's own name appears.
+   * What is being configured, written across the panel's head: on a card
+   * whose name bar says something else, this is where the machine's own name
+   * appears.
    */
   title?: string;
   collapsed?: boolean;
@@ -4399,7 +4368,7 @@ function PassiveProductionConfigPanel({
   return (
     <GridBlock
       className={[
-        "nodrag border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]",
+        "border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]",
         className,
       ].join(" ")}
       minCells={Math.max(isFolded ? 1 : 2, headCells + rows * PASSIVE_PANEL_ROW_CELLS)}
@@ -4442,7 +4411,8 @@ function PassiveProductionConfigPanel({
                 options={control.tiers}
                 onSelect={(key) => onSelect(control.id, key)}
                 disabled={control.tiers.length <= 1}
-                title={`${control.label}: ${control.current.label}`}
+                // No native title: it would stop the rich hover above and
+                // show the bare value when the pointer reaches the select.
                 ariaLabel={control.label}
               />
             </label>
@@ -4453,9 +4423,6 @@ function PassiveProductionConfigPanel({
     </GridBlock>
   );
 }
-
-/** Caption line plus an h-6 control row, the power config panel's shape. */
-const CROP_PANEL_ROW_PX = 40;
 
 /** The unit types' pip colours, one per block, echoed by the slot pips. */
 const CROP_UNIT_PIP_COLORS: Record<string, string> = {
@@ -4469,13 +4436,13 @@ const CROP_UNIT_PIP_COLORS: Record<string, string> = {
 // The SEEDS cell's exact chrome, shared by every crop knob so the settings
 // speak the same beveled tile language as the footer under them.
 const CROP_TILE_CLASS =
-  "nodrag nowheel min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 pb-0.5 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]";
+  "nowheel min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 pb-0.5 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]";
 const CROP_TILE_CAPTION_CLASS =
   "flex items-center gap-1 truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]";
 // Narrow buttons, so the word well between them keeps the width: "60% Wet"
 // has to fit a four-across tile.
 const CROP_TILE_BUTTON_CLASS =
-  "nodrag flex h-5 w-3.5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] enabled:hover:bg-[var(--mc-100)] enabled:active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)] disabled:opacity-35";
+  "flex h-5 w-3.5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] enabled:hover:bg-[var(--mc-100)] enabled:active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)] disabled:opacity-35";
 
 /** One browser-wide fold for every crop card's worked-formula strip. */
 const CROP_FORMULAS_OPEN_KEY = "gtnh-factory-flow.crop-formulas-open.v1";
@@ -4539,13 +4506,26 @@ function CropStepperRow({
       onStep(next);
     }
   };
+  // The live line (what this count does now, why it cannot go up) rides
+  // the SAME hover as the explanation, under it: a native title on the row
+  // would stop the rich panel and hand the buttons a second, poorer tip.
+  const liveLine = [effect, value >= max && lockedHint ? lockedHint : undefined].filter(Boolean).join(". ");
+  const hover =
+    help || liveLine ? (
+      <>
+        {help}
+        {liveLine ? (
+          <p className={help ? "mt-2 border-t border-white/10 pt-2 text-[16px] leading-relaxed text-slate-100" : ""}>
+            {liveLine}
+          </p>
+        ) : null}
+      </>
+    ) : undefined;
   const row = (
     <div
       className={CROP_TILE_CLASS}
-      title={[effect, value >= max && lockedHint ? lockedHint : undefined]
-        .filter(Boolean)
-        .join(" · ")}
       onWheel={(event) => {
+        if (checklistLocked() || !wheelChangesValues()) return;
         event.stopPropagation();
         step(event.deltaY < 0 ? 1 : -1);
       }}
@@ -4575,7 +4555,6 @@ function CropStepperRow({
           type="button"
           className={CROP_TILE_BUTTON_CLASS}
           disabled={value >= max}
-          title={value >= max ? lockedHint : undefined}
           onClick={(event) => {
             event.stopPropagation();
             step(1);
@@ -4588,7 +4567,7 @@ function CropStepperRow({
       </div>
     </div>
   );
-  return help ? <MinecraftTooltip content={help}>{row}</MinecraftTooltip> : row;
+  return hover ? <MinecraftTooltip content={hover}>{row}</MinecraftTooltip> : row;
 }
 
 /**
@@ -4624,6 +4603,7 @@ function CropCycleRow({
       className={CROP_TILE_CLASS}
       title={`${label}: ${current.label}`}
       onWheel={(event) => {
+        if (checklistLocked() || !wheelChangesValues()) return;
         event.stopPropagation();
         step(event.deltaY < 0 ? 1 : -1);
       }}
@@ -4704,10 +4684,11 @@ function CropTierChip({
         step(-1);
       }}
       onWheel={(event) => {
+        if (checklistLocked() || !wheelChangesValues()) return;
         event.stopPropagation();
         step(event.deltaY < 0 ? 1 : -1);
       }}
-      className="nodrag nowheel flex h-6 w-[50px] items-center justify-center border-2 px-1 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
+      className="nowheel flex h-6 w-[50px] items-center justify-center border-2 px-1 pb-[3px] text-[11px] font-bold leading-none shadow-[inset_2px_2px_0_rgba(255,255,255,0.55),inset_-2px_-2px_0_rgba(0,0,0,0.45)] hover:brightness-110"
       style={
         tierColor
           ? {
@@ -4982,7 +4963,7 @@ function CropConfigPanel({
     const head = (
       <button
         type="button"
-        className="nodrag flex h-[12px] w-full items-center gap-1 text-left text-[9px] uppercase tracking-wide text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]"
+        className="flex h-[12px] w-full items-center gap-1 text-left text-[9px] uppercase tracking-wide text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]"
         onClick={(event) => {
           event.stopPropagation();
           onToggleFormulas();
@@ -5180,7 +5161,7 @@ function CropConfigPanel({
   // follows under the UPGRADES head with its slot budget.
   return (
     <GridBlock
-      className={["nodrag min-w-0", className].join(" ")}
+      className={["min-w-0", className].join(" ")}
       minCells={Math.max(1, Math.ceil(bodyPx / BOARD_GRID))}
       clearancePx={4}
       // The block's own rounding slack goes ABOVE the knobs (where the
@@ -5192,7 +5173,7 @@ function CropConfigPanel({
         {cropCells.length > 0 ? (
           // Four across: the crop's own knobs are narrow (a two-digit stat,
           // a one-word option), so the row need not wrap.
-          <div className="grid min-w-0 grid-cols-[repeat(4,minmax(0,1fr))] gap-x-1 gap-y-1">
+          <div className="crop-settings-grid grid min-w-0 grid-cols-[repeat(4,minmax(0,1fr))] gap-x-1 gap-y-1">
             {cropCells}
           </div>
         ) : null}
@@ -5215,7 +5196,7 @@ function CropConfigPanel({
                 </span>
               </>,
             )}
-            <div className="grid min-w-0 grid-cols-[repeat(3,minmax(0,1fr))] gap-x-1 gap-y-1">
+            <div className="crop-settings-grid grid min-w-0 grid-cols-[repeat(3,minmax(0,1fr))] gap-x-1 gap-y-1">
               {unitCells}
             </div>
           </div>
@@ -5404,24 +5385,6 @@ function cropControlHelp(recipe: Recipe, controlId: string): ReactNode {
   }
 }
 
-function shortConfigLabel(resource: ResourceAmount) {
-  const label = resource.displayName ?? resource.id;
-  if (/^\d+(\/\d+)*$/.test(label)) {
-    // A number is already short, and initialling it ate digits: a slice count
-    // of "55" came out as "5".
-    return label;
-  }
-  if (label.length <= 4) {
-    return label.toUpperCase();
-  }
-  return label
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 4)
-    .toUpperCase();
-}
 
 function formatMachineParallelMultiplier(multiplier: number) {
   return Number.isInteger(multiplier)
@@ -5498,27 +5461,22 @@ function formatSolvedMachines(value: number): string {
  * drawer's amount wears. A pinned count shows gold; emptying the field
  * unpins and hands the count back to the solver.
  */
-function SolvedMachinesStat({
+export function SolvedMachinesStat({
   label,
   needed,
   pinned,
   onPin,
+  inline = false,
 }: {
   label: string;
-  needed: number;
+  needed: number | undefined;
   pinned: number | undefined;
   onPin: (machines: number | undefined) => void;
+  inline?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const isPinned = pinned !== undefined && pinned > 0;
-  const whole = Math.ceil(needed - 0.000001);
-  const pct = whole > 0 ? Math.round((needed / whole) * 100) : 0;
-  const title = isPinned
-    ? `Pinned: exactly ${formatSolvedMachines(pinned)} run and the line solves around them. Click to change; empty unpins.`
-    : needed <= 0.0000005
-      ? "No product amount needs this machine. Click to pin a count and solve the line around it."
-      : `Build ${whole} and run at ${pct}%. Click to pin a count instead.`;
   const commit = () => {
     setEditing(false);
     if (draft.trim() === "") {
@@ -5531,9 +5489,9 @@ function SolvedMachinesStat({
     }
   };
   return (
+    <MinecraftTooltip content={() => <RecipeTooltip view={{ ...buildCountTooltip(needed, pinned), ...(editing ? { actions: [], reason: "Clear the field to unpin." } : {}) }} />} >
     <div
-      title={title}
-      className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
+      className={`min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)] ${inline ? "flex h-6 items-center gap-2 whitespace-nowrap" : ""}`}
     >
       {/* The label stays MACHINES either way - it never stops being one.
           The gold value is what says the count is pinned. */}
@@ -5560,7 +5518,7 @@ function SolvedMachinesStat({
           onClick={(event) => event.stopPropagation()}
           inputMode="decimal"
           aria-label="Pinned machine count"
-          className="nodrag h-5 w-full min-w-0 border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-center text-[13px] font-medium leading-4 text-[var(--mc-ink)] outline-none focus:border-cyan-700 focus:ring-1 focus:ring-cyan-400"
+          className={`nodrag h-5 ${inline ? "w-16" : "w-full"} min-w-0 border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-center text-[13px] font-medium leading-4 text-[var(--mc-ink)] outline-none focus:border-cyan-700 focus:ring-1 focus:ring-cyan-400`}
         />
       ) : (
         <button
@@ -5572,19 +5530,19 @@ function SolvedMachinesStat({
           }}
           onPointerDown={(event) => event.stopPropagation()}
           aria-label={isPinned ? "Change the pinned machine count" : "Pin a machine count"}
-          className="nodrag group/pin flex w-full min-w-0 items-center gap-[3px] text-left"
+          className={`group/pin flex ${inline ? "w-auto shrink-0" : "w-full"} min-w-0 items-center gap-[3px] text-left`}
         >
           <span
             className={[
               "truncate font-medium tabular-nums underline decoration-dotted decoration-[1.5px] underline-offset-[3px]",
               isPinned
                 ? "text-[#ffd257]"
-                : needed <= 0.0000005
+                : (needed ?? 0) <= 0.0000005
                   ? "text-[var(--mc-ink-muted)]"
                   : "",
             ].join(" ")}
           >
-            {!isPinned && needed > 0.0000005 && needed < 0.0005 ? (
+            {!isPinned && needed !== undefined && needed > 0.0000005 && needed < 0.0005 ? (
               // A sliver below the finest printable step: a quiet small
               // grey < in place of the × so it reads "less than 0.001".
               <>
@@ -5592,7 +5550,7 @@ function SolvedMachinesStat({
                 0.001
               </>
             ) : (
-              <>×{formatSolvedMachines(isPinned ? pinned : needed)}</>
+              <>×{needed === undefined && !isPinned ? "—" : formatSolvedMachines(isPinned ? pinned : needed ?? 0)}</>
             )}
           </span>
           <Pencil
@@ -5602,6 +5560,7 @@ function SolvedMachinesStat({
         </button>
       )}
     </div>
+    </MinecraftTooltip>
   );
 }
 
@@ -5635,33 +5594,69 @@ function PowerStat({
   nodeParallel,
   utilization,
   average,
+  recipe,
+  node,
+  sharedDraw,
+  powerReadout,
 }: {
+  powerReadout?: ComponentProps<typeof PowerReadout>;
   report: NodePowerReport;
   machineCount: number;
   nodeParallel: number;
+  /** The card's recipe and node, so the hover can carry the calculator's ladder. */
+  recipe?: Recipe;
+  node?: FactoryNode;
   utilization?: number;
   /** The right panel's PEAK/AVG switch; see drawScaleFor. */
   average: boolean;
+  /**
+   * A SHARED MACHINE's draw: PEAK is the hungriest recipe's, AVG every
+   * recipe's weighted by its share. The one-recipe power story does not
+   * apply, so the hover states the two figures and leaves it there.
+   */
+  sharedDraw?: { peakEuT: number; avgEuT: number; recipes: number };
 }) {
   const stalled = report.state !== "ok";
   // Always EU/t, whatever the board's rate unit: power is a per-tick fact in
   // GT and reads as noise in any other clock. The unit itself is rendered as
   // a small suffix below, not part of this string. The figure follows the
   // PEAK/AVG switch; the hover still tells the build's whole story.
-  const drawEuT =
-    report.drawEuT * machineCount * nodeParallel * drawScaleFor(average, utilization);
+  const drawEuT = sharedDraw
+    ? average
+      ? sharedDraw.avgEuT
+      : sharedDraw.peakEuT
+    : report.drawEuT * machineCount * nodeParallel * drawScaleFor(average, utilization);
 
   return (
     <MinecraftTooltip
+      placement={powerReadout ? "above-card" : undefined}
+      companion={powerReadout ? () => <PowerControlsGuide raw={powerReadout.node.powerInputMode === "eut"} /> : undefined}
       content={
+        powerReadout ? () => <PowerReadout {...powerReadout} /> : sharedDraw ? (
+          <RecipeTooltip
+            view={{
+              title: "Power",
+              rows: [
+                { label: "Peak", value: `${formatPowerValue(powerDisplayFromEuT(sharedDraw.peakEuT))} ${powerDisplaySuffix()}` },
+                { label: "Average", value: `${formatPowerValue(powerDisplayFromEuT(sharedDraw.avgEuT))} ${powerDisplaySuffix()}` },
+                { label: "Supply per machine", value: `${formatPowerValue(powerDisplayFromEuT(report.poolEuT))} ${powerDisplaySuffix()}` },
+              ],
+              reason: `${sharedDraw.recipes} recipes share this machine. Peak is the hungriest recipe's draw; average weights each by its share of the time.`,
+            }}
+          />
+        ) : (
         <PowerStoryContent
           report={report}
           utilization={utilization}
           machines={machineCount * nodeParallel}
+          recipe={recipe}
+          node={node}
         />
+        )
       }
     >
       <div
+        data-power-stat
         className={[
           "min-w-0 border px-1",
           stalled
@@ -5694,8 +5689,8 @@ function PowerStat({
                 values={[drawEuT]}
                 render={(shown) =>
                   shown[0] === drawEuT
-                    ? formatCompact(powerDisplayFromEuT(drawEuT))
-                    : formatCompactStable(powerDisplayFromEuT(shown[0] ?? drawEuT))
+                    ? formatPowerValue(powerDisplayFromEuT(drawEuT))
+                    : formatPowerValue(powerDisplayFromEuT(shown[0] ?? drawEuT), true)
                 }
               />
               {/* The unit rides small and grey against the number: the row
@@ -5723,6 +5718,7 @@ function SteamStat({
   nodeParallel,
   utilization,
   average,
+  sharedLitres,
 }: {
   report: NodeSteamReport;
   machineCount: number;
@@ -5730,37 +5726,29 @@ function SteamStat({
   utilization?: number;
   /** The right panel's PEAK/AVG switch; see drawScaleFor. */
   average: boolean;
+  /** A shared machine's litres: peak is the hungriest recipe's, average weighted by share. */
+  sharedLitres?: { peak: number; avg: number; recipes: number };
 }) {
   // Same rule as the POWER cell: the figure follows the PEAK/AVG switch;
   // the hover still quotes the per-machine burn.
-  const drawLitresPerSecond =
-    steamDrawLitresPerSecond(report, { machineCount, parallel: nodeParallel }) *
-    drawScaleFor(average, utilization);
+  const drawLitresPerSecond = sharedLitres
+    ? average
+      ? sharedLitres.avg
+      : sharedLitres.peak
+    : steamDrawLitresPerSecond(report, { machineCount, parallel: nodeParallel }) *
+      drawScaleFor(average, utilization);
   const perMachine = report.drawSteamPerTick * 20;
 
   return (
     <MinecraftTooltip
-      content={
-        <div className="w-60 space-y-1">
-          <div className="text-[13px] font-semibold text-white">Burns steam, not EU</div>
-          <div className="text-[11px] leading-4 text-slate-300">
-            {report.isMultiblock ? (
-              <>
-                One machine burns {formatCompact(perMachine)} L/s at full speed:{" "}
-                {formatCompact(report.singleDrawSteamPerTick)} L/t per recipe across{" "}
-                {report.parallels} parallels.
-              </>
-            ) : (
-              <>One machine burns {formatCompact(perMachine)} L/s while running.</>
-            )}
-          </div>
-          <div className="text-[11px] leading-4 text-slate-300">
-            {report.highPressure
-              ? "High pressure builds run twice as fast and burn twice the steam."
-              : "A high pressure build runs twice as fast and burns twice the steam."}
-          </div>
-        </div>
-      }
+      content={() => <RecipeTooltip view={{
+        title: "Steam",
+        rows: [
+          { label: "Draw per active machine", value: formatCompact(perMachine) + " L/s" },
+          { label: average ? "Card average" : "Card peak", value: formatCompact(drawLitresPerSecond) + " L/s" },
+          ...(report.parallels > 1 ? [{ label: "Parallel operations", value: String(report.parallels) }] : []),
+        ],
+      }} />}
     >
       <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
         <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">
@@ -5783,419 +5771,63 @@ function SteamStat({
 }
 
 /** A tier's name in its own paint, for the power story's diagram rows. */
-function StoryTierChip({ tier }: { tier: NodePowerReport["tier"] }) {
-  const color = GT_TIER_COLORS[tier];
-  return (
-    <span
-      className="inline-block border px-1 text-[10px] font-bold leading-[14px]"
-      style={{
-        backgroundColor: color.background,
-        borderColor: color.border,
-        color: color.text,
-        textShadow: `1px 1px 0 ${color.shadow}`,
-      }}
-    >
-      {tier}
-    </span>
-  );
-}
 
-/**
- * One beat of the power story, boxed but never titled: the grouping alone
- * says "new thought", so the fact lines inside stay bare.
- */
-function StoryCard({ children }: { children: ReactNode }) {
-  return <div className="space-y-1 border border-white/10 bg-white/[0.04] px-2 py-1.5">{children}</div>;
-}
 
-/** Slots the spend bar can lerp between; comfortably past GT's tier count. */
-const SPEND_BAR_SLOTS = 17;
-/** The bar's content width in px, for judging whether a label fits. */
-const SPEND_BAR_WIDTH_PX = 364;
-
-/**
- * The budget as a bar, spent left to right, TO SCALE: the track's full width
- * is the supply from the line above, the first slice is the recipe's own
- * draw, and each overclock is the slice of budget it cost — so every later
- * overclock is visibly ~3× wider than everything before it, which is the
- * whole exponential mechanic drawn as widths. Whatever the slices leave
- * unspent is the hatched SPARE tail (labeled when it has the room): budget
- * held but too little for the next step, whose price the line hanging under
- * the bar's right end names.
- *
- * Slices are inscribed where room allows — "recipe" on the first, the speed
- * reached (×2, ×4 …) on each overclock — cyan for perfect steps, amber for
- * regular ones.
- *
- * The drawing lerps on the board's value-motion clock, like any other
- * number: a fresh hover mounts it settled, and a tier or hatch click made
- * while the panel is held up eases every boundary to its new fraction of
- * the new budget. The lerped vector is the cumulative spend at each slot,
- * padded to a fixed length so gained and lost slices grow and shrink
- * smoothly; labels snap to the target shape and are revealed by their
- * growing slices.
- */
-function StoryOverclockBar({
-  perfectSteps,
-  normalSteps,
-  perfectSpeedFactor,
-  perfectEuFactor,
-  batchEuT,
-  poolEuT,
-}: {
-  perfectSteps: number;
-  normalSteps: number;
-  perfectSpeedFactor: number;
-  perfectEuFactor: number;
-  /** One batch's un-overclocked draw: the bar's first slice. */
-  batchEuT: number;
-  /** The supply: the track's full width. */
-  poolEuT: number;
+function PowerStoryContent({ report, utilization, machines = 1, recipe, node, actions }: {
+  report: NodePowerReport; utilization?: number; machines?: number;
+  /** The card's recipe and node: a multiblock's hover is the calculator's ladder. */
+  recipe?: Recipe; node?: FactoryNode;
+  actions?: readonly TooltipAction[];
 }) {
-  const { valueMotion } = useBoardMotion();
-  const taken = perfectSteps + normalSteps;
-  // Draw and speed once `steps` overclocks are bought: perfect steps first.
-  const cumulativeEuT = (steps: number) =>
-    batchEuT *
-    perfectEuFactor ** Math.min(steps, perfectSteps) *
-    4 ** Math.max(0, steps - perfectSteps);
-  const speedAfter = (steps: number) =>
-    perfectSpeedFactor ** Math.min(steps, perfectSteps) * 2 ** Math.max(0, steps - perfectSteps);
-  const fractions = useMotionValues(
-    Array.from({ length: SPEND_BAR_SLOTS }, (_, slot) =>
-      Math.min(1, cumulativeEuT(Math.min(slot, taken)) / poolEuT),
-    ),
-    valueMotion,
+  const mode = useFactoryStore((state) => tooltipMode(state.project));
+  const peak = report.drawEuT * machines;
+  // The calculator's working, on hover only: the scan behind the next win
+  // samples the report a few hundred times.
+  const working = useMemo(
+    () => (report.isMultiblock && recipe && node && !getFusionMachine(applyMachineHandlerToRecipe(recipe, node).machineType) ? describePowerWorking(recipe, node, report.poolEuT) : undefined),
+    [report.isMultiblock, report.poolEuT, recipe, node],
   );
-  if (!(Number.isFinite(poolEuT) && poolEuT > 0)) {
-    return null;
-  }
-  const spareEuT = Math.max(0, poolEuT - cumulativeEuT(taken));
-  const sparePx = (1 - fractions[SPEND_BAR_SLOTS - 1]) * SPEND_BAR_WIDTH_PX;
-
-  return (
-    <div aria-hidden>
-      <div className="relative h-4 border border-slate-600">
-      {Array.from({ length: SPEND_BAR_SLOTS }, (_, slot) => {
-        const startPct = (slot === 0 ? 0 : fractions[slot - 1]) * 100;
-        const widthPct = fractions[slot] * 100 - startPct;
-        if (widthPct <= 0.15) {
-          return null;
+  const rows = working
+    ? [
+        ...(working.nextWin ? [{ label: "Next", value: `+${formatCompact(working.nextWin.euT - report.poolEuT)} EU/t for ${working.nextWin.gain}` }] : []),
+      ]
+    : [
+        { label: "Configured tier", value: report.tier },
+        { label: "Supply per machine", value: `${formatCompact(report.poolEuT)} EU/t` },
+        { label: "Draw per active machine", value: `${formatCompact(report.drawEuT)} EU/t` },
+        ...(report.parallels > 1 ? [{ label: "Parallel operations", value: String(report.parallels) }] : []),
+        { label: "Overclock steps", value: String(report.overclockSteps) },
+      ];
+  return <RecipeTooltip view={{
+    title: "Power", mode,
+    subtitle: working ? `${formatCompact(report.poolEuT)} EU/t supplied, ${working.readAs}` : undefined,
+    table: working
+      ? {
+          head: ["", "Recipe", `With ${formatCompact(report.poolEuT)}`],
+          rows: working.rows.map((row) => ({ label: row.label, before: row.recipe, after: row.supplied, emphasis: row.emphasis })),
         }
-        const widthPx = (widthPct / 100) * SPEND_BAR_WIDTH_PX;
-        const kind = slot === 0 ? "recipe" : slot <= perfectSteps ? "perfect" : "normal";
-        const label =
-          slot === 0
-            ? widthPx >= 48
-              ? "recipe"
-              : undefined
-            : slot <= taken && widthPx >= 26
-              ? `×${trimFactor(speedAfter(slot))}`
-              : undefined;
-        return (
-          <div
-            key={slot}
-            className={[
-              "absolute inset-y-0 overflow-hidden",
-              kind === "recipe"
-                ? "bg-slate-400/50"
-                : kind === "perfect"
-                  ? "bg-cyan-400/60"
-                  : "bg-amber-300/60",
-            ].join(" ")}
-            style={{ left: `${startPct}%`, width: `calc(${widthPct}% - 1px)` }}
-          >
-            {label ? (
-              <span className="absolute inset-0 flex items-center justify-center whitespace-nowrap text-[10px] leading-none text-white [text-shadow:1px_1px_0_rgba(0,0,0,0.8)]">
-                {label}
-              </span>
-            ) : null}
-          </div>
-        );
-      })}
-      {/* The unspent tail, hatched so it reads as budget deliberately held —
-          too little for the next step, whose price hangs right under it. */}
-      <span
-        className="absolute inset-y-0 right-0"
-        style={{
-          left: `${fractions[SPEND_BAR_SLOTS - 1] * 100}%`,
-          backgroundImage:
-            "repeating-linear-gradient(135deg, rgba(148,163,184,0.3) 0 2px, transparent 2px 6px)",
-        }}
-      />
-        {sparePx >= 64 ? (
-          <span
-            className="absolute inset-y-0 right-0 flex items-center justify-center whitespace-nowrap text-[10px] leading-none text-slate-400"
-            style={{ left: `${fractions[SPEND_BAR_SLOTS - 1] * 100}%` }}
-          >
-            spare {formatCompact(spareEuT)}
-          </span>
-        ) : null}
-      </div>
-      {/* The axis, named: the whole track is exactly the budget from the
-          balance card, zero at the left. Without these two figures the
-          range read as arbitrary. */}
-      <div className="flex justify-between text-[9px] leading-3 text-slate-500">
-        <span>0</span>
-        <span>{formatCompact(poolEuT)} EU/t</span>
-      </div>
-    </div>
-  );
-}
-
-function trimFactor(value: number): string {
-  return Number.isInteger(value)
-    ? String(value)
-    : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
-}
-
-/** Usage as the card's own percent: one decimal only while a whole number
- * would round a running machine down to a flat 0%. */
-function usagePctText(usage: number): string {
-  const pct = usage * 100;
-  return pct > 0 && pct < 0.5 ? formatRate(pct, 1) : formatPct(pct);
-}
-
-/**
- * THE power tooltip, one panel shared by every power surface on the card:
- * the hatch chip, the tier chip, and the footer's POWER cell all say this,
- * so wherever the hover lands the language is the same.
- *
- * One title — "Overclocking", what the whole panel is about — then three
- * little CARDS, unlabeled, in the order the game spends
- * the supply: the balance (what the build gets you to spend), the recipe and
- * where you're at (its cost, the parallels paid first, and the spend drawn
- * as a bar to scale — StoryOverclockBar), and the outcome (what it runs at,
- * with the next overclock's price as the last word). Everything here is
- * EU/t — never seconds, which no other surface on the card speaks — and the
- * whole-node total stays off it: the footer cells under the cursor already
- * say it. Usage closes the outcome, once: the peak figure is what the
- * machine draws while running, and a machine running part of the time
- * averages peak times usage. The bar is drawn only when the arithmetic
- * reproduces the real draw — runtime-ladder machines, whose step kinds the
- * game never exported, get the honest count alone.
- */
-function PowerStoryContent({
-  report,
-  utilization,
-  machines = 1,
-}: {
-  report: NodePowerReport;
-  /** The solve's usage for this card, when one is known: 0..1+. */
-  utilization?: number;
-  /** Machine count times node parallel: what the POWER cell multiplies by.
-   * The story is told per machine, so the outcome names both figures or the
-   * conclusion contradicts the cell under the cursor. */
-  machines?: number;
-}) {
-  const stall = describePowerStall(report);
-  const usage =
-    utilization === undefined ? undefined : Math.min(1, Math.max(0, utilization));
-  const cardPeakEuT = report.drawEuT * machines;
-  const perRunEuT = report.parallels > 0 ? report.drawEuT / report.parallels : report.drawEuT;
-  const normalSteps = Math.max(0, report.overclockSteps - report.perfectOverclockSteps);
-  const expectedEuT =
-    report.singleDrawEuT *
-    report.perfectEuFactor ** report.perfectOverclockSteps *
-    4 ** normalSteps;
-  const ladderHonest =
-    report.overclockSteps === 0 ||
-    Math.abs(expectedEuT - perRunEuT) <= Math.max(2, perRunEuT * 0.02);
-  // "perfect" is the standard ×4/×4 deal; a machine with its own factors
-  // (arc electrodes and kin) is called by the honest generic word instead.
-  const perfectWord =
-    report.perfectSpeedFactor === 4 && report.perfectEuFactor === 4 ? "perfect" : "machine";
-
-  const batchEuT = report.singleDrawEuT * report.parallels;
-  // How many times over the budget covers one batch, said the way a player
-  // would: whole numbers once it's big, one decimal while it's close.
-  const powerRatio = report.poolEuT / Math.max(1, batchEuT);
-  const ratioText =
-    powerRatio >= 9.95 ? String(Math.round(powerRatio)) : trimFactor(Math.round(powerRatio * 10) / 10);
-  // What the untaken step would bill, the way the game bills it: whole
-  // powers of four over the batch draw, floored at 32 ("treat ULV as LV").
-  const nextStepEuT = Math.max(batchEuT, 32) * 4 ** (report.overclockSteps + 1);
-  const nextSpeedLabel = trimFactor(
-    report.perfectSpeedFactor ** report.perfectOverclockSteps * 2 ** (normalSteps + 1),
-  );
-
-  return (
-    <div className="w-96 space-y-1.5 text-[12px] leading-4 text-slate-200">
-      {/* The one title the panel keeps: what ALL of this is about. */}
-      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
-        Overclocking
-      </div>
-      {/* The balance. The nowrap keeps a line break from stranding the
-          figure's unit on its own line. */}
-      <StoryCard>
-        <div>
-          {report.isMultiblock ? (
-            <>
-              {report.hatchTypeLabel ? (
-                <>
-                  A <StoryTierChip tier={report.tier} /> {report.hatchTypeLabel} gets you
-                </>
-              ) : (
-                <>
-                  {report.hatches}× <StoryTierChip tier={report.tier} /> energy{" "}
-                  {report.hatches === 1 ? "hatch gets" : "hatches get"} you
-                </>
-              )}{" "}
-              <span className="whitespace-nowrap">
-                <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span>
-              </span>{" "}
-              to spend
-              {report.amps > 1 ? ` (${formatCompact(report.amps)} A)` : ""}
-            </>
-          ) : (
-            <>
-              <StoryTierChip tier={report.tier} /> machine gets you{" "}
-              <span className="whitespace-nowrap">
-                <span className="font-bold">{formatCompact(report.poolEuT)} EU/t</span>
-              </span>{" "}
-              to spend{report.amps > 1 ? ` (${report.amps} A)` : ""}
-            </>
-          )}
-        </div>
-      </StoryCard>
-
-      {/* The recipe, and where you're at. */}
-      <StoryCard>
-        {report.parallels > 1 ? (
-          <div>
-            ×{report.parallels} recipes at once,{" "}
-            <span className="whitespace-nowrap">
-              {formatCompact(report.singleDrawEuT)} EU/t each
-            </span>
-            :{" "}
-            <span className="whitespace-nowrap">
-              <span className="font-bold">{formatCompact(batchEuT)} EU/t</span>
-            </span>
-          </div>
-        ) : (
-          <div>
-            <StoryTierChip tier={report.minimumTier} /> recipe:{" "}
-            <span className="whitespace-nowrap">
-              <span className="font-bold">{formatCompact(report.singleDrawEuT)} EU/t</span>
-            </span>
-          </div>
-        )}
-        {ladderHonest ? (
-          <StoryOverclockBar
-            perfectSteps={report.perfectOverclockSteps}
-            normalSteps={normalSteps}
-            perfectSpeedFactor={report.perfectSpeedFactor}
-            perfectEuFactor={report.perfectEuFactor}
-            batchEuT={batchEuT}
-            poolEuT={report.poolEuT}
-          />
-        ) : null}
-        {/* The deal, spelled out: the ratio, the count it buys, and what
-            this machine's KIND of overclock trades — regular pays ×4 power
-            for only ×2 speed, perfect gets the full ×4 back. The kind is the
-            machine's own nature (only the heat machines ever mix the two,
-            when spare coil heat upgrades the first steps), so the sentence
-            states it as a fact about the machine, in its slices' colour. */}
-        {ladderHonest && Number.isFinite(report.poolEuT) && report.poolEuT > 0 ? (
-          <div className="text-[11px] leading-4 text-slate-400">
-            You have <span className="text-slate-200">{ratioText}×</span> the power this recipe
-            needs.{" "}
-            {report.overclockSteps > 0 ? (
-              <>
-                Each whole ×4 of that buys an overclock, so {report.overclockSteps} fire
-                {report.overclockSteps === 1 ? "s" : ""}.{" "}
-                {report.perfectOverclockSteps > 0 && normalSteps > 0 ? (
-                  <>
-                    The first {report.perfectOverclockSteps === 1 ? "is" : `${report.perfectOverclockSteps} are`}{" "}
-                    <span className="text-cyan-300">
-                      {perfectWord}: ×{trimFactor(report.perfectEuFactor)} power buys the full ×
-                      {trimFactor(report.perfectSpeedFactor)} speed
-                    </span>
-                    ; the rest {normalSteps === 1 ? "is" : "are"}{" "}
-                    <span className="text-amber-300">regular: ×4 power buys only ×2 speed</span>.
-                  </>
-                ) : report.perfectOverclockSteps > 0 ? (
-                  <span className="text-cyan-300">
-                    {perfectWord === "perfect"
-                      ? "This machine overclocks perfectly: every ×4 power buys the full ×4 speed, no energy wasted."
-                      : `This machine overclocks its own way: ×${trimFactor(report.perfectEuFactor)} power buys ×${trimFactor(report.perfectSpeedFactor)} speed.`}
-                  </span>
-                ) : (
-                  <span className="text-amber-300">
-                    This machine&apos;s overclocks are regular: ×4 power buys only ×2 speed.
-                  </span>
-                )}
-              </>
-            ) : (
-              <>An overclock takes a whole ×4, so none fire yet.</>
-            )}
-          </div>
-        ) : null}
-      </StoryCard>
-
-      {/* The outcome, plainly: what it all lands at, then the next rung's
-          price. No tier chip opening the card — the conclusion is a number,
-          not a tier. */}
-      <StoryCard>
-        <div>
-          {machines > 1 ? (
-            <>
-              So at peak each machine runs at{" "}
-              <span className="whitespace-nowrap">{formatCompact(report.drawEuT)} EU/t</span>:{" "}
-              <span className="whitespace-nowrap">
-                <span className="font-bold">{formatCompact(cardPeakEuT)} EU/t</span>
-              </span>{" "}
-              across {machines}
-            </>
-          ) : (
-            <>
-              So at peak it runs at{" "}
-              <span className="whitespace-nowrap">
-                <span className="font-bold">{formatCompact(report.drawEuT)} EU/t</span>
-              </span>
-            </>
-          )}
-          {!ladderHonest
-            ? ` (${report.overclockSteps} overclock${report.overclockSteps === 1 ? "" : "s"})`
-            : ""}
-          .
-        </div>
-        {ladderHonest ? (
-          <div className="text-[11px] text-slate-400">
-            {nextStepEuT > report.poolEuT ? (
-              <>
-                The next overclock (×{nextSpeedLabel} speed) would take{" "}
-                <span className="whitespace-nowrap">{formatCompact(nextStepEuT)} EU/t</span>.
-              </>
-            ) : (
-              <>More power won&apos;t buy another overclock here.</>
-            )}
-          </div>
-        ) : null}
-        {usage !== undefined && usage < 0.995 ? (
-          <div className="text-[11px] text-slate-400">
-            Because {machines > 1 ? "the machines run" : "the machine runs"} at{" "}
-            {usagePctText(usage)}%, the average draw is{" "}
-            <span className="whitespace-nowrap">
-              {formatCompact(cardPeakEuT * usage)} EU/t
-            </span>
-            .
-          </div>
-        ) : null}
-      </StoryCard>
-
-      {stall ? <div className="font-bold text-red-400">{stall}</div> : null}
-    </div>
-  );
+      : undefined,
+    rows: [
+      ...rows,
+      { label: "Card peak", value: `${formatCompact(peak)} EU/t` },
+      ...(utilization === undefined ? [] : [{ label: "Card average", value: `${formatCompact(peak * Math.min(1, Math.max(0, utilization)))} EU/t` }]),
+    ],
+    reason: report.state === "ok" ? working?.hint : describePowerStall(report),
+    actions,
+  }} />;
 }
 
 function MachineCountStat({
   label,
   machineCount,
+  fullFarms,
+  onFullFarmsChange,
   onChange,
 }: {
   label: string;
   machineCount: number;
+  fullFarms?: boolean;
+  onFullFarmsChange?: (checked: boolean) => void;
   onChange: (machineCount: number) => void;
 }) {
   const machineCountText = String(machineCount);
@@ -6237,19 +5869,28 @@ function MachineCountStat({
   };
 
   const stepButtonClassName =
-    "nodrag flex h-5 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] hover:bg-[var(--mc-100)] active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)]";
+    "flex h-5 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] hover:bg-[var(--mc-100)] active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)]";
 
   return (
     <div
-      className="nodrag nowheel min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
+      className="nowheel min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
       // The wheel walks the count too, with the same shift/ctrl multipliers
       // the buttons take. "nowheel" keeps React Flow from zooming under it.
       onWheel={(event) => {
+        if (checklistLocked() || !wheelChangesValues()) return;
         event.stopPropagation();
         stepBy(event.deltaY < 0 ? 1 : -1, event);
       }}
     >
-      <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">{label}</div>
+      {fullFarms !== undefined ? (
+        <label className="nodrag flex items-center gap-1 whitespace-nowrap text-[11px] leading-[13px] text-[var(--mc-ink-muted)]"
+          onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+          <input type="checkbox" checked={fullFarms} aria-label="Full farms"
+            className="h-3 w-3 accent-cyan-700"
+            onChange={(event) => { if (!checklistLocked()) onFullFarmsChange?.(event.target.checked); }} />
+          Full farms{!fullFarms ? " · Seeds" : ""}
+        </label>
+      ) : <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">{label}</div>}
       <div className="flex min-w-0 items-center gap-0.5">
         <button
           type="button"
@@ -6264,6 +5905,7 @@ function MachineCountStat({
         >
           <Minus className="h-3 w-3" />
         </button>
+        <MinecraftTooltip content={() => <RecipeTooltip view={{ title: "Installed " + label.toLowerCase(), rows: [{ label: "Count", value: String(machineCount) }], actions: [{ gesture: "left", label: "Edit count" }, { gesture: "wheel", label: "Adjust count" }] }} />}>
         <input
           value={draft}
           onChange={(event) => {
@@ -6280,9 +5922,9 @@ function MachineCountStat({
           onClick={(event) => event.stopPropagation()}
           inputMode="numeric"
           aria-label={`${label} count`}
-          title={`Edit ${label.toLowerCase()} count`}
           className="nodrag h-[21px] w-0 min-w-0 flex-1 border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-center text-[14px] font-medium leading-4 text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)] outline-none focus:border-cyan-700 focus:bg-[var(--mc-100)] focus:ring-1 focus:ring-cyan-400"
         />
+        </MinecraftTooltip>
         <button
           type="button"
           onClick={(event) => {

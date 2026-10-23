@@ -5,27 +5,17 @@ import { useEffect, type RefObject } from "react";
 /**
  * Every animation on the board that BREATHES, by keyframe name.
  *
- * The board has one heartbeat, not several. Two things that pulse at different
- * moments read as unrelated faults; the same two pulsing together read as one
- * board telling you something. That takes two properties, and both are easy to
- * lose:
- *
- *  - one PERIOD, which is `--board-pulse` in globals.css. Every rule below
- *    animates for that long, so no two marks can drift apart over time.
- *  - one PHASE, which is what this module does. Period alone is not enough:
- *    a CSS animation's clock starts when it is applied to the element, so a
- *    card scrolled into view, recycled by React Flow, or pulled into a dead
- *    ring by a fresh solve each starts its own cycle wherever it happens to
- *    arrive.
+ * The board has one heartbeat: two marks pulsing at different moments read
+ * as unrelated faults, pulsing together as one message. That takes one
+ * PERIOD (`--board-pulse` in globals.css, every rule's duration) and one
+ * PHASE, which this module provides: a CSS animation's clock starts when it
+ * is applied, so a card scrolled into view, recycled by React Flow or newly
+ * lit by a solve would otherwise start its own cycle.
  *
  * Add a keyframe here when you add a breathing state, and give it
- * `--board-pulse` as its duration. A pulse missing from this list still runs;
- * it just runs alone, which is the exact bug this exists to prevent.
- *
- * One-shot flashes are deliberately absent: they fire and stop, and lining
- * one up with the board's clock would only delay its answer. (The white
- * `board-card-placed` beacon that used to be the example here was removed
- * outright in 2026-08.)
+ * `--board-pulse` as its duration. A pulse missing from this list still runs,
+ * just out of step. One-shot flashes are deliberately absent: aligning them
+ * to the clock would only delay their answer.
  */
 export const BOARD_PULSE_ANIMATIONS = [
   // Hovered/selected resource: the glow wash on cards, and the shape-clipped
@@ -78,17 +68,13 @@ function pinToDocumentTimeline(element: Element, names: ReadonlySet<string>) {
 
 /**
  * Puts every breathing mark on the board on one clock. Called once, from the
- * board root — not per card.
+ * board root, not per card.
  *
- * `animationstart` BUBBLES, so the root hears about every pulse that begins
- * anywhere beneath it: a card scrolled into view, a ring the solver just found,
- * a slot that lost its wire, a card lit by the side panel, and the board's own
- * notices, which live outside any card and were the last thing left out of step
- * when each card pinned only itself. Pinning does not restart an animation, so
- * the handler cannot feed itself, and it runs once per mark rather than per
- * frame.
- *
- * The mount sweep covers what was already running before the listener existed.
+ * `animationstart` BUBBLES, so the root hears every pulse that begins
+ * beneath it, including the board's notices, which live outside any card.
+ * Pinning does not restart an animation, so the handler cannot feed itself,
+ * and it runs once per mark rather than per frame. The mount sweep covers
+ * what was already running before the listener existed.
  */
 export function useBoardPulseSync(ref: RefObject<Element | null>) {
   useEffect(() => {
@@ -113,6 +99,108 @@ export function useBoardPulseSync(ref: RefObject<Element | null>) {
     return () => {
       cancelAnimationFrame(frame);
       element.removeEventListener("animationstart", onStart);
+    };
+  }, [ref]);
+}
+
+/**
+ * HOW MUCH OF THE BOARD MAY BREATHE AT ONCE.
+ *
+ * Every running CSS animation is a compositor layer and a style tick, and on
+ * a board of a few hundred marked cards they cost more than everything else
+ * the board does: 200 cards with an unwired port, idle, kept the main thread
+ * 100% busy (35 ms a frame; 2,580 layers) and cut a pan or a zoom to 2-11 fps.
+ * With the animations off the same page idles at 0.1 s of work in 2 s.
+ *
+ * So the board keeps a budget, in three tiers on `data-pulse`:
+ *
+ * - none (a small board): every mark breathes, as designed. A card with an
+ *   unwired port runs five animations.
+ * - `ring`: only the card-level ring breathes (one animation a card); the
+ *   slot, reason-cell and wash marks, and a hovered resource's glow, are held
+ *   at a steady mid brightness.
+ * - `still`: nothing breathes; every mark is a steady colour.
+ *
+ * The tier follows the number of cards that carry a mark, counted from the
+ * node wrappers (a thousand cheap reads, not a walk of the whole DOM), twice
+ * a second at most and only when the board is on screen. It moves down at
+ * once and back up only with some slack, so a board near a limit does not
+ * flicker between two looks. The rules are in globals.css ("pulse tiers").
+ */
+export const PULSE_ATTRIBUTE = "data-pulse";
+
+/** Cards with a mark: up to this many, every mark breathes. */
+export const PULSE_FULL_MARKED = 12;
+/** Cards on the board: up to this many, a hovered resource's glow breathes. */
+export const PULSE_FULL_CARDS = 100;
+/** Cards with a mark: up to this many, their rings breathe. */
+export const PULSE_RING_MARKED = 60;
+
+export type PulseTier = "full" | "ring" | "still";
+
+/** The tier for a board with `marked` marked cards out of `cards`, given the tier it is in. */
+export function pulseTier(marked: number, cards: number, current: PulseTier = "full"): PulseTier {
+  // A tier is kept up to its limit and climbed back into only below 80% of it.
+  const limit = (cap: number, inside: boolean) => (inside ? cap : cap * 0.8);
+  const insideFull = current === "full";
+  if (
+    marked <= limit(PULSE_FULL_MARKED, insideFull) &&
+    cards <= limit(PULSE_FULL_CARDS, insideFull)
+  ) {
+    return "full";
+  }
+  return marked <= limit(PULSE_RING_MARKED, current !== "still") ? "ring" : "still";
+}
+
+/** The verdicts whose card carries a breathing mark (see globals.css). */
+const MARKED_VERDICTS: ReadonlySet<string> = new Set(["unwired", "dead-loop", "clogged"]);
+
+/** Counts the board's cards and the ones carrying a breathing mark, from the node wrappers. */
+export function countPulseMarks(board: Element): { cards: number; marked: number } {
+  const nodes = board.querySelector(".react-flow__nodes")?.children;
+  let cards = 0;
+  let marked = 0;
+  if (!nodes) {
+    return { cards, marked };
+  }
+  for (let i = 0; i < nodes.length; i++) {
+    cards++;
+    const verdict = nodes[i].firstElementChild?.getAttribute("data-verdict");
+    if (verdict && MARKED_VERDICTS.has(verdict)) {
+      marked++;
+    }
+  }
+  return { cards, marked };
+}
+
+/** Keeps `data-pulse` on the board at the tier its marked cards allow. Called once, from the board root. */
+export function useBoardPulseGate(ref: RefObject<Element | null>) {
+  useEffect(() => {
+    const board = ref.current;
+    if (!board) {
+      return;
+    }
+    let tier: PulseTier = "full";
+    const update = () => {
+      if (document.hidden) {
+        return;
+      }
+      const { cards, marked } = countPulseMarks(board);
+      const next = pulseTier(marked, cards, tier);
+      if (next !== tier) {
+        tier = next;
+        if (next === "full") {
+          board.removeAttribute(PULSE_ATTRIBUTE);
+        } else {
+          board.setAttribute(PULSE_ATTRIBUTE, next);
+        }
+      }
+    };
+    const frame = requestAnimationFrame(update);
+    const timer = window.setInterval(update, 500);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearInterval(timer);
     };
   }, [ref]);
 }

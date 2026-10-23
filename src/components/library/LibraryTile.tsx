@@ -16,25 +16,23 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { getUiScale } from "@/lib/ui-scale";
 import { FLUID_ICON_SCALE, ResourceIcon } from "@/components/nei/ResourceIcon";
 import { TierBadge, type VoltageTier } from "@/components/shelf-cards";
 import { normalizeBlueprintTags } from "@/lib/blueprints/types";
 import type { EntryIcon } from "@/lib/model/types";
 
 /**
- * THE tile: one shape for a design of yours and a post on the network, in
- * every view of the library. Fixed height, three rows:
+ * THE tile: one shape for your designs and network posts, in every library
+ * view. Fixed height, three rows:
  *
  *   [face]  Title on one line                           [EV]
  *           creator · 2d ago                    ⋯ (on hover)
  *   🏭 15   ⚡ 5.0k EU/t                   OPEN 🌐●   ▲ 12  ⤓ 34
  *
- * Click opens it: one verb, no question. Right click or the dots is the
- * menu. The creator's name is a filter (click it, the grid narrows to
- * them) and so is the tier badge. The vote arrow is the one other control
- * on the face of it. The small buttons carry a plain native tooltip saying
- * exactly what a press does ("Add to Favorites", "Copy link"); nothing else
- * on a tile has one, and no tooltip says more than the action.
+ * Click opens it; right click or the dots opens the menu. The creator name
+ * and tier badge are filters. Only the small buttons carry a tooltip, and it
+ * names just the action ("Add to Favorites", "Copy link").
  */
 
 export interface TileMarks {
@@ -79,7 +77,7 @@ export interface LibraryTileProps {
   /** Starred, and the star to click. Your designs only. */
   favorite?: boolean;
   onFavorite?: () => void;
-  /** Bookmarked, and the ribbon to click. Public setups only. */
+  /** Bookmarked, and the ribbon to click. Community only. */
   saved?: boolean;
   onSave?: () => void;
   /** Not posted yet: the dim globe posts it. */
@@ -363,10 +361,9 @@ function Stat({ icon: Icon, value, tone }: { icon: typeof Factory; value: string
 }
 
 /**
- * The globe, always in the same place: green when this is your post (the
- * post follows the design, so there is no "edited since"), dim and clickable when
- * it is not posted yet, a download arrow when it came from someone else's
- * setup. A posted tile also carries the link button beside it.
+ * The globe: green when this is your post (the post follows the design),
+ * dim and clickable when not yet posted, a download arrow when it came from
+ * someone else's setup. A posted tile also carries a link button beside it.
  */
 function PostGlyph({
   marks,
@@ -424,8 +421,8 @@ function PostGlyph({
       <button
         type="button"
         onClick={onPost}
-        aria-label="Post to Public setups"
-        title="Post to Public setups"
+        aria-label="Post to Community"
+        title="Post to Community"
         className="p-0.5 text-[var(--mc-ink-muted)] opacity-70 hover:bg-[var(--mc-61)] hover:text-emerald-300"
       >
         <Globe className="h-3 w-3" aria-hidden />
@@ -450,7 +447,7 @@ export function Face({ icon, size }: { icon: EntryIcon | undefined; size: number
     <span
       aria-hidden
       // The sprite drop shadow the board's pickers give their items.
-      className="flex shrink-0 items-center justify-center overflow-hidden [filter:drop-shadow(1px_2px_2px_rgba(0,0,0,0.55))]"
+      className="flex shrink-0 items-center justify-center overflow-hidden"
       style={{ width: size, height: size }}
     >
       {drawable && icon ? (
@@ -570,15 +567,18 @@ export function TagEditor({
     return null;
   }
 
+  // Shell pixels: a body portal wearing .ui-zoom positions in shell pixels, so
+  // the real-pixel anchor and window are divided by the interface scale.
+  const scale = getUiScale();
   return createPortal(
     <div
       ref={boxRef}
       style={{
-        left: Math.min(left, window.innerWidth - 260 - 8),
-        top: Math.min(top, window.innerHeight - 120),
+        left: Math.min(left / scale, window.innerWidth / scale - 260 - 8),
+        top: Math.min(top / scale, window.innerHeight / scale - 120),
         width: 260,
       }}
-      className="fixed z-[100] flex flex-wrap items-center gap-1 border border-[var(--mc-33)] bg-[var(--mc-61)] p-1.5 shadow-lg"
+      className="ui-zoom fixed z-[100] flex flex-wrap items-center gap-1 border border-[var(--mc-33)] bg-[var(--mc-61)] p-1.5 shadow-lg"
     >
       {draft.map((tag) => (
         <button

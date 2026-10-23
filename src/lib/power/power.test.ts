@@ -9,6 +9,7 @@ import {
 import { getPowerSource, POWER_SOURCES } from "./registry";
 import { buildPowerSettingsReader } from "./types";
 import { resolvePowerResource } from "./planner-data";
+import { htgrOperation } from "./sources/reactors";
 import type { FactoryNode, Recipe } from "@/lib/model/types";
 
 /**
@@ -25,11 +26,12 @@ function compute(sourceId: string, settings: Record<string, string> = {}) {
 }
 
 describe("singleblock generators", () => {
-  it("prices the LV steam turbine like the workbook (E21 = 1552.94 L/s)", () => {
+  it("prices the LV steam turbine as MTESteamTurbine burns (3 EU per 7 L: 1540 L/s)", () => {
+    // The workbook's E21 (1552.94) prices the tooltip's truncated 85%.
     const model = compute("steam-turbine", { tier: "LV" });
     expect(model.euPerTick).toBe(32);
     expect(model.inputs[0].name).toBe("Steam");
-    expect(model.inputs[0].perSecond).toBeCloseTo(1552.941176, 4);
+    expect(model.inputs[0].perSecond).toBeCloseTo((33 / 3) * 7 * 20, 9);
   });
 
   it("prices the LV gas turbine on benzene (L21 = 1.9298 L/s)", () => {
@@ -42,16 +44,15 @@ describe("singleblock generators", () => {
     expect(model.inputs[0].perSecond).toBeCloseTo(1.447368421, 6);
   });
 
-  it("prices the LV semifluid generator on creosote (Z21 = 14.4737 L/s)", () => {
+  it("prices the LV semifluid generator on creosote at floor(48 x 95%) = 45 EU/L", () => {
+    // The workbook's Z21 (14.4737) skips MTEBasicGenerator's floor.
     const model = compute("semifluid-generator", { tier: "LV", fuel: "Creosote Oil" });
-    expect(model.inputs[0].perSecond).toBeCloseTo(14.47368421, 5);
+    expect(model.inputs[0].perSecond).toBeCloseTo((33 / 45) * 20, 9);
   });
 
   it("prices the LuV naquadah reactor on a long enriched rod (E59 = 3.1488 per hour)", () => {
-    const model = compute("naquadah-reactor", {
-      tier: "LuV",
-      fuel: "Long Enriched Naquadah Rod (LuV)",
-    });
+    const model = compute("naquadah-reactor", { tier: "LuV", fuel: "naquadah" });
+    expect(model.inputs[0].name).toBe("Long Enriched Naquadah Rod (LuV)");
     expect(model.inputs[0].perSecond * 3600).toBeCloseTo(3.1488, 4);
   });
 
@@ -64,16 +65,16 @@ describe("singleblock generators", () => {
 });
 
 describe("engines", () => {
-  it("burns diesel in the LCE at 2048/480 L/t (sheet E15 x 20)", () => {
+  it("burns diesel in the LCE at floor(2048/480) = 4 L/t, as the Java floors it", () => {
     const model = compute("large-combustion-engine", { fuel: "Diesel" });
     expect(model.euPerTick).toBe(2048);
-    expect(model.inputs[0].perSecond).toBeCloseTo(4.266666667 * 20, 4);
+    expect(model.inputs[0].perSecond).toBe(80);
   });
 
-  it("boost triples output for 1.5x fuel efficiency and adds oxygen", () => {
+  it("boost triples output on floor(4096/480) = 8 L/t and adds oxygen", () => {
     const model = compute("large-combustion-engine", { fuel: "Diesel", boost: "1" });
     expect(model.euPerTick).toBe(6144);
-    expect(model.inputs[0].perSecond).toBeCloseTo((6144 / (480 * 1.5)) * 20, 4);
+    expect(model.inputs[0].perSecond).toBe(160);
     expect(model.inputs.some((flow) => flow.name === "Oxygen")).toBe(true);
   });
 
@@ -103,10 +104,11 @@ describe("engines", () => {
 });
 
 describe("community-flagged additions (2.9 sheet)", () => {
-  it("runs the LV acid generator on molten redstone (E33 = 17.0103 L/s)", () => {
+  it("runs the LV acid generator on molten redstone at floor(40 x 97%) = 38 EU/L", () => {
+    // The workbook's E33 (17.0103) skips MTEBasicGenerator's floor.
     const model = compute("acid-generator", { tier: "LV", fuel: "Molten Redstone" });
     expect(model.euPerTick).toBe(32);
-    expect(model.inputs[0].perSecond).toBeCloseTo(17.01030928, 6);
+    expect(model.inputs[0].perSecond).toBeCloseTo((33 / 38) * 20, 9);
   });
 
   it("runs the EV geothermal engine on cryotheum dust as ITEMS (L40 = 0.9211/s)", () => {
@@ -138,9 +140,9 @@ describe("community-flagged additions (2.9 sheet)", () => {
       rate: "50",
       base: "Sodium Hydroxide",
     });
-    // x1.5 power for one hydroxide dust per 20 ticks (60 per minute).
+    // x1.5 power for one hydroxide dust per 21 ticks (20 boosted plus one to reload).
     expect(boosted.euPerTick).toBe(3000);
-    expect(boosted.inputs[1]).toMatchObject({ name: "Sodium Hydroxide Dust", perSecond: 1 });
+    expect(boosted.inputs[1]).toMatchObject({ name: "Sodium Hydroxide Dust", perSecond: 20 / 21 });
   });
 
   it("matches the sheet on the reported case: fluoroantimonic at 1 L/t is 5760 EU/t", () => {
@@ -218,6 +220,24 @@ describe("turbines", () => {
     expect(model.outputs[0].perSecond).toBe(model.inputs[0].perSecond);
   });
 
+  it("runs SC steam at the rotor's own steam flow, like HP", () => {
+    const rotor = { rotor: "MAR-Ce-M200 Steel", size: "Large", fitting: "tight", flowMode: "optimal" };
+    const sc = compute("large-sc-steam-turbine", rotor);
+    const hp = compute("large-hp-steam-turbine", rotor);
+    // Workbook and MTELargeTurbineSCSteam: 22,500 L/t at 1 EU/L x 145%.
+    expect(sc.inputs[0]).toMatchObject({ name: "SC Steam", perSecond: 22_500 * 20 });
+    expect(sc.euPerTick).toBe(32_625);
+    expect(sc.inputs[0].perSecond).toBe(hp.inputs[0].perSecond);
+    // The XL is sixteen rotors, nothing more; dense steam divides by 1000.
+    const xl = { rotor: "Duranium", size: "Large", grade: "Dense SC Steam", flowMode: "optimal" };
+    const tight = compute("xl-turbo-sc-steam-turbine", { ...xl, fitting: "tight" });
+    const loose = compute("xl-turbo-sc-steam-turbine", { ...xl, fitting: "loose" });
+    // The game's best supply, ceil of 16 x 76,800 / 1000; the sheet shows 1,228.
+    expect(tight.inputs[0].perSecond).toBe(1_229 * 20);
+    // Likewise ceil of 16 x 3,020,545.5 / 1000; the sheet shows 48,328.
+    expect(loose.inputs[0].perSecond).toBe(48_329 * 20);
+  });
+
   it("penalizes over-optimal flow but caps at max", () => {
     const source = getPowerSource("large-steam-turbine");
     const atOptimal = compute("large-steam-turbine", {
@@ -287,26 +307,31 @@ describe("steam makers", () => {
 });
 
 describe("singleblock boilers (game source constants)", () => {
-  it("burns the Small Coal Boiler at 1 energy per 45t: one coal is 360s of 120 L/s", () => {
+  it("burns the Small Coal Boiler at 1 energy per 46t: one coal is 368s of 120 L/s", () => {
     const model = compute("small-coal-boiler", { solidFuel: "Coal" });
     expect(model.outputs).toEqual([{ name: "Steam", perSecond: 120, unit: "L" }]);
-    // Coal is 1600 furnace ticks -> 160 boiler energy; 160 / (20/45) = 360s.
-    expect(model.inputs[0]).toEqual({ name: "Coal", perSecond: 1 / 360, unit: "item" });
+    // Coal is 1600 furnace ticks -> 160 boiler energy; the 45t cooldown fires every 46t: 160 / (20/46) = 368s.
+    expect(model.inputs[0]).toMatchObject({ name: "Coal", unit: "item" });
+    expect(model.inputs[0].perSecond).toBeCloseTo(1 / 368, 12);
     expect(model.inputs[1]).toEqual({ name: "Water", perSecond: 120 / 160, unit: "L" });
     expect(model.warnings?.some((line) => line.includes("by hand"))).toBe(true);
   });
 
-  it("burns the Large Coal Boiler at 1 energy/s: one coal is 160s of 300 L/s", () => {
+  it("burns the Large Coal Boiler at 2 energy per 41t: one coal is 164s of 300 L/s", () => {
     const model = compute("large-coal-boiler", { solidFuel: "Coal" });
     expect(model.outputs).toEqual([{ name: "Steam", perSecond: 300, unit: "L" }]);
-    expect(model.inputs[0]).toEqual({ name: "Coal", perSecond: 1 / 160, unit: "item" });
+    expect(model.inputs[0]).toMatchObject({ name: "Coal", unit: "item" });
+    expect(model.inputs[0].perSecond).toBeCloseTo(1 / 164, 12);
   });
 
-  it("runs the Reinforced Lava Boiler at 600 L/s steam on 3 L/s lava", () => {
+  it("runs the Reinforced Lava Boiler at 600 L/s steam on 60/21 L/s lava", () => {
     const model = compute("lava-boiler", {});
-    expect(model.outputs).toEqual([{ name: "Steam", perSecond: 600, unit: "L" }]);
+    expect(model.outputs).toEqual([
+      { name: "Steam", perSecond: 600, unit: "L" },
+      { name: "Obsidian", perSecond: 60 / 21 / 1000, unit: "item" },
+    ]);
     expect(model.inputs).toEqual([
-      { name: "Lava", perSecond: 3, unit: "L" },
+      { name: "Lava", perSecond: 60 / 21, unit: "L" },
       { name: "Water", perSecond: 600 / 160, unit: "L" },
     ]);
   });
@@ -324,18 +349,23 @@ describe("singleblock boilers (game source constants)", () => {
     expect(calcified.warnings?.length).toBe(1);
   });
 
-  it("scales the GT++ Advanced Boiler by tier: HV is 2,250 L/s and coal lasts 160s", () => {
+  it("scales the GT++ Advanced Boiler by tier: HV is 2,250 L/s and coal lasts 170.15s", () => {
     const model = compute("advanced-boiler", { tier: "HV", solidFuel: "Coal" });
     expect(model.outputs).toEqual([{ name: "Steam", perSecond: 2250, unit: "L" }]);
-    expect(model.inputs[0]).toEqual({ name: "Coal", perSecond: 1 / 160, unit: "item" });
+    // (160 / 2 + 1600 / 500) degrees, one lost per 41 ticks.
+    expect(model.inputs[0]).toMatchObject({ name: "Coal", unit: "item" });
+    expect(model.inputs[0].perSecond).toBeCloseTo(1 / 170.15, 12);
   });
 });
 
 describe("RTG and Dyson Swarm", () => {
-  it("runs the RTG on a Pu-238 pellet at 60 EU/t for 88 real days", () => {
+  it("runs the RTG on a Pu-238 pellet at 60 EU/t until its Integer.MAX_VALUE EU run out", () => {
+    // 87 days x 60 EU/t overflows the int cap; each 60 EU packet drains 62.
     const model = compute("rtg", { pellet: "pu238" });
     expect(model.euPerTick).toBe(60);
-    expect(model.inputs).toEqual([{ name: "Pu Pellet", perSecond: 1 / (88 * 86_400), unit: "item" }]);
+    expect(model.inputs).toEqual([
+      { name: "Pu Pellet", perSecond: 1 / ((2 ** 31 - 1) / 62 / 20), unit: "item" },
+    ]);
     expect(resolvePowerResource("Pu Pellet")?.id).toBe("miscutils:mu-metaitem.01@32041");
   });
 
@@ -354,6 +384,37 @@ describe("reactors and endgame", () => {
     expect(model.outputs[0].perSecond).toBe(4800 * 20);
   });
 
+  it("burns THTR pebbles and hands them back burned, a ball per 64", () => {
+    // 675,000 x 0.5% = 3,375 pebbles per 9-hour operation: 52 balls + 47 loose.
+    const model = compute("thtr", { fill: "675000" });
+    const perOperation = (perSecond: number) => Math.round(perSecond * 32_400);
+    expect(perOperation(model.inputs.find((flow) => flow.name === "TRISO pebble")!.perSecond)).toBe(3375);
+    expect(perOperation(model.outputs.find((flow) => flow.name === "Burned Out TRISO pebble ball")!.perSecond)).toBe(52);
+    expect(perOperation(model.outputs.find((flow) => flow.name === "Burned Out TRISO pebble")!.perSecond)).toBe(47);
+    expect(resolvePowerResource("TRISO pebble")).toMatchObject({ kind: "item", id: "bartworks:bw.thtrmaterials@4" });
+    // The helium is a one-time charge the reactor keeps, not a flow.
+    expect(model.inputs.some((flow) => flow.name === "Helium")).toBe(false);
+  });
+
+  it("runs an HTGR operation the way kubatech does: fuel, helium, burned fuel", () => {
+    // Glowstone at a full 10,000 balls: exponent 1.1 gives 16,528 ticks of
+    // progress, and full coolant + water add 57 + 24 a tick, so 202 ticks.
+    const pebble = { base: 2, mult: 1.2, exp: 1.1 };
+    const run = htgrOperation(pebble, 10_000);
+    expect(run.cycleTicks).toBe(202);
+    expect(run.burned).toBeCloseTo(14.159265, 5);
+    expect(run.heliumLost).toBe(256);
+    const model = compute("htgr", { pebble: "Glowstone", fill: "10000" });
+    const cycleSeconds = 202 / 20;
+    expect(model.inputs.find((flow) => flow.name === "TRISO Fuel (Glowstone)")!.perSecond).toBeCloseTo(run.burned / cycleSeconds, 9);
+    expect(model.outputs.find((flow) => flow.name === "Burned Out TRISO Fuel (Glowstone)")!.perSecond).toBeCloseTo(run.burned / cycleSeconds, 9);
+    expect(model.inputs.find((flow) => flow.name === "Helium")!.perSecond).toBeCloseTo(256 / cycleSeconds, 9);
+    expect(resolvePowerResource("TRISO Fuel (Uranium 235)")?.id).toBe("kubatech:htgr_item_triso_fuel@1");
+    // A half-full reactor keeps its fuel base: the ball count alone scales the draw.
+    const half = htgrOperation(pebble, 5_000);
+    expect(half.energyMultiplier).toBeCloseTo(2 * Math.pow(1.1, 1.05), 9);
+  });
+
   it("computes the HTGR glowstone multiplier (2.444)", () => {
     // COOLANT_PER_BALL is a per-tick figure; hot coolant out = 0.5 x fill x
     // multiplier L/t, and the steam line is the water line x160.
@@ -365,10 +426,46 @@ describe("reactors and endgame", () => {
     expect(steam?.perSecond).toBeCloseTo((water?.perSecond ?? 0) * 160, 6);
   });
 
-  it("gives the LFTR 16 amps of its fuel's tier", () => {
-    const model = compute("lftr", { fuel: "LFTR Fuel 1" });
-    expect(model.euPerTick).toBe(2048 * 16);
-    expect(model.outputs.some((flow) => flow.name === "Uranium-233")).toBe(true);
+  it.each([
+    ["LFTR Fuel 1", 32_768, 655_360],
+    ["LFTR Fuel 2", 131_072, 2_621_440],
+    ["LFTR Fuel 3", 524_288, 10_485_760],
+  ])("generates the game-source output for %s", (fuel, euPerTick, euPerLiter) => {
+    // RecipeLoaderLFTR's output metadata x4 in MTENuclearReactor;
+    // 100 L fuel + 200 L carrier salt over 100 seconds, with no overclock.
+    const model = compute("lftr", { fuel });
+    expect(model.euPerTick).toBe(euPerTick);
+    expect(model.inputs).toEqual([
+      { name: fuel, perSecond: 1, unit: "L" },
+      { name: "Li2BeF4", perSecond: 2, unit: "L" },
+    ]);
+    expect((model.euPerTick * 20) / model.inputs[0].perSecond).toBe(euPerLiter);
+    // A 1-in-300 chance every tick of 1-10 L.
+    expect(model.outputs.find((flow) => flow.name === "Uranium-233")?.perSecond).toBeCloseTo(0.36667, 5);
+    const recipe = buildPowerRecipe("lftr", { fuel }, "lftr-test");
+    expect(recipe?.power?.euPerTick).toBe(euPerTick);
+    expect(recipe?.outputs.find((slot) => slot.kind === "power")?.amount).toBe(euPerTick * 20);
+  });
+
+  it("repairs saved LFTR Fuel 3 power and its output port on load", () => {
+    const recipe = buildPowerRecipe("lftr", { fuel: "LFTR Fuel 3" }, "lftr-saved") as Recipe;
+    recipe.power!.euPerTick = 32_768;
+    recipe.outputs.find((slot) => slot.kind === "power")!.amount = 655_360;
+    const node = {
+      id: "lftr-node",
+      recipeId: recipe.id,
+      machineCount: 1,
+      parallel: 1,
+      overclockTier: "EV",
+      enabled: true,
+      position: { x: 0, y: 0 },
+      machineConfigTiers: { fuel: "LFTR Fuel 3" },
+    } as FactoryNode;
+    const loaded = resynthesizePowerRecipes({ nodes: [node], recipes: [recipe] });
+    expect(loaded.recipes[0].power?.euPerTick).toBe(524_288);
+    expect(loaded.recipes[0].outputs.find((slot) => slot.kind === "power")?.amount).toBe(10_485_760);
+    expect(loaded.recipes[0].inputs).toEqual(recipe.inputs);
+    expect(loaded.nodes[0].machineConfigTiers?.fuel).toBe("LFTR Fuel 3");
   });
 
   it("runs the Vacuum Reactor's quad uranium layout at the workbook's 43,600 EU/t", () => {
@@ -439,6 +536,49 @@ describe("reactors and endgame", () => {
     );
   });
 
+  // Game: FuelRecipeLoader getFluidOrGas(1) per recipe; MTELargeNaquadahReactor
+  // burns pall litres (booster multiplier) over NaquadahFuelTime ticks.
+  // Wiki Large_Naquadah_Reactor summary table pins the boosted L/s figures.
+  it("burns 1 L of LNR fuel per recipe, not 1000 L (wiki EU/L and L/s)", () => {
+    const base = compute("large-naquadah-reactor", {
+      fuel: "Naq Fuel Mk-I",
+      coolant: "None",
+      booster: "None",
+    });
+    // 1 L / 3 s; the old formula used 1000 L and reported 333.33 L/s.
+    expect(base.inputs.find((flow) => flow.name === "Naq Fuel Mk-I")?.perSecond).toBeCloseTo(1 / 3, 6);
+    expect(base.outputs[0]?.perSecond).toBeCloseTo(1 / 3, 6);
+
+    // Wiki: Mk-I + Cryotheum + Molten Naquadah (x4) -> 1.33 L/s fuel.
+    const wikiMkI = compute("large-naquadah-reactor", {
+      fuel: "Naq Fuel Mk-I",
+      coolant: "Cryotheum",
+      booster: "Molten Naquadah",
+    });
+    expect(wikiMkI.euPerTick).toBeCloseTo(975000 * 2.75 * 4, 4);
+    expect(wikiMkI.inputs.find((flow) => flow.name === "Naq Fuel Mk-I")?.perSecond).toBeCloseTo(
+      4 / 3,
+      6,
+    );
+    expect(wikiMkI.inputs.find((flow) => flow.name === "Cryotheum")?.perSecond).toBe(1000);
+    expect(wikiMkI.inputs.find((flow) => flow.name === "Molten Naquadah")?.perSecond).toBe(20);
+
+    // Wiki / Discord: Mk-VI + Temporal Fluid + Enlarged Fluid (x64) -> 5.33 L/s.
+    const wikiMkVI = compute("large-naquadah-reactor", {
+      fuel: "Naq Fuel Mk-VI",
+      coolant: "Tachyon Rich Temporal Fluid",
+      booster: "Spatially Enlarged Fluid",
+    });
+    expect(wikiMkVI.euPerTick).toBeCloseTo(2_077_795_200 * 5 * 64, 0);
+    expect(wikiMkVI.inputs.find((flow) => flow.name === "Naq Fuel Mk-VI")?.perSecond).toBeCloseTo(
+      64 / 12,
+      6,
+    );
+    expect(wikiMkVI.inputs.find((flow) => flow.name === "Tachyon Rich Temporal Fluid")?.perSecond).toBe(
+      20,
+    );
+  });
+
   it("runs helium fusion at Mk-I from the workbook table", () => {
     const model = compute("fusion-reactor", { recipe: "Helium Plasma", mark: "1" });
     expect(model.euPerTick).toBe(-1920);
@@ -468,10 +608,6 @@ describe("resource resolution", () => {
       "Tainted Blood Shard",
       "Life Essence Cell",
       "Ench. Golden Apple",
-      // Manure-line boiler fuels absent from the dataset.
-      "Manure Slurry",
-      "Fertile Manure Slurry",
-      "Raw Animal Waste",
       // LNR fuels the resolver could not place.
       "Uranium Fuel",
       "Plutonium Fuel",
@@ -513,7 +649,7 @@ describe("power search", () => {
     expect(gasTurbine?.via?.direction).toBe("takes");
     // Benzene is the gas turbine's default fuel, so no dial is needed.
     expect(hitPlacementSettings(gasTurbine!)).toBeUndefined();
-    const boiler = hits.find((hit) => hit.source.id === "large-titanium-boiler");
+    const boiler = hits.find((hit) => hit.source.id === "large-bronze-boiler");
     expect(boiler?.via).toBeDefined();
   });
 

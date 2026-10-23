@@ -1,12 +1,11 @@
+import { sectionHandleId, splitSectionHandleId } from "./shared-machine";
 import type { FactoryEdge } from "./types";
 
 /**
- * Collapses any handle id onto the index-less port id the node actually
- * renders. A card exposes ONE port row per resource per side, but handle ids
- * have been minted both ways: hand-drawn wires carry `output:item:cobble`,
- * while auto-connect, plan imports and older saves carry a trailing slot index
- * (`output:item:cobble:0`). Both name the same row, so both must reduce to the
- * same string or the two spellings read as two different ports.
+ * Collapses any handle id onto the index-less port id the node renders. A card
+ * exposes ONE port row per resource per side, but handle ids come both ways:
+ * `output:item:cobble` and, from auto-connect, imports and older saves, with a
+ * trailing slot index (`output:item:cobble:0`). Both name the same row.
  *
  * Ids that don't parse (storage schemes, malformed) pass through untouched.
  */
@@ -15,7 +14,11 @@ export function canonicalizeResourceHandleId(handleId?: string | null): string |
     return undefined;
   }
 
-  const [side, kind, encodedResourceId] = handleId.split(":");
+  // A shared machine's section prefix (`r2:`) is part of the port's identity
+  // - two sections may well carry the same resource - so it is kept and only
+  // the handle behind it is collapsed.
+  const { section, handleId: bare } = splitSectionHandleId(handleId);
+  const [side, kind, encodedResourceId] = (bare ?? "").split(":");
   if (
     (side !== "input" && side !== "output") ||
     (kind !== "item" && kind !== "fluid") ||
@@ -24,19 +27,17 @@ export function canonicalizeResourceHandleId(handleId?: string | null): string |
     return handleId;
   }
 
-  return `${side}:${kind}:${encodedResourceId}`;
+  return sectionHandleId(section, `${side}:${kind}:${encodedResourceId}`);
 }
 
 /**
  * Whether two edges are the same wire: the same resource, running between the
  * same two cards, landing on the same port ROW at each end.
  *
- * The row is the unit on purpose. A recipe with cobblestone in three output
- * slots still draws one output row, so three edges differing only in their slot
- * index are three copies of one line — they split the rate between them and
- * stack on the same pixels. Comparing raw handle strings called them distinct,
- * which is how a board ended up with a wire drawn twice and how dragging the
- * same pair of rows kept adding another.
+ * The row is the unit on purpose: a recipe with cobblestone in three output
+ * slots draws one output row, so edges differing only in slot index are copies
+ * of one line that would split the rate between them. Never compare raw
+ * handle strings for this.
  */
 export function isSameEdgeWire(left: FactoryEdge, right: FactoryEdge): boolean {
   return (

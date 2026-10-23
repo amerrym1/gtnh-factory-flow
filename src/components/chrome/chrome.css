@@ -1,0 +1,706 @@
+/*
+ * The mod's top bar, tabs, menus and boxes on the website (Hyb.java / BoardScreen / PlanTabs / PickList / Popup).
+ * Plain unlayered CSS on classes (the card's rule: unlayered beats Tailwind's layers and globals.css's
+ * `button { font: inherit }`), sizes in the mod's GUI pixels (one CSS px each, the shell's zoom does the rest),
+ * the pixel face at 8 px. Tokens are the mod's own and read the clean card's where it has them.
+ */
+.mb,
+.mm,
+.mx {
+  --mc-ink: #e8e9ee;
+  --mc-muted: #9a9ca4;
+  --mc-frame: #3c3e45;
+  --mc-ring: #52545c;
+  --mc-highlight: #5a5c65;
+  --mc-shadow: #1d1f23;
+  --mc-tile: #36383f;
+  --mc-key: #26282d;
+  --mc-key-hover: #2d2f35;
+  --mc-key-edge: #111317;
+  --mc-key-hi: #4a4c54;
+  --mc-key-lo: #17191d;
+  --mc-menu: #3c3e45;
+  --mc-menu-hover: #4e5058;
+  --mc-bar: #0e0f12;
+  --mc-bar-line: #2a2c31;
+  --mc-red: #e05252;
+  --mc-gold: #ffd257;
+  --mc-cyan: #22d3ee;
+  --mc-off: #5a5c65;
+  font-family: var(--app-font);
+  font-size: 8px;
+  line-height: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-shadow: none;
+  -webkit-font-smoothing: var(--pixel-font-smoothing);
+  color: var(--mc-ink);
+}
+
+/* The mod's size on screen: its GUI pixels are two screen pixels at GUI scale 2; these sizes are GUI pixels under the
+   interface's 1.17, so the bar and its menus wear 2 / 1.17 more (ChromeMenu.tsx CHROME_SCREEN_K). */
+.mb,
+.ml {
+  zoom: 1.7094;
+}
+.mm.ui-zoom {
+  zoom: calc(var(--ui-scale) * 1.7094);
+}
+
+/* ---- The bar ------------------------------------------------------------- */
+
+.mb {
+  position: relative;
+  z-index: 30;
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  height: 20px;
+  padding: 2px 4px;
+  background: var(--mc-bar);
+  box-shadow: inset 0 -1px 0 var(--mc-bar-line);
+  user-select: none;
+}
+.mb-grow {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* A key: the card's key style, 16 high, the bevel one pixel. */
+.mb-key {
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 16px;
+  padding: 0 6px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--mc-key);
+  color: var(--mc-ink);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow:
+    inset 1px 1px 0 var(--mc-key-hi),
+    inset -1px -1px 0 var(--mc-key-lo);
+}
+.mb-key:hover {
+  background: var(--mc-key-hover);
+}
+.mb-key[data-off] {
+  color: var(--mc-off);
+  cursor: default;
+}
+.mb-key[data-off]:hover {
+  background: var(--mc-key);
+}
+.mb-key[data-icon] {
+  width: 18px;
+  padding: 0;
+}
+.mb-key[data-open] {
+  background: var(--mc-key-hover);
+}
+.mb-key > svg {
+  flex: none;
+}
+.mb-key.mb-gap {
+  margin-left: 6px;
+}
+.mb-key[data-glyph="bolt"] {
+  gap: 3px;
+  padding: 0 6px 0 6px;
+}
+.mb-bolt {
+  color: #fcd34d;
+}
+.mb-bug {
+  color: var(--mc-red);
+}
+
+/* A live plan: its state as a dot, then the faces of everyone else in it (initials in their colour), square and flat
+   as the mod draws them. Only with live plans configured (ModBar's LivePresence). */
+.mb-live {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 16px;
+  padding: 0 2px;
+}
+.mb-live-dot {
+  width: 4px;
+  height: 4px;
+  background: var(--mc-off);
+}
+.mb-live-dot[data-status="live"] {
+  background: #34d399;
+}
+.mb-live-dot[data-status="connecting"] {
+  background: #fbbf24;
+}
+.mb-faces {
+  display: inline-flex;
+  gap: 1px;
+}
+.mb-face {
+  box-sizing: border-box;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 14px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+.mb-face-more {
+  background: var(--mc-key);
+  color: var(--mc-muted);
+}
+
+/* ---- The plan tabs ------------------------------------------------------- */
+
+.mt {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 16px;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+.mt-strip {
+  position: relative;
+  min-width: 0;
+  flex: 0 1 auto;
+  height: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  display: flex;
+  gap: 2px;
+}
+.mt-strip::-webkit-scrollbar {
+  display: none;
+}
+.mt-wrap {
+  position: relative;
+  min-width: 0;
+  flex: 0 1 auto;
+  height: 16px;
+}
+.mt-tab {
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  height: 15px;
+  margin-top: 1px;
+  padding: 0 14px 0 5px;
+  min-width: 48px;
+  max-width: 120px;
+  background: #1c1e22;
+  color: var(--mc-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mt-tab {
+  user-select: none;
+}
+.mt-tab[data-dragging] {
+  cursor: grabbing;
+  background: #3a3c44;
+  box-shadow: 0 0 0 1px var(--mc-ring);
+}
+.mt-tab:hover {
+  background: #2d2f35;
+}
+.mt-tab[data-active] {
+  height: 16px;
+  margin-top: 0;
+  padding-top: 1px;
+  background: linear-gradient(#52545c 0 1px, #5a5c65 1px 2px, var(--mc-frame) 2px);
+  color: #fff;
+  box-shadow:
+    inset 1px 0 0 var(--mc-ring),
+    inset -1px 0 0 var(--mc-ring);
+  z-index: 1;
+}
+/* A task board's tab: a faint violet cast (about 9% of #a78bfa) and the checklist icon before its name. */
+.mt-tab[data-tasks]::before {
+  content: "";
+  position: absolute;
+  inset: 0 1px;
+  background: rgba(167, 139, 250, 0.09);
+  pointer-events: none;
+}
+.mt-tasks {
+  flex: none;
+  margin: -1px 3px 0 0;
+  color: #a78bfa;
+}
+.mt-tab[data-readonly] {
+  color: #e0a63a;
+}
+.mt-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mt-close {
+  display: none;
+  position: absolute;
+  right: 2px;
+  top: 3px;
+  box-sizing: border-box;
+  width: 9px;
+  height: 9px;
+  align-items: center;
+  justify-content: center;
+  color: var(--mc-muted);
+}
+.mt-tab:hover .mt-close {
+  display: flex;
+}
+.mt-close:hover {
+  background: #4a4c54;
+  color: #fff;
+}
+.mt-plus {
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  width: 16px;
+  height: 15px;
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1c1e22;
+  color: var(--mc-muted);
+  cursor: pointer;
+  padding-top: 1px;
+}
+.mt-plus:hover {
+  background: #2d2f35;
+  color: #fff;
+}
+.mt-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 18px;
+  pointer-events: none;
+  opacity: 0;
+}
+.mt-fade[data-on] {
+  opacity: 1;
+}
+.mt-fade[data-edge="l"] {
+  left: 0;
+  background: linear-gradient(to right, var(--mc-bar) 0%, rgba(14, 15, 18, 0.5) 40%, rgba(14, 15, 18, 0) 100%);
+}
+.mt-fade[data-edge="r"] {
+  right: 0;
+  background: linear-gradient(to left, var(--mc-bar) 0%, rgba(14, 15, 18, 0.5) 40%, rgba(14, 15, 18, 0) 100%);
+}
+.mt-solving {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  bottom: 0;
+  height: 1px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.mt-solving::after {
+  content: "";
+  display: block;
+  width: 33%;
+  height: 1px;
+  background: var(--mc-cyan);
+  animation: mt-solve 0.9s linear infinite;
+}
+@keyframes mt-solve {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+.mt-rename {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  height: 12px;
+  padding: 0 2px;
+  border: 0;
+  outline: 1px solid var(--mc-cyan);
+  background: #000;
+  color: #fff;
+  font: inherit;
+}
+
+/* ---- Menus (PickList in Popup's skin) ------------------------------------ */
+
+.mm {
+  position: fixed;
+  z-index: 9999;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 100px;
+  width: max-content;
+  max-width: 360px;
+  padding: 0 4px 4px 4px;
+  background: var(--mc-menu);
+  box-shadow:
+    0 0 0 1px var(--mc-key-edge),
+    inset 1px 1px 0 var(--mc-highlight),
+    inset -1px -1px 0 var(--mc-shadow),
+    4px 4px 0 rgba(0, 0, 0, 0.35);
+  user-select: none;
+}
+.mm::before {
+  content: "";
+  display: block;
+  height: 4px;
+  flex: none;
+}
+.mm-title {
+  flex: none;
+  padding: 2px 2px 4px;
+  color: var(--mc-muted);
+  font-size: 8px;
+  line-height: 10px;
+  text-transform: none;
+}
+.mm-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #9a9ca4 transparent;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+.mm-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  height: 20px;
+  margin: 0 -4px;
+  padding: 0 8px 0 8px;
+  color: var(--mc-ink);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mm-row:hover,
+.mm-row[data-hot] {
+  background: var(--mc-menu-hover);
+}
+.mm-row[data-current] {
+  background: var(--mc-tile);
+}
+.mm-row[data-current]:hover {
+  background: var(--mc-menu-hover);
+}
+.mm-row[data-tone="red"] {
+  color: var(--mc-red);
+}
+.mm-row[data-off] {
+  color: var(--mc-off);
+  cursor: default;
+}
+.mm-row[data-off]:hover {
+  background: transparent;
+}
+.mm-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mm-detail {
+  flex: none;
+  color: var(--mc-muted);
+  text-align: right;
+}
+/* A row with a status dot or a plus: the picture, 6 px, then the label; the detail keeps its 12 px. */
+.mm-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-right: -6px;
+  border-radius: 3px;
+}
+.mm-plus {
+  flex: none;
+  margin-right: -8px;
+  color: var(--mc-cyan);
+}
+.mm-rule {
+  height: 1px;
+  margin: 2px -4px;
+  background: #2f3138;
+}
+
+/* ---- The controls list ---------------------------------------------------- */
+
+.mc-controls {
+  max-width: none;
+  width: 420px;
+  padding-bottom: 6px;
+}
+.mc-controls-grid {
+  display: grid;
+  gap: 0;
+}
+.mc-controls-row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 8px;
+  padding: 3px 2px;
+}
+.mc-controls-key {
+  color: var(--mc-ink);
+}
+.mc-controls-effect {
+  color: var(--mc-muted);
+}
+
+/* Keyboard focus: a gold ring inside the key, shown for the keyboard only. */
+.mb-key:focus-visible,
+.mt-tab:focus-visible,
+.mt-plus:focus-visible,
+.mt-close:focus-visible,
+.mm:focus-visible,
+.mm-row:focus-visible {
+  outline: 2px solid var(--mc-gold, #ffd257);
+  outline-offset: -2px;
+}
+.mm:focus {
+  outline: none;
+}
+.mm-row:focus-visible {
+  background: var(--mc-menu-hover, #4e5058);
+}
+
+/* The board and its panels: every control that plays a button shows the same gold ring when the keyboard is on it.
+   (React Flow strips its cards, drawers and wires of any outline, so they get one back here.) */
+[role="button"]:focus-visible,
+[role="menuitem"]:focus-visible,
+[role="radio"]:focus-visible,
+[role="tab"]:focus-visible {
+  outline: 2px solid var(--mc-gold, #ffd257);
+  outline-offset: -2px;
+}
+.react-flow__node.react-flow__node:focus-visible {
+  outline: 2px solid var(--mc-gold, #ffd257);
+  outline-offset: 3px;
+}
+.react-flow__edge.react-flow__edge:focus-visible {
+  outline: none;
+  filter: drop-shadow(0 0 2px var(--mc-gold, #ffd257)) drop-shadow(0 0 1px var(--mc-gold, #ffd257));
+}
+
+/* ---- A phone (html[data-compact]) ---------------------------------------- */
+/* The same bar, condensed: the plan tabs take the first row (they scroll sideways), the keys wrap below, a little
+   taller for a finger. The two side columns are drawers over the board; their keys are the first two. */
+:root[data-compact] .mb {
+  height: auto;
+  flex-wrap: wrap;
+  row-gap: 3px;
+  padding: 3px 4px;
+}
+:root[data-compact] .mt {
+  flex: 1 0 100%;
+  height: 20px;
+}
+:root[data-compact] .mt-strip,
+:root[data-compact] .mt-wrap {
+  height: 20px;
+}
+:root[data-compact] .mt-tab {
+  height: 19px;
+  max-width: 140px;
+}
+:root[data-compact] .mt-tab[data-active] {
+  height: 20px;
+}
+:root[data-compact] .mt-tab[data-active] .mt-close {
+  display: flex;
+}
+:root[data-compact] .mt-plus {
+  width: 22px;
+  height: 19px;
+}
+:root[data-compact] .mb-key {
+  height: 20px;
+}
+:root[data-compact] .mb-key[data-icon] {
+  width: 22px;
+}
+:root[data-compact] .mb-key.mb-gap {
+  margin-left: 4px;
+}
+
+/* ---- The top bar's keys (ModBar) ------------------------------------------- */
+/* Flat, as the plan tabs and + are (the bevelled keys are the board's: its toolbar, the library's drops): the tab's
+   ground, muted ink going white when hovered; raised as the open tab is while open. The picture keys and the account's
+   face sit bare on the bar until hovered. Not on a phone, whose bar keeps its bigger keys. */
+:root:not([data-compact]) .mb[data-mod-bar] {
+  gap: 2px;
+}
+:root:not([data-compact]) .mb[data-mod-bar] > .mb-key {
+  height: 15px;
+  margin-top: 1px;
+  background: #1c1e22;
+  color: var(--mc-muted);
+  box-shadow: none;
+}
+:root:not([data-compact]) .mb[data-mod-bar] > .mb-key[data-icon] {
+  background: none;
+}
+:root:not([data-compact]) .mb[data-mod-bar] > .mb-key:hover {
+  background: #2d2f35;
+  color: #fff;
+}
+:root:not([data-compact]) .mb[data-mod-bar] > .mb-key[data-open] {
+  height: 16px;
+  margin-top: 0;
+  padding-top: 1px;
+  background: linear-gradient(#52545c 0 1px, #5a5c65 1px 2px, var(--mc-frame) 2px);
+  color: #fff;
+  box-shadow:
+    inset 1px 0 0 var(--mc-ring),
+    inset -1px 0 0 var(--mc-ring);
+}
+:root:not([data-compact]) .mb[data-mod-bar] > .mb-key[data-off] {
+  color: var(--mc-off);
+}
+:root:not([data-compact]) .mb[data-mod-bar] > .mb-key[data-off]:hover {
+  background: #1c1e22;
+}
+:root:not([data-compact]) .mb[data-mod-bar] > .mb-key.mb-gap {
+  margin-left: 8px;
+}
+:root:not([data-compact]) .mb[data-mod-bar][data-fit="tight"] > .mb-key.mb-gap {
+  margin-left: 4px;
+}
+
+/* ---- A narrow bar (data-fit) ------------------------------------------------ */
+/* Always one row, nothing in a menu. The desktop top bar (ModBar's useTopBarFit): roomy, then icons (Plans, Share and
+   Sign in are icon keys like feedback, settings and help: React swaps them), then tight (the gaps close, the faces are
+   two and a +N). The tabs scroll; the open plan's tab and the + never give way (the .mt min-width holds both). A phone's
+   bar and the board toolbar use useBarFit: tight keys sit closer (Non-recipe is its bolt, Arrange its label's width);
+   folded the same. */
+.mt {
+  min-width: 68px;
+}
+.mb[data-fit="tight"],
+.mb[data-fit="folded"] {
+  gap: 2px;
+}
+.mb[data-fit="tight"] .mb-key:not([data-icon]),
+.mb[data-fit="folded"] .mb-key:not([data-icon]) {
+  padding: 0 4px;
+}
+.mb[data-fit="tight"] .mb-key.mb-gap,
+.mb[data-fit="folded"] .mb-key.mb-gap {
+  margin-left: 4px;
+}
+.mb[data-fit="tight"] .mb-key[data-glyph="bolt"],
+.mb[data-fit="folded"] .mb-key[data-glyph="bolt"] {
+  padding: 0 6px;
+}
+
+/* The account key: the account's face, initials in its colour, square and flat as the live faces. */
+.mb-me {
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 14px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+/* The board's toolbar: no band. It floats over the board's top edge (BoardToolbar sits inside the board's box), keys
+   only: the strip lets the board take every press, the two groups (left: Non-recipe, undo, redo; right: Arrange, Fit,
+   the rate, EU/t, Avg) catch their own. When the groups do not fit one row the right one drops to a second row, still
+   at the right; a board too narrow for the right group alone wraps its keys, so none is cut off. A task board's header floats the same way. */
+.mb.mb-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 35;
+  height: auto;
+  padding: 3px;
+  background: none;
+  box-shadow: none;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  row-gap: 3px;
+  column-gap: 6px;
+  pointer-events: none;
+}
+.mb-strip .mb-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  pointer-events: auto;
+}
+.mb-strip .mb-group-right {
+  margin-left: auto;
+  justify-content: flex-end;
+}
+.mb-strip .mb-group > .mb-key.mb-gap {
+  margin-left: 0;
+}
+.mb-strip .mb-key {
+  box-shadow:
+    0 0 0 1px var(--mc-key-edge),
+    inset 1px 1px 0 var(--mc-key-hi),
+    inset -1px -1px 0 var(--mc-key-lo);
+}
+.mb-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 4px;
+  color: var(--mc-ink);
+}
+.mb-count {
+  flex: none;
+  color: var(--mc-muted);
+}
+.mb-strip .mb-title,
+.mb-strip .mb-count {
+  background: var(--mc-key);
+  height: 16px;
+  line-height: 16px;
+  box-shadow: 0 0 0 1px var(--mc-key-edge);
+  padding: 0 6px;
+}

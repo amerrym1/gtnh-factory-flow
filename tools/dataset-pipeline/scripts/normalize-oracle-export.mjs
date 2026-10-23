@@ -5,6 +5,13 @@ import { existsSync } from "node:fs";
 import { PNG } from "pngjs";
 import { writeDatasetJson } from "./dataset-json-writer.mjs";
 import { getDominantOpaqueColor } from "./icon-utils.mjs";
+import { spargeRolledOutputs } from "./sparge-byproducts.mjs";
+import {
+  EEC_MACHINE_TYPE,
+  eecDropChance,
+  eecExpectedItems,
+  unknownEecModifiers,
+} from "./eec-drops.mjs";
 import {
   buildMachineHandlerTemplates,
   heatingCoilTiers,
@@ -13,27 +20,12 @@ import {
   machineConfigResources,
   machineHandlerConfigResources,
   primaryMachineHandlerControls,
+  VOLTAGE_TIER_NAMES,
 } from "./machine-configs.mjs";
 
 const inputPath = process.argv[2];
 const outputPath = process.argv[3];
-const GT_VOLTAGE_NAMES = [
-  "ULV",
-  "LV",
-  "MV",
-  "HV",
-  "EV",
-  "IV",
-  "LuV",
-  "ZPM",
-  "UV",
-  "UHV",
-  "UEV",
-  "UIV",
-  "UXV",
-  "OpV",
-  "MAX",
-];
+const GT_VOLTAGE_NAMES = VOLTAGE_TIER_NAMES;
 if (!inputPath || !outputPath) {
   throw new Error("Usage: normalize-oracle-export.mjs <oracle.json> <recipes.json>");
 }
@@ -46,6 +38,8 @@ const renderedIconDir = process.env.GTNH_RENDERED_ICON_DIR;
 const oracleStrict = envFlag("GTNH_ORACLE_STRICT", false);
 
 const raw = JSON.parse(stripBom(await fs.readFile(inputPath, "utf8")));
+const singleblockFamilyIds = new Set((findDomain("gregtech")?.recipeMaps ?? []).flatMap(map =>
+  buildMachineHandlerTemplates(map.name, map.catalysts).filter(handler => handler.kind === "single").map(handler => handler.id)));
 const renderedIcons = await stageRenderedIcons(renderedIconDir, outDir);
 
 const resources = new Map();
@@ -60,13 +54,33 @@ const recipeMapIcons = new Map();
 // catalysts so normalizeSmelting can reattach the machines to those recipes.
 let furnaceCatalysts = [];
 // Machine handler families -> the item that represents them (the family's
-// lowest-tier catalyst). Shipped dataset-wide so the app can draw machine
-// tabs without guessing items from names. First registration wins.
+// lowest-tier catalyst), plus every tiered variant's own item where the
+// family has more than one, so a card can wear the machine of its tier.
+// Shipped dataset-wide so the app never guesses items from names. The face
+// is first registration wins; the tier list is merged across every map the
+// family appears in.
 const machineHandlerIcons = new Map();
+const machineHandlerTierIcons = new Map();
+const VOLTAGE_TIER_ORDER = VOLTAGE_TIER_NAMES;
 
 function registerMachineHandlerIcons(templates) {
   for (const template of templates ?? []) {
-    if (!template.catalystResource || machineHandlerIcons.has(template.id)) {
+    if (!template.catalystResource) {
+      continue;
+    }
+    for (const variant of template.tierIcons ?? []) {
+      const tierResource = resourceAmount(variant.resource);
+      if (!tierResource?.iconPath) {
+        continue;
+      }
+      const tiers = machineHandlerTierIcons.get(template.id) ?? new Map();
+      if (!tiers.has(variant.tier)) {
+        addResource(tierResource);
+        tiers.set(variant.tier, tierResource);
+      }
+      machineHandlerTierIcons.set(template.id, tiers);
+    }
+    if (machineHandlerIcons.has(template.id)) {
       continue;
     }
     const resource = resourceAmount(template.catalystResource);
@@ -98,6 +112,7 @@ normalizeThaumcraft(findDomain("thaumcraft"));
 normalizeForestryBees(findDomain("forestryBees"));
 normalizeIc2Crops(findDomain("ic2Crops"));
 normalizeCropsNhCrops(findDomain("cropsNhCrops"));
+normalizeMobDrops(findDomain("mobDrops"));
 normalizeMining(findDomain("mining"));
 overrideFurnaceRecipeMapIcon();
 
@@ -120,7 +135,20 @@ const dataset = {
     .map(([recipeMap, resource]) => ({ recipeMap, resource: compactRecipeResource(resource) }))
     .sort((left, right) => left.recipeMap.localeCompare(right.recipeMap)),
   machineHandlerIcons: [...machineHandlerIcons.entries()]
-    .map(([familyId, resource]) => ({ familyId, resource: compactRecipeResource(resource) }))
+    .map(([familyId, resource]) => {
+      const tiers = machineHandlerTierIcons.get(familyId);
+      return {
+        familyId,
+        resource: compactRecipeResource(resource),
+        ...(tiers && tiers.size > 1
+          ? {
+              tiers: [...tiers.entries()]
+                .sort((left, right) => VOLTAGE_TIER_ORDER.indexOf(left[0]) - VOLTAGE_TIER_ORDER.indexOf(right[0]))
+                .map(([tier, tierResource]) => ({ tier, resource: compactRecipeResource(tierResource) })),
+            }
+          : {}),
+      };
+    })
     .sort((left, right) => left.familyId.localeCompare(right.familyId)),
   generatedAt,
 };
@@ -148,7 +176,7 @@ function normalizeGregtech(domain) {
     // machines become selectable handlers with their own stats, so one
     // machine's bonuses no longer leak onto another (the Dangote Distillus
     // used to force 12 parallels onto the plain Distillation Tower).
-    const handlerTemplates = buildMachineHandlerTemplates(machineType, recipeMap.catalysts);
+    const handlerTemplates = buildMachineHandlerTemplates(machineType, recipeMap.catalysts, singleblockFamilyIds);
     registerMachineHandlerIcons(handlerTemplates);
     const catalystControls = primaryMachineHandlerControls(handlerTemplates);
     for (const rawRecipe of recipeMap.recipes ?? []) {
@@ -171,6 +199,10 @@ function normalizeGregtech(domain) {
       if (outputs.length === 0) {
         continue;
       }
+      // The sparge tower's rolled outputs join after the exported ones. The
+      // recipe id still hashes only the exported slots, so saved plans keep
+      // their recipe.
+      const sparge = spargeRolledOutputs(rawRecipe, (entry) => resourceAmount(entry));
       const machineConfigControls = machineConfigControlsForOracleRecipe(
         machineType,
         rawRecipe.specialValue,
@@ -203,13 +235,13 @@ function normalizeGregtech(domain) {
         durationTicks,
         eut,
         inputs,
-        outputs,
+        outputs: sparge ? [...outputs, ...sparge.outputs] : outputs,
         machineConfigControls,
         machineHandlers,
         runtimeCalculation: normalizeRuntimeCalculation(
           rawRecipe.runtimeCalculation,
           machineType,
-          outputs,
+          sparge ? [...outputs, ...sparge.outputs] : outputs,
         ),
         programmedCircuit: detectProgrammedCircuit(inputs),
         specialValue: Number(rawRecipe.specialValue) || 0,
@@ -221,11 +253,17 @@ function normalizeGregtech(domain) {
           rawRecipeId: `${recipeMap.id}:${stableId}`,
         },
         nei: {
-          additionalInfo: [`Special value: ${rawRecipe.specialValue ?? 0}`],
+          additionalInfo: [
+            `Special value: ${rawRecipe.specialValue ?? 0}`,
+            ...(sparge ? [sparge.note] : []),
+          ],
         },
         metadata: {
           recipeMapId: recipeMap.id,
           specialValue: Number(rawRecipe.specialValue) || 0,
+          ...(recipeMap.id === "gt.recipe.fusionreactor" && Number.isFinite(rawRecipe.fusionStartupEu)
+            ? { fusionStartupEu: rawRecipe.fusionStartupEu } : {}),
+          ...(sparge ? { spargeMaxByproduct: sparge.maxByproduct } : {}),
         },
       });
 
@@ -238,6 +276,31 @@ function normalizeGregtech(domain) {
     }
   }
   setRecipeMapIcon(TANK_MACHINE_TYPE, tankIconFallback);
+  overrideTankRecipeMapIcon();
+}
+
+/**
+ * The Tank's face is the Low Voltage Fluid Tank, named simply "Fluid Tank"
+ * (Jack, 2026-09-07): a card names itself after its map's machine, and the
+ * empty cell it wore before made every Tank card read "Empty Cell". The cell
+ * face above stays as the fallback for an export with no fluid tank item.
+ */
+function overrideTankRecipeMapIcon() {
+  const tank = [...resources.values()].find(
+    (resource) => resource.kind === "item" && resource.displayName === "Low Voltage Fluid Tank",
+  );
+  if (!recipeMaps.has(TANK_MACHINE_TYPE) || !tank?.iconPath) {
+    return;
+  }
+  recipeMapIcons.set(TANK_MACHINE_TYPE, {
+    kind: tank.kind,
+    id: tank.id,
+    amount: 1,
+    displayName: "Fluid Tank",
+    iconPath: tank.iconPath,
+    dominantColor: tank.dominantColor,
+    modId: tank.modId,
+  });
 }
 
 /**
@@ -391,7 +454,7 @@ function normalizeSmelting(domain) {
  * Smelter's parallels arrive through its parsed tooltip controls.
  */
 function furnaceHandlerTemplates() {
-  const templates = buildMachineHandlerTemplates("Furnace", furnaceCatalysts);
+  const templates = buildMachineHandlerTemplates("Furnace", furnaceCatalysts, singleblockFamilyIds);
   registerMachineHandlerIcons(templates);
   if (templates.length === 0) {
     return [];
@@ -407,6 +470,7 @@ function furnaceHandlerTemplates() {
     electricTiers.length > 0
       ? [
           {
+            ...templates.find(isElectricSingle),
             id: "electric-furnace",
             label: "Electric Furnace",
             kind: "single",
@@ -844,6 +908,168 @@ function normalizeForestryBees(domain) {
       },
     });
   }
+}
+
+/**
+ * The Extreme Entity Crusher: one recipe per mob a Powered Spawner can hold.
+ * The spawner is the recipe's non-consumed input (its own resource per mob,
+ * the way a bee species is), the outputs are the drops a plain EEC can really
+ * roll (see eec-drops.mjs) plus 120 L of Liquid XP, and `metadata.eec` keeps
+ * what the app's machine math needs to replay weapons, Looting, infernals,
+ * the ritual and the void switch. Several drops of one item share an output,
+ * its amount the expected count; `metadata.eec.outputs[i]` lists them.
+ */
+function normalizeMobDrops(domain) {
+  const mobs = domain?.mobs ?? [];
+  if (mobs.length === 0) {
+    return;
+  }
+  const unknown = unknownEecModifiers(mobs);
+  if (unknown.length > 0) {
+    console.warn(`EEC: chance modifiers with no rule, treated as gates: ${unknown.join(", ")}`);
+  }
+  const machine = domain.machine ?? {};
+  const playerOnlyModifier = finiteNumber(machine.playerOnlyDropsModifier) ?? 0.1;
+  const infernal = domain.infernal ?? {};
+  const infernalSettings = removeUndefined({
+    eliteRarity: finiteNumber(infernal.eliteRarity),
+    ultraRarity: finiteNumber(infernal.ultraRarity),
+    infernoRarity: finiteNumber(infernal.infernoRarity),
+    minEliteModifiers: finiteNumber(infernal.minEliteModifiers),
+    minUltraModifiers: finiteNumber(infernal.minUltraModifiers),
+    minInfernoModifiers: finiteNumber(infernal.minInfernoModifiers),
+    mobModHealthFactor: finiteNumber(infernal.mobModHealthFactor),
+  });
+  const spawnerIcon = resourceAmount(machine.spawner, { consumed: false });
+  const experience = resourceAmount(machine.experience ?? { kind: "fluid", id: "xpjuice", amount: 120 });
+  recipeMaps.add(EEC_MACHINE_TYPE);
+  setRecipeMapIcon(EEC_MACHINE_TYPE, machine.controller);
+
+  for (const mob of mobs) {
+    const key = text(mob.key, "");
+    if (!key) continue;
+    const name = text(mob.displayName, key);
+    const groups = new Map();
+    const gated = [];
+    for (const drop of mob.drops ?? []) {
+      const resource = resourceAmount(drop.resource);
+      if (!resource) continue;
+      const c0 = eecDropChance(drop, { looting: 0, playerOnlyModifier });
+      const cL = eecDropChance(drop, { looting: 1, playerOnlyModifier });
+      if (c0 === 0 && cL === 0) {
+        gated.push(resource.displayName);
+        continue;
+      }
+      const entry = {
+        amount: positiveInt(drop.resource?.amount, 1),
+        c0,
+        ...(cL !== c0 ? { cL } : {}),
+        ...(drop.lootable ? { lootable: true } : {}),
+        // What the EEC's "void damaged and enchanted" switch throws away.
+        ...(drop.damages || drop.enchantable != null ? { voidable: true } : {}),
+      };
+      const group = groups.get(resource.id) ?? { resource, drops: [] };
+      group.drops.push(entry);
+      groups.set(resource.id, group);
+    }
+    // A mob whose every drop is gated still gives the EEC its Liquid XP.
+
+    const outputs = [];
+    const outputMeta = [];
+    for (const { resource, drops } of groups.values()) {
+      const expectedAt = (looting) =>
+        drops.reduce(
+          (sum, drop) =>
+            sum +
+            eecExpectedItems(drop.amount, looting > 0 ? (drop.cL ?? drop.c0) : drop.c0, drop.lootable, looting),
+          0,
+        );
+      // The static figure is what drops with no weapon, or with Looting I for
+      // a drop that only a Looting weapon makes (Forbidden Magic greed shards).
+      const refLooting = expectedAt(0) > 0 ? 0 : 1;
+      const single = drops.length === 1 && refLooting === 0;
+      outputs.push({
+        ...resource,
+        amount: single ? drops[0].amount : roundExpected(expectedAt(refLooting)),
+        chance: single && drops[0].c0 < 10000 ? drops[0].c0 / 10000 : undefined,
+      });
+      outputMeta.push({ ...(refLooting ? { refLooting } : {}), drops });
+    }
+    if (experience) {
+      outputs.push({ ...experience, amount: 120 });
+      outputMeta.push({ xp: true });
+    }
+
+    const alwaysInfernal = mob.alwaysInfernal === true;
+    const baseEut = positiveInt(mob.eut, 1920);
+    const eut = alwaysInfernal ? baseEut * 8 : baseEut;
+    const health = finiteNumber(mob.maxEntityHealth) ?? 20;
+    const spawner = removeUndefined({
+      kind: "item",
+      id: `factoryflow:eec_mob:${slug(key)}`,
+      amount: 1,
+      // The mob first: a card's input row has room for two short lines, and
+      // this name is the only place on the card that says which mob it runs.
+      displayName: `${name} Spawner`,
+      iconPath: spawnerIcon?.iconPath,
+      dominantColor: spawnerIcon?.dominantColor,
+      modId: "EnderIO",
+      tooltip: [
+        `Powered Spawner holding a ${name}`,
+        "Goes in the Extreme Entity Crusher's controller slot",
+        `Health: ${health}`,
+      ],
+      consumed: false,
+    });
+    addRecipe({
+      id: recipeId("kubatech-eec", key),
+      name: `${EEC_MACHINE_TYPE}: ${name}`,
+      kind: "gregtech_machine",
+      category: "kubatech-eec",
+      machineType: EEC_MACHINE_TYPE,
+      minimumTier: GT_VOLTAGE_NAMES[voltageTierIndexForEuT(eut)],
+      durationTicks: positiveInt(mob.durationTicks, 55),
+      eut,
+      inputs: [spawner],
+      outputs: outputs.map(removeUndefined),
+      notes: gated.length
+        ? `Never drops in a plain EEC (needs an enchantment, weapon, dimension or other condition): ${[...new Set(gated)].join(", ")}.`
+        : undefined,
+      source: {
+        datasetVersionId,
+        recipeMap: EEC_MACHINE_TYPE,
+        exporter: "gtnh-oracle",
+        rawRecipeId: key,
+      },
+      metadata: {
+        eec: removeUndefined({
+          mob: key,
+          entityName: mob.entityName,
+          maxHealth: health,
+          alwaysInfernal: alwaysInfernal || undefined,
+          infernalityAllowed: mob.infernalityAllowed === false ? false : undefined,
+          peacefulAllowed: mob.isPeacefulAllowed === true || undefined,
+          baseEut,
+          spawnInterval: finiteNumber(machine.mobSpawnInterval),
+          spikesDamage: finiteNumber(machine.diamondSpikesDamage),
+          maxLooting: finiteNumber(machine.maxLootingLevel),
+          infernal: Object.keys(infernalSettings).length ? infernalSettings : undefined,
+          outputs: outputMeta,
+        }),
+      },
+    });
+  }
+}
+
+function roundExpected(value) {
+  return Math.round(value * 1e6) / 1e6;
+}
+
+/** The lowest GT tier whose voltage covers `eut`, the recipe's own draw. */
+function voltageTierIndexForEuT(eut) {
+  let index = 0;
+  while (index < GT_VOLTAGE_NAMES.length - 1 && 8 * 4 ** index < eut) index += 1;
+  return index;
 }
 
 function normalizeIc2Crops(domain) {

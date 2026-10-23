@@ -1,3 +1,6 @@
+import { normalizeProductionGroups } from "./production-groups";
+import { normalizeFullFarms } from "./full-farms";
+import { normalizeProjectHatchInputs } from "@/lib/solver/hatch-input";
 import type { FactoryProject } from "./types";
 import { energyHatchTypeExistsAtTier } from "@/lib/machines/energy-hatches";
 import { normalizeProjectFuelProfiles } from "./fuels";
@@ -6,31 +9,117 @@ import { dedupeEdgeWires } from "./edge-identity";
 import { isTrashRecipe } from "./trash";
 import { resynthesizePowerRecipes } from "@/lib/power/power-recipe";
 import { snapPositionToGrid, snapSizeUpToGrid } from "@/lib/board-grid";
+import { sectionNodeView, splitSectionHandleId } from "./shared-machine";
+import { repairWiredInputOverrides } from "./edge-input-overrides";
+import { openAsPlan, type PlanConversionNotice } from "@/lib/solver/plan/to-plan";
+import { convertLooseCellWires } from "./cell-wires";
 
 /**
  * Everything a project must go through on its way in, whether it arrives from
  * IndexedDB, a JSON import, an embedded plan image or the community hub.
- *
- * One funnel on purpose. These repairs were previously applied by whoever
- * remembered to call them, which is how a load path ends up quietly skipping a
- * migration — every caller now gets the full set by construction.
+ * One funnel on purpose, so no load path can skip a migration.
  */
-export function normalizeLoadedProject(project: FactoryProject): FactoryProject {
-  return snapProjectToGrid(
-    repairPocketReferences(
-      unpaintCustomRateCards(
-        releaseCustomRates(
-          dropDuplicateEdges(
-            dropCrossFormConnections(
-              migrateTrashCansToDrawers(
-                dropImpossibleEnergyHatchTypes(
-                  // Power cards rebuild their synthesized recipe from the
-                  // node's settings, so stored plans pick up corrected
-                  // generator math. BEFORE the wire checks: a power recipe
-                  // saved slotless would otherwise read as a card with no
-                  // fluid slot and lose its fuel wire to the cross-form drop.
-                  resynthesizePowerRecipes(
-                    normalizeProjectFuelProfiles(renameOpvTier(adoptSetupRules(project))),
+export function normalizeLoadedProject(
+  project: FactoryProject,
+  options?: LoadOptions,
+): FactoryProject {
+  return normalizeLoadedProjectWithNotice(project, options).project;
+}
+
+/**
+ * `keepMode` skips the conversion to the one mode. Nothing in the app passes
+ * it; the old Build, Solve and Pool code stays in the tree and its tests load
+ * their plans this way.
+ */
+export interface LoadOptions {
+  keepMode?: boolean;
+}
+
+let legacyModes = false;
+
+/**
+ * Tests of the old Build, Solve and Pool code switch the conversion off for
+ * the whole test file (each file runs in its own module scope). The app never
+ * calls this.
+ */
+export function allowLegacyModesForTests(on = true): void {
+  legacyModes = on;
+}
+
+/**
+ * The funnel, plus what its last step had to say. There is one mode, so a
+ * Build, Solve or Pool plan comes out as a plan-mode project (`openAsPlan`)
+ * and the notice names what that could not carry over. Nothing is written
+ * anywhere: the converted plan is saved by the player's first edit.
+ */
+export function normalizeLoadedProjectWithNotice(
+  project: FactoryProject,
+  options?: LoadOptions,
+): {
+  project: FactoryProject;
+  notice?: PlanConversionNotice;
+} {
+  if (options?.keepMode ?? legacyModes) {
+    // Cell wires stay too: they turn into tanks where the plan lands, which says so.
+    return { project: normalizeLegacyProject(project) };
+  }
+  // Cell wires first, so the legacy passes and the mode conversion see ordinary wires (a buffer beside one stays a
+  // buffer). A pool plan's cell and fluid pairs get their tanks in its own conversion (`wirePoolProject`).
+  const wired = convertLooseCellWires(project);
+  const opened = openAsPlan(normalizeLegacyProject(wired.project));
+  return { project: opened.project, notice: withCellWireNotice(opened.notice, wired.converted) };
+}
+
+/**
+ * A plan already in the one mode whose loose cell wires became tanks (a live plan landing through `applyLiveOps`),
+ * with the notice. The same object and no notice when it has none.
+ */
+export function convertCellWiresWithNotice(project: FactoryProject): {
+  project: FactoryProject;
+  notice?: PlanConversionNotice;
+} {
+  const cells = convertLooseCellWires(project);
+  return { project: cells.project, notice: withCellWireNotice(undefined, cells.converted) };
+}
+
+/** What the tanks a landing put in say: a line of their own, or one more line under a mode conversion's. */
+function withCellWireNotice(
+  notice: PlanConversionNotice | undefined,
+  tanks: number,
+): PlanConversionNotice | undefined {
+  if (tanks === 0) {
+    return notice;
+  }
+  const line =
+    tanks === 1 ? "1 cell wire now goes through a fluid tank." : `${tanks} cell wires now go through fluid tanks.`;
+  if (notice) {
+    return { ...notice, details: [...notice.details, line] };
+  }
+  return { origin: "plan", text: line, details: ["Cells no longer wire straight into fluid slots."] };
+}
+
+function normalizeLegacyProject(project: FactoryProject): FactoryProject {
+  project = normalizeProductionGroups(project);
+  project = repairWiredInputOverrides(project);
+  return normalizeProjectHatchInputs(
+    snapProjectToGrid(
+      repairPocketReferences(
+        unpaintCustomRateCards(
+          releaseCustomRates(
+            dropDuplicateEdges(
+              dropCrossFormConnections(
+                migrateTrashCansToDrawers(
+                  dropImpossibleEnergyHatchTypes(
+                    // Power cards rebuild their synthesized recipe from the
+                    // node's settings, so stored plans pick up current
+                    // generator math. Must run BEFORE the wire checks: a power
+                    // recipe saved slotless would read as a card with no fluid
+                    // slot and lose its fuel wire to the cross-form drop.
+                    resynthesizePowerRecipes(
+                      normalizeProjectFuelProfiles(
+                        normalizeFullFarms(renameOpvTier(adoptSetupRules(requirePlanForSolve(requireSolveForPool(project))))),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -39,18 +128,16 @@ export function normalizeLoadedProject(project: FactoryProject): FactoryProject 
         ),
       ),
     ),
+    true,
   );
 }
 
 /**
- * The trash can NODE became the trash position on a drawer's drain pill
- * (2026-08-23), so old plans convert on the way in: every wire into a can
- * becomes a wire into a trash-mode drawer of that wire's own resource, one
- * drawer per resource (a can drank anything; a drawer holds one thing).
- * Display fields come from the feeding recipe's own output slot, so the
- * drawer wears the real icon. Cans with no wires did nothing and are
- * dropped, along with the placeholder recipes. Deterministic ids keep the
- * migration idempotent and stable across reloads.
+ * Legacy trash can NODES convert to trash-mode drawers: every wire into a can
+ * becomes a wire into a trash drawer of that wire's own resource, one drawer
+ * per resource (a can drank anything; a drawer holds one thing). Display
+ * fields come from the feeding recipe's output slot. Unwired cans and the
+ * placeholder recipes are dropped. Deterministic ids keep this idempotent.
  */
 function migrateTrashCansToDrawers(project: FactoryProject): FactoryProject {
   const trashRecipeIds = new Set(
@@ -148,29 +235,22 @@ function dropImpossibleEnergyHatchTypes(project: FactoryProject): FactoryProject
 }
 
 /**
- * Sketch mode was both board rules at once - every bare input fed, every bare
- * output exported - so a plan saved under it opens with both on. The old flag
- * is dropped here rather than kept in step, because the rules are now the only
- * thing the solve reads and two fields saying the same thing drift.
+ * Drops the legacy `setupRules` and sketch-mode `assumeBoundaries` fields so
+ * nothing carries them forward. The board's modes replace them, and
+ * `getSetupRules` answers the same for every plan regardless.
  */
 function adoptSetupRules(project: FactoryProject): FactoryProject {
-  if (project.assumeBoundaries === undefined) {
+  if (project.assumeBoundaries === undefined && project.setupRules === undefined) {
     return project;
   }
-  const { assumeBoundaries, ...rest } = project;
-  return {
-    ...rest,
-    setupRules: assumeBoundaries
-      ? { freeInputs: true, freeOutputs: true }
-      : (project.setupRules ?? undefined),
-  };
+  const { assumeBoundaries: _legacy, setupRules: _rules, ...rest } = project;
+  return rest;
 }
 
 /**
- * The 536M EU/t tier spent a while misnamed "OpV" (a GTCEu name; GTNH calls it
- * UXV). Plans saved back then still say it on their cards, and a name nothing
- * recognises would drop those machines to their recipe's default voltage and
- * desync every tier dropdown. Same voltage, today's name.
+ * Legacy plans may name the 536M EU/t tier "OpV" (a GTCEu name; GTNH calls it
+ * UXV). An unrecognised name would drop those machines to their recipe's
+ * default voltage and desync every tier dropdown, so it is renamed.
  */
 function renameOpvTier(project: FactoryProject): FactoryProject {
   let changed = false;
@@ -188,11 +268,9 @@ function renameOpvTier(project: FactoryProject): FactoryProject {
  * Drops wires that another wire on the board already draws.
  *
  * A card shows one port row per resource per side, so two wires between the
- * same two rows carrying the same resource are one line drawn twice: they sit on
- * the same pixels and split the rate between them, so each pill reads half of
- * what is really moving. Boards collected them because a hand-drawn wire and an
- * auto-connected one spelled the same port differently - one with the recipe's
- * slot index, one without - and nothing recognised the pair as the same wire.
+ * same two rows carrying the same resource are one line drawn twice, splitting
+ * the rate between them. Duplicates arise when two wires spell the same port
+ * differently (with and without the recipe's slot index).
  */
 function dropDuplicateEdges(project: FactoryProject): FactoryProject {
   const edges = dedupeEdgeWires(project.edges);
@@ -200,13 +278,10 @@ function dropDuplicateEdges(project: FactoryProject): FactoryProject {
 }
 
 /**
- * Custom rate cards shipped for one version painted with the palette's `blue`,
- * whose panel is pale enough to put the card's light ink on a light face. They
- * now wear the app's own deep blue, which is not a paint tag at all, so the
- * cards made in that version have their tag cleared and pick the new face up.
- *
- * Only exactly that tag on exactly those cards: a card painted any other
- * colour was painted on purpose and keeps it.
+ * Legacy custom rate cards may carry the palette's `blue` tag, whose pale
+ * panel puts the card's light ink on a light face; clearing it lets them wear
+ * their own deep blue. Only that exact tag on those cards is cleared: any
+ * other colour was painted on purpose.
  */
 function unpaintCustomRateCards(project: FactoryProject): FactoryProject {
   const customRecipeIds = new Set(
@@ -229,16 +304,11 @@ function unpaintCustomRateCards(project: FactoryProject): FactoryProject {
 }
 
 /**
- * Plans made while a filled cell could satisfy a fluid slot carry wires and
- * slot overrides that cross the two forms. Those connections no longer exist:
- * an item feeds an item slot and a fluid a fluid slot, and crossing the two
- * takes a Canner on the board like it does in game.
- *
- * The wire is dropped rather than quietly left carrying nothing, so the chain
- * reads as short by exactly the amount the missing Canner would carry, and the
- * gap is where to put one. Overrides that renamed a slot into the other form go
- * with them — they also held an amount converted at a guessed 1000 L per cell,
- * so leaving them behind would keep that guess in the numbers.
+ * Drops legacy wires and slot overrides that cross item and fluid forms: an
+ * item feeds an item slot and a fluid a fluid slot, and crossing the two takes
+ * a Canner (or Tank) on the board, as in game. The wire is dropped so the
+ * chain reads short where the Canner belongs. Cross-form overrides go too:
+ * their amounts were converted at a guessed 1000 L per cell.
  */
 function dropCrossFormConnections(project: FactoryProject): FactoryProject {
   const recipesById = new Map(project.recipes.map((recipe) => [recipe.id, recipe]));
@@ -269,32 +339,36 @@ function dropCrossFormConnections(project: FactoryProject): FactoryProject {
     return { ...node, recipeInputOverrides: kept };
   });
 
-  // A drawer created from a cell slot was stored as the FLUID, so its wire and
-  // the card itself are both in the wrong form. The wire goes; the drawer stays
-  // and is simply a tank of that fluid with nothing feeding it.
+  // A legacy drawer created from a cell slot was stored as the FLUID: its wire
+  // goes, the drawer stays as an unfed tank of that fluid.
   //
   // Only the KIND is compared, never the id. A slot legitimately carries an id
-  // the edge does not — an ore dictionary slot fed a concrete item, a slot with
-  // a chosen alternative — and dropping those would delete honest wires. What
-  // cannot happen is a card with no fluid slot at all on the end of a fluid
-  // wire, and that is exactly the shape cross-form connections left behind.
+  // the edge does not (an ore dictionary slot fed a concrete item, a chosen
+  // alternative), and matching ids would delete honest wires. A card with no
+  // slot of the wire's kind is exactly the shape cross-form wires left behind.
   const storagesById = new Map((project.storages ?? []).map((storage) => [storage.id, storage]));
-  const endpointHandles = (id: string, side: "source" | "target", kind: string): boolean => {
+  const endpointHandles = (
+    id: string,
+    side: "source" | "target",
+    kind: string,
+    handleId: string | undefined,
+  ): boolean => {
     const storage = storagesById.get(id);
     if (storage) {
       return storage.kind === kind;
     }
-    const node = project.nodes.find((entry) => entry.id === id);
+    // The wire's handle names which recipe of a shared machine it lands on;
+    // that section's slots are the ones to ask.
+    const card = project.nodes.find((entry) => entry.id === id);
+    const node = card ? sectionNodeView(card, splitSectionHandleId(handleId).section) : undefined;
     const recipe = node ? recipesById.get(node.recipeId) : undefined;
     if (!recipe) {
       // A pocket card, or a recipe this plan does not carry. Not ours to judge.
       return true;
     }
-    // A TRASH CAN has no slots at all and swallows anything wired to it. Its
-    // emptiness is what it IS, not evidence of a broken wire - and asking an
-    // empty slot list whether it holds a slot of some kind always answers no,
-    // so this check used to delete every wire into a can on load. Somebody
-    // would pipe an output into the void, save, reload, and find the line gone.
+    // A TRASH CAN has no slots and swallows anything wired to it; its empty
+    // slot list is not evidence of a broken wire, and must not fail the
+    // check below (that would delete every wire into a can on load).
     if (isTrashRecipe(recipe)) {
       return true;
     }
@@ -304,13 +378,12 @@ function dropCrossFormConnections(project: FactoryProject): FactoryProject {
 
   const edges = project.edges.filter(
     (edge) =>
-      // A LOOSE CELL WIRE crosses the forms ON PURPOSE (SetupRules.
-      // looseCellWires): its resource is one form, its target slot the
-      // other, and its stored Canner ratio is fetched, never guessed. The
-      // legacy shape this pass hunts had no such field.
+      // A LOOSE CELL WIRE crosses the forms on purpose and carries its Canner
+      // ratio: it becomes a tank where the plan lands (cell-wires.ts), so it
+      // passes here. The legacy shape this pass hunts has no `crossForm`.
       edge.crossForm !== undefined ||
-      (endpointHandles(edge.source, "source", edge.resourceKind) &&
-        endpointHandles(edge.target, "target", edge.resourceKind)),
+      (endpointHandles(edge.source, "source", edge.resourceKind, edge.sourceHandle) &&
+        endpointHandles(edge.target, "target", edge.resourceKind, edge.targetHandle)),
   );
 
   if (!nodesChanged && edges.length === project.edges.length) {
@@ -320,10 +393,9 @@ function dropCrossFormConnections(project: FactoryProject): FactoryProject {
 }
 
 /**
- * A card pointing at a pocket that no longer exists would vanish from every
- * view — not on the root board, not inside any pocket. Dangling `pocketId`s
- * are cleared (the card surfaces on the root board), and a pocket whose
- * parent is missing or cyclic is re-rooted for the same reason.
+ * A card pointing at a missing board (pocket) would vanish from every view.
+ * Dangling `pocketId`s are cleared (the card surfaces on the root board), and
+ * a board whose parent is missing or cyclic is re-rooted for the same reason.
  */
 function repairPocketReferences(project: FactoryProject): FactoryProject {
   const pockets = project.pockets ?? [];
@@ -368,11 +440,8 @@ function repairPocketReferences(project: FactoryProject): FactoryProject {
 }
 
 /**
- * Every plan made before the board had a grid arrives with positions at
- * arbitrary pixels. There is no "unsnapped" board any more, so rather than
- * leave old plans looking ragged next to new ones, they land on the grid the
- * first time they are opened — and stay there, since the load is what the next
- * autosave writes back.
+ * The board is always gridded, so legacy plans with positions at arbitrary
+ * pixels land on the grid when opened (and the next autosave keeps them there).
  */
 function snapProjectToGrid(project: FactoryProject): FactoryProject {
   return {
@@ -411,4 +480,28 @@ function snapProjectToGrid(project: FactoryProject): FactoryProject {
         : undefined),
     })),
   };
+}
+
+/**
+ * Pool mode implies solve mode: a plan that says pool without solve (hand-
+ * edited or legacy) opens with solve mode on, as the store keeps them.
+ */
+function requireSolveForPool(project: FactoryProject): FactoryProject {
+  if (project.poolMode && !project.solveMode) {
+    return { ...project, solveMode: true };
+  }
+  return project;
+}
+
+/**
+ * Plan mode implies solve mode and excludes pool mode: a plan that says plan
+ * without solve (hand-edited, or written by a build that dropped a key) opens
+ * with solve mode on, and a pool flag beside it is dropped. Always writing
+ * both flags is also what lets an older build open a plan-mode design as Solve.
+ */
+export function requirePlanForSolve(project: FactoryProject): FactoryProject {
+  if (project.planMode && (!project.solveMode || project.poolMode)) {
+    return { ...project, solveMode: true, poolMode: undefined };
+  }
+  return project;
 }

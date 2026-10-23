@@ -1,9 +1,12 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { normalizeLoadedProject } from "@/lib/model/project-normalize";
 import { PROJECT_SCHEMA_VERSION, type FactoryProject, type FactoryStorage } from "@/lib/model/types";
 import { calculateThroughput } from "@/lib/solver/throughput";
 import { findDeathSpirals } from "./death-spiral";
 import { describeClogLock, describeClogLockForNode, findClogLocks } from "./clog-lock";
 import { deriveNodeVerdict } from "./node-verdict";
+import { sectionNodeId } from "@/lib/model/shared-machine";
 
 /**
  * The clog lock's exam: the minimal board is two machines whose loop hands
@@ -286,5 +289,174 @@ describe("findClogLocks", () => {
     const proj = loopProject();
     const result = calculateThroughput(proj, { generatedAt: "fixed" });
     expect(findClogLocks(proj, result).locks).toHaveLength(1);
+  });
+});
+
+describe("a fed card held by its second output", () => {
+  it("reads clogged naming the slow taker, never bottleneck", () => {
+    // Jack's titanium line, 2026-09-05: a chemical reactor with both inputs
+    // on sources, magnesium wanted by a hungry blast furnace, salt going to
+    // an electrolyzer that is itself clogged on chlorine. The reactor sat at
+    // 63% saying BOTTLENECK, "more machines here would cover it" - but two
+    // more reactors would only make more salt nobody can take. Here: the
+    // splitter makes b and c together, b is over-asked, and c's only taker
+    // is itself clogged on f (its taker runs at half pace), so the splitter
+    // is held at 50%. The taker being CLOGGED rather than full is the point:
+    // the old diagnosis files its smaller ask as demand and stamps no clog.
+    const slowEat = { ...recipe("eat-f", [["f", 1]], [["g", 1]]), durationTicks: 40 };
+    const proj = project({
+      recipes: [
+        recipe("split", [["a", 1]], [["b", 1], ["c", 1]]),
+        recipe("eat-b", [["b", 2]], [["d", 1]]),
+        recipe("eat-c", [["c", 1]], [["f", 1]]),
+        slowEat,
+      ],
+      nodes: [
+        node("s", "split"),
+        node("hungry", "eat-b"),
+        node("mid", "eat-c"),
+        node("slow", "eat-f"),
+      ],
+      storages: [drawer("src", "a"), drawer("out-d", "d"), drawer("out-g", "g")],
+      edges: [
+        wire("src", "s", "a"),
+        wire("s", "hungry", "b"),
+        wire("s", "mid", "c"),
+        wire("mid", "slow", "f"),
+        wire("hungry", "out-d", "d"),
+        wire("slow", "out-g", "g"),
+      ],
+    });
+    const result = calculateThroughput(proj, { generatedAt: "fixed" });
+    expect(result.nodes["s"]!.utilization).toBeCloseTo(0.5, 3);
+    expect(result.nodes["mid"]!.utilization).toBeCloseTo(0.5, 3);
+
+    const splitter = deriveNodeVerdict(proj, result, "s");
+    expect(splitter.kind).toBe("clogged");
+    expect(splitter.clog?.resourceKey).toBe("item:c");
+    expect(splitter.clog?.heldTakerName).toBe("Lab Machine");
+    expect(splitter.clog?.heldTakerPct).toBe(50);
+    expect(splitter.clog?.surplusPerSecond).toBeGreaterThan(0);
+    // The hungry ask is still on the books for anyone reading the deficit.
+    expect(splitter.deficit?.resourceKey).toBe("item:b");
+    // Its neighbours keep their own honest words.
+    expect(deriveNodeVerdict(proj, result, "mid").kind).toBe("demand-set");
+    expect(deriveNodeVerdict(proj, result, "slow").kind).toBe("balanced");
+    expect(deriveNodeVerdict(proj, result, "hungry").kind).toBe("starved");
+  });
+
+  it("stays bottleneck when the second output has a drawer to spill into", () => {
+    // Same board with c also draining to a byproduct drawer: the splitter can
+    // ramp, so the hungry taker's ask is this card's to answer.
+    const slowEat = { ...recipe("eat-f", [["f", 1]], [["g", 1]]), durationTicks: 40 };
+    const proj = project({
+      recipes: [
+        recipe("split", [["a", 1]], [["b", 1], ["c", 1]]),
+        recipe("eat-b", [["b", 2]], [["d", 1]]),
+        recipe("eat-c", [["c", 1]], [["f", 1]]),
+        slowEat,
+      ],
+      nodes: [
+        node("s", "split"),
+        node("hungry", "eat-b"),
+        node("mid", "eat-c"),
+        node("slow", "eat-f"),
+      ],
+      storages: [
+        drawer("src", "a"),
+        drawer("out-d", "d"),
+        drawer("out-g", "g"),
+        drawer("spill-c", "c", { drainMode: "byproduct" }),
+      ],
+      edges: [
+        wire("src", "s", "a"),
+        wire("s", "hungry", "b"),
+        wire("s", "mid", "c"),
+        wire("s", "spill-c", "c"),
+        wire("mid", "slow", "f"),
+        wire("hungry", "out-d", "d"),
+        wire("slow", "out-g", "g"),
+      ],
+    });
+    const result = calculateThroughput(proj, { generatedAt: "fixed" });
+    expect(result.nodes["s"]!.utilization).toBeCloseTo(1, 3);
+    expect(deriveNodeVerdict(proj, result, "s").kind).toBe("bottleneck");
+  });
+
+  it("names the electrolyzer on the titanium line's chemical reactor", () => {
+    // The board that found this, slimmed to its recipes, cards and wires.
+    // The reactor's salt goes to an electrolyzer clogged on chlorine, and
+    // the old diagnosis filed the electrolyzer's smaller ask as demand, so
+    // clogOutputKey stayed empty and the reactor fell through to BOTTLENECK.
+    const proj = normalizeLoadedProject(
+      JSON.parse(
+        readFileSync(new URL("./__fixtures__/titanium-line-chembath.json", import.meta.url), "utf8"),
+      ),
+      { keepMode: true },
+    );
+    const result = calculateThroughput(proj, { generatedAt: "fixed" });
+    const reactor = "node-d4b08d48-73d7-436b-8690-ff146be3af9c";
+    expect(result.nodes[reactor]!.utilization).toBeCloseTo(0.635, 2);
+    expect(result.nodes[reactor]!.clogOutputKey).toBeUndefined();
+
+    const verdict = deriveNodeVerdict(proj, result, reactor);
+    expect(verdict.kind).toBe("clogged");
+    expect(verdict.clog?.displayName).toBe("Salt");
+    expect(verdict.clog?.heldTakerName).toBe("Electrolyzer");
+    expect(verdict.clog?.heldTakerPct).toBe(50.8);
+    expect(verdict.deficit?.displayName).toBe("Magnesium Dust");
+
+    // The blast furnace follows the same chain one step up: held by its
+    // magnesium chloride, which only the reactor takes.
+    const furnace = deriveNodeVerdict(proj, result, "node-b02b49ee-f858-4317-b918-df16f0e7ede6");
+    expect(furnace.kind).toBe("clogged");
+    expect(furnace.clog?.heldTakerName).toBe("Chemical Reactor");
+  });
+
+  it("reads a heater feeding a held reactor as on demand, not bottleneck", () => {
+    // Ktz's alumina line (2026-09-24), slimmed to its recipes. A fluid heater
+    // feeds a shared Large Chemical Reactor whose alumina recipe sends its
+    // bauxite slag only to a centrifuge, and that centrifuge's rutile goes to
+    // a titanium loop already at 100%. The reactor asked for slurry at full
+    // speed, so the heater at 12% read BOTTLENECK, though nothing more it
+    // made could be taken. Its solver disposal reads 1: only the verdict's
+    // own held-output reading sees the jam.
+    const proj = normalizeLoadedProject(
+      JSON.parse(
+        readFileSync(new URL("./__fixtures__/alumina-line-shared-reactor.json", import.meta.url), "utf8"),
+      ),
+      { keepMode: true },
+    );
+    const result = calculateThroughput(proj, { generatedAt: "fixed" });
+    const reactor = "node-5f49041d-0bc1-4ef6-8cea-ad435b3d2add";
+    const heater = "node-5471e65a-7c22-4ee4-97d6-5eadf1905f2c";
+    expect(result.nodes[reactor]!.disposalUtilization).toBe(1);
+
+    const heaterVerdict = deriveNodeVerdict(proj, result, heater);
+    expect(heaterVerdict.kind).toBe("demand-set");
+    expect(heaterVerdict.deficit).toBeUndefined();
+
+    // The trail still leads down the line: the alumina recipe is held by
+    // its slag, the centrifuge's rutile recipe by the titanium loop.
+    const alumina = deriveNodeVerdict(proj, result, reactor);
+    expect(alumina.kind).toBe("clogged");
+    expect(alumina.clog?.displayName).toBe("Bauxite Slag Dust");
+    expect(alumina.clog?.heldTakerName).toBe("Multiblock Centrifuge");
+    const rutile = deriveNodeVerdict(
+      proj,
+      result,
+      sectionNodeId("node-8915c305-f438-4a7f-ac1e-a9a44bac0d53", 1),
+    );
+    expect(rutile.kind).toBe("clogged");
+    expect(rutile.clog?.displayName).toBe("Rutile Dust");
+    expect(rutile.clog?.heldTakerPct).toBe(100);
+
+    // A recipe held by another recipe on the same card names that recipe,
+    // not the machine: "Large Chemical Reactor limits Carbon Dioxide
+    // output" on a reactor read as the machine clogging itself.
+    const quicklime = deriveNodeVerdict(proj, result, sectionNodeId(reactor, 1));
+    expect(quicklime.kind).toBe("clogged");
+    expect(quicklime.clog?.displayName).toBe("Carbon Dioxide");
+    expect(quicklime.clog?.heldTakerName).toBe("The Alumina Dust recipe on this machine");
   });
 });

@@ -14,10 +14,13 @@ import {
   writeDesignSummary,
 } from "@/lib/designs/design-storage";
 import { parseFactoryProjectJson } from "@/lib/import-export";
+import { withoutRuntimeTables } from "@/lib/import-export/plan-code";
 import { useCommunityAuthStore } from "@/store/community-auth-store";
 import { useDesignStore } from "@/store/design-store";
+import { isDesignOpenLive, markDesignFresh } from "@/store/live-edit-gate";
+import { isLiveConfigured } from "@/lib/live/live-config";
+import { forgetRemoteLibrary, noteRemoteLibrary } from "./cloud-library";
 import {
-  LibrarySyncUnavailable,
   deleteRemoteDesign,
   deleteRemoteFolder,
   fetchRemoteDesignPlan,
@@ -30,7 +33,12 @@ import {
   readPendingDeletes,
   subscribeToLibraryDeletions,
 } from "./library-deletes";
-import type { RemoteDesignMeta, RemoteFolder } from "./sync-types";
+import {
+  LIBRARY_DESIGN_NAME_MAX_LENGTH,
+  type LibraryListResponse,
+  type RemoteDesignMeta,
+  type RemoteFolder,
+} from "./sync-types";
 
 /**
  * Keeps the browser's library and the account's copy the same.
@@ -50,18 +58,40 @@ import type { RemoteDesignMeta, RemoteFolder } from "./sync-types";
  *   costs one small row.
  *
  * WHEN: on sign-in, on load, when the tab comes back to the front, every
- * half minute, and a few seconds after any change to the library (which is
- * how autosave reaches the account). One run at a time; a request during a
- * run queues one more.
+ * half minute while the tab is in view, and a few seconds after library
+ * changes stop (how autosave reaches the account; at most half a minute
+ * behind during nonstop editing, at once when the tab is hidden). One run at
+ * a time; a request during a run queues one more.
  *
- * WHEN NOT: signed out, or the account's tables are not there yet. Then the
- * status says so and the library is this browser's, exactly as before.
+ * WHEN NOT: signed out. Database and network failures stay visible and retry
+ * on the next poll, focus or connection recovery. A design the account
+ * REFUSED (too large, not valid, library full) is not sent again until it
+ * changes.
+ *
+ * WHY SO CAREFUL: every push rewrites the WHOLE plan on a small Supabase
+ * instance. Pushing after every autosave, or resending refused plans on
+ * every poll, is enough load to stall the database.
+ *
+ * IN THE ACCOUNT FROM THE START: with live plans configured and someone signed in, a design that appears here (new,
+ * imported, pasted, a library copy) is created in the account at once, empty or not, rather than after the quiet
+ * period: the live plan joins as soon as the row exists, and Share with people never waits on a save.
+ *
+ * LIVE PLANS (live-session.ts): a design open live, in this tab or another
+ * (`isDesignOpenLive`), is the live service's to write. Its plan body is
+ * never pushed (its metadata still is), and a pull of it moves only its
+ * metadata: the canvas follows the live plan, not the account copy. A push the
+ * account answers with 409 `{ live: true }` (open live somewhere else) is
+ * sent again without the plan: not an error, not a conflict. Copies of plans
+ * shared with this account (`cloud`) are never synced as ours; the account
+ * lists them under `shared`, and a copy whose plan is no longer shared goes.
  */
 
 export interface LibrarySyncStatus {
-  state: "off" | "idle" | "syncing" | "error";
+  state: "off" | "pending" | "idle" | "syncing" | "error";
   /** Why it is off, or what failed. */
   message?: string;
+  /** The error is a design the account refused: it waits for an edit, not a retry. */
+  refused?: boolean;
   lastSyncedAt?: string;
   /** Set after a pull replaced the plan that was on the canvas. */
   reloadedActiveAt?: string;
@@ -69,8 +99,18 @@ export interface LibrarySyncStatus {
 
 export const useLibrarySyncStore = create<LibrarySyncStatus>(() => ({ state: "off" }));
 
-const PUSH_DEBOUNCE_MS = 4000;
-const POLL_MS = 30000;
+const PUSH_DEBOUNCE_MS = 5000;
+const PUSH_MAX_WAIT_MS = 30000;
+/**
+ * Every visible tab asks for its library this often, and the database is
+ * small: at 30 s the polls alone were most of its traffic. Shared plans do
+ * not wait on this; the live service announces them.
+ */
+const POLL_MS = 120_000;
+/** After failed runs the poll waits 2, 4, then 8 times as long. */
+const POLL_BACKOFF_MAX = 8;
+/** Focusing the tab syncs at once, but not again within this. */
+const FOCUS_SYNC_GAP_MS = 30_000;
 
 /* ------------------------------------------------------------------ */
 /* The pure part. */
@@ -86,17 +126,11 @@ export type FolderAction =
   | { kind: "delete-local"; id: string }
   | { kind: "push"; id: string };
 
-type LocalDesign = Pick<
-  DesignSummary,
-  "id" | "updatedAt" | "metaUpdatedAt" | "remoteUpdatedAt"
->;
+type LocalDesign = Pick<DesignSummary, "id" | "updatedAt" | "metaUpdatedAt" | "remoteUpdatedAt">;
 
 const ts = (value: string | undefined): number => (value ? Date.parse(value) : 0);
 
-export function reconcileDesigns(
-  local: LocalDesign[],
-  remote: RemoteDesignMeta[],
-): DesignAction[] {
+export function reconcileDesigns(local: LocalDesign[], remote: RemoteDesignMeta[]): DesignAction[] {
   const actions: DesignAction[] = [];
   const localById = new Map(local.map((design) => [design.id, design]));
   const seen = new Set<string>();
@@ -188,12 +222,55 @@ export function reconcileFolders(local: LocalFolder[], remote: RemoteFolder[]): 
   return actions;
 }
 
+/**
+ * What counts as a change HERE, worth a push: a design or folder added,
+ * removed or restamped. Sync's own bookkeeping (the `remoteUpdatedAt` it
+ * stamps) is not in it, and neither is a relist that changed nothing, so a
+ * sync run can never schedule the next one by itself (an endless loop, e.g.
+ * around a refused design).
+ */
+export function libraryChangeSignature(
+  designs: Pick<DesignSummary, "id" | "updatedAt" | "metaUpdatedAt">[],
+  folders: Pick<DesignFolder, "id" | "createdAt" | "updatedAt">[],
+): string {
+  const rows = [
+    ...designs.map((design) => `d:${design.id}:${design.updatedAt}:${design.metaUpdatedAt ?? ""}`),
+    ...folders.map((folder) => `f:${folder.id}:${folder.updatedAt ?? folder.createdAt}`),
+  ];
+  return rows.sort().join("|");
+}
+
 /* ------------------------------------------------------------------ */
 /* Running it. */
 
 let running: Promise<void> | undefined;
 let runAgain = false;
+let lastRunAt = 0;
+let failedRuns = 0;
 let pushTimer: number | undefined;
+/** The latest moment a queued push may still wait until. */
+let pushDeadline: number | undefined;
+
+/**
+ * Designs the account refused, with the change stamp it refused. The same
+ * design unchanged is refused the same way, so it is held back until its
+ * stamp moves. In memory only: a reload tries once more.
+ */
+const refusedPushes = new Map<string, { stamp: string; message: string }>();
+
+/** The plan is open live elsewhere (409 `{ live: true }`, LibraryPlanLive): recognised by `live`, as above. */
+function isPlanLiveRefusal(error: unknown): boolean {
+  return error instanceof Error && (error as { live?: unknown }).live === true;
+}
+
+function isRefusal(error: unknown): error is Error {
+  return error instanceof Error && (error as { refused?: unknown }).refused === true;
+}
+
+/** The later of two ISO stamps. */
+function latestStamp(a: string | undefined, b: string): string {
+  return a && ts(a) > ts(b) ? a : b;
+}
 
 function setStatus(patch: Partial<LibrarySyncStatus>) {
   useLibrarySyncStore.setState(patch);
@@ -225,55 +302,114 @@ export function syncLibraryNow(): Promise<void> {
   return running;
 }
 
+/**
+ * Sync once changes have stopped for `delayMs`, but never later than
+ * PUSH_MAX_WAIT_MS after the first change, so nonstop editing still reaches
+ * the account without sending the whole plan after every autosave.
+ */
 function scheduleSync(delayMs = PUSH_DEBOUNCE_MS) {
   if (!isSignedIn()) {
     return;
   }
+  const now = Date.now();
+  pushDeadline ??= now + PUSH_MAX_WAIT_MS;
+  const fireAt = Math.min(now + delayMs, pushDeadline);
   if (pushTimer !== undefined) {
     window.clearTimeout(pushTimer);
   }
-  pushTimer = window.setTimeout(() => {
-    pushTimer = undefined;
-    void syncLibraryNow();
-  }, delayMs);
+  if (useLibrarySyncStore.getState().state !== "error") setStatus({ state: "pending" });
+  pushTimer = window.setTimeout(flushScheduledSync, Math.max(0, fireAt - now));
+}
+
+function flushScheduledSync() {
+  if (pushTimer !== undefined) {
+    window.clearTimeout(pushTimer);
+  }
+  pushTimer = undefined;
+  pushDeadline = undefined;
+  void syncLibraryNow();
 }
 
 async function runOnce(): Promise<void> {
-  if (useLibrarySyncStore.getState().state === "off" && useLibrarySyncStore.getState().message) {
-    // Off with a reason (tables missing): a sign-in or reload retries, a
-    // timer does not.
-    return;
-  }
+  lastRunAt = Date.now();
   setStatus({ state: "syncing" });
   try {
     await drainDeletions();
     const remote = await fetchRemoteLibrary();
-    const [designs, folders] = await Promise.all([listDesignSummaries(), listDesignFolders()]);
+    noteRemoteLibrary(remote);
+    const [summaries, folders] = await Promise.all([listDesignSummaries(), listDesignFolders()]);
+    const designs = summaries.filter((design) => !design.cloud);
+    const dropped = await dropUnsharedCopies(summaries, remote.shared);
     // Folders first, so a pulled design's folder exists when it lands.
     const folderActions = reconcileFolders(folders, remote.folders);
     for (const action of folderActions) {
       await applyFolderAction(action, folders);
     }
     const designActions = reconcileDesigns(designs, remote.designs);
-    let touched = folderActions.length > 0;
+    let touched = folderActions.length > 0 || dropped;
     for (const action of designActions) {
-      await applyDesignAction(action);
-      touched = true;
+      // A push held back or refused changed nothing here.
+      if (await applyDesignAction(action)) {
+        touched = true;
+      }
     }
     if (touched) {
       await useDesignStore.getState().refreshLibrary();
     }
-    setStatus({ state: "idle", message: undefined, lastSyncedAt: new Date().toISOString() });
+    // A refused design is still unsaved: say so rather than "saved".
+    const refusal = designActions
+      .map((action) => (action.kind === "push" ? refusedPushes.get(action.id) : undefined))
+      .find(Boolean);
+    if (refusal) {
+      setStatus({ state: "error", refused: true, message: refusal.message });
+      return;
+    }
+    setStatus({
+      state: "idle",
+      message: undefined,
+      refused: undefined,
+      lastSyncedAt: new Date().toISOString(),
+    });
+    failedRuns = 0;
   } catch (error) {
-    if (error instanceof LibrarySyncUnavailable) {
-      setStatus({ state: "off", message: error.message });
-    } else {
-      setStatus({
-        state: "error",
-        message: error instanceof Error ? error.message : "Sync failed.",
-      });
+    // A repaired schema, restored connection or renewed session must recover
+    // without requiring the player to reload a page holding unsaved work.
+    failedRuns += 1;
+    setStatus({
+      state: "error",
+      refused: undefined,
+      message: error instanceof Error ? error.message : "Sync failed.",
+    });
+  }
+}
+
+/**
+ * Copies of plans no longer shared with this account (unshared or deleted
+ * while this device was away) go. Only when the account named its shared
+ * plans: an older server without the list removes nothing.
+ */
+async function dropUnsharedCopies(
+  summaries: DesignSummary[],
+  shared: LibraryListResponse["shared"],
+): Promise<boolean> {
+  if (!Array.isArray(shared)) {
+    return false;
+  }
+  const still = new Set(shared.map((plan) => `${plan.ownerId}:${plan.id}`));
+  let dropped = false;
+  for (const design of summaries) {
+    if (design.cloud && !still.has(`${design.cloud.ownerId}:${design.cloud.designId}`)) {
+      const store = useDesignStore.getState();
+      if (design.id === store.activeDesignId) {
+        await store.removeDesign(design.id, { fromSync: true });
+      } else {
+        await deleteDesign(design.id);
+        forgetDesignCameras([design.id]);
+      }
+      dropped = true;
     }
   }
+  return dropped;
 }
 
 async function drainDeletions(): Promise<void> {
@@ -326,10 +462,15 @@ async function applyFolderAction(action: FolderAction, local: DesignFolder[]): P
   }
 }
 
-async function applyDesignAction(action: DesignAction): Promise<void> {
+/** Resolves to whether the local library changed. */
+async function applyDesignAction(action: DesignAction): Promise<boolean> {
   const store = useDesignStore.getState();
   switch (action.kind) {
     case "pull-plan": {
+      if (isDesignOpenLive(action.id)) {
+        // The canvas follows the live plan; only the metadata comes across.
+        return applyDesignAction({ kind: "pull-meta", id: action.id, remote: action.remote });
+      }
       const { design, plan } = await fetchRemoteDesignPlan(action.id);
       const project = parseFactoryProjectJson(JSON.stringify(plan));
       const existing = await readDesign(action.id);
@@ -345,12 +486,12 @@ async function applyDesignAction(action: DesignAction): Promise<void> {
       if (design.closed && action.id === store.activeDesignId) {
         await store.closeDesign(action.id);
       }
-      return;
+      return true;
     }
     case "pull-meta": {
       const existing = await readDesign(action.id);
       if (!existing) {
-        return;
+        return false;
       }
       const wasClosed = Boolean(existing.closed);
       await writeDesignSummary({
@@ -372,7 +513,7 @@ async function applyDesignAction(action: DesignAction): Promise<void> {
           await store.closeDesign(action.id);
         }
       }
-      return;
+      return true;
     }
     case "delete-local": {
       if (action.id === store.activeDesignId) {
@@ -381,30 +522,65 @@ async function applyDesignAction(action: DesignAction): Promise<void> {
         await deleteDesign(action.id);
         forgetDesignCameras([action.id]);
       }
-      return;
+      return true;
     }
     case "push": {
       const record = await readDesign(action.id);
       if (!record) {
-        return;
+        return false;
       }
-      const updatedAt = record.metaUpdatedAt ?? record.updatedAt;
-      const result = await pushRemoteDesign(record.id, {
-        name: record.name,
-        icon: record.icon ?? null,
-        folderId: record.folderId ?? null,
-        closed: Boolean(record.closed),
-        favorite: Boolean(record.favorite),
-        order: record.order ?? null,
-        communityPlanId: record.communityPlanId ?? null,
-        createdAt: record.createdAt,
-        updatedAt,
-        planUpdatedAt: record.updatedAt,
-        ...(action.withPlan ? { plan: record.project } : {}),
-      });
+      // The LATER of the two stamps, the same one `reconcileDesigns` calls
+      // the local change time. An older stamp than the edit would make the
+      // design read as unsaved on every poll and be pushed forever.
+      const updatedAt = latestStamp(record.metaUpdatedAt, record.updatedAt);
+      if (refusedPushes.get(record.id)?.stamp === updatedAt) {
+        return false;
+      }
+      let result: Awaited<ReturnType<typeof pushRemoteDesign>>;
+      // Open live (here or in another tab): the live service writes the plan.
+      const withPlan = action.withPlan && !isDesignOpenLive(record.id);
+      const push = (sendPlan: boolean) =>
+        pushRemoteDesign(record.id, {
+          // The account refuses longer names, so clip to its limit.
+          name: record.name.trim().slice(0, LIBRARY_DESIGN_NAME_MAX_LENGTH),
+          icon: record.icon ?? null,
+          folderId: record.folderId ?? null,
+          closed: Boolean(record.closed),
+          favorite: Boolean(record.favorite),
+          order: record.order ?? null,
+          communityPlanId: record.communityPlanId ?? null,
+          createdAt: record.createdAt,
+          updatedAt,
+          planUpdatedAt: record.updatedAt,
+          // Without the GregTech tables the dataset puts back on landing:
+          // about half the size, so big plans fit the cap and every push
+          // rewrites half as much of the account's row.
+          ...(sendPlan ? { plan: withoutRuntimeTables(record.project) } : {}),
+        });
+      try {
+        try {
+          result = await push(withPlan);
+        } catch (error) {
+          if (!withPlan || !isPlanLiveRefusal(error)) {
+            throw error;
+          }
+          // Open live on another device: not ours to push, the rest still goes.
+          result = await push(false);
+        }
+      } catch (error) {
+        if (!isRefusal(error)) {
+          throw error;
+        }
+        refusedPushes.set(record.id, {
+          stamp: updatedAt,
+          message: `"${record.name}" is not saved to your account: ${error.message}`,
+        });
+        return false;
+      }
+      refusedPushes.delete(record.id);
       if (result.behind) {
         runAgain = true;
-        return;
+        return false;
       }
       // Re-read before stamping: autosave may have written since.
       const fresh = await readDesign(record.id);
@@ -414,6 +590,7 @@ async function applyDesignAction(action: DesignAction): Promise<void> {
           remoteUpdatedAt: result.design.updatedAt,
         });
       }
+      return true;
     }
   }
 }
@@ -476,35 +653,75 @@ export function startLibrarySync(): () => void {
       pollTimer = undefined;
     }
     if (!user) {
-      setStatus({ state: "off", message: undefined });
+      setStatus({ state: "off", message: undefined, lastSyncedAt: undefined });
+      forgetRemoteLibrary();
       return;
     }
-    setStatus({ state: "idle", message: undefined });
+    setStatus({ state: "pending", message: undefined, lastSyncedAt: undefined });
     void syncLibraryNow();
-    pollTimer = window.setInterval(() => void syncLibraryNow(), POLL_MS);
+    // A tab in the background has nothing to show; coming back into view
+    // syncs at once (below), so it skips the poll meanwhile.
+    pollTimer = window.setInterval(() => {
+      const wait = POLL_MS * Math.min(POLL_BACKOFF_MAX, 2 ** failedRuns) - POLL_MS / 10;
+      if (document.visibilityState !== "hidden" && Date.now() - lastRunAt >= wait) {
+        void syncLibraryNow();
+      }
+    }, POLL_MS);
   };
   onUser();
   const unsubscribeAuth = useCommunityAuthStore.subscribe(onUser);
 
   // The library changed here: push a few seconds after the last change.
+  // A relist that changed nothing is not a change (libraryChangeSignature).
   let lastDesigns = useDesignStore.getState().designs;
   let lastFolders = useDesignStore.getState().folders;
+  let lastSignature = libraryChangeSignature(lastDesigns, lastFolders);
+  // Designs already sent for creation: a design is created once, however often it is edited before the row exists.
+  const creating = new Set<string>();
   const unsubscribeDesigns = useDesignStore.subscribe((state) => {
-    if (state.designs !== lastDesigns || state.folders !== lastFolders) {
-      lastDesigns = state.designs;
-      lastFolders = state.folders;
-      scheduleSync();
+    if (state.designs === lastDesigns && state.folders === lastFolders) {
+      return;
+    }
+    lastDesigns = state.designs;
+    lastFolders = state.folders;
+    const signature = libraryChangeSignature(state.designs, state.folders);
+    if (signature !== lastSignature) {
+      lastSignature = signature;
+      const fresh =
+        isLiveConfigured() && isSignedIn()
+          ? state.designs.filter(
+              (design) => !design.cloud && !design.remoteUpdatedAt && !creating.has(design.id),
+            )
+          : [];
+      if (fresh.length > 0) {
+        fresh.forEach((design) => {
+          creating.add(design.id);
+          markDesignFresh(design.id);
+        });
+        scheduleSync(0);
+      } else {
+        scheduleSync();
+      }
     }
   });
   const unsubscribeDeletes = subscribeToLibraryDeletions(() => scheduleSync(500));
 
   const onVisible = () => {
     if (document.visibilityState === "visible") {
-      void syncLibraryNow();
+      if (Date.now() - lastRunAt >= FOCUS_SYNC_GAP_MS) {
+        void syncLibraryNow();
+      }
+    } else if (pushTimer !== undefined) {
+      // Leaving the tab: send what is waiting rather than hold it back.
+      flushScheduledSync();
     }
   };
   document.addEventListener("visibilitychange", onVisible);
   window.addEventListener("focus", onVisible);
+  const onOnline = () => {
+    void syncLibraryNow();
+  };
+  window.addEventListener("online", onOnline);
 
   return () => {
     unsubscribeAuth();
@@ -512,6 +729,7 @@ export function startLibrarySync(): () => void {
     unsubscribeDeletes();
     document.removeEventListener("visibilitychange", onVisible);
     window.removeEventListener("focus", onVisible);
+    window.removeEventListener("online", onOnline);
     if (pollTimer !== undefined) {
       window.clearInterval(pollTimer);
     }
@@ -519,5 +737,6 @@ export function startLibrarySync(): () => void {
       window.clearTimeout(pushTimer);
       pushTimer = undefined;
     }
+    pushDeadline = undefined;
   };
 }

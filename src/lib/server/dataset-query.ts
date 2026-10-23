@@ -21,6 +21,7 @@ import {
   AUTO_WORKBENCH_HANDLER_ID,
   CROP_HARVESTER_INDUSTRIAL_FARM_ID,
   CROP_HARVESTER_MANAGER_ID,
+  CROP_MANAGER_ITEM_NAMES,
   enrichPassiveProductionRecipe,
   getFilledCellFluidEquivalent,
   isFluidEquivalentToFilledCell,
@@ -35,6 +36,7 @@ import {
   machineModelVersionForGtnhVersion,
   machineTableControlResourceIds,
 } from "@/lib/machines/machine-table";
+import { EEC_MACHINE_TYPE } from "@/lib/machines/extreme-entity-crusher";
 import { pickRecipeRefMatch, type RecipeContentRef } from "@/lib/import-export/recipe-ref-match";
 import {
   MAX_RECIPE_QUERY_CLAUSES,
@@ -186,12 +188,9 @@ interface RecipeShardPayload {
 const CROP_FARM_RECIPE_MAP = "Crop Farm";
 
 /**
- * The recipe maps that are things growing rather than machines running.
- *
- * A crop farm is a real way to get an item, so it belongs in the recipe book
- * next to the machines that make the same thing: looking up Oak Log should show
- * that a crop can grow one. These sets are also what the "grown" and "bees"
- * filters in the item list mean.
+ * The recipe maps that are things growing rather than machines running. They
+ * appear in the recipe book like any machine, and define the item list's
+ * "grown" and "bees" filters.
  */
 const PLANT_RECIPE_MAPS = new Set([CROP_FARM_RECIPE_MAP, "IC2 Crop", "Tree Growth Simulator"]);
 const BEE_RECIPE_MAPS = new Set(["Bee Produce"]);
@@ -234,36 +233,88 @@ export async function getDatasetCatalog(versionId: string) {
 }
 
 /**
- * Handlers synthesized client-side (the Auto Workbench for the crafting maps
- * in recipe-rules.ts, the two crop harvesters in passive-production.ts) never
- * had an exported handler family mint their icon. Each machine is a real
- * dataset item; hand its lowest-tier face to the synthesized family here so
- * their cards draw a machine chip like everything else. Names are candidates
- * in order because datasets disagree (2.8.4 says "Crop Manager (LV)" and has
- * no Industrial Farm); a family with no match simply keeps its letter chip.
+ * Handlers synthesized client-side (the Auto Workbench in recipe-rules.ts, the
+ * two crop harvesters in passive-production.ts) have no exported icon. Each
+ * machine is a real dataset item, so its lowest-tier face is handed to the
+ * synthesized family here. Names are tried in order because datasets name them
+ * differently; a family with no match keeps its letter chip.
  */
-const SYNTHESIZED_HANDLER_FACES: Array<{ familyId: string; displayNames: string[] }> = [
+const SYNTHESIZED_HANDLER_FACES: Array<{
+  familyId: string;
+  displayNames: string[];
+  /** Tier -> the tier's own item name, for families whose card wears its tier's block. */
+  tierNames?: Record<string, string>;
+}> = [
   { familyId: AUTO_WORKBENCH_HANDLER_ID, displayNames: ["Auto Workbench (LV)"] },
   {
     familyId: CROP_HARVESTER_MANAGER_ID,
     displayNames: ["Basic Crop Manager", "Crop Manager (LV)"],
+    tierNames: CROP_MANAGER_ITEM_NAMES,
   },
   { familyId: CROP_HARVESTER_INDUSTRIAL_FARM_ID, displayNames: ["Industrial Farm"] },
 ];
 
+/**
+ * The Tank map (the planner's free canner, synthesized by the pipeline) ships
+ * with the empty cell as its face, and a card names itself after its map's
+ * machine. Swap in the Low Voltage Fluid Tank, displayed as "Fluid Tank", at
+ * load so the card, its picture and the search chip agree.
+ */
+const TANK_RECIPE_MAP = "Tank";
+const TANK_MAP_FACE_ITEM_NAMES = ["Low Voltage Fluid Tank"];
+const TANK_MAP_FACE_DISPLAY_NAME = "Fluid Tank";
+
+export function withTankMapFace(
+  catalog: Pick<LoadedRecipeIndex, "resources" | "recipeMapIcons">,
+): RecipeMapIconEntry[] | undefined {
+  const icons = catalog.recipeMapIcons;
+  if (!icons?.some((entry) => entry.recipeMap === TANK_RECIPE_MAP)) {
+    return icons;
+  }
+  const byName = new Map(catalog.resources.map((resource) => [resource.displayName, resource] as const));
+  const face = TANK_MAP_FACE_ITEM_NAMES.map((name) => byName.get(name)).find(Boolean);
+  if (!face) {
+    return icons;
+  }
+  return icons.map((entry) =>
+    entry.recipeMap === TANK_RECIPE_MAP
+      ? {
+          recipeMap: TANK_RECIPE_MAP,
+          resource: {
+            kind: face.kind,
+            id: face.id,
+            displayName: TANK_MAP_FACE_DISPLAY_NAME,
+            iconPath: face.iconPath,
+            iconAtlas: face.iconAtlas,
+            dominantColor: face.dominantColor,
+            modId: face.modId,
+            amount: 1,
+          },
+        }
+      : entry,
+  );
+}
+
 function withSynthesizedHandlerIcons(catalog: LoadedRecipeIndex): MachineHandlerIconEntry[] {
   const icons = [...(catalog.machineHandlerIcons ?? [])];
-  for (const { familyId, displayNames } of SYNTHESIZED_HANDLER_FACES) {
+  const byName = new Map(catalog.resources.map((resource) => [resource.displayName, resource] as const));
+  for (const { familyId, displayNames, tierNames } of SYNTHESIZED_HANDLER_FACES) {
     if (icons.some((entry) => entry.familyId === familyId)) {
       continue;
     }
-    for (const displayName of displayNames) {
-      const face = catalog.resources.find((resource) => resource.displayName === displayName);
-      if (face) {
-        icons.push({ familyId, resource: { ...face, amount: 1 } });
-        break;
-      }
+    const face = displayNames.map((name) => byName.get(name)).find(Boolean);
+    if (!face) {
+      continue;
     }
+    const tiers = Object.entries(tierNames ?? {}).flatMap(([tier, name]) => {
+      const resource = byName.get(name);
+      return resource ? [{ tier, resource: { ...resource, amount: 1 } }] : [];
+    });
+    icons.push({
+      familyId,
+      resource: { ...face, amount: 1 },
+      ...(tiers.length > 1 ? { tiers } : {}),
+    });
   }
   return icons;
 }
@@ -340,17 +391,13 @@ export async function getDatasetRecipeIds(versionId: string): Promise<string[]> 
  * Finds the dataset's recipe behind each imported one whose id it no longer
  * lists.
  *
- * Recipe ids are minted per dataset build (and until 2026-09 from a JVM
- * identity hash, so every rebuild changed all of them), so a plan exported
- * one week and imported the next finds none of its ids. What survives a
- * rebuild is the recipe's content, so each ref carries its slots, ticks and
- * EU, and the candidates - every recipe in the ref's map that makes its
- * first output, read off the lookup index - are scored on that
- * (`pickRecipeRefMatch`). Only a candidate with the same resources in and
- * out is offered; a weaker likeness is not, and the importer keeps the
- * plan's own embedded body instead. A rawRecipeId hit is still consulted
- * for refs the content scan could not settle, since it can bridge dataset
- * versions when the raw ids are stable.
+ * Recipe ids are minted per dataset build and are not stable across
+ * rebuilds; the recipe's content is. Each ref carries its slots, ticks and
+ * EU, and the candidates (every recipe in the ref's map that makes its first
+ * output, from the lookup index) are scored by `pickRecipeRefMatch`. Only a
+ * candidate with the same resources in and out is offered; otherwise the
+ * importer keeps the plan's embedded body. A rawRecipeId hit is consulted for
+ * refs the content scan could not settle.
  */
 export async function resolveDatasetRecipeRefs(
   versionId: string,
@@ -561,6 +608,48 @@ export async function queryDatasetResources(
   },
 ) {
   const catalog = await loadCatalog(versionId);
+  // Nothing typed is the item list as it opens and as it scrolls: every resource, sorted, about a second of the one
+  // server thread on RC-2. The answer only changes with the catalog and the popularity sweep, so it is kept.
+  const blankKey =
+    request.query.trim() === ""
+      ? JSON.stringify([request.kind ?? "", request.mod ?? "", request.sort ?? "relevance", request.source ?? null])
+      : undefined;
+  const kept = blankKey === undefined ? undefined : blankResourceSearches.get(catalog)?.get(blankKey);
+  const blank =
+    kept && kept.popularity === request.popularity ? kept.value : await searchDatasetResources(catalog, request);
+  if (blankKey !== undefined && blank !== kept?.value) {
+    const byKey = blankResourceSearches.get(catalog) ?? new Map();
+    byKey.set(blankKey, { popularity: request.popularity, value: blank });
+    blankResourceSearches.set(catalog, byKey);
+  }
+  const { matches, modCounts, resolved } = blank;
+
+  return {
+    resources: matches
+      .slice(request.offset, request.offset + request.limit)
+      .map((match) => catalog.resourceIndex[match.resourceIndex])
+      .filter(Boolean),
+    total: matches.length,
+    offset: request.offset,
+    limit: request.limit,
+    hasMore: request.offset + request.limit < matches.length,
+    mods: [...modCounts.entries()]
+      .map(([id, count]) => ({ id, count }))
+      .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id)),
+    ...searchOutcome(resolved),
+  };
+}
+
+type ResourceSearch = Awaited<ReturnType<typeof searchDatasetResources>>;
+const blankResourceSearches = new WeakMap<
+  LoadedRecipeIndex,
+  Map<string, { popularity?: Map<string, number>; value: ResourceSearch }>
+>();
+
+async function searchDatasetResources(
+  catalog: LoadedRecipeIndex,
+  request: Parameters<typeof queryDatasetResources>[1],
+) {
   const indexes = ensureResourceIndexes(catalog);
   const sourceKeys = request.source
     ? await getPassiveSourceResourceKeys(catalog, request.source)
@@ -625,21 +714,7 @@ export async function queryDatasetResources(
     directionCounts,
     request.popularity,
   );
-
-  return {
-    resources: matches
-      .slice(request.offset, request.offset + request.limit)
-      .map((match) => catalog.resourceIndex[match.resourceIndex])
-      .filter(Boolean),
-    total: matches.length,
-    offset: request.offset,
-    limit: request.limit,
-    hasMore: request.offset + request.limit < matches.length,
-    mods: [...modCounts.entries()]
-      .map(([id, count]) => ({ id, count }))
-      .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id)),
-    ...searchOutcome(resolved),
-  };
+  return { matches, modCounts, resolved };
 }
 
 /**
@@ -859,7 +934,12 @@ export async function queryDatasetRecipes(versionId: string, request: DatasetRec
         )
       : matchingAll;
 
-  const recipeIndexes = rankRecipes(await applyFocusScores(recipeCatalog, matching, clauses))
+  const ranked = rankRecipes(await applyFocusScores(recipeCatalog, matching, clauses));
+  const recipeIndexes = (
+    request.allMaps
+      ? orderByRecipeMap(ranked, (recipeIndex) => indexes.recipeMaps[recipeIndex], sortedRecipeMaps)
+      : ranked
+  )
     .slice(request.offset, request.offset + request.limit)
     .map((match) => match.recipeIndex);
   const recipes = (await getRecipeSummariesByIndex(recipeCatalog, recipeIndexes)).map((recipe) =>
@@ -916,9 +996,8 @@ interface RankedRecipe {
 /**
  * The order cards come out in.
  *
- * Recipes whose icons render stay ahead of ones that would draw as empty slots,
- * which is a rule the book has always had. Inside that, the closest match to
- * what was typed comes first.
+ * Recipes whose icons render stay ahead of ones that would draw as empty
+ * slots. Inside that, the closest match to what was typed comes first.
  */
 function rankRecipes(matches: RankedRecipe[]): RankedRecipe[] {
   return [...matches].sort(
@@ -930,6 +1009,27 @@ function rankRecipes(matches: RankedRecipe[]): RankedRecipe[] {
       right.iconScore - left.iconScore ||
       left.recipeIndex - right.recipeIndex,
   );
+}
+
+/**
+ * An all-maps answer pages through the maps in the order it lists them
+ * (`recipeMaps`), best match first inside each. The search shows one section
+ * per machine in that order, so pages must fill the sections top-down; ranked
+ * across every map, early pages scatter over all sections and leave whole
+ * machines showing a count but no cards.
+ */
+export function orderByRecipeMap<T extends { recipeIndex: number }>(
+  ranked: T[],
+  recipeMapOf: (recipeIndex: number) => string | undefined,
+  recipeMaps: string[],
+): T[] {
+  const position = new Map(recipeMaps.map((recipeMap, index) => [recipeMap, index]));
+  const place = (match: T) => {
+    const recipeMap = recipeMapOf(match.recipeIndex);
+    return (recipeMap === undefined ? undefined : position.get(recipeMap)) ?? recipeMaps.length;
+  };
+  // Array sort is stable, so the ranking survives inside each map.
+  return [...ranked].sort((left, right) => place(left) - place(right));
 }
 
 /** {@link RankedRecipe.focus}, read against one recipe body. */
@@ -1060,20 +1160,20 @@ function scoreRecipeIndexes(
 }
 
 /**
- * All crop source "recipes", for the crop picker on a crop farm card. They also
- * appear in the recipe book like any other recipe; this is the flat catalogue
- * the card's own dropdown searches.
+ * Every recipe of one map, as summaries sorted by name: the list a card's own
+ * picker offers (a crop farm's crops, an EEC's mobs). Only for small maps that
+ * are one choice each - the whole map ships in one response.
  */
-export async function listDatasetCropFarmRecipes(versionId: string) {
+async function listDatasetMapRecipes(versionId: string, recipeMap: string) {
   const catalog = await loadCatalog(versionId);
   if (!catalog.version.recipeLookupIndexPath) {
-    return { crops: [] };
+    return [];
   }
 
   const lookup = await loadRecipeLookupIndex(catalog.version);
-  const mapId = lookup.recipeMapIds.get(CROP_FARM_RECIPE_MAP);
+  const mapId = lookup.recipeMapIds.get(recipeMap);
   if (mapId === undefined) {
-    return { crops: [] };
+    return [];
   }
 
   const recipeIndexes: number[] = [];
@@ -1083,9 +1183,19 @@ export async function listDatasetCropFarmRecipes(versionId: string) {
     }
   }
 
-  const crops = await getRecipeSummariesByIndex(catalog, recipeIndexes);
-  crops.sort((left, right) => left.name.localeCompare(right.name));
-  return { crops };
+  const recipes = await getRecipeSummariesByIndex(catalog, recipeIndexes);
+  recipes.sort((left, right) => left.name.localeCompare(right.name));
+  return recipes;
+}
+
+/** All crop source "recipes", for the crop picker on a crop farm card. */
+export async function listDatasetCropFarmRecipes(versionId: string) {
+  return { crops: await listDatasetMapRecipes(versionId, CROP_FARM_RECIPE_MAP) };
+}
+
+/** The Extreme Entity Crusher's mobs, one recipe each, for its spawner picker. */
+export async function listDatasetEecMobs(versionId: string) {
+  return { mobs: await listDatasetMapRecipes(versionId, EEC_MACHINE_TYPE) };
 }
 
 async function queryDatasetRecipesFromLookup(
@@ -1182,7 +1292,16 @@ async function queryDatasetRecipesFromLookup(
     });
   }
 
-  const pageRecipeIndexes = rankRecipes(await applyFocusScores(catalog, matching, clauses))
+  const ranked = rankRecipes(await applyFocusScores(catalog, matching, clauses));
+  const pageRecipeIndexes = (
+    request.allMaps
+      ? orderByRecipeMap(
+          ranked,
+          (recipeIndex) => lookup.recipeMaps[lookup.recipeMapIdsByRecipeIndex[recipeIndex] ?? -1],
+          sortedRecipeMaps,
+        )
+      : ranked
+  )
     .slice(request.offset, request.offset + request.limit)
     .map((match) => match.recipeIndex);
   const recipes = (await getRecipeSummariesByIndex(catalog, pageRecipeIndexes)).map((recipe) =>
@@ -1209,9 +1328,8 @@ async function queryDatasetRecipesFromLookup(
 }
 
 /**
- * The conditions a request actually asks, whichever wire form it spoke.
- * Every pre-existing caller still sends one resource and a mode; that is
- * exactly a one-clause query.
+ * The conditions a request actually asks, whichever wire form it spoke. The
+ * legacy one-resource-and-a-mode form is exactly a one-clause query.
  */
 function normalizedRecipeQueryClauses(request: DatasetRecipeQueryRequest): RecipeQueryClause[] {
   if (request.clauses?.length) {
@@ -1409,7 +1527,7 @@ function intersectRecipesByMap(
 /**
  * Every clause resource is a concrete context for the returned summaries, so
  * an oredict slot a Spruce Log satisfies renders as the Spruce Log that was
- * asked about, exactly as a single-resource browse always has.
+ * asked about, as in a single-resource browse.
  */
 function applyClauseResourceContexts<T extends RecipeSummary>(
   recipe: T,
@@ -1637,6 +1755,7 @@ async function loadCatalog(versionId: string): Promise<LoadedRecipeIndex> {
     const loaded = {
       ...catalog,
       version,
+      recipeMapIcons: withTankMapFace(catalog),
     };
     loadedCatalogs.set(cacheKey, loaded);
     return loaded;
@@ -1806,11 +1925,9 @@ async function loadShard(version: DatasetVersion, shard: RecipeIndexShard): Prom
 /**
  * rawRecipeId -> recipe indexes, built once per loaded dataset.
  *
- * This map holds ids and numbers only. It used to hold every recipe BODY,
- * which pinned the whole corpus (hundreds of MB) in the heap forever the
- * first time anyone imported a plan carrying rawRecipeIds - the single
- * biggest driver of the production server's heap-exhaustion crashes. The
- * scan reads shards a few at a time and keeps none of them.
+ * Holds ids and numbers only, never recipe BODIES: caching bodies pins the
+ * whole corpus (hundreds of MB) in the server heap. The scan reads shards a
+ * few at a time and keeps none of them.
  */
 async function getRecipeIndexesByRawRecipeId(
   catalog: LoadedRecipeIndex,
@@ -2135,9 +2252,9 @@ function getCachedHydratedSummary(
 }
 
 /**
- * Hydrated summaries are cheap to rebuild and were cached forever, which let
- * hours of recipe-book browsing walk the heap into the limit. Same LRU shape
- * as the shard cache: recently used stays, the tail falls off.
+ * Hydrated summaries are cheap to rebuild, so they live in a bounded LRU (same
+ * shape as the shard cache); an unbounded cache grows the heap to its limit
+ * over long browsing sessions.
  */
 function setCachedHydratedSummary(
   catalog: LoadedRecipeIndex,
@@ -2164,12 +2281,8 @@ function toRecipeSummary(
   return {
     id: enrichedRecipe.id,
     name: enrichedRecipe.name,
-    // What the recipe IS, which decides how the recipe book draws it. Leaving
-    // it off made the renderer fall back to guessing from the recipe's name,
-    // and the guess reads substrings: "miCROProcessor" contains "crop", so the
-    // Circuit Assembler recipe for one was drawn on a farm scene. The recipe
-    // index built by the pipeline has always carried this; only this
-    // server-side projection dropped it.
+    // Decides how the recipe book draws it. Without it the renderer guesses
+    // from name substrings ("miCROProcessor" contains "crop").
     kind: enrichedRecipe.kind,
     category: enrichedRecipe.category,
     recipeMap: enrichedRecipe.source?.recipeMap ?? enrichedRecipe.machineType,
@@ -2242,25 +2355,15 @@ function getCatalogResourcesByKey(
 /**
  * What each "any of these" placeholder actually stands for.
  *
- * GTNH ships real items whose whole job is to mean a set: "Any LV Circuit" is a
- * placeholder, not something you hold. Recipes reference those directly, and
- * the exported resource for one carries no member list, so a slot demanding
- * "Any LV Circuit" could not say which circuits it would take.
- *
- * The membership already exists in the other direction: each `oredict:` group
- * lists its members, and the placeholder is one of them. This inverts that once
+ * GTNH ships placeholder items whose job is to mean a set ("Any LV Circuit").
+ * Their exported resource carries no member list, but each `oredict:` group
+ * lists its members and the placeholder is one of them; this inverts that once
  * per catalog so a placeholder can be expanded back into its group.
  *
- * Deliberately restricted to placeholders, which is a narrower rule than it
- * first looks like it should be. Ore dictionary membership is NOT the same
- * thing as what a recipe accepts: the Circuit Assembler recipe for an
- * Electronic Circuit names a Vacuum Tube and takes only that, even though the
- * vacuum tube shares the `circuitPrimitive` group with the NAND chip. Offering
- * the group there invents a recipe that does not exist.
- *
- * A placeholder is different in kind. "Any LV Circuit" is not an item anyone
- * can hold; standing for its group is the entire reason it exists, so
- * expanding it reports what the recipe already meant.
+ * Deliberately restricted to placeholders. Ore dictionary membership is NOT
+ * what a recipe accepts: a recipe naming a Vacuum Tube takes only that, even
+ * though it shares `circuitPrimitive` with the NAND chip, so expanding real
+ * items would invent recipes.
  */
 export function getChoiceAlternativesByKey(
   catalog: LoadedRecipeIndex,
@@ -2924,24 +3027,6 @@ function hydrateRecipeMapIconResource(
     oreDictionary: indexed?.oreDictionary,
     alternatives: indexed?.alternatives,
   };
-}
-
-function findResourceByKindAndId(
-  resourcesByKey: Map<string, DatasetResource | DatasetResourceIndexEntry>,
-  kind: ResourceAmount["kind"],
-  id: string,
-): DatasetResource | DatasetResourceIndexEntry | undefined {
-  const exact = resourcesByKey.get(`${kind}:${id}`);
-  if (exact) {
-    return exact;
-  }
-  const normalizedKey = normalizeText(`${kind}:${id}`);
-  for (const [key, resource] of resourcesByKey) {
-    if (normalizeText(key) === normalizedKey) {
-      return resource;
-    }
-  }
-  return undefined;
 }
 
 interface RecipeMapIconCandidate {

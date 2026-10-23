@@ -1,0 +1,747 @@
+/*
+ * The clean drawer: the mod's drawer exactly (DrawerPaint, DrawerCard: a card's port row lifted off the card), 116 x 48:
+ * a bar 7 px along the top with its hairline (the mod's BAR 8, its last row the box's first), the row's box under it
+ * with the icon 5 px in from the side and 12 down, the words 41 px in, the rule key 10 and rate box 59 under them
+ * (35 down). Plain unlayered CSS like clean.css; state hangs on data attributes (React rewrites className on the
+ * board). Colours are the mod's: blue source, orange product and byproduct, steel trash. The per-kind values are
+ * the mixes of tokens.ts `drawerMixes`, pinned by drawer.test.ts.
+ */
+
+.cd-wrap {
+  position: relative;
+  width: 116px;
+  height: 48px;
+}
+
+.cd {
+  position: relative;
+  box-sizing: border-box;
+  width: 116px;
+  height: 48px;
+  color: var(--cc-ink);
+  font-family: var(--cc-font);
+  font-size: 8px;
+  line-height: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  /* The game's text shadow (Hyb.text draws every word with it) under the pixel font alone (globals.css --pixel-text-shadow). */
+  text-shadow: var(--pixel-text-shadow);
+  -webkit-font-smoothing: var(--pixel-font-smoothing);
+  --cd-radius: 6px;
+}
+
+.cd[data-kind="source"] {
+  --cd-tint: #78b6f4;
+  --cd-frame: #4f6986;
+  --cd-edge: #597ca1;
+  --cd-bar: #344252;
+  --cd-bar-hot: #3e536b;
+  --cd-body: #292f38;
+  --cd-stripe: #2e3844;
+  --cd-glance: #2c343e;
+  --cd-number: #94c3f3;
+  --cd-name: #8ba8c8;
+  --cd-grip: #89a9cc;
+  --cd-grip-hot: #95a0b0;
+  --cd-lit: #9b9e83;
+  --cd-radius: 5px; /* the mod's tank, 9 x 0.5 */
+}
+.cd[data-kind="product"] {
+  --cd-tint: #f59a5c;
+  --cd-frame: #815e49;
+  --cd-edge: #9e6d4e;
+  --cd-bar: #4d3c34;
+  --cd-bar-hot: #664b3a;
+  --cd-body: #322d2e;
+  --cd-stripe: #3e3431;
+  --cd-glance: #38312f;
+  --cd-number: #f2ae81;
+  --cd-name: #c39b84;
+  --cd-grip: #c89b80;
+  --cd-grip-hot: #a89c99;
+  --cd-lit: #c59552;
+  --cd-radius: 2px;
+}
+.cd[data-kind="buffer"] {
+  --cd-tint: #2e9c8f;
+  --cd-frame: #325f5d;
+  --cd-edge: #316e6a;
+  --cd-bar: #253d3e;
+  --cd-bar-hot: #274b4a;
+  --cd-body: #242d31;
+  --cd-stripe: #243437;
+  --cd-glance: #243134;
+  --cd-number: #5dafa7;
+  --cd-name: #699c9b;
+  --cd-grip: #649c9a;
+  --cd-grip-hot: #8a9ca1;
+  --cd-lit: #839662;
+  --cd-radius: 0;
+}
+.cd[data-kind="trash"] {
+  --cd-tint: #8a93a6;
+  --cd-frame: #565b66;
+  --cd-edge: #636976;
+  --cd-bar: #383b43;
+  --cd-bar-hot: #444852;
+  --cd-body: #2a2d33;
+  --cd-stripe: #30333a;
+  --cd-glance: #2d3036;
+  --cd-number: #b9c0cd;
+  --cd-name: #9398a5;
+  --cd-grip: #9298a5;
+  --cd-grip-hot: #989ba4;
+  --cd-lit: #a1936a;
+  --cd-radius: 0;
+}
+
+/* ---- The silhouette: an outline layer and a fill layer inset 1 px -------------------------------------------- */
+
+.cd-edge,
+.cd-fill {
+  position: absolute;
+  pointer-events: none;
+}
+.cd-edge {
+  inset: 0;
+  background: var(--cd-frame);
+  border-radius: var(--cd-radius);
+  /* The lifted shadow of a card; the selection, glow and accept rings are added to this list by data attributes. */
+  box-shadow: 6px 8px 7px rgba(0, 0, 0, 0.36);
+}
+.cd-fill {
+  inset: 1px;
+  overflow: hidden;
+  background: var(--cd-body);
+  border-radius: calc(var(--cd-radius) - 1px);
+}
+/* A bin narrows 4 px a side to its base (the mod's 3 of 48). Box shadows ignore a clip, so a bin's rings are a drop-shadow list. */
+.cd[data-kind="trash"] .cd-edge,
+.cd[data-kind="trash"] .cd-fill {
+  clip-path: polygon(0 0, 100% 0, calc(100% - 4px) 100%, 4px 100%);
+  box-shadow: none;
+}
+/* A buffer is a barrel: its four corners cut straight (the mod's DrawerPaint.CUT), open to both sides. */
+.cd[data-kind="buffer"] .cd-edge,
+.cd[data-kind="buffer"] .cd-fill {
+  clip-path: polygon(4px 0, calc(100% - 4px) 0, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0 calc(100% - 4px), 0 4px);
+  box-shadow: none;
+}
+.cd[data-kind="trash"] .cd-wrap-shadow,
+.cd[data-kind="trash"],
+.cd[data-kind="buffer"] {
+  filter: drop-shadow(6px 8px 7px rgba(0, 0, 0, 0.36));
+}
+
+/* ---- The bar ----------------------------------------------------------------------------------------------- */
+
+.cd-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 7px;
+  box-sizing: border-box;
+  background: var(--cd-bar);
+  border-bottom: 1px solid var(--cd-frame);
+  pointer-events: auto;
+  cursor: grab;
+}
+.cd:hover .cd-bar,
+.cd[data-selected] .cd-bar {
+  background: var(--cd-bar-hot);
+}
+/* The grip: two rows of 1 px dots, 15 px wide, 2 px pitch, at y 2 and y 4 of the bar, as the mod's. */
+.cd-bar::before {
+  content: "";
+  position: absolute;
+  left: calc(50% - 7.5px);
+  top: 2px;
+  width: 15px;
+  height: 4px;
+  background:
+    repeating-linear-gradient(90deg, var(--cd-grip) 0 1px, transparent 1px 2px) 0 0 / 15px 1px no-repeat,
+    repeating-linear-gradient(90deg, var(--cd-grip) 0 1px, transparent 1px 2px) 0 2px / 15px 1px no-repeat;
+}
+.cd:hover .cd-bar::before {
+  background:
+    repeating-linear-gradient(90deg, var(--cd-grip-hot) 0 1px, transparent 1px 2px) 0 0 / 15px 1px no-repeat,
+    repeating-linear-gradient(90deg, var(--cd-grip-hot) 0 1px, transparent 1px 2px) 0 2px / 15px 1px no-repeat;
+}
+
+/* The delete key: 10 x 10 at (3, 3), hanging over the bar's lower edge, only while the pointer is on the drawer or it
+   is selected (DrawerPaint.DELETE, DELETE_IN). */
+.cd-del {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  /* Over the wiring handle that blankets the body (z 30), so the whole key takes the click. */
+  z-index: 41;
+  background: var(--cc-key);
+  cursor: pointer;
+  visibility: hidden;
+  box-shadow:
+    inset 0 0 0 1px var(--cc-key-edge),
+    inset 1px 1px 0 1px var(--cc-key-hi),
+    inset -1px -1px 0 1px var(--cc-key-lo);
+}
+.cd-del::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 4px;
+  width: 6px;
+  height: 2px;
+  background: var(--cc-ink);
+}
+.cd:hover .cd-del,
+.cd[data-selected] .cd-del {
+  visibility: visible;
+}
+.cd-del:hover {
+  background: #9c3543;
+}
+/* A few pixels of slack round the key, so it is easy to hit. */
+.cd-del::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+}
+/* The side key: the delete key's twin at the top right (10 x 10 at 3 from the edge), on an input or output drawer, never a
+   buffer. It makes an input drawer an output one or the reverse, and takes its wires off. Two arrows, one each way. */
+.cd-flip {
+  position: absolute;
+  right: 3px;
+  top: 3px;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  z-index: 41;
+  background: var(--cc-key);
+  cursor: pointer;
+  visibility: hidden;
+  box-shadow:
+    inset 0 0 0 1px var(--cc-key-edge),
+    inset 1px 1px 0 1px var(--cc-key-hi),
+    inset -1px -1px 0 1px var(--cc-key-lo);
+}
+.cd-flip::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  background: var(--cc-ink);
+  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 6 6%27><path d=%27M0 1h4V0l2 1.5L4 3V2H0zM6 4H2V3L0 4.5 2 6V5h4z%27/></svg>") center / 6px 6px no-repeat;
+  mask: url("data:image/svg+xml;utf8,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 6 6%27><path d=%27M0 1h4V0l2 1.5L4 3V2H0zM6 4H2V3L0 4.5 2 6V5h4z%27/></svg>") center / 6px 6px no-repeat;
+}
+.cd:hover .cd-flip,
+.cd[data-selected] .cd-flip {
+  visibility: visible;
+}
+.cd-flip:hover {
+  background: var(--cc-key-hot, #4a4e57);
+}
+.cd-flip::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+}
+/* ---- The body: the row and its controls --------------------------------------------------------------------- */
+
+.cd-body {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 7px;
+  bottom: 0;
+  /* The port row: lights, scopes and starts a wire; the Handle blankets it. */
+}
+.cd-body[data-lit]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.cd-icon {
+  position: absolute !important;
+  z-index: 1;
+  top: 5px;
+  width: 32px !important;
+  height: 32px !important;
+  pointer-events: none;
+}
+/* A fluid is the card's flat square in its own colour: 28 of the 32 box, no bevel, no art. */
+.cd-swatch {
+  box-sizing: border-box;
+  display: block;
+  padding: 2px;
+  background-clip: content-box;
+}
+.cd[data-kind="source"] .cd-icon {
+  left: 5px;
+}
+.cd:not([data-kind="source"]) .cd-icon {
+  right: 5px;
+}
+
+/* The words: the number's glyphs 8 px under the bar (the mod's 3 under its 8 px bar in a 40 px box, centred in 50
+   here), the name 2 px under the number, in a 71 px column beside the icon. */
+.cd-num {
+  position: absolute;
+  top: 3px;
+  width: 71px;
+  /* As the card's: 14 px, -0.8 px apart, as tall as the mod's figures in the pixel font (clean.css .cc-num). */
+  font-size: 14px;
+  letter-spacing: -0.8px;
+  font-weight: 400;
+  line-height: 13px;
+  color: var(--cd-number);
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* The unit small beside the number, snug against it (a pixel), its foot a pixel above the number's. */
+.cd-num::after {
+  content: attr(data-unit);
+  margin-left: 1px;
+  font-size: 9px;
+  letter-spacing: -0.6px;
+  font-weight: 400;
+  color: var(--cc-muted);
+  position: relative;
+  top: -1px;
+}
+.cd-num[data-zero] {
+  color: var(--cc-idle);
+}
+.cd-num[data-small] {
+  font-size: 9px;
+  letter-spacing: -0.6px;
+}
+.cd-num[data-small]::after {
+  top: 0;
+  margin-left: 0;
+  color: inherit;
+}
+.cd-name {
+  position: absolute;
+  top: 16px;
+  width: 71px;
+  font-size: 9px;
+  letter-spacing: -0.6px;
+  font-weight: 400;
+  line-height: 10px;
+  color: var(--cd-name);
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: none;
+}
+.cd-name[data-small] {
+  font-size: 7px;
+  letter-spacing: -0.45px;
+}
+.cd-name[data-clip] {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 10px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 10px), transparent);
+}
+/* Centred in their column beside the icon, so a short figure leaves no empty side. A word too long for the column starts
+   at its left edge and is cut and faded at its right (the browser start-aligns an overflowing centred line). */
+.cd-num,
+.cd-name {
+  text-align: center;
+}
+.cd[data-kind="source"] .cd-num,
+.cd[data-kind="source"] .cd-name {
+  left: 41px;
+}
+.cd:not([data-kind="source"]) .cd-num,
+.cd:not([data-kind="source"]) .cd-name {
+  left: 4px;
+}
+
+/* The rule key 10 x 10 and the rate box 63 x 10, a pair 2 px apart under the words (CardLayout.CTRL_*: the mod's box
+   is 59 in a 116 drawer), their bottoms 8 px above the drawer's. */
+.cd-key,
+.cd-box {
+  position: absolute;
+  top: 28px;
+  height: 10px;
+  box-sizing: border-box;
+  z-index: 40;
+  cursor: pointer;
+  user-select: none;
+}
+.cd-key {
+  width: 10px;
+  background: #34373e;
+  box-shadow:
+    inset 0 0 0 1px #111317,
+    inset 0 2px 0 -1px rgba(255, 255, 255, 0.12);
+  color: var(--cc-gold);
+  font-size: 8px;
+  font-weight: 400;
+  line-height: 10px;
+  text-align: center;
+}
+.cd-key:hover,
+.cd-key[data-open] {
+  background: #454952;
+}
+.cd-key[data-any] {
+  color: var(--cc-muted);
+}
+.cd-key::before {
+  content: attr(data-mark);
+}
+.cd-box {
+  width: 59px;
+  background: #0f1114;
+  color: var(--cc-gold);
+  font-size: 8px;
+  font-weight: 400;
+  line-height: 10px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 0 1px #5a5e68,
+    inset 0 1px 0 1px rgba(0, 0, 0, 0.7);
+}
+.cd-box:hover {
+  background: #15171c;
+  box-shadow:
+    inset 0 0 0 1px var(--cc-gold),
+    inset 0 1px 0 1px rgba(0, 0, 0, 0.7);
+}
+.cd-box::before {
+  content: attr(data-text);
+}
+.cd-box::after {
+  content: attr(data-unit);
+  margin-left: 1px;
+  color: #8a8e97;
+}
+.cd-box[data-empty]::before {
+  color: #6f737c;
+}
+.cd-box[data-empty]::after,
+.cd-box[data-fixed]::after {
+  content: none;
+}
+.cd-box[data-fixed] {
+  cursor: default;
+}
+.cd-box[data-fixed]::before {
+  color: #6f737c;
+}
+.cd-box[data-fixed]:hover {
+  background: #0f1114;
+  box-shadow:
+    inset 0 0 0 1px #5a5e68,
+    inset 0 1px 0 1px rgba(0, 0, 0, 0.7);
+}
+.cd-box[data-prompt]::before {
+  color: var(--cc-gold);
+}
+/* Blinks off the root's one clock (virtual/prompt-phase.ts). */
+:root[data-cc-blink] .cd-box[data-prompt]::before {
+  color: var(--cc-prompt-off);
+}
+.cd-box[data-unmet] {
+  box-shadow:
+    inset 0 0 0 1px rgba(248, 113, 113, 0.75),
+    inset 0 1px 0 1px rgba(0, 0, 0, 0.7);
+  color: #f87171;
+}
+/* The mod's box shows only the rate and its unit: no progress line (data-progress stays for tests and tips). */
+.cd-box[data-editing] {
+  padding: 0;
+  box-shadow:
+    inset 0 0 0 1px var(--cc-gold),
+    inset 0 1px 0 1px rgba(0, 0, 0, 0.7);
+  background: #15171c;
+}
+.cd-box[data-editing]::before,
+.cd-box[data-editing]::after {
+  content: none;
+}
+.cd-box input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--cc-gold);
+  font: inherit;
+  text-align: center;
+}
+
+/* Where the controls sit: a source's at the words' left edge, a product's and trash's from the drawer's left. */
+.cd[data-kind="source"] .cd-key {
+  left: 41px;
+}
+.cd[data-kind="source"] .cd-box {
+  left: 53px;
+}
+.cd:not([data-kind="source"]) .cd-key {
+  left: 4px;
+}
+.cd:not([data-kind="source"]) .cd-box {
+  left: 16px;
+}
+
+/* ---- A buffer: no rule, so no rule key or rate box; its row centres in the body ------------------------------------ */
+
+/* A buffer passes what its users take and asks for nothing, so the row has the body to itself: the icon and the
+   words (figure over name, 23 px) centre on the body's middle (abs 27.5). */
+.cd[data-kind="buffer"] .cd-icon {
+  top: 11px;
+}
+.cd[data-kind="buffer"] .cd-num {
+  top: 9px;
+}
+.cd[data-kind="buffer"] .cd-name {
+  top: 22px;
+}
+
+/* Its spill: what its makers force out beyond what its users take, on a Forced tile (the card's flat tint, edge and
+   colours of an output's) down the drawer's left, its figure over "Forced out". The drawer is a cell wider while it has
+   one (136): the tile takes the left column, centred with the row and clear of the delete key; the words move right of
+   it, 4 px apart, their right edge 4 px short of the icon. Wires dock on the grown edge (its measured size, as a
+   card's). */
+.cd-wrap[data-spill],
+.cd[data-spill] {
+  width: 136px;
+}
+.cd[data-spill] .cd-num,
+.cd[data-spill] .cd-name {
+  left: 54px;
+  width: 41px;
+}
+.cd-forced {
+  position: absolute;
+  /* Over the row's wire handle (30): it has its own hover. */
+  z-index: 35;
+  left: 4px;
+  top: 14px;
+  width: 46px;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  border-radius: 3px;
+  background: #322d2e;
+  box-shadow:
+    inset 0 0 0 1px #815e49,
+    inset 1px 1px 0 1px #4b3f39,
+    inset -1px -1px 0 1px #2a2425;
+}
+.cd-forced[data-lit] {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 210, 87, 0.75),
+    inset 0 0 0 2px rgba(255, 210, 87, 0.18),
+    inset 0 0 0 3px rgba(255, 210, 87, 0.12),
+    inset 0 0 0 4px rgba(255, 210, 87, 0.06);
+}
+.cd-forced-num {
+  font-size: 11px;
+  line-height: 12px;
+  letter-spacing: -0.6px;
+  color: #f2ae81;
+  white-space: nowrap;
+}
+.cd-forced-num::after {
+  content: attr(data-unit);
+  margin-left: 1px;
+  font-size: 7px;
+  letter-spacing: -0.3px;
+  color: var(--cc-muted);
+}
+.cd-forced-name {
+  font-size: 7px;
+  line-height: 9px;
+  letter-spacing: -0.3px;
+  color: #c39b84;
+  white-space: nowrap;
+}
+
+/* ---- Selection, lit and accepting rings ---------------------------------------------------------------------- */
+
+.cd[data-selected] .cd-edge {
+  box-shadow:
+    0 0 0 2px var(--cc-select),
+    6px 8px 7px rgba(0, 0, 0, 0.36);
+}
+.cd[data-lit] .cd-edge {
+  background: var(--cd-lit);
+  box-shadow:
+    0 0 0 1px rgba(255, 210, 87, 0.086),
+    0 0 0 2px rgba(255, 210, 87, 0.086),
+    0 0 0 3px rgba(255, 210, 87, 0.086),
+    6px 8px 7px rgba(0, 0, 0, 0.36);
+}
+.cd[data-selected][data-lit] .cd-edge {
+  box-shadow:
+    0 0 0 2px var(--cc-select),
+    0 0 0 5px rgba(255, 210, 87, 0.086),
+    6px 8px 7px rgba(0, 0, 0, 0.36);
+}
+/* A wire in hand that this drawer would take (set by the interaction layer): a 1 px ring, 2 where it would go now. */
+.cd[data-accepts] .cd-edge {
+  box-shadow:
+    0 0 0 1px rgba(74, 222, 128, 0.7),
+    6px 8px 7px rgba(0, 0, 0, 0.36);
+}
+.cd[data-accepts="now"] .cd-edge {
+  box-shadow:
+    0 0 0 2px var(--cc-accept),
+    6px 8px 7px rgba(0, 0, 0, 0.36);
+}
+.cd[data-kind="trash"][data-selected],
+.cd[data-kind="buffer"][data-selected] {
+  filter: drop-shadow(2px 0 0 var(--cc-select)) drop-shadow(-2px 0 0 var(--cc-select))
+    drop-shadow(0 2px 0 var(--cc-select)) drop-shadow(0 -2px 0 var(--cc-select))
+    drop-shadow(6px 8px 7px rgba(0, 0, 0, 0.36));
+}
+.cd[data-kind="trash"][data-lit],
+.cd[data-kind="buffer"][data-lit] {
+  filter: drop-shadow(1px 0 0 rgba(255, 210, 87, 0.3)) drop-shadow(-1px 0 0 rgba(255, 210, 87, 0.3))
+    drop-shadow(0 1px 0 rgba(255, 210, 87, 0.3)) drop-shadow(0 -1px 0 rgba(255, 210, 87, 0.3))
+    drop-shadow(6px 8px 7px rgba(0, 0, 0, 0.36));
+}
+.cd[data-kind="trash"][data-accepts],
+.cd[data-kind="buffer"][data-accepts] {
+  filter: drop-shadow(1px 0 0 rgba(74, 222, 128, 0.7)) drop-shadow(-1px 0 0 rgba(74, 222, 128, 0.7))
+    drop-shadow(0 1px 0 rgba(74, 222, 128, 0.7)) drop-shadow(0 -1px 0 rgba(74, 222, 128, 0.7))
+    drop-shadow(6px 8px 7px rgba(0, 0, 0, 0.36));
+}
+
+/* ---- Zoomed out ----------------------------------------------------------------------------------------------- */
+
+/* Zoomed out the board hides every direct child of a glance root but the glance layer; the silhouette, the icon
+   (drawn big) and the rate pill (the edge layer's ::after) are what stays. */
+.cd-edge::after {
+  content: attr(data-rate);
+  display: none;
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: calc(1px / var(--board-zoom, 1));
+  background: rgba(16, 17, 20, 0.75);
+  font-size: min(calc(20px / var(--board-zoom, 1)), 40px, calc(100px / (var(--cd-chars, 4) * 0.62)));
+  font-weight: 600;
+  line-height: 1;
+  color: var(--cd-number);
+  white-space: nowrap;
+  z-index: 2;
+}
+.cd-edge[data-zero]::after {
+  color: var(--cc-muted);
+}
+.factory-flow-board[data-detail-level="glance"] .cd[data-node-glance-root] > .cd-edge,
+.factory-flow-board[data-detail-level="glance"] .cd[data-node-glance-root] > .cd-fill,
+.factory-flow-board[data-detail-level="glance"] .cd[data-node-glance-root] > .cd-icon {
+  visibility: visible;
+  opacity: 1;
+}
+.factory-flow-board[data-detail-level="glance"] .cd-fill {
+  background: var(--cd-glance);
+}
+.factory-flow-board[data-detail-level="glance"] .cd-edge {
+  background: var(--cd-edge);
+}
+.factory-flow-board[data-detail-level="glance"] .cd-edge::after {
+  display: block;
+}
+.factory-flow-board[data-detail-level="glance"] .cd .cd-icon {
+  left: 8px !important;
+  right: auto !important;
+  top: 6px;
+  width: 34px !important;
+  height: 34px !important;
+}
+.factory-flow-board[data-detail-level="glance"] .cd[data-kind="trash"] .cd-icon {
+  left: 10px !important;
+}
+.factory-flow-board[data-detail-level="glance"] .cd-fill {
+  inset: max(1.5px, calc(1px / var(--board-zoom, 1)));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cd-box[data-prompt]::before {
+    animation: none;
+    color: var(--cc-gold);
+  }
+}
+
+/* ---- The rule menu (a portal on the body), at the mod's size on screen (the game font's 16 px: 14 here) ----------------------------------------------------------------------- */
+
+.cd-menu {
+  position: fixed;
+  z-index: 9999;
+  box-sizing: border-box;
+  width: 182px;
+  padding: 2px 0;
+  background: #2b2d33;
+  box-shadow:
+    inset 0 0 0 1px #111317,
+    4px 4px 0 rgba(0, 0, 0, 0.35);
+  color: var(--cc-ink);
+  font-family: var(--cc-font);
+  font-size: 14px;
+  line-height: 17px;
+  -webkit-font-smoothing: var(--pixel-font-smoothing);
+}
+.cd-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cd-menu-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.cd-menu-row[data-on] {
+  background: rgba(255, 255, 255, 0.06);
+}
+.cd-menu-row[data-muted] {
+  color: var(--cc-muted);
+}
+.cd-menu-row b {
+  display: inline-block;
+  width: 14px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--cc-muted);
+}
+.cd-menu-row[data-on] b {
+  color: var(--cc-gold);
+}
+
+/* One thing selected: no ring (the mod's showsSelected); the lit and accepting rings stay. */
+.react-flow__nodes:not(:has(> .react-flow__node.selected ~ .react-flow__node.selected)) .cd[data-selected]:not([data-lit]):not([data-accepts]) .cd-edge {
+  box-shadow: 6px 8px 7px rgba(0, 0, 0, 0.36);
+}
+.react-flow__nodes:not(:has(> .react-flow__node.selected ~ .react-flow__node.selected)) .cd[data-selected][data-lit] .cd-edge {
+  box-shadow:
+    0 0 0 1px rgba(255, 210, 87, 0.086),
+    0 0 0 2px rgba(255, 210, 87, 0.086),
+    0 0 0 3px rgba(255, 210, 87, 0.086),
+    6px 8px 7px rgba(0, 0, 0, 0.36);
+}
+.react-flow__nodes:not(:has(> .react-flow__node.selected ~ .react-flow__node.selected)) .cd[data-kind="trash"][data-selected]:not([data-lit]),
+.react-flow__nodes:not(:has(> .react-flow__node.selected ~ .react-flow__node.selected)) .cd[data-kind="buffer"][data-selected]:not([data-lit]) {
+  filter: drop-shadow(6px 8px 7px rgba(0, 0, 0, 0.36));
+}

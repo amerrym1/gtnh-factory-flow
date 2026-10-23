@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { factoryProjectSchema } from "@/lib/model/schemas";
 import { normalizeLoadedProject } from "@/lib/model/project-normalize";
 import { calculateThroughput } from "@/lib/solver";
+import { ensurePlanEngine } from "@/lib/server/plan-engine";
 import { computeCommunityPlanStats } from "@/lib/community/plan-stats";
 import type { CommunityPlanSummary } from "@/lib/community/types";
 import { APP_VERSION } from "@/lib/version";
@@ -20,7 +21,6 @@ import {
   getSessionUser,
   isAdminRequest,
   isCommunityConfigured,
-  makeActorKey,
   makeVoterKey,
   parseEntryIcon,
   isMissingColumnError,
@@ -105,14 +105,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ plan
 }
 
 /**
- * Saved stat cards go stale as the solver improves: a plan shared by an old
- * release keeps the numbers that release computed, so its preview disagrees
- * with the board a player sees on opening it. On preview open, recompute from
- * the stored plan JSON with today's solver — once per plan per release — and
- * persist the result. Best-effort throughout: a schema without the
- * stats_version column, a plan today's parser rejects, or a failed write all
- * leave the saved card serving as before, except that freshly computed
- * numbers still go out in this response even when the write fails.
+ * Saved stat cards go stale as the solver changes. On preview open, recompute
+ * from the stored plan JSON with this release's solver (once per plan per
+ * release) and persist the result. Best-effort: a missing stats_version
+ * column, an unparseable plan or a failed write leave the saved card as is,
+ * though freshly computed numbers still go out in this response.
  */
 async function refreshStaleStats(
   db: SupabaseClient,
@@ -142,6 +139,7 @@ async function refreshStaleStats(
     // The same funnel the board runs a loaded plan through, so the card and
     // the opened tab compute from the identical project.
     const project = normalizeLoadedProject(parsed.data);
+    await ensurePlanEngine(project);
     const stats = computeCommunityPlanStats(project, calculateThroughput(project));
     plan.needs = stats.needs;
     plan.outputs = stats.outputs;
@@ -278,7 +276,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ plan
         return NextResponse.json({ error: "Refusing to share an empty plan." }, { status: 400 });
       }
 
-      const stats = computeCommunityPlanStats(project, calculateThroughput(project));
+      const solved = normalizeLoadedProject(project);
+      await ensurePlanEngine(solved);
+      const stats = computeCommunityPlanStats(solved, calculateThroughput(solved));
       Object.assign(update, {
         plan: project,
         needs: stats.needs,

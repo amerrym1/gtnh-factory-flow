@@ -1,31 +1,28 @@
 /**
  * How much of the board is worth drawing at the current zoom.
  *
- * Zoomed out, a card's contents are noise: the slot sprites are sub-pixel, the
- * dials are a grey smear, the machine name is three pixels tall, and a rate
- * chip is a smudge. So past a threshold the board switches to a glance view —
- * machines show how hard they are running, buffers show what is in them, and
- * lines are just their routes.
+ * Zoomed out, a card's contents are noise, so past a threshold the board
+ * switches to a glance view: machines show how hard they are running, buffers
+ * show what is in them, and lines are just their routes.
  *
- * ONE step, and one threshold, for everything. Nodes and edges used to decide
- * separately: nodes had a hysteretic threshold and edges a plain one, so
- * between the two there was a zone where the rate chips had come back but the
- * cards were still showing percentages. Detail switching in pieces reads as the
- * board glitching. There is now a single level, held here, that both consume.
+ * ONE level, held here, for nodes and edges alike: detail switching in pieces
+ * reads as the board glitching.
  *
- * TUNING: the two numbers below are the whole control surface. They are a pair
- * rather than one value because a single boundary flickers — a board parked
- * exactly on it flips detail on and off with every sub-pixel of zoom drift. The
- * gap is the dead zone that stops that, and it is deliberately narrow: too wide
- * and regaining detail means zooming noticeably further in than the point where
- * you lost it, which feels like the board is arguing with you.
+ * TUNING: where the glance view starts is the player's ("Zoomed-out view" in
+ * the settings, `glanceEnterZoom`); it comes back a narrow gap above, because
+ * a single boundary flickers when the board is parked on it. Keep the gap
+ * narrow, or regaining detail means zooming noticeably further in than where
+ * it was lost.
  *
  * Nothing here may change a node's SIZE. Detail is dropped with `visibility`,
  * never `display`, so every element keeps its layout box: the router measures
  * node bounds and slot anchors through those boxes, and a card that changed
  * shape with zoom would reroute the board every time you scrolled the wheel —
- * exactly the viewport-dependent routing ARCHITECTURE.md forbids.
+ * exactly the viewport-dependent routing CLAUDE.md forbids.
  */
+
+import { DEFAULT_ZOOMED_OUT_AT, readDeviceSettings } from "@/lib/device-settings";
+import { boardZoomScale } from "@/lib/ui-scale";
 
 export const NODE_DETAIL_FULL = 0;
 export const NODE_DETAIL_GLANCE = 1;
@@ -33,30 +30,50 @@ export const NODE_DETAIL_GLANCE = 1;
 export type NodeDetailLevel = typeof NODE_DETAIL_FULL | typeof NODE_DETAIL_GLANCE;
 
 /**
- * Below this the board drops to the glance view. 0.6 is roughly where a port
- * row's lettering falls under eight screen pixels: the moment the card stops
- * being readable is the moment the glance takes over, rather than three
- * wheel-steps later with the board a smear in between.
+ * Below this the board drops to the glance view unless the player moved it: well before a card's names get hard to
+ * read (0.65 of a 1:1 interface; the default interface's 1.17 puts it near a 0.76 board zoom), since the glance face
+ * says what matters from further out (the machine, its count, the Up to bar). The mod follows
+ * (docs/up-to-mod-port.md).
  */
-export const NODE_GLANCE_ENTER_ZOOM = 0.6;
-/** And above this it comes back. The gap is the anti-flicker dead zone. */
-export const NODE_GLANCE_LEAVE_ZOOM = 0.66;
+export const NODE_GLANCE_ENTER_ZOOM = DEFAULT_ZOOMED_OUT_AT;
+/** The anti-flicker dead zone: the board leaves the glance view this far above where it entered it. */
+export const NODE_GLANCE_GAP = 0.02;
+/** Where the default glance view ends. */
+export const NODE_GLANCE_LEAVE_ZOOM = NODE_GLANCE_ENTER_ZOOM + NODE_GLANCE_GAP;
+
+/** Where the glance view starts now: the settings' "Zoomed-out view", as a zoom of a 1:1 interface. */
+export function glanceEnterZoom(): number {
+  return readDeviceSettings().zoomedOutAt;
+}
+
+/** Where the glance view ends now: the gap above where it starts. */
+export function glanceLeaveZoom(): number {
+  return glanceEnterZoom() + NODE_GLANCE_GAP;
+}
 
 /**
  * The level for this zoom, given the level currently in force.
  *
  * Passing the current level is what makes the threshold hysteretic: the step is
- * only entered below `ENTER` and only left above `LEAVE`, so zoom noise around
- * the boundary cannot make the board strobe.
+ * only entered below `enter` and only left above `enter` plus the gap, so zoom
+ * noise around the boundary cannot make the board strobe.
  */
-export function getNodeDetailLevel(zoom: number, current: NodeDetailLevel): NodeDetailLevel {
+export function getNodeDetailLevel(
+  zoom: number,
+  current: NodeDetailLevel,
+  enter: number = glanceEnterZoom(),
+): NodeDetailLevel {
   if (!Number.isFinite(zoom) || zoom <= 0) {
     return current;
   }
-  if (zoom < NODE_GLANCE_ENTER_ZOOM) {
+  // The thresholds are written for a 1:1 interface; the board's zoom carries
+  // the interface size (ui-scale.ts), so the lettering falls under eight
+  // pixels at 0.45 times that.
+  const apparent = zoom / boardZoomScale();
+  if (apparent < enter) {
     return NODE_DETAIL_GLANCE;
   }
-  if (zoom >= NODE_GLANCE_LEAVE_ZOOM) {
+  if (apparent >= enter + NODE_GLANCE_GAP) {
     return NODE_DETAIL_FULL;
   }
   return current;
@@ -76,11 +93,9 @@ let detailLevel: NodeDetailLevel = NODE_DETAIL_FULL;
 const detailListeners = new Set<() => void>();
 
 /**
- * The dev menu's "always glance" switch: the zoomed-out faces at EVERY
- * zoom. The controller keeps computing and publishing the honest level
- * underneath, so switching it off lands straight back on whatever the
- * current zoom deserves - no stale level, no waiting for the next wheel
- * step.
+ * The dev menu's "always glance" switch: the zoomed-out faces at EVERY zoom.
+ * The controller keeps publishing the honest level underneath, so switching
+ * it off lands straight back on what the current zoom deserves.
  */
 const FORCE_GLANCE_KEY = "gtnh-factory-flow.dev.force-glance";
 
@@ -152,13 +167,10 @@ export function subscribeNodeDetailLevel(listener: () => void) {
 }
 
 /**
- * The board element carries the level as a data ATTRIBUTE, not a class.
- *
- * React owns `className` on the board: FactoryFlow rebuilds that string on
- * every render, so a class added imperatively was wiped the moment anything
- * else about the board changed — toggling thickness mode mid-zoom made the
- * glance view vanish until the next threshold crossing. React never touches an
- * attribute it was not given, so this one survives.
+ * The board element carries the level as a data ATTRIBUTE, not a class: React
+ * owns the board's `className` and rebuilds it on every render, which would
+ * wipe an imperatively added class. React never touches an attribute it was
+ * not given.
  */
 export const NODE_DETAIL_ATTRIBUTE = "data-detail-level";
 

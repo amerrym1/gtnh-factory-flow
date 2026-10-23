@@ -1,0 +1,246 @@
+"use client";
+
+import { useCallback, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { ItemPickerPopover } from "@/components/ItemPickerPopover";
+import { queryRecipeDatasetResources } from "@/lib/datasets/browser-loader";
+import { DEFAULT_DATASET_MANIFEST_URL } from "@/lib/datasets/remote";
+import type { DatasetResourceIndexEntry } from "@/lib/datasets/types";
+import type { ResourceAmount } from "@/lib/model/types";
+import { getUiScale } from "@/lib/ui-scale";
+import { useFactoryStore } from "@/store/factory-store";
+import { AnnotationMenu } from "./clean/note/AnnotationMenu";
+import { BoardMenu, MenuLine, MenuRow } from "./clean/menus/BoardMenu";
+import { CardRows } from "./clean/menus/CardActionsMenu";
+import { GroupMenu } from "./clean/group/GroupMenu";
+import { cloneWithSound } from "@/lib/sound/sfx";
+import { CANVAS_THEMES } from "./canvas-themes";
+import { CANVAS_PATTERNS, CANVAS_PATTERN_LABEL, useBoardView, writeBoardView } from "./board-view";
+import { addArrowAt, addBoxAt, addStickyNoteAt } from "./clean/note/note-actions";
+import { isLiveConfigured } from "@/lib/live/live-config";
+import { cardsForTask, selectedTaskCards } from "@/lib/tasks/make-task";
+import { openAddToTask } from "@/components/tasks/AddToTask";
+
+/** Task boards come with live plans: no Add to a task row without them. */
+const TASKS_ENABLED = isLiveConfigured();
+
+/**
+ * THE BOARD'S ONE RIGHT-CLICK MENU. Right click the void, a card, a drawer
+ * or a wire and the same small menu opens at the pointer:
+ *
+ * - the void: a new product drawer, picked from the item picker the pool
+ *   key uses, set down where you clicked;
+ * - a machine: the card's rows (`CardRows`: clone, another recipe, replace
+ *   the recipe, delete);
+ * - a drawer: clone it, delete it;
+ * - a wire: add a drawer HERE (the wire is cut at the click and both halves
+ *   run through the new drawer), or delete the wire.
+ *
+ * Controls that already answer a right click (port rows open uses, a tier
+ * chip steps down, the count stepper) prevent the event's default, and the
+ * board's handlers do nothing for a prevented event. Kept deliberately
+ * plain: no tooltips, no submenus.
+ */
+
+export type BoardMenuTarget = {
+  /** Where the pointer was, in real px (the menu is a body portal). */
+  x: number;
+  y: number;
+  /** The same point in flow space: where a new drawer lands. */
+  flow: { x: number; y: number };
+} & (
+  | { kind: "pane" }
+  | { kind: "node"; id: string }
+  | { kind: "storage"; id: string }
+  | { kind: "annotation"; id: string }
+  | { kind: "group"; id: string }
+  | { kind: "edge"; ids: string[]; resource: ResourceAmount | undefined }
+);
+
+export function BoardContextMenu({
+  target,
+  onClose,
+}: {
+  target: BoardMenuTarget;
+  onClose: () => void;
+}) {
+  const [picking, setPicking] = useState(false);
+  const [background, setBackground] = useState(false);
+  const boardView = useBoardView();
+  const annotation = useFactoryStore((state) =>
+    target.kind === "annotation" ? state.project.annotations?.find((entry) => entry.id === target.id) : undefined,
+  );
+  const group = useFactoryStore((state) =>
+    target.kind === "group" ? state.project.pockets?.find((entry) => entry.id === target.id) : undefined,
+  );
+  const planMode = useFactoryStore((state) => state.project.planMode === true);
+  const datasetManifestUrl = useFactoryStore((state) => state.datasetManifestUrl);
+  const datasetManifest = useFactoryStore((state) => state.datasetManifest);
+  const selectedDatasetVersionId = useFactoryStore((state) => state.selectedDatasetVersionId);
+  const selectedDatasetVersion = useMemo(
+    () => datasetManifest?.versions.find((entry) => entry.id === selectedDatasetVersionId),
+    [datasetManifest?.versions, selectedDatasetVersionId],
+  );
+  const searchPickerResources = useCallback(
+    async (pickerQuery: string, signal: AbortSignal) => {
+      if (!selectedDatasetVersion) {
+        return [];
+      }
+      const result = await queryRecipeDatasetResources(
+        datasetManifestUrl ?? DEFAULT_DATASET_MANIFEST_URL,
+        selectedDatasetVersion,
+        { query: pickerQuery, offset: 0, limit: 48 },
+        { signal },
+      );
+      return result.resources;
+    },
+    [datasetManifestUrl, selectedDatasetVersion],
+  );
+  const onPick = useCallback(
+    (entry: DatasetResourceIndexEntry) => {
+      if (entry.kind === "aspect") {
+        return;
+      }
+      useFactoryStore.getState().addPoolStorage(
+        {
+          kind: entry.kind,
+          id: entry.id,
+          displayName: entry.displayName,
+          iconPath: entry.iconPath,
+          iconAtlas: entry.iconAtlas,
+          dominantColor: entry.dominantColor,
+        },
+        "drain",
+        target.flow,
+      );
+      onClose();
+    },
+    [onClose, target.flow],
+  );
+
+  if (picking) {
+    if (typeof document === "undefined") {
+      return null;
+    }
+    // The picker where the menu was: a body portal, so real px become shell
+    // px through the interface scale (ui-scale.ts).
+    const scale = getUiScale();
+    const left = Math.min(target.x / scale, window.innerWidth / scale - 340);
+    const top = Math.min(target.y / scale, window.innerHeight / scale - 420);
+    return createPortal(
+      <div className="ui-zoom fixed z-[100]" style={{ left: Math.max(8, left), top: Math.max(8, top) }}>
+        <ItemPickerPopover
+          role="makes"
+          placement="below"
+          onPick={onPick}
+          onClose={onClose}
+          searchPickerResources={searchPickerResources}
+        />
+      </div>,
+      document.body,
+    );
+  }
+
+  if (target.kind === "group") {
+    return group ? <GroupMenu pocket={group} x={target.x} y={target.y} onClose={onClose} /> : null;
+  }
+  if (target.kind === "annotation") {
+    return annotation ? (
+      <AnnotationMenu annotation={annotation} x={target.x} y={target.y} onClose={onClose} />
+    ) : null;
+  }
+
+  const store = () => useFactoryStore.getState();
+  const run = (action: () => void) => () => {
+    action();
+    onClose();
+  };
+
+  if (background) {
+    return (
+      <BoardMenu x={target.x} y={target.y} label="Background menu" title="BACKGROUND" onClose={onClose}>
+        {CANVAS_THEMES.map((theme) => (
+          <MenuRow
+            key={theme.id}
+            label={theme.name}
+            swatch={theme.base}
+            checked={boardView.canvasTheme === theme.id}
+            onClick={run(() => writeBoardView({ canvasTheme: theme.id }))}
+          />
+        ))}
+        <MenuLine />
+        {CANVAS_PATTERNS.map((pattern) => (
+          <MenuRow
+            key={pattern}
+            label={CANVAS_PATTERN_LABEL[pattern]}
+            checked={boardView.canvasPattern === pattern}
+            onClick={run(() => writeBoardView({ canvasPattern: pattern }))}
+          />
+        ))}
+      </BoardMenu>
+    );
+  }
+
+  return (
+    <BoardMenu x={target.x} y={target.y} label="Board menu" onClose={onClose}>
+      {target.kind === "pane" && TASKS_ENABLED && selectedTaskCards().length > 0 ? (
+        <MenuRow
+          label="Add to a task"
+          onClick={() => {
+            onClose();
+            void openAddToTask(selectedTaskCards(), { left: target.x, top: target.y, bottom: target.y });
+          }}
+        />
+      ) : null}
+      {target.kind === "pane" && planMode ? (
+        <>
+          <MenuRow label="Add sticky note" onClick={run(() => addStickyNoteAt(target.flow))} />
+          <MenuRow label="Add box" onClick={run(() => addBoxAt(target.flow))} />
+          <MenuRow label="Add arrow" onClick={run(() => addArrowAt(target.flow))} />
+          <MenuLine />
+        </>
+      ) : null}
+      {target.kind === "pane" ? <MenuRow label="New product drawer" onClick={() => setPicking(true)} /> : null}
+      {target.kind === "pane" ? <MenuRow label="Background" onClick={() => setBackground(true)} /> : null}
+      {target.kind === "node" ? (
+        <CardRows
+          nodeId={target.id}
+          onClone={() => cloneWithSound(store().duplicateNode, target.id)}
+          onDelete={() => store().deleteNode(target.id)}
+          onAddToTask={
+            TASKS_ENABLED
+              ? () => void openAddToTask(cardsForTask(target.id), { left: target.x, top: target.y, bottom: target.y })
+              : undefined
+          }
+          close={onClose}
+        />
+      ) : null}
+      {target.kind === "storage" ? (
+        <>
+          <MenuRow label="Clone drawer" onClick={run(() => store().duplicateStorage(target.id))} />
+          <MenuLine />
+          <MenuRow label="Delete drawer" danger onClick={run(() => store().deleteStorage(target.id))} />
+        </>
+      ) : null}
+      {target.kind === "edge" ? (
+        <>
+          <MenuRow
+            label="Add a drawer here"
+            disabled={!target.resource}
+            onClick={run(() => {
+              if (target.resource) {
+                store().insertStorageOnEdge(target.ids, target.flow, target.resource);
+              }
+            })}
+          />
+          <MenuLine />
+          <MenuRow
+            label={target.ids.length > 1 ? "Delete wires" : "Delete wire"}
+            danger
+            onClick={run(() => store().deleteEdge(target.ids))}
+          />
+        </>
+      ) : null}
+    </BoardMenu>
+  );
+}

@@ -1,12 +1,18 @@
 "use client";
 
-import { Compass, Library } from "lucide-react";
+import { useDropdownDismiss } from "@/lib/hooks/use-dropdown-dismiss";
+
+import { Compass, Library, Plus, SquareKanban } from "lucide-react";
+import { isLiveConfigured } from "@/lib/live/live-config";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { getUiScale } from "@/lib/ui-scale";
 import { openDesigns, type DesignFolder } from "@/lib/designs/design-library";
 import type { EntryIcon } from "@/lib/model/types";
 import { FLUID_ICON_SCALE, ResourceIcon } from "./nei/ResourceIcon";
 import { useLibrarySyncStore } from "@/lib/library/library-sync";
+import { accountSaveStatus } from "@/lib/library/save-status";
+import { useCommunityAuthStore } from "@/store/community-auth-store";
 import { leaveLibrary, openLibrary, useLibraryTab } from "@/lib/library/library-tab";
 import {
   closeWelcomeTab,
@@ -16,6 +22,9 @@ import {
 } from "@/lib/welcome/welcome-tab";
 import { useDesignStore } from "@/store/design-store";
 import { useSolvingBooks } from "@/components/flow/use-solving-books";
+import { useFactoryStore } from "@/store/factory-store";
+import { tipAttrs } from "@/components/flow/clean/interaction/tip-spec";
+import { closeTabTip, newTabTip, planTabTip } from "@/components/flow/clean/interaction/board-tips";
 
 // Wide enough for the longest item on one line ("Close tabs to right"); the
 // menu clips rather than wraps, so this and the labels move together.
@@ -26,7 +35,7 @@ const MENU_WIDTH = 230;
 const RUBBER_MAX = 24;
 
 /** Which destructive item is one click from firing, if any. */
-type ArmedAction = "right" | "left" | "others";
+type ArmedAction = "right" | "left" | "others" | "all";
 
 interface OpenMenu {
   id: string;
@@ -37,6 +46,10 @@ interface OpenMenu {
 }
 
 export function DesignTabs() {
+  const publicView = useDesignStore((state) => state.publicView);
+  const publicViews = useDesignStore((state) => state.publicViews);
+  // Plan boards word their tabs' tips as the mod does and close a tab on a middle click.
+  const planBoard = useFactoryStore((state) => state.project.planMode === true);
   const allDesigns = useDesignStore((state) => state.designs);
   const folders = useDesignStore((state) => state.folders);
   const activeDesignId = useDesignStore((state) => state.activeDesignId);
@@ -44,8 +57,11 @@ export function DesignTabs() {
   const saveState = useDesignStore((state) => state.saveState);
   const libraryError = useDesignStore((state) => state.error);
   const sync = useLibrarySyncStore();
+  const signedIn = useCommunityAuthStore((state) => Boolean(state.user));
+  const accountSave = accountSaveStatus(signedIn, sync);
   const switchToDesign = useDesignStore((state) => state.switchToDesign);
   const addDesign = useDesignStore((state) => state.addDesign);
+  const addTaskBoard = useDesignStore((state) => state.addTaskBoard);
   const copyDesign = useDesignStore((state) => state.copyDesign);
   const renameDesign = useDesignStore((state) => state.renameDesign);
   const closeDesign = useDesignStore((state) => state.closeDesign);
@@ -71,6 +87,34 @@ export function DesignTabs() {
   const suppressClickRef = useRef(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const stopScrollMotion = useRef(() => {});
+  const openTabKey = [...publicViews.map((view) => "public:" + view.id), ...designs.map((design) => design.id)].join(",");
+  const [closingLayout, setClosingLayout] = useState<{ widths: Record<string, number>; trackWidth: number }>();
+  const closingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(closingTimer.current), []);
+
+  const closeFromTab = async (id: string) => {
+    clearTimeout(closingTimer.current);
+    stopScrollMotion.current();
+    const track = trackRef.current;
+    if (!closingLayout && track) {
+      const widths: Record<string, number> = {};
+      track.querySelectorAll<HTMLElement>("[data-design-id]").forEach((tab) => {
+        widths[tab.dataset.designId!] = tab.getBoundingClientRect().width / getUiScale();
+      });
+      setClosingLayout({ widths, trackWidth: track.scrollWidth });
+    }
+    // The next tab slides into the vacated slot, keeping its close key under
+    // the pointer. At the end of the strip, fall back to the previous tab.
+    const index = designs.findIndex((design) => design.id === id);
+    const next = designs[index + 1] ?? designs[index - 1];
+    try {
+      await closeDesigns([id], next?.id);
+    } finally {
+      closingTimer.current = setTimeout(() => setClosingLayout(undefined), 850);
+    }
+  };
+
 
   const closeMenu = () => {
     setOpenMenu(undefined);
@@ -115,17 +159,25 @@ export function DesignTabs() {
     // real strip is up.
   }, [syncOverflow, isHydrated]);
 
-  // Switching to a design that sits off-screen should bring it into view rather
-  // than leaving the strip looking unchanged.
+  // Wait for the new tab and its compressed layout, then reveal it. The open
+  // ids matter too: loading a newly created design and opening its tab can
+  // arrive in separate store updates.
   useEffect(() => {
-    if (!activeDesignId) {
-      return;
-    }
-
-    scrollerRef.current
-      ?.querySelector(`[data-design-id="${CSS.escape(activeDesignId)}"]`)
-      ?.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" });
-  }, [activeDesignId]);
+    if ((!activeDesignId && !publicView) || closingLayout) return;
+    const frame = requestAnimationFrame(() => {
+      const scroller = scrollerRef.current;
+      const active = scroller?.querySelector<HTMLElement>(publicView ? `[data-public-tab="${CSS.escape(publicView.id)}"]` : `[data-design-id="${CSS.escape(activeDesignId!)}"]`);
+      if (!scroller || !active) return;
+      stopScrollMotion.current();
+      const tabs = scroller.querySelectorAll("[data-design-id], [data-public-tab]");
+      if (active === tabs[tabs.length - 1]) {
+        scroller.scrollTo({ left: scroller.scrollWidth, behavior: "smooth" });
+      } else {
+        active.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeDesignId, publicView?.id, openTabKey, isHydrated, closingLayout]);
 
   // The strip is the one horizontal scroller under a vertical wheel, so plain
   // wheel input walks the tabs. Attached natively: React registers wheel
@@ -137,13 +189,10 @@ export function DesignTabs() {
       return;
     }
 
-    // ONE motion engine, not the browser's smooth scroll plus a separate
-    // band. Wheel input moves a virtual TARGET that is allowed past the ends
-    // (rubber-damped); each frame the position eases towards it, the in-range
-    // part renders as scrollLeft and the out-of-range part as a translate of
-    // the track. So the glide, the stretch at the wall and the spring back
-    // are a single continuous curve — the strip arrives at the end and flows
-    // straight into the bounce instead of stopping and then twitching.
+    // ONE motion engine: wheel input moves a virtual TARGET allowed past the
+    // ends (rubber-damped); each frame the position eases towards it, the
+    // in-range part rendering as scrollLeft and the overshoot as a translate
+    // of the track. Glide, stretch and spring back form one continuous curve.
     let pos: number | undefined;
     let target = 0;
     /** Raw unspent pull past the end; rendered through `rubber`. */
@@ -210,7 +259,9 @@ export function DesignTabs() {
       }
       event.preventDefault();
       // Line-mode deltas (some mice on Firefox) arrive in rows, not pixels.
-      const pixels = event.deltaMode === 1 ? delta * 16 : delta;
+      // Wheel deltas are real pixels and scrollLeft is shell pixels: divided
+      // by the interface scale so a notch moves the same strip of tabs.
+      const pixels = (event.deltaMode === 1 ? delta * 16 : delta) / getUiScale();
       const maxScroll = scroller.scrollWidth - scroller.clientWidth;
 
       if (pos === undefined) {
@@ -229,26 +280,25 @@ export function DesignTabs() {
       }
     };
 
+    stopScrollMotion.current = settle;
     scroller.addEventListener("wheel", onWheel, { passive: false });
     return () => {
       scroller.removeEventListener("wheel", onWheel);
       settle();
+      stopScrollMotion.current = () => {};
     };
     // isHydrated: same as the observer above — no scroller exists at mount.
   }, [isHydrated]);
 
   /**
-   * Mouse-and-pen drag to rearrange. Past a small threshold the press becomes
-   * a drag; from there the held pill rides the pointer as a transform while
-   * the pills it passes slide aside on a transition — the DOM order never
-   * changes mid-drag, so nothing jumps. The drop clears the transforms and
-   * commits the order in the same breath, which React re-renders before the
-   * next paint. Touch keeps its meaning — this same motion is how a finger
-   * scrolls the strip.
+   * Mouse-and-pen drag to rearrange (touch scrolls the strip instead). Past a
+   * small threshold the held pill rides the pointer as a transform while
+   * passed pills slide aside; the DOM order never changes mid-drag. The drop
+   * clears the transforms and commits the order together, before next paint.
    *
-   * All geometry lives in TRACK space (positions captured once at drag start,
-   * the pointer re-based against the track's live rect), so the strip
-   * auto-scrolling under the drag does not put the numbers out.
+   * Geometry lives in TRACK space (positions captured at drag start, pointer
+   * re-based against the track's live rect), so auto-scroll during the drag
+   * does not skew it.
    */
   const beginTabDrag = (event: React.PointerEvent, id: string) => {
     if (event.button !== 0 || event.pointerType === "touch" || renamingId) {
@@ -281,14 +331,17 @@ export function DesignTabs() {
     let trackWidth = 0;
     let lastClientX = startClientX;
     let frame = 0;
+    // The geometry below is measured in real pixels (rects and clientX) and
+    // written back as translate, which is shell pixels: divided by the
+    // interface scale at the two write sites.
+    const scale = getUiScale();
 
     const trackX = (clientX: number) => clientX - track.getBoundingClientRect().left;
 
     /**
-     * Re-derives everything from the last known pointer position. Called from
-     * pointermove AND once per animation frame: while the strip auto-scrolls
-     * under a parked pointer no pointermove fires, and without this the pill
-     * and the displacement stop dead until the hand twitches.
+     * Re-derives everything from the last pointer position. Called from
+     * pointermove AND every animation frame, because auto-scroll under a
+     * parked pointer fires no pointermove.
      */
     const update = () => {
       if (!dragged) {
@@ -302,13 +355,11 @@ export function DesignTabs() {
         -(dragged.mid - reach),
         Math.min(trackWidth - (dragged.mid + reach), trackX(lastClientX) - startTrackX),
       );
-      dragged.el.style.transform = `translateX(${dx}px)`;
+      dragged.el.style.transform = `translateX(${dx / scale}px)`;
 
-      // Where the held pill sits, against RESTING midpoints — the DOM never
-      // reorders mid-drag, so they stay true. A neighbour yields as soon as
-      // the pill's LEADING EDGE reaches its middle, not when centre passes
-      // centre: each slot's threshold moves `reach` towards the held pill, so
-      // tabs step aside early instead of waiting to be fully overlapped.
+      // Where the held pill sits, against RESTING midpoints (the DOM never
+      // reorders mid-drag). A neighbour yields once the pill's LEADING EDGE
+      // reaches its middle: each threshold moves `reach` towards the held pill.
       const centre = dragged.mid + dx;
       let index = 0;
       for (const slot of slots) {
@@ -331,15 +382,14 @@ export function DesignTabs() {
             : position < startIndex && position >= targetIndex
               ? step
               : 0;
-        slot.el.style.transform = shift ? `translateX(${shift}px)` : "";
+        slot.el.style.transform = shift ? `translateX(${shift / scale}px)` : "";
       });
     };
 
     /**
-     * Holding the pill against either end walks the strip along, faster the
-     * deeper into the zone, for as long as the hand stays there. Runs on
-     * frames, not pointer events, so a parked pointer keeps scrolling; the
-     * update() after it re-anchors the pill so it stays under the hand.
+     * Holding the pill against either end scrolls the strip, faster the
+     * deeper into the zone. Runs on frames, not pointer events, so a parked
+     * pointer keeps scrolling; the update() after it re-anchors the pill.
      */
     const autoScrollTick = () => {
       const scroller = scrollerRef.current;
@@ -437,58 +487,51 @@ export function DesignTabs() {
   };
 
   if (!isHydrated) {
-    return <div className="h-8 shrink-0 border-b border-line bg-surface" />;
+    return <div className="h-[22px] shrink-0 border-b border-line bg-surface" />;
   }
 
   return (
     <>
       {/*
         Only the tab list scrolls. The actions sit outside it because an
-        `overflow` container clips absolutely-positioned children, which is what
-        was hiding the export menu when this bar was one scrolling row.
+        `overflow` container clips absolutely-positioned children (menus).
       */}
       <div
         data-help-anchor="tabs"
-        // h-8, not the 44px this bar used to run: a tab's name is 12px text in
-        // a 24px pill, so the row was carrying 20px of nothing above and below
-        // it. The board gets the difference.
-        className="flex h-8 min-w-0 shrink-0 items-center gap-1 border-b border-line bg-surface px-2"
+        className="design-tab-strip flex h-[22px] min-w-0 shrink-0 items-center gap-1 border-b border-line bg-surface px-2"
       >
         {/*
-          Welcome rides at the head of the strip and outside the scroller, so it
-          never scrolls out of reach. It is not a design: it covers the board
-          rather than switching what is on it, which is why the design tabs read
-          their active state off `welcome.active` too - exactly one tab in this
-          row can look current.
+          Welcome sits at the head of the strip, outside the scroller. It covers
+          the board rather than switching designs, so the design tabs also read
+          `welcome.active` to keep exactly one tab looking current.
         */}
         {/*
-          The SHELF: every design, open or not, in folders. Not a tab: a fixed
-          square at the head of the row with no name and no close, because it
-          is a place rather than a thing on the strip. It covers the board the
-          way Welcome does.
+          The SHELF (library): every design, in folders. A fixed square with no
+          name or close, covering the board the way Welcome does.
         */}
         <button
           type="button"
           onClick={() => openLibrary()}
-          aria-label="Open the library"
+          aria-label="Open Plans"
           aria-pressed={shelf.active}
           data-help-anchor="library"
           className={[
-            "flex h-6 shrink-0 items-center gap-1 rounded-t border-b-2 px-2 text-xs font-medium",
+            "flex h-5 shrink-0 items-center gap-1 rounded-t border-b-2 px-2 text-xs font-medium",
             shelf.active
               ? "border-cyan-500 bg-surface-raised text-fg"
               : "border-transparent text-fg-muted hover:bg-surface-sunken hover:text-fg",
           ].join(" ")}
         >
           <Library className="h-3 w-3" aria-hidden />
-          Library
+          Plans
         </button>
         <span aria-hidden className="h-3.5 w-px shrink-0 bg-line" />
+
 
         {welcome.open ? (
           <div
             className={[
-              "group flex h-6 shrink-0 items-center rounded-t border-b-2 pl-2 pr-1",
+              "group flex h-5 shrink-0 items-center rounded-t border-b-2 pl-2 pr-1",
               welcome.active
                 ? "border-cyan-500 bg-surface-raised text-fg"
                 : "border-transparent text-fg-muted hover:bg-surface-sunken hover:text-fg",
@@ -517,17 +560,10 @@ export function DesignTabs() {
         ) : null}
 
         {/*
-          Sized to its tabs (`shrink`), not to the whole bar (`flex-1`): with a
-          couple of designs the strip is only as wide as they are, so the `+`
-          sits against the last tab instead of being stranded at the far right.
-          Once the tabs outgrow the bar it shrinks and scrolls instead.
-
-          More-tabs-this-way is said with edge FADES, not buttons: they overlay
-          the strip's ends, always mounted and only changing opacity, so the
-          row never shifts when one lights up. (The arrows this replaces popped
-          in and out of the flex row, walking every tab sideways each time.)
-          Scrolling itself already has the wheel, the trackpad, a finger, and
-          dragging a tab against either end.
+          Sized to its tabs (`shrink`, not `flex-1`) so the `+` sits against the
+          last tab; once the tabs outgrow the bar it shrinks and scrolls.
+          Overflow is shown by edge FADES that overlay the ends and only change
+          opacity, so the row never shifts.
         */}
         <div className="relative min-w-0 shrink">
           <div
@@ -537,9 +573,23 @@ export function DesignTabs() {
           >
           <nav
             ref={trackRef}
+            style={closingLayout ? { width: closingLayout.trackWidth, maxWidth: "none" } : undefined}
             aria-label="Designs"
-            className="flex w-max select-none items-center gap-1"
+            className="design-tabs-track flex w-max max-w-full select-none items-center gap-1"
           >
+            {publicViews.map((view) => {
+              const selected = publicView?.id === view.id && !coveringPage;
+              return <div key={view.id} data-public-tab={view.id}
+                className={`design-tab group flex h-5 items-center rounded-t border-b-2 pl-2 pr-1 ${selected ? "border-amber-500 text-amber-300 bg-surface-raised" : "border-transparent text-fg-muted hover:bg-surface-sunken hover:text-fg"}`}>
+                <button type="button" aria-label={`View only: ${view.name}`} aria-pressed={selected}
+                  onClick={() => void useDesignStore.getState().switchToPublicView(view.id)}
+                  className="design-tab-label flex h-full min-w-0 flex-1 items-center text-xs font-medium">
+                  <FadingTabName name={view.name} />
+                </button>
+                {selected ? <button type="button" aria-label="Close public setup view" onClick={() => void useDesignStore.getState().closePublicView(view.id)}
+                  className="ml-1 shrink-0 rounded px-1 text-xs text-fg-muted hover:bg-surface hover:text-fg">×</button> : null}
+              </div>;
+            })}
             {designs.map((design, index) => {
               const isActive = design.id === activeDesignId && !coveringPage;
 
@@ -560,17 +610,27 @@ export function DesignTabs() {
                   ) : null}
                 <div
                   data-design-id={design.id}
+                  onAuxClick={planBoard ? (event) => {
+                    if (event.button !== 1) return;
+                    event.preventDefault();
+                    void closeFromTab(design.id);
+                  } : undefined}
+                  onMouseDown={planBoard ? (event) => { if (event.button === 1) event.preventDefault(); } : undefined}
+                  style={closingLayout?.widths[design.id] ? { width: closingLayout.widths[design.id], flexShrink: 0 } : undefined}
                   onPointerDown={(event) => beginTabDrag(event, design.id)}
-                  // Middle click closes, the way every tab strip does. Safe
-                  // now that closing only puts the design on the shelf.
-                  onAuxClick={(event) => {
-                    if (event.button === 1) {
-                      event.preventDefault();
-                      void closeDesign(design.id);
-                    }
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setArmed(undefined);
+                    setOpenMenu({
+                      id: design.id,
+                      name: design.name,
+                      left: Math.max(8, Math.min(event.clientX || rect.left, window.innerWidth - MENU_WIDTH * getUiScale() - 8)),
+                      top: rect.bottom + 4,
+                    });
                   }}
                   className={[
-                    "group flex h-6 shrink-0 items-center rounded-t border-b-2 pl-2 pr-1",
+                    "design-tab group flex h-5 items-center rounded-t border-b-2 pl-2 pr-1",
                     isActive
                       ? "border-cyan-500 bg-surface-raised text-fg"
                       : "border-transparent text-fg-muted hover:bg-surface-sunken hover:text-fg",
@@ -589,6 +649,7 @@ export function DesignTabs() {
                   ) : (
                     <button
                       type="button"
+                      {...(planBoard ? tipAttrs(planTabTip(`tab|${design.id}`, design.name)) : {})}
                       onClick={() => {
                         if (suppressClickRef.current) {
                           return;
@@ -598,42 +659,24 @@ export function DesignTabs() {
                         leaveWelcomeTab();
                         void switchToDesign(design.id);
                       }}
-                      onDoubleClick={() => setRenamingId(design.id)}
-                      className="flex max-w-[166px] items-center gap-1.5 text-xs font-medium"
+                      className="design-tab-label flex h-full min-w-0 flex-1 items-center gap-1.5 text-xs font-medium"
                     >
                       {hasDrawableFace(design.icon) ? <TabFace icon={design.icon} /> : null}
                       {isActive ? <TabSolvingSpinner /> : null}
-                      <span className="truncate">{design.name}</span>
+                      <FadingTabName name={design.name} />
                     </button>
                   )}
 
-                  <button
+                  {isActive ? <button
                     type="button"
-                    aria-label={`Design options for ${design.name}`}
-                    aria-expanded={openMenu?.id === design.id}
-                    onClick={(event) => {
-                      if (openMenu?.id === design.id) {
-                        closeMenu();
-                        return;
-                      }
-
-                      // Measured off the trigger because the menu renders in a
-                      // portal: the tab strip scrolls horizontally, and an
-                      // overflow container clips absolutely-positioned children
-                      // whatever their z-index.
-                      const rect = event.currentTarget.getBoundingClientRect();
-                      setArmed(undefined);
-                      setOpenMenu({
-                        id: design.id,
-                        name: design.name,
-                        left: Math.min(rect.left, window.innerWidth - MENU_WIDTH - 8),
-                        top: rect.bottom + 4,
-                      });
-                    }}
-                    className="ml-1 rounded px-1 text-xs text-fg-muted opacity-0 hover:bg-surface hover:text-fg focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
+                    aria-label={`Close ${design.name}`}
+                    {...(planBoard ? tipAttrs(closeTabTip(`tabx|${design.id}`)) : {})}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={() => void closeFromTab(design.id)}
+                    className="ml-1 shrink-0 rounded px-1 text-xs text-fg-muted hover:bg-surface hover:text-fg"
                   >
-                    ⋯
-                  </button>
+                    ×
+                  </button> : null}
                 </div>
                 </Fragment>
               );
@@ -666,10 +709,25 @@ export function DesignTabs() {
             void addDesign();
           }}
           aria-label="New design"
-          className="shrink-0 rounded px-2 py-0.5 text-sm text-fg-muted hover:bg-surface-sunken hover:text-fg"
+          {...(planBoard ? tipAttrs(newTabTip("tab|new")) : {})}
+          className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-fg"
         >
-          +
+          <Plus className="h-3.5 w-3.5" aria-hidden />
         </button>
+        {isLiveConfigured() ? (
+          <button
+            type="button"
+            onClick={() => {
+              leaveWelcomeTab();
+              void addTaskBoard();
+            }}
+            aria-label="New task board"
+            title="New task board"
+            className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-fg"
+          >
+            <SquareKanban className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        ) : null}
 
         {/* Everything from here is pinned to the right edge. */}
         {/* A library that failed to load or save says so here, in red, rather
@@ -677,22 +735,17 @@ export function DesignTabs() {
         <span
           className={[
             "ml-auto max-w-[360px] shrink-0 truncate pl-1 text-[11px]",
-            libraryError || sync.state === "error" ? "text-red-400" : "text-fg-muted",
+            libraryError || accountSave.error ? "text-red-400" : "text-fg-muted",
           ].join(" ")}
+          title={libraryError ?? sync.message ?? accountSave.text}
         >
-          {libraryError
+          {publicView && !coveringPage ? "View only" : libraryError
             ? libraryError
             : saveState === "saving"
               ? "Saving…"
               : saveState === "error"
                 ? "Save failed"
-                : sync.state === "syncing"
-                  ? "Syncing…"
-                  : sync.state === "error"
-                    ? `Sync failed: ${sync.message ?? ""}`
-                    : sync.state === "idle"
-                      ? "Synced"
-                      : "Saved"}
+                : accountSave.text}
         </span>
       </div>
 
@@ -727,7 +780,7 @@ export function DesignTabs() {
             closeMenu();
           }}
           onCloseMany={(ids) => {
-            void closeDesigns(ids, openMenu.id);
+            void closeDesigns(ids, ids.includes(openMenu.id) ? undefined : openMenu.id);
             closeMenu();
           }}
         />
@@ -769,37 +822,9 @@ function DesignMenu({
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) {
-        onClose();
-      }
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    // Capture phase, and pointerdown rather than mousedown: the board's pan
-    // handler stops the event dead on the way up (d3-zoom calls
-    // stopImmediatePropagation), so a bubble-phase listener here never heard a
-    // press on the canvas and the menu just sat there. Pointer events also
-    // cover a finger without waiting for the synthesized mouse press.
-    document.addEventListener("pointerdown", closeOnOutsideClick, true);
-    document.addEventListener("keydown", closeOnEscape);
-    // A fixed menu does not travel with the strip, so it is dismissed rather
-    // than left floating somewhere it no longer points at.
-    window.addEventListener("scroll", onClose, true);
-    window.addEventListener("resize", onClose);
-
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsideClick, true);
-      document.removeEventListener("keydown", closeOnEscape);
-      window.removeEventListener("scroll", onClose, true);
-      window.removeEventListener("resize", onClose);
-    };
-  }, [onClose]);
+  // The one dropdown rule (use-dropdown-dismiss.ts): press outside, Escape,
+  // wheel, scroll, resize, a board pan, or the mouse drifting away.
+  useDropdownDismiss(true, { refs: [menuRef], onClose, fade: true });
 
   // The menu only ever opens from a click, so this is really just a guard for
   // any render that happens without a DOM.
@@ -812,8 +837,10 @@ function DesignMenu({
       ref={menuRef}
       role="menu"
       aria-label={`Design options for ${menu.name}`}
-      style={{ left: menu.left, top: menu.top, width: MENU_WIDTH }}
-      className="fixed z-[100] overflow-hidden rounded border border-line bg-surface-raised shadow-lg"
+      // A body portal wearing .ui-zoom positions in shell pixels: the
+      // real-pixel anchor is divided by the interface scale.
+      style={{ left: menu.left / getUiScale(), top: menu.top / getUiScale(), width: MENU_WIDTH }}
+      className="ui-zoom fixed z-[100] overflow-hidden rounded border border-line bg-surface-raised shadow-lg"
     >
       <MenuItem label="Rename" onClick={onRename} />
       <MenuItem label="Duplicate" onClick={onDuplicate} />
@@ -841,41 +868,27 @@ function DesignMenu({
         </>
       ) : null}
 
-      {/*
-        Closing puts designs on the shelf, so every close fires on one click;
-        the bulk ones still arm first because a stray click on "close other
-        tabs" empties the strip, and getting it back means a trip to the
-        shelf. Labels stay short enough to sit on one line; a count in the
-        label pushed them onto two.
-
-        An item with nothing to close is left out rather than shown disabled;
-        on the first or last tab half this menu would otherwise be dead text.
-      */}
-      <MenuItem label="Close" onClick={onCloseTab} />
-      {neighbours.left.length > 0 ? (
-        <BulkCloseItem
-          label="Close tabs to left"
-          armed={armed === "left"}
-          onArm={() => onArm("left")}
-          onFire={() => onCloseMany(neighbours.left)}
-        />
-      ) : null}
-      {neighbours.right.length > 0 ? (
-        <BulkCloseItem
-          label="Close tabs to right"
-          armed={armed === "right"}
-          onArm={() => onArm("right")}
-          onFire={() => onCloseMany(neighbours.right)}
-        />
-      ) : null}
-      {neighbours.others.length > 0 ? (
-        <BulkCloseItem
-          label="Close other tabs"
-          armed={armed === "others"}
-          onArm={() => onArm("others")}
-          onFire={() => onCloseMany(neighbours.others)}
-        />
-      ) : null}
+      <div className="border-t border-line p-2">
+        <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-fg-muted">Close</div>
+        <div className="grid grid-cols-5 gap-1 text-xs">
+          <button type="button" role="menuitem" aria-label="Close this tab"
+            onClick={onCloseTab} className="rounded border border-line px-1 py-1 hover:bg-surface-sunken">This</button>
+          {([
+            ["left", "Left", neighbours.left],
+            ["right", "Right", neighbours.right],
+            ["others", "Others", neighbours.others],
+            ["all", "All", [...neighbours.others, menu.id]],
+          ] as const).map(([action, label, ids]) => (
+            <button key={action} type="button" role="menuitem"
+              aria-label={`${armed === action ? "Confirm close" : "Close"} ${action === "left" || action === "right" ? "tabs to the " + action : action + " tabs"}`}
+              disabled={ids.length === 0}
+              onClick={() => armed === action ? onCloseMany([...ids]) : onArm(action)}
+              className={`rounded border px-1 py-1 hover:bg-surface-sunken disabled:opacity-30 disabled:hover:bg-transparent ${armed === action ? "border-red-400/50 text-red-300" : "border-line"}`}>
+              {armed === action ? "Sure?" : label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* No Delete here: a tab is just a tab. Deleting a design for good is
           the library's job, where the design is a thing rather than a tab. */}
@@ -884,32 +897,9 @@ function DesignMenu({
   );
 }
 
-/** One armed-then-fires close. */
-function BulkCloseItem({
-  label,
-  armed,
-  onArm,
-  onFire,
-}: {
-  label: string;
-  armed: boolean;
-  onArm: () => void;
-  onFire: () => void;
-}) {
-  return (
-    <MenuItem
-      label={armed ? "Confirm close" : label}
-      tone={armed ? "danger" : undefined}
-      onClick={armed ? onFire : onArm}
-    />
-  );
-}
-
 /**
- * Which tabs sit either side of one tab, by tab order.
- *
- * The anchor is never in any of the three lists: the menu belongs to that tab,
- * so the one thing every item here leaves standing is the tab it opened from.
+ * Which tabs sit either side of one tab, by tab order. The anchor is never in
+ * any of the three lists: every item here leaves the menu's own tab standing.
  */
 function splitNeighbours(ids: string[], anchorId: string) {
   const index = ids.indexOf(anchorId);
@@ -995,21 +985,19 @@ function hasDrawableFace(icon: EntryIcon | undefined): icon is EntryIcon {
 }
 
 /** The face's box: the pill's full height, the way a browser tab wears a favicon. */
-const TAB_FACE_PX = 24;
+const TAB_FACE_PX = 20;
 
 /**
- * The design's saved one-item face at the pill's full height. Same rendering
- * as the setup shelf's icon slot: the padded source art drawn oversized and
- * cropped by the wrapper, so the sprite fills the little box. Nudged down a
- * pixel because every pill carries a 2px bottom border (the active underline,
- * transparent on the rest), which centres content a pixel above the pill's
- * visual middle.
+ * The design's saved one-item face at the pill's full height, drawn like the
+ * shelf's icon slot (oversized art cropped by the wrapper). Nudged down a
+ * pixel because every pill's 2px bottom border (the active underline) centres
+ * content a pixel high.
  */
 function TabFace({ icon }: { icon: EntryIcon }) {
   return (
     <span
       aria-hidden
-      className="flex h-6 w-6 shrink-0 translate-y-[1px] items-center justify-center overflow-hidden"
+      className="design-tab-face flex h-5 w-5 shrink-0 translate-y-[1px] items-center justify-center overflow-hidden"
     >
       <ResourceIcon
         resource={{
@@ -1024,13 +1012,10 @@ function TabFace({ icon }: { icon: EntryIcon }) {
         bare
         tooltip={false}
         showAmount={false}
-        // Both kinds are drawn oversized so the ART fills the box, not the
-        // art plus its padding. A rendered item texture is 256px with the art
-        // in the middle 128 (measured across the set), so exactly 2x the box
-        // puts the art at box size, cropped by the wrapper. A fluid draws as
-        // a swatch inset to FLUID_ICON_SCALE of its cell so it weighs the
-        // same as items in a slot grid; here that inset is inverted away and
-        // the swatch itself fills the box.
+        // Drawn oversized so the ART fills the box, not its padding: a rendered
+        // item texture is 256px with the art in the middle 128, so 2x the box
+        // puts the art at box size. A fluid swatch is normally inset to
+        // FLUID_ICON_SCALE; here that inset is inverted so the swatch fills it.
         iconPixelSize={
           icon.kind === "fluid"
             ? Math.round(TAB_FACE_PX / FLUID_ICON_SCALE)
@@ -1043,11 +1028,9 @@ function TabFace({ icon }: { icon: EntryIcon }) {
 }
 
 /**
- * A tiny spinner on the ACTIVE tab while its books are still computing in
- * the worker - the canvas holds only one plan at a time, so the active tab
- * is the only one that can be mid-solve. Its own component so the whole tab
- * strip does not resubscribe to the solve flag; it renders nothing the
- * moment the real numbers land.
+ * A tiny spinner on the ACTIVE tab (the only one that can be mid-solve)
+ * while the worker computes. Its own component so the tab strip does not
+ * subscribe to the solve flag.
  */
 function TabSolvingSpinner() {
   const solving = useSolvingBooks();
@@ -1060,4 +1043,20 @@ function TabSolvingSpinner() {
       className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-neutral-600 border-t-cyan-400"
     />
   );
+}
+
+/** Fade only overflowing names; actual available width decides, never tab count. */
+function FadingTabName({ name }: { name: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [clipped, setClipped] = useState(false);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const measure = () => setClipped(element.scrollWidth > element.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [name]);
+  return <span ref={ref} className="design-tab-name" data-clipped={clipped}>{name}</span>;
 }

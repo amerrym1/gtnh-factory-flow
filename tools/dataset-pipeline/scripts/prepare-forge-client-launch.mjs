@@ -14,6 +14,7 @@ const instanceRoot = path.resolve(instanceRootArg);
 const runtimeDir = path.resolve(runtimeDirArg);
 const minecraftVersion = process.env.GTNH_MINECRAFT_VERSION ?? "1.7.10";
 const javaMemory = process.env.GTNH_EXPORT_MAX_MEMORY ?? "6G";
+const javaMinMemory = process.env.GTNH_EXPORT_MIN_MEMORY ?? "4G";
 const assetsDir = path.join(runtimeDir, "assets");
 const librariesDir = path.join(runtimeDir, "libraries");
 const versionsDir = path.join(runtimeDir, "versions", minecraftVersion);
@@ -47,7 +48,7 @@ cd ${shellQuote(instanceRoot)}
 mkdir -p ${shellQuote(xdgDataDir)}
 export XDG_DATA_HOME=${shellQuote(xdgDataDir)}
 exec java \\
-  -Xms4G \\
+  -Xms${shellQuote(javaMinMemory)} \\
   -Xmx${shellQuote(javaMemory)} \\
   -Dfile.encoding=UTF-8 \\
   -Djava.system.class.loader=com.gtnewhorizons.retrofuturabootstrap.RfbSystemClassLoader \\

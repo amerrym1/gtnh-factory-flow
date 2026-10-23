@@ -1,3 +1,11 @@
+import { getFusionStats } from "@/lib/machines/fusion";
+import {
+  getEecOutputMultiplier,
+  getEecSettings,
+  isEecRecipe,
+} from "@/lib/machines/extreme-entity-crusher";
+import { getTgsOutputMultiplier, isTgsRecipe } from "@/lib/machines/tree-growth-simulator";
+import { getVatOutputMultiplier, isVatRecipe } from "@/lib/machines/bacterial-vat";
 import {
   getRecipeCoilTierControl,
   getRecipeMachineConfigTierControls,
@@ -20,15 +28,22 @@ import {
   cropsNhHarvesterFromTiers,
   getBeeBaseProductionTerm,
   getBeeProductionTermModifier,
+  getBeeSpeedGeneValueByKey,
+  BEE_SPEED_GENE_CONTROL_ID,
+  isIndustrialApiaryMachineType,
   getCropsNhStats,
   isBeeFrameSlotControlId,
   isBeeProductionRecipe,
 } from "@/lib/model/passive-production";
 import {
-  getVoltageTierForEuT,
-  getVoltageTierIndex,
-  getVoltageTierMaxEuT,
-} from "@/lib/model/tiers";
+  BEE_INDUSTRIAL_BASE_EUT,
+  beeIndustrialEnergy,
+  beeIndustrialEuPerTick,
+  beeIndustrialRateFraction,
+  beeOutputMultiplier,
+  beeProductionWithFrames,
+} from "@/lib/model/bee-maths";
+import { getVoltageTierForEuT, getVoltageTierIndex } from "@/lib/model/tiers";
 import { getHeatDiscountMultiplier } from "./heat";
 import { getEffectiveVoltageOrdinal, getNodeRunTier, getPowerPoolEuT } from "./power";
 import {
@@ -41,8 +56,6 @@ import type { FactoryNode, MachineTier, Recipe, RecipeOutput } from "@/lib/model
 
 type VoltageTier = Exclude<MachineTier, "DEMO">;
 
-const TGS_BASE_OUTPUT_MULTIPLIER = 5;
-
 /** What the machine table needs to read off a recipe. */
 type MachineEffectRecipe = Pick<
   Recipe,
@@ -52,7 +65,18 @@ type MachineEffectRecipe = Pick<
 
 /** What it needs off the node the user configured. */
 type MachineEffectNode = Pick<FactoryNode, "machineConfigTiers" | "coilTier"> &
-  Partial<Pick<FactoryNode, "overclockTier" | "machineHandlerId" | "energyHatches" | "energyHatchType">>;
+  Partial<
+    Pick<
+      FactoryNode,
+      | "overclockTier"
+      | "machineHandlerId"
+      | "energyHatches"
+      | "energyHatchType"
+      | "powerEuT"
+      | "hatchVoltageTier"
+      | "hatchAmps"
+    >
+  >;
 
 /**
  * Reads the machine config tiers a node has selected as the zero-based indices
@@ -111,13 +135,12 @@ export function buildMachineContext(
     // What GTUtility.getTier(getMaxInputVoltage()) reports: the tier of the
     // SUMMED hatch voltage, so stacked hatches raise the ordinal the
     // "parallels per voltage tier" formulas scale on.
-    voltageTier: getEffectiveVoltageOrdinal(
-      recipe,
-      node,
-      getNodeRunTier(recipe as Recipe, node),
-    ),
+    voltageTier: getEffectiveVoltageOrdinal(recipe, node, getNodeRunTier(recipe as Recipe, node)),
     recipeVoltageTier: getVoltageTierIndex(getVoltageTierForEuT(Math.abs(recipe.eut ?? 0))),
     recipeSpecialValue: getRecipeSpecialValue(recipe),
+    recipeMap: recipe.source?.recipeMap ?? recipe.machineType,
+    recipe: recipe as Partial<Recipe>,
+    settings: node.machineConfigTiers,
   };
 }
 
@@ -127,6 +150,26 @@ export function getMachineOutputMultiplier(
   output: RecipeOutput,
   tier: VoltageTier,
 ): number {
+  if (isEecRecipe(recipe)) {
+    return getEecOutputMultiplier(
+      recipe as Partial<Pick<Recipe, "outputs">> & typeof recipe,
+      output,
+      getEecSettings(node.machineConfigTiers),
+    );
+  }
+  if (isTgsRecipe(recipe)) {
+    // MTETreeFarm: the tier multiplier, each mode's tool, a Forestry sapling's genes.
+    return getTgsOutputMultiplier(
+      recipe as Partial<Recipe>,
+      output,
+      node.machineConfigTiers,
+      getVoltageTierIndex(tier),
+    );
+  }
+  if (isVatRecipe(recipe)) {
+    // MTEBioVat: the first fluid out times the output hatch's fill multiplier.
+    return getVatOutputMultiplier(recipe as Partial<Recipe>, output, node.machineConfigTiers);
+  }
   const cropStats = getCropsNhStats(recipe);
   if (cropStats) {
     const setup = cropsNhHarvesterFromTiers(
@@ -163,13 +206,14 @@ export function getMachineOutputMultiplier(
   }
 
   const configMultiplier = getRecipeMachineConfigTierControls(recipe, node)
-    .filter(
-      (control) =>
-        !isTreeGrowthSimulatorToolControl(control.id) && !isBeeFrameSlotControlId(control.id),
-    )
+    .filter((control) => !isBeeFrameSlotControlId(control.id))
     .reduce((multiplier, control) => multiplier * (control.current.outputMultiplier ?? 1), 1);
 
   if (isBeeProductionRecipe(recipe)) {
+    const gameMultiplier = getBeeGameOutputMultiplier(recipe, node, output);
+    if (gameMultiplier !== undefined) {
+      return gameMultiplier;
+    }
     return (
       configMultiplier *
       getBeeClimateOutputMultiplier(recipe, node, output) *
@@ -178,14 +222,107 @@ export function getMachineOutputMultiplier(
     );
   }
 
-  if (!isTreeGrowthSimulatorRecipe(recipe)) {
-    return configMultiplier;
-  }
+  return configMultiplier;
+}
 
-  const tierOrdinal = getVoltageTierIndex(tier) + 1;
-  const tierMultiplier = (2 * tierOrdinal ** 2 - 2 * tierOrdinal + 5) / TGS_BASE_OUTPUT_MULTIPLIER;
-  const toolMultiplier = getTreeGrowthSimulatorToolMultiplier(recipe, node, output);
-  return configMultiplier * tierMultiplier * toolMultiplier;
+/**
+ * Items per base chance from the game's code (see bee-maths.ts): a chance goes through getFinalChance, a product is
+ * rolled twice, Forestry's housings at most once a roll. Undefined for the Mega Apiary (kept on the older scaling)
+ * and for an output whose base chance the recipe does not carry.
+ */
+function getBeeGameOutputMultiplier(
+  recipe: Pick<Recipe, "machineType" | "source" | "nei" | "machineConfigControls" | "metadata">,
+  node: Pick<FactoryNode, "machineConfigTiers">,
+  output: RecipeOutput,
+): number | undefined {
+  if (isMegaApiaryRecipe(recipe)) {
+    return undefined;
+  }
+  const chance = getBeeBaseChance(output);
+  if (chance === undefined) {
+    return undefined;
+  }
+  const climate = getBeeClimateOutputMultiplier(recipe, node, output);
+  if (climate === 0) {
+    return 0;
+  }
+  const controls = getRecipeMachineConfigTierControls(recipe, node);
+  const term = getBeeProductionTerm(recipe, controls);
+  if (term <= 0) {
+    return 0;
+  }
+  const industrial = isIndustrialApiaryMachineType(recipe.machineType);
+  const speedKey = controls.find((control) => control.id === BEE_SPEED_GENE_CONTROL_ID)?.current
+    .key;
+  let multiplier = beeOutputMultiplier(chance, getBeeSpeedGeneValueByKey(speedKey), term, {
+    specialty: isBeeSpecialtyOutput(output),
+    capped: !industrial,
+  });
+  if (industrial) {
+    const accel = controls.find((control) => control.id === BEE_INDUSTRIAL_SPEED_CONTROL_ID);
+    const lifespan = Number(recipe.metadata?.beeLifespan);
+    multiplier *= beeIndustrialRateFraction(
+      beeIndustrialSpeedExponent(accel?.current.key),
+      Number.isFinite(lifespan) && lifespan > 0 ? lifespan : undefined,
+    );
+  }
+  return multiplier;
+}
+
+function getBeeBaseChance(output: RecipeOutput): number | undefined {
+  if (typeof output.chance === "number" && output.chance > 0) {
+    return output.chance;
+  }
+  for (const line of output.tooltip ?? []) {
+    const match = /(?:product|specialty) chance:\s*([\d.]+)\s*%/i.exec(line);
+    if (match) {
+      const percent = Number(match[1]);
+      if (percent > 0) {
+        return percent / 100;
+      }
+    }
+  }
+  return undefined;
+}
+
+function isBeeSpecialtyOutput(output: RecipeOutput) {
+  return (
+    output.byproduct === true ||
+    (output.tooltip ?? []).some((line) => /specialty chance|needs preferred climate/i.test(line))
+  );
+}
+
+function beeIndustrialSpeedExponent(key: string | undefined) {
+  if (key === "speed-8-upgraded") {
+    return 8;
+  }
+  const match = /^speed-(\d)$/.exec(key ?? "");
+  return match ? Number(match[1]) : 0;
+}
+
+/** p + t: the housing's base term, the controls' modifiers, then the frames each against the sum so far. */
+function getBeeProductionTerm(
+  recipe: Pick<Recipe, "machineType">,
+  controls: ReturnType<typeof getRecipeMachineConfigTierControls>,
+) {
+  const hasUpgradedSpeed8 = controls.some(
+    (control) =>
+      control.id === BEE_INDUSTRIAL_SPEED_CONTROL_ID && control.current.key === "speed-8-upgraded",
+  );
+  const frames: string[] = [];
+  let term = getBeeBaseProductionTerm(recipe.machineType);
+  for (const control of controls) {
+    if (isBeeFrameSlotControlId(control.id)) {
+      frames.push(control.current.key);
+      continue;
+    }
+    if (hasUpgradedSpeed8 && control.id === BEE_INDUSTRIAL_PRODUCTION_CONTROL_ID) {
+      continue;
+    }
+    term += getBeeProductionTermModifier(control.id, control.current.key);
+  }
+  // Frames work on p, which is the term less Forestry's t of 1 (the Industrial Apiary takes none).
+  return beeProductionWithFrames(term - 1, frames) + 1;
 }
 
 function getBeeClimateOutputMultiplier(
@@ -292,35 +429,22 @@ export function applyMachineOutputMultipliers(
     : recipe;
 }
 
-function getTreeGrowthSimulatorToolMultiplier(
-  recipe: Pick<Recipe, "machineType" | "source" | "nei" | "machineConfigControls">,
-  node: Pick<FactoryNode, "machineConfigTiers">,
-  output: RecipeOutput,
-) {
-  const category = getTreeGrowthSimulatorOutputCategory(output);
-  if (!category) {
-    return 1;
-  }
-
-  const normalizedCategory = category.toLowerCase();
-  const controls = getRecipeMachineConfigTierControls(recipe, node);
-  const slotControl = controls
-    .filter((entry) => /^tgsToolSlot\d+$/.test(entry.id))
-    .filter((entry) => getTreeGrowthSimulatorSlotCategory(entry.id) === normalizedCategory)
-    .find((entry) => getTreeGrowthSimulatorToolCategory(entry.current.key) === normalizedCategory);
-  const categoryControl = controls.find((entry) => entry.id === `tgs${category}Tool`);
-
-  if (controls.some((entry) => /^tgsToolSlot\d+$/.test(entry.id))) {
-    return slotControl?.current.outputMultiplier ?? 0;
-  }
-
-  return slotControl?.current.outputMultiplier ?? categoryControl?.current.outputMultiplier ?? 1;
-}
-
 export function getMachineParallelMultiplier(
   recipe: MachineEffectRecipe,
   node: MachineEffectNode,
 ): number {
+  return Math.min(
+    getMachineStructuralParallels(recipe, node),
+    getPoweredParallelLimit(recipe, node),
+  );
+}
+
+export function getMachineStructuralParallels(
+  recipe: MachineEffectRecipe,
+  node: MachineEffectNode,
+): number {
+  const fusion = getFusionStats(recipe);
+  if (fusion) return fusion.parallels;
   // GT++ "Voltage Tier * n Parallels" scales with the tier the machine runs
   // at; the GT tier ordinal counts ULV as 0, LV as 1, and so on. Stacked
   // hatches raise it, because the game reads the tier of the SUMMED voltage.
@@ -344,7 +468,7 @@ export function getMachineParallelMultiplier(
         return multiplier * fixed * scaled;
       }, 1);
 
-  return Math.min(structural, getPoweredParallelLimit(recipe, node));
+  return structural;
 }
 
 /**
@@ -444,6 +568,20 @@ export function getMachineEutMultiplier(
     (control) =>
       control.id === BEE_INDUSTRIAL_SPEED_CONTROL_ID && control.current.key === "speed-8-upgraded",
   );
+  if (isIndustrialApiaryMachineType(recipe.machineType)) {
+    // MTEIndustrialApiary: (int)(37 * energy * 2^speed) + 32 * 4^(speed - 1). The production upgrades keep their
+    // energy under the Upgraded Acceleration, whatever they do to the chance.
+    const speedKey = controls.find((control) => control.id === BEE_INDUSTRIAL_SPEED_CONTROL_ID)
+      ?.current.key;
+    const upgrades = Number(
+      controls.find((control) => control.id === BEE_INDUSTRIAL_PRODUCTION_CONTROL_ID)?.current.key,
+    );
+    const eut = beeIndustrialEuPerTick(
+      beeIndustrialSpeedExponent(speedKey),
+      beeIndustrialEnergy(Number.isFinite(upgrades) ? upgrades : 0, hasUpgradedSpeed8),
+    );
+    return (eut / BEE_INDUSTRIAL_BASE_EUT) * coilMultiplier;
+  }
   const configMultiplier = controls.reduce((multiplier, control) => {
     if (hasUpgradedSpeed8 && control.id === BEE_INDUSTRIAL_PRODUCTION_CONTROL_ID) {
       return multiplier;
@@ -451,65 +589,6 @@ export function getMachineEutMultiplier(
     return multiplier * (control.current.eutMultiplier ?? 1);
   }, 1);
   return coilMultiplier * configMultiplier;
-}
-
-function getTreeGrowthSimulatorOutputCategory(output: RecipeOutput) {
-  const slot = output.neiSlot;
-  if (slot?.x === 108 && slot.y === 36) {
-    return "Log";
-  }
-  if (slot?.x === 126 && slot.y === 36) {
-    return "Sapling";
-  }
-  if (slot?.x === 108 && slot.y === 54) {
-    return "Leaves";
-  }
-  if (slot?.x === 126 && slot.y === 54) {
-    return "Fruit";
-  }
-
-  const label = `${output.displayName ?? ""} ${output.id}`.toLowerCase();
-  if (label.includes("sapling")) {
-    return "Sapling";
-  }
-  if (label.includes("leaves") || label.includes("leaf")) {
-    return "Leaves";
-  }
-  if (label.includes("log") || label.includes("wood")) {
-    return "Log";
-  }
-  return "Fruit";
-}
-
-function getTreeGrowthSimulatorToolCategory(key: string): string | undefined {
-  const [category] = key.split(":");
-  return category && category !== "none" ? category : undefined;
-}
-
-function isTreeGrowthSimulatorToolControl(controlId: string): boolean {
-  return (
-    /^tgsToolSlot\d+$/.test(controlId) || /^tgs(?:Log|Sapling|Leaves|Fruit)Tool$/.test(controlId)
-  );
-}
-
-function getTreeGrowthSimulatorSlotCategory(controlId: string): string | undefined {
-  switch (controlId) {
-    case "tgsToolSlot1":
-      return "log";
-    case "tgsToolSlot2":
-      return "sapling";
-    case "tgsToolSlot3":
-      return "leaves";
-    case "tgsToolSlot4":
-      return "fruit";
-    default:
-      return undefined;
-  }
-}
-
-function isTreeGrowthSimulatorRecipe(recipe: Pick<Recipe, "machineType" | "source">): boolean {
-  const recipeMap = recipe.source?.recipeMap ?? recipe.machineType;
-  return normalizeRecipeMapName(recipeMap) === "tree growth simulator";
 }
 
 function normalizeRecipeMapName(recipeMap: string): string {

@@ -5,37 +5,36 @@ import { collectTrashNodeIds } from "@/lib/model/trash";
 import { getCompatibleOutputFlow, getEdgeTargetDemandKey } from "./equilibrium";
 import { type LinearProgram, type LpSolution } from "./simplex";
 import { solveLpAuto } from "./lp-engine";
+import { listSharedMachineGroups } from "@/lib/model/shared-machine";
+import { isPoolEdgeId } from "./pool-mode";
+import { storageRatioEqualities } from "./storage-ratios";
 
 /**
  * The board's steady state as equations, solved directly: the BOOKS half of
  * the solver, per docs/solver-equations.md. Conservation is a row, the clog
  * is an equals sign (an output wired only to machines may not make more than
  * its wires carry), and the answer is picked by a lexicographic chain of
- * solves - so there are no rounds, no transients and nothing to latch. The
- * iterative engine in equilibrium.ts keeps the DIAGNOSIS: capability, the
- * "one wire fixes it" stories, the clog names.
+ * solves, so there are no rounds, transients or latches. The iterative
+ * engine in equilibrium.ts keeps the DIAGNOSIS (capability, clog names).
  *
- * Stages, each optimum locked before the next runs (Jack's ruling,
- * 2026-08-19: solve for the maximum - a fed machine with somewhere to put
- * its output runs, exactly as in game):
+ * DOCTRINE: if it would fail in game it fails here; otherwise everything
+ * runs - a fed machine with somewhere to put its output never idles.
+ * Stages, each optimum locked before the next runs:
  *   1. Everything runs: maximize total act. A byproduct drawer is permission
- *      to run, a plain buffer voids its overflow like a real drawer, and
- *      nothing idles that conservation would let move.
- *   2. Fairness: progressive max-min over acts within the locked total - the
- *      LP form of the game's round-robin split, so contended supply shares
- *      evenly-with-saturation instead of handing one consumer everything.
+ *      to run, a plain buffer banks its overflow, and nothing idles that
+ *      conservation would let move.
+ *   2. Fairness: progressive max-min over acts within the locked total, the
+ *      LP form of the game's round-robin split.
  *   3. Recycle before importing: minimize source-drawer outflow.
  *   4. Ship before banking: minimize pool fill, so a buffer passes stock on
- *      to whatever downstream will take and holds only what nothing wants.
+ *      and holds only what nothing downstream wants.
  *   5. Canonicalize: minimize total flow, one deterministic point.
+ * There is deliberately NO stage preferring product drawers (it starves
+ * real machines; pipes round-robin) and none minimizing machinery (it idles
+ * machines the game would run). Targets are display arithmetic, not rows.
  *
- * There is deliberately NO "purpose" stage preferring product drawers: it
- * starved real machines to fatten an export drawer, and the game has no such
- * preference - pipes round-robin. Targets are display arithmetic, not rows.
- *
- * Validated against the tick simulator (src/lib/solver-lab/simulate.ts -
- * exact agreement on real player boards at the doctrine prime) and the full
- * community corpus.
+ * The tick simulator (src/lib/solver-lab/simulate.ts) is the independent
+ * check of these answers.
  */
 
 export interface EquationsCoreResult {
@@ -157,7 +156,7 @@ export function solveEquationsCore(
     if (role === "product" || role === "byproduct" || role === "trash") {
       return "sink";
     }
-    return storage.bufferMode === "strict" ? "strict-buffer" : "buffer";
+    return storage.bufferMode === "strict" || (storage.bufferMode === "ratio" && (storage.ratioExportPercent ?? 0) <= 0) ? "strict-buffer" : "buffer";
   };
 
   const flowVar = new Map<string, number>();
@@ -200,7 +199,7 @@ export function solveEquationsCore(
   let totalVars = nextVar + 1;
   const vents: Array<{ nodeId: string; key: ResourceKey; varIndex: number; scale: number }> = [];
 
-  const equalities: LinearProgram["equalities"] = [];
+  const equalities: LinearProgram["equalities"] = storageRatioEqualities(project, flowVar);
   const upperBounds: LinearProgram["upperBounds"] = [];
 
   for (const id of machineIds) {
@@ -212,6 +211,22 @@ export function solveEquationsCore(
       rhs: nodes[id]!.powerStalled ? 0 : 1,
     });
   }
+  // SHARED MACHINES: the sections of one card time-share its machine. Each
+  // section's act is its share of the machine's time (its nameplate already
+  // carries the whole count), so the shares sum to at most one. That is the
+  // only thing the game couples between recipes on one machine.
+  for (const group of listSharedMachineGroups(machineIds).values()) {
+    const coefficients = new Map<number, number>();
+    for (const id of group) {
+      const act = actVar.get(id);
+      if (act !== undefined) {
+        coefficients.set(act, 1);
+      }
+    }
+    if (coefficients.size > 1) {
+      upperBounds.push({ coefficients, rhs: 1 });
+    }
+  }
   // Necessity probes: these machines must run at least a hair, or the solve
   // reports infeasible - which is the probe's whole answer.
   for (const id of options?.requireRunning ?? []) {
@@ -222,14 +237,16 @@ export function solveEquationsCore(
   }
 
   // Target dials are NOT rows. Under maximize-everything a floor below the
-  // ceiling never binds and a floor above it would poison the whole solve
-  // infeasible; the dial stays display arithmetic (the over-asked >100%
-  // story) in the finalize layer, exactly where it lives today.
+  // ceiling never binds and one above it makes the whole solve infeasible;
+  // the dial stays display arithmetic (the over-asked >100% figure) in the
+  // finalize layer.
 
   // Drawer-to-drawer wires get a finite roof so a teleporter chain cannot
-  // read as unbounded; machine wires are bounded by their port rows.
+  // read as unbounded; machine wires are bounded by their port rows. Pool
+  // wires are exempt, as in solve-mode.ts: each is bounded by the machine
+  // rows on the pool's other side, and the roof capped pool imports.
   for (const edge of usable) {
-    if (!actVar.has(edge.source) && !actVar.has(edge.target)) {
+    if (!actVar.has(edge.source) && !actVar.has(edge.target) && !isPoolEdgeId(edge.id)) {
       upperBounds.push({ coefficients: new Map([[flowVar.get(edge.id)!, 1]]), rhs: 1e6 });
     }
   }
@@ -326,15 +343,13 @@ export function solveEquationsCore(
   }
 
   // EQUAL-FILL: machine co-consumers of one output port fill at the same
-  // per-pull rate - in game the port round-robins its items and a hopper
-  // cannot be refused. As a row: a sibling's share of its pull never exceeds
-  // a clean co-consumer's act (a saturated co-consumer has act 1, escaping
-  // the bound; one the diagnosis knows is throttled by its own outputs, a
-  // bare port or a power stall is exempt - its intake chest fills and the
-  // port legitimately serves the others). This is what makes a tapped
-  // break-even ring DIE instead of pretending its tap never pulls. Off in
-  // vent mode: in a vented world no intake chest ever fills, so round-robin
-  // never locks anyone.
+  // per-pull rate (in game the port round-robins and a hopper cannot refuse).
+  // As a row: a sibling's share of its pull never exceeds a clean
+  // co-consumer's act. A co-consumer throttled by its own outputs (per the
+  // diagnosis; OUTPUT-side figures only), a bare port or a power stall is
+  // exempt: its intake chest fills and the port serves the others. This is
+  // what makes a tapped break-even ring DIE instead of pretending its tap
+  // never pulls. Off in vent mode, where no intake chest ever fills.
   if (!venting) {
     const clean = (consumerId: string): boolean =>
       !pinnedZero.has(consumerId) &&
@@ -434,13 +449,12 @@ export function solveEquationsCore(
     }
     return solved;
   };
-  // Locks and fairness floors carry solver dust proportional to board scale:
-  // a stage objective that is provably signed gets clamped before locking
-  // (the "g" board's least-fill once read +4e-6 where the truth is <= 0, and
-  // the lock built from that dust demanded a negative fill sum - infeasible
-  // by construction). When a later stage still reports non-optimal, every
-  // lock and floor is re-cut with wider slack and the stage retried; small
-  // boards never need it, so the exact pins stay exact.
+  // Locks and fairness floors carry solver dust proportional to board scale.
+  // A stage objective that is provably signed is clamped before locking (a
+  // lock built from +4e-6 dust on a <= 0 objective is infeasible by
+  // construction). When a later stage still reports non-optimal, every lock
+  // and floor is re-cut with wider slack and the stage retried; small boards
+  // never need it, so their pins stay exact.
   type LockRow = { index: number; value: number; kind: "lock" | "floor" };
   const lockRows: LockRow[] = [];
   let lockEps = 1e-9;
@@ -506,9 +520,8 @@ export function solveEquationsCore(
   });
 
   // GAME TRUTH: everything runs as hard as conservation allows. A fed
-  // machine with somewhere to put its output runs in game - a byproduct
-  // drawer is permission, not motivation to idle. (Jack's ruling,
-  // 2026-08-19: solve for the maximum.)
+  // machine with somewhere to put its output runs in game; a byproduct
+  // drawer is permission, not motivation to idle.
   const everythingRuns = new Map<number, number>();
   for (const id of machineIds) {
     everythingRuns.set(actVar.get(id)!, 1);
@@ -545,9 +558,8 @@ export function solveEquationsCore(
       const t = Math.max(0, solved.x[tVar] ?? 0);
       // Only the machines LEAVING the pool get a floor row: members staying
       // get a higher one on the round they leave, and the temp t-rows hold
-      // everyone up meanwhile. Flooring the whole pool every round once grew
-      // the model quadratically (a 51-machine board reached a thousand rows
-      // and 34 seconds); this keeps it linear.
+      // everyone up meanwhile. Flooring the whole pool every round would grow
+      // the model quadratically; this keeps it linear.
       const floorAt = (id: string) => {
         const row: LockRow = { index: upperBounds.length, value: t, kind: "floor" };
         lockRows.push(row);
@@ -557,8 +569,31 @@ export function solveEquationsCore(
         });
       };
       let shrank = false;
-      for (const id of [...pool]) {
-        if ((solved.x[actVar.get(id)!] ?? 0) <= t + 1e-6) {
+      const atLevel = [...pool].filter((id) => (solved.x[actVar.get(id)!] ?? 0) <= t + 1e-6);
+      // A ZERO round is special. A machine that cannot run at all pins the
+      // worst-off level at zero, and at zero the simplex may park OTHER
+      // liftable machines there too (a shared machine's second recipe, one
+      // twin of a pair); flooring them all would lock that in. So at zero,
+      // only machines that truly cannot rise leave the pool: the structurally
+      // pinned ones outright, the rest after one solve each asking how high
+      // that machine alone can go under the locks so far.
+      if (t <= 1e-6) {
+        for (const id of atLevel) {
+          const stuck =
+            pinnedZero.has(id) ||
+            nodes[id]?.powerStalled === true ||
+            (() => {
+              const lifted = solveWithEscalation(`lift-${round}`, new Map([[actVar.get(id)!, 1]]));
+              return !lifted || lifted.status !== "optimal" || (lifted.x[actVar.get(id)!] ?? 0) <= 1e-6;
+            })();
+          if (stuck) {
+            floorAt(id);
+            pool.delete(id);
+            shrank = true;
+          }
+        }
+      } else {
+        for (const id of atLevel) {
           floorAt(id);
           pool.delete(id);
           shrank = true;

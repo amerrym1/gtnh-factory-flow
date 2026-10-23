@@ -12,11 +12,27 @@
 
 # testing
 /coverage
+/.browser-test.local/
+/.icon-sizing-results.local/
 /.pipeline
 /.tmp
 /.gh-artifacts-*/
 *.tar
 /public/datasets/gtnh/
+
+# agent scratch: screenshots, probes, captures, logs (local only, see AGENTS.md)
+/scratch/
+/.worktrees/
+/.claude/settings.local.json
+/.claude/scheduled_tasks.lock
+/*.png
+/*.jpg
+/*.jpeg
+/*.gif
+/*.webp
+/*.svg
+/*.local.*
+!/vitest.local.config.ts
 
 # next.js
 /.next/
@@ -49,3 +65,7 @@ dev-server*.log
 next-env.d.ts
 public/highs.wasm
 public/highs.js
+tools/parity/out/
+
+# the live service bundle (npm run build:live)
+/dist-live/

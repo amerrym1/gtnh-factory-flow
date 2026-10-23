@@ -4,49 +4,71 @@ import type { FactoryProject, ThroughputResult } from "@/lib/model/types";
 /**
  * The store's one door to the solver, sized to the board it is asked about.
  *
- * A small board solves synchronously, exactly as every call site always has:
- * the result is back before the state update lands and nothing about the
- * store's behaviour changes. A BIG board must not run on the main thread -
- * a several-hundred-machine plan takes seconds to minutes there, and that
- * solve used to run on every edit and every tab switch, which is the
- * "switching tabs freezes the browser" report. Past `SYNC_SOLVE_LIMIT` the
- * solve moves to a Web Worker: the caller gets its previous books back
- * immediately, flagged `stale`, and the real result replaces `lastResult`
- * through the sink when the worker lands.
+ * A small board solves synchronously: the result is back before the state
+ * update lands. A BIG board must not run on the main thread (seconds to
+ * minutes, on every edit and tab switch). It moves to a Web Worker: the
+ * caller gets its previous books back immediately, flagged `stale`, and the
+ * real result replaces `lastResult` through the sink when the worker lands.
  *
  * Finished big-board books are kept in a small content-keyed LRU, so
- * switching tabs between unchanged big plans is instant - the design store
- * re-reads a plan from IndexedDB on every switch, which is why the cache
- * cannot key on object identity.
+ * switching tabs between unchanged big plans is instant; the design store
+ * re-reads a plan from IndexedDB on every switch, so the cache cannot key on
+ * object identity.
  *
  * Rapid edits coalesce: one solve runs at a time, only the newest waiting
- * plan is kept, and a result that comes back for a plan no longer on the
- * canvas is cached but never shown. Environments without workers (SSR,
- * vitest, old browsers) keep the synchronous path for every size.
+ * plan is kept, and a result for a plan no longer on the canvas is cached
+ * but never shown. Environments without workers (SSR, vitest, old browsers)
+ * keep the synchronous path for every size.
  */
 
 /**
- * Nodes plus edges above which the solve leaves the main thread. The 86-machine
- * community platline (41 nodes + 96 edges = 137) solves in ~100ms and stays
- * synchronous; the measured wall grows roughly cubically past that (328 nodes
- * = 8s, 656 = 57s), so everything bigger is worker work.
+ * Nodes plus edges above which the solve leaves the main thread. Around this
+ * size the homegrown simplex already takes 100ms+ per edit (the worker's
+ * HiGHS stays under 50ms), and main-thread time grows roughly cubically.
  */
-const SYNC_SOLVE_LIMIT = 220;
+const SYNC_SOLVE_LIMIT = 120;
 
 /**
- * Size is not the whole story: a 59-machine platline with three loose cell
- * wires solves in 3.8s (84% inside the simplex - the hidden Tank each
- * cross-form wire expands into makes the LP much harder) while the same
- * board without them takes 0.27s. Two more reasons to leave the main thread:
- * the LAST solve, wherever it ran, took longer than this budget - a slow
- * board stays async until a fast solve proves otherwise - and a plan
- * carrying cross-form wires past a token size, so that board's very first
- * solve never freezes the tab either.
+ * Size is not the whole story. One more reason to leave the main thread:
+ * this plan's last MAIN-THREAD solve took longer than SLOW_SOLVE_MS (three
+ * frames: past it every edit stutters, and in Firefox a hang that long clips
+ * the board's sounds, see board-sounds.ts).
  */
-const SLOW_SOLVE_MS = 150;
-const CROSS_FORM_SYNC_LIMIT = 100;
+const SLOW_SOLVE_MS = 50;
+/**
+ * SOLVE MODE is far heavier on the homegrown simplex: six dense solves over
+ * every machine and wire at once, and pool mode (which rides on solve mode)
+ * adds a pool drawer per resource. It can run several times slower than plan
+ * mode there, while HiGHS (worker only) stays fast. Past this small size it
+ * always goes to the worker rather than waiting for the slow-solve rule to
+ * learn from a frozen tab.
+ */
+const SOLVE_MODE_SYNC_LIMIT = 40;
 
+/**
+ * The last MAIN-THREAD solve's wall time, and the plan it was measured on.
+ * Only a synchronous solve may write it: the worker runs HiGHS, roughly ten
+ * times faster than the main thread's simplex, so its timing says nothing
+ * about how long the tab would freeze (letting it count would send a slow
+ * plan back to the main thread). A slow plan therefore stays with the worker
+ * for the session; another plan decides by its own size.
+ */
 let lastSolveDurationMs: number | undefined;
+let lastSolveProjectId: string | undefined;
+
+/**
+ * Every edit solves; there is no manual recalculation. The old board toolbar's
+ * switch for it saved "off" here, and plan boards show no such switch, so a
+ * browser holding it showed every plan it opened at zero with no way out. The
+ * stored value is removed on load so no browser stays stuck in it.
+ */
+try {
+  if (typeof localStorage !== "undefined") {
+    localStorage.removeItem("gtnh-factory-flow.auto-solve.v1");
+  }
+} catch {
+  // Storage refused (a private window): nothing was stored either.
+}
 
 const BIG_BOOKS_CACHE_LIMIT = 8;
 const bigBooksCache = new Map<string, ThroughputResult>();
@@ -73,14 +95,21 @@ export function registerBooksSink(apply: (result: ThroughputResult) => void) {
 
 export function solveBooks(project: FactoryProject): ThroughputResult {
   const size = project.nodes.length + project.edges.length;
+  const provenSlow =
+    lastSolveDurationMs !== undefined &&
+    lastSolveDurationMs > SLOW_SOLVE_MS &&
+    lastSolveProjectId === project.id;
   const expectSlow =
     size > SYNC_SOLVE_LIMIT ||
-    (lastSolveDurationMs !== undefined && lastSolveDurationMs > SLOW_SOLVE_MS) ||
-    (size > CROSS_FORM_SYNC_LIMIT && project.edges.some((edge) => edge.crossForm));
+    provenSlow ||
+    ((project.solveMode === true || project.poolMode === true) && size > SOLVE_MODE_SYNC_LIMIT) ||
+    // Plan mode runs integer programs (HiGHS, which only the worker loads): the worker whenever there is one.
+    project.planMode === true;
   if (!expectSlow || !workerAvailable()) {
     const started = performance.now();
     const result = calculateThroughput(project);
     lastSolveDurationMs = performance.now() - started;
+    lastSolveProjectId = project.id;
     currentKey = undefined;
     lastBooks = result;
     return result;
@@ -110,9 +139,8 @@ export function solveBooks(project: FactoryProject): ThroughputResult {
 
 /**
  * The plan as the solver sees it. The `view` block is how the board is DRAWN
- * (camera, rate labels, line weights) and never reaches the solver, so it must
- * not invalidate finished books - it is also the one field the design store
- * restamps on every save, which would otherwise defeat the cache entirely.
+ * and never reaches the solver, so it must not invalidate finished books; the
+ * design store also restamps it on every save, which would defeat the cache.
  */
 function booksContentKey(project: FactoryProject): string {
   const { view: _view, ...solved } = project;
@@ -151,12 +179,10 @@ function getWorker(): Worker {
         solveMs?: number;
       }>,
     ) => {
-      const { key, result, error, solveMs } = event.data;
+      const { key, result, error } = event.data;
       inFlight = undefined;
       if (result) {
-        if (solveMs !== undefined) {
-          lastSolveDurationMs = solveMs;
-        }
+        // `solveMs` is deliberately not read: see lastSolveDurationMs.
         deliver(key, result);
       } else {
         console.error("solve worker error:", error);

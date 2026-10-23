@@ -1,0 +1,112 @@
+/*
+ * Box, zone and arrow annotations on a plan board (docs/annotations.md; the mod's DrawingPaint draws the same): flat,
+ * square, a thin line, the card font. Interiors let clicks through; only the elements with the drag-handle class (the
+ * border strips, the line) and the resize and end handles take the pointer.
+ */
+.dw {
+  position: relative;
+  pointer-events: none;
+  font-family: var(--cc-font);
+  -webkit-font-smoothing: var(--pixel-font-smoothing);
+  user-select: none;
+}
+/* The selection outline: only with several things selected (a single one wears its handles). */
+.dw[data-multi]::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  outline: 1px solid #22d3ee;
+  pointer-events: none;
+}
+.dw-box {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+/* A box moves by its border: the line and a band inside it. Outside the line is the resize band (below). */
+.dw-strip {
+  position: absolute;
+  pointer-events: all;
+  cursor: grab;
+}
+.dw-top {
+  top: -2px;
+  left: 16px;
+  right: 16px;
+  height: 14px;
+}
+.dw-bottom {
+  bottom: -2px;
+  left: 16px;
+  right: 16px;
+  height: 14px;
+}
+.dw-left {
+  left: -2px;
+  top: 16px;
+  bottom: 16px;
+  width: 14px;
+}
+.dw-right {
+  right: -2px;
+  top: 16px;
+  bottom: 16px;
+  width: 14px;
+}
+/* The resize edges of a selected box: a band just outside each side (React Flow's lines, thickened). */
+.dw .react-flow__resize-control.line {
+  border: 0;
+  background: transparent;
+}
+.dw .react-flow__resize-control.line.top {
+  top: 0;
+  height: 8px;
+  transform: translate(0, -100%);
+}
+.dw .react-flow__resize-control.line.bottom {
+  top: auto;
+  bottom: 0;
+  height: 8px;
+  transform: translate(0, 100%);
+}
+.dw .react-flow__resize-control.line.left {
+  left: 0;
+  width: 8px;
+  transform: translate(-100%, 0);
+}
+.dw .react-flow__resize-control.line.right {
+  left: auto;
+  right: 0;
+  width: 8px;
+  transform: translate(100%, 0);
+}
+.dw-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.dw-hit {
+  pointer-events: stroke;
+  cursor: grab;
+}
+/* An arrow's end handles: shown while it is selected or the pointer is on it. */
+.dw-end {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  box-sizing: border-box;
+  background: #22d3ee;
+  border: 1px solid #0e7490;
+  cursor: crosshair;
+  display: none;
+  pointer-events: all;
+  z-index: 10;
+}
+.dw[data-selected="true"] .dw-end,
+.dw:hover .dw-end {
+  display: block;
+}
